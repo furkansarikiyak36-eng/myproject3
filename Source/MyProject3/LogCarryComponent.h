@@ -38,6 +38,16 @@ public:
         meta = (ClampMin = "0.0"))
     float MaxPushImpulseMagnitude = 50000.0f;
 
+    /** Continuous horizontal drag force while the drag key is held. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics", meta=(ClampMin="0.0"))
+    float DragForceStrength = 180000.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics", meta=(ClampMin="0.0"))
+    float MaxDragForceMagnitude = 250000.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics", meta=(ClampMin="50.0"))
+    float DragTargetDistance = 180.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Trace",
         meta = (ClampMin = "100.0"))
     float PlacementTraceDistance = 4500.0f;
@@ -109,6 +119,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
     bool ProcessAimedPiece();
 
+    /** Starts a continuous drag tether on an aimed loose log; bind release to EndDragAimedLog. */
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
+    bool BeginDragAimedLog();
+
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
+    void EndDragAimedLog();
+
     /** Applies a bounded off-centre impulse to an aimed, loose, world-owned physics log. */
     UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
     bool TryPushOrRollAimedLog();
@@ -129,6 +146,8 @@ private:
     float HeldYawOffset = 0.0f;
     ELogCutAction SelectedCutAction = ELogCutAction::SplitHalf;
     FTransform CurrentSnapActorTransform = FTransform::Identity;
+    TWeakObjectPtr<ALogBuildPiece> DraggedPiece;
+    bool bIsDraggingLog = false;
 
     bool GetViewPoint(FVector& OutLocation, FRotator& OutRotation) const;
     bool TraceFromView(float Distance, FHitResult& OutHit) const;
