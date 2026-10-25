@@ -1,0 +1,155 @@
+#include "HarvestableTreeActor.h"
+
+#include "Components/StaticMeshComponent.h"
+#include "Engine/World.h"
+#include "Engine/StaticMesh.h"
+#include "LogBuildPiece.h"
+
+AHarvestableTreeActor::AHarvestableTreeActor()
+{
+    PrimaryActorTick.bCanEverTick = true;
+
+    TreeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TreeMesh"));
+    SetRootComponent(TreeMesh);
+    TreeMesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+    TreeMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    TreeMesh->SetSimulatePhysics(false);
+}
+
+bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
+{
+    if (!CanBeChopped() || !FMath::IsFinite(Damage) || Damage <= 0.0f ||
+        !TreeMesh || !TreeMesh->GetStaticMesh() || !LogActorClass)
+    {
+        return false;
+    }
+
+    ChopHealth = FMath::Max(0.0f, (ChopHealth > 0.0f ? ChopHealth : MaxChopHealth) - Damage);
+    if (ChopHealth > 0.0f)
+        return true;
+
+    // Do not start a fall that cannot yield the configured, existing log actor type.
+    if (LogsToSpawn < 1 || LogMeshVariantSetId.IsNone())
+    {
+        ChopHealth = KINDA_SMALL_NUMBER;
+        return false;
+    }
+
+    bFellingStarted = true;
+    TreeMesh->SetSimulatePhysics(true);
+    TreeMesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+    TreeMesh->WakeAllRigidBodies();
+
+    FVector Direction = ChopDirection.GetSafeNormal2D();
+    if (Direction.IsNearlyZero())
+        Direction = GetActorForwardVector().GetSafeNormal2D();
+    if (Direction.IsNearlyZero())
+        Direction = FVector::ForwardVector;
+
+    TreeMesh->AddImpulse(Direction * FallImpulse, NAME_None, true);
+    return true;
+}
+
+void AHarvestableTreeActor::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+
+    if (!bFellingStarted || bGrounded || bLogsSpawned || !TreeMesh)
+        return;
+
+    const FVector Velocity = TreeMesh->GetPhysicsLinearVelocity();
+    if (Velocity.Size() <= GroundedSpeedThreshold && HasGroundContact())
+        StableGroundedSeconds += DeltaSeconds;
+    else
+        StableGroundedSeconds = 0.0f;
+
+    if (StableGroundedSeconds < GroundedHoldSeconds)
+        return;
+
+    // Grounded is committed only after contact plus a stable low-velocity interval.
+    bGrounded = true;
+    TreeMesh->SetSimulatePhysics(false);
+    TreeMesh->SetCollisionProfileName(TEXT("BlockAll"));
+    TreeMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+    if (!SpawnHarvestLogs())
+    {
+        // Keep the tree in a visible, recoverable failed-harvest state. Never retry
+        // automatically after partial spawn because that could duplicate resources.
+        UE_LOG(LogTemp, Error, TEXT("Tree '%s' grounded but could not create its configured log outputs."),
+            *GetName());
+    }
+}
+
+bool AHarvestableTreeActor::HasGroundContact() const
+{
+    if (!GetWorld() || !TreeMesh)
+        return false;
+
+    const FBoxSphereBounds Bounds = TreeMesh->Bounds;
+    const FVector Start = Bounds.Origin;
+    const FVector End(Start.X, Start.Y, Bounds.Origin.Z - Bounds.BoxExtent.Z - 35.0f);
+
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(TreeGroundContact), false, this);
+    Params.AddIgnoredActor(this);
+    FHitResult Hit;
+    return GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params) &&
+        Hit.bBlockingHit && Hit.GetActor() != this;
+}
+
+bool AHarvestableTreeActor::SpawnHarvestLogs()
+{
+    if (bLogsSpawned || !bGrounded || !GetWorld() || !LogActorClass ||
+        LogsToSpawn < 1 || LogMeshVariantSetId.IsNone())
+    {
+        return false;
+    }
+
+    // Preflight all required outputs before spawning any actor. The log Blueprint
+    // must author its matching ProcessingMeshSets table; BeginPlay validates and
+    // registers each physical item in the canonical ownership ledger.
+    TArray<ALogBuildPiece*> Spawned;
+    Spawned.Reserve(LogsToSpawn);
+    const FVector Base = GetActorLocation();
+    const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+    const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal();
+
+    for (int32 Index = 0; Index < LogsToSpawn; ++Index)
+    {
+        const float Side = (static_cast<float>(Index) - (LogsToSpawn - 1) * 0.5f) * 95.0f;
+        const FVector Location = Base + Right * Side + FVector(0.0f, 0.0f, 35.0f + Index * 8.0f);
+        FActorSpawnParameters Params;
+        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+        ALogBuildPiece* Log = GetWorld()->SpawnActorDeferred<ALogBuildPiece>(
+            LogActorClass, FTransform(GetActorRotation(), Location), this, nullptr,
+            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+        if (!Log)
+        {
+            for (ALogBuildPiece* Created : Spawned)
+                if (IsValid(Created)) Created->Destroy();
+            return false;
+        }
+
+        Log->SelectedProcessingMeshSetId = LogMeshVariantSetId;
+        Log->FinishSpawning(FTransform(GetActorRotation(), Location));
+        Spawned.Add(Log);
+    }
+
+    // The actors' BeginPlay path owns item registration. Confirm all were actually
+    // materialized and visible before sealing the one-shot harvest transition.
+    for (ALogBuildPiece* Log : Spawned)
+    {
+        if (!IsValid(Log) || Log->IsActorBeingDestroyed() || Log->IsHidden())
+        {
+            // A bad Blueprint/table can quarantine a spawned log. Do not retry
+            // blindly: preserve failure evidence and require authored configuration repair.
+            return false;
+        }
+    }
+
+    bLogsSpawned = true;
+    SetActorHiddenInGame(true);
+    SetActorEnableCollision(false);
+    SetActorTickEnabled(false);
+    return true;
+}
