@@ -553,6 +553,63 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         OperationId = FGuid::NewGuid();
     }
 
+    // A retry of the same cut operation must return its committed result even
+    // though the first attempt has already changed PieceType and the prerequisites.
+    ELogPieceType RetryTargetType = ELogPieceType::Other;
+    const TCHAR* RetrySuffix = TEXT("Other");
+    bool bRetryTargetSupported = true;
+    switch (Action)
+    {
+    case ELogCutAction::SplitHalf:
+        RetryTargetType = ELogPieceType::SplitHalfLog; RetrySuffix = TEXT("SplitHalfLog"); break;
+    case ELogCutAction::Quarter:
+        RetryTargetType = ELogPieceType::QuarterLog; RetrySuffix = TEXT("QuarterLog"); break;
+    case ELogCutAction::Hewn:
+        RetryTargetType = ELogPieceType::HewnLog; RetrySuffix = TEXT("HewnLog"); break;
+    case ELogCutAction::Gutter:
+        RetryTargetType = ELogPieceType::GutterLog; RetrySuffix = TEXT("GutterLog"); break;
+    case ELogCutAction::Trough:
+        RetryTargetType = ELogPieceType::TroughLog; RetrySuffix = TEXT("TroughLog"); break;
+    case ELogCutAction::Kalas:
+        RetryTargetType = ELogPieceType::SquaredBeam; RetrySuffix = TEXT("SquaredBeam"); break;
+    case ELogCutAction::Plank:
+        RetryTargetType = ELogPieceType::Plank; RetrySuffix = TEXT("Plank"); break;
+    default:
+        bRetryTargetSupported = false; break;
+    }
+
+    UWorldObjectIdentityComponent* RetryIdentity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* RetryOwnership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord RetryCurrent;
+    if (bRetryTargetSupported && RetryIdentity && RetryOwnership &&
+        RetryOwnership->TryGetItem(RetryIdentity->GetInstanceId(), RetryCurrent) &&
+        RetryCurrent.OwnerKind == EWorldItemOwnerKind::World &&
+        RetryCurrent.Revision > 1)
+    {
+        const FName RetryBase = !RetryCurrent.BaseDefinitionId.IsNone()
+            ? RetryCurrent.BaseDefinitionId
+            : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : RetryCurrent.DefinitionId);
+        const FName RetryDefinition(*FString::Printf(
+            TEXT("%s.%s"), *RetryBase.ToString(), RetrySuffix));
+        if (RetryCurrent.DefinitionId == RetryDefinition && PieceType == RetryTargetType)
+        {
+            FWorldOwnedItemRecord PreviousResult;
+            if (RetryOwnership->TryUpdateItemDefinition(OperationId, RetryCurrent.ItemId,
+                RetryCurrent.Revision - 1, EWorldItemOwnerKind::World,
+                RetryDefinition, PreviousResult))
+            {
+                TArray<FGuid> RetriedIds;
+                RetriedIds.Add(RetryCurrent.ItemId);
+                return FWorldOperationResult::Success(
+                    OperationId,
+                    FText::FromString(TEXT("The previous log-processing result was returned.")),
+                    RetriedIds);
+            }
+        }
+    }
+
     if (!CanApplyCutAction(Action))
     {
         EWorldOperationResultCode FailureCode =
