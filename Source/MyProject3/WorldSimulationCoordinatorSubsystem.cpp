@@ -134,7 +134,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     TArray<FWorldCargoTransportRecord> BeforeCargo;
     Cargo->ExportSnapshot(BeforeCargo);
     TArray<FWorldOwnedItemRecord> BeforeItems;
-    Ownership->ExportSnapshot(BeforeItems);
+    TArray<FWorldItemTransferReceipt> BeforeItemTransferReceipts;
+    Ownership->ExportSnapshot(BeforeItems, BeforeItemTransferReceipts);
     TArray<FWorldStorageContainerRecord> BeforeStorages;
     TArray<FWorldStorageIncomingReservation> BeforeReservations;
     Storage->ExportSnapshot(BeforeStorages, BeforeReservations);
@@ -144,7 +145,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         bool bRollbackSucceeded = true;
         // Restore ownership before cargo because cargo snapshot validation is
         // intentionally cross-domain and checks the ledger's current owner/revision.
-        bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems) && bRollbackSucceeded;
+        bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems, BeforeItemTransferReceipts) && bRollbackSucceeded;
         // Cargo restore validates its incoming reservations against the storage
         // subsystem; restore the storage manifest before attempting cargo.
         bRollbackSucceeded = Storage->RestoreSnapshot(BeforeStorages, BeforeReservations) && bRollbackSucceeded;
