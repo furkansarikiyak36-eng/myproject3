@@ -471,6 +471,11 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         UE_LOG(LogTemp, Warning, TEXT("World load failed because the structural graph snapshot could not be restored safely."));
         return false;
     }
+    if (!StructuralGraph->RebuildLogActorAttachmentsFromSnapshot())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World load failed while rebuilding actor-local log snap links from the canonical structural graph."));
+        return false;
+    }
 
     TArray<UInventoryCraftingComponent*> CurrentInventories;
     TMap<FGuid, UInventoryCraftingComponent*> ByOwnerActorId;
