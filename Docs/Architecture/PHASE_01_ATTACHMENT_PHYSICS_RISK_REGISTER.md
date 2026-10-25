@@ -45,12 +45,6 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 **Follow-up:** This is a source-level transactional safeguard, not proof that every engine attachment scenario succeeds. Add focused Unreal checks for failed attachment, valid attachment, occupancy rollback, and cleanup after detach. No build or runtime test has been run.
 
-**Evidence:** `TryReserveSnapPoints` validates first, then marks target/source occupied and calls `AttachToSnapParent`. The current attachment helper has no result value and no rollback contract.
-
-**Impact:** The current synchronous path has no obvious failure return after reservation, but future attachment rules, collision validation, or structural constraints could introduce a failure after mutation. That would violate the shared all-or-nothing operation contract.
-
-**Follow-up:** Keep validation before mutation. When attachment can fail, make the operation return a result and either perform a guaranteed commit step or roll back both occupancy flags and any partially registered relationship. Do not add a speculative global transaction framework in this phase.
-
 
 ### R8 — Direct snap calls could reparent an attached piece or create a cycle
 
