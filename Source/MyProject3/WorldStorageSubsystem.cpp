@@ -121,7 +121,9 @@ bool UWorldStorageSubsystem::TryReserveIncoming(
 
     FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Storage || !Storage->bAvailable || !Ownership || Storage->Revision == MAX_int64)
+    // Reserve and eventual commit/release each increment the container revision.
+    // Leave room for the second transition so a reservation cannot become stranded.
+    if (!Storage || !Storage->bAvailable || !Ownership || Storage->Revision >= MAX_int64 - 1)
         return false;
 
     if (const FWorldStorageIncomingReservation* Existing = IncomingReservations.Find(CargoId))
