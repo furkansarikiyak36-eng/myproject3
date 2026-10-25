@@ -1625,7 +1625,126 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         OperationId = FGuid::NewGuid();
     }
 
-    // A retry of the same cut operation must return its committed result even
+    // Split receipts cover both cross-section splits and longitudinal length cuts.
+    // Handle them before checking the now-changed source prerequisites so a retry
+    // returns the original two IDs and can never spawn another child actor.
+    UWorldObjectIdentityComponent* SplitRetryIdentity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* SplitRetryOwnership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    TArray<FWorldOwnedItemRecord> ExistingSplitRecords;
+    if (SplitRetryOwnership &&
+        SplitRetryOwnership->TryGetSplitResult(OperationId, ExistingSplitRecords))
+    {
+        FWorldOwnedItemRecord CurrentSplitSource;
+        const bool bCurrentSourceMatches =
+            SplitRetryIdentity &&
+            SplitRetryOwnership->TryGetItem(SplitRetryIdentity->GetInstanceId(), CurrentSplitSource) &&
+            ExistingSplitRecords.Num() == 2 &&
+            CurrentSplitSource.ItemId == ExistingSplitRecords[0].ItemId &&
+            CurrentSplitSource.OwnerKind == EWorldItemOwnerKind::World &&
+            CurrentSplitSource.Revision == ExistingSplitRecords[0].Revision &&
+            CurrentSplitSource.DefinitionId == ExistingSplitRecords[0].DefinitionId &&
+            CurrentSplitSource.Revision > 1;
+        if (!bCurrentSourceMatches)
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::Conflict,
+                OperationId,
+                FText::FromString(TEXT("This operation ID already belongs to a different split result.")));
+        }
+
+        const FName RetryBase = !CurrentSplitSource.BaseDefinitionId.IsNone()
+            ? CurrentSplitSource.BaseDefinitionId
+            : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentSplitSource.DefinitionId);
+        ELogLengthFraction FirstLength = ELogLengthFraction::Other;
+        ELogLengthFraction SecondLength = ELogLengthFraction::Other;
+        ELogCrossSectionProfile FirstProfile = ELogCrossSectionProfile::Other;
+        ELogCrossSectionProfile SecondProfile = ELogCrossSectionProfile::Other;
+        bool bKnownSplitAction = true;
+
+        switch (Action)
+        {
+        case ELogCutAction::SplitHalf:
+            FirstLength = GetLengthFraction();
+            SecondLength = GetLengthFraction();
+            FirstProfile = ELogCrossSectionProfile::HalfRound;
+            SecondProfile = ELogCrossSectionProfile::HalfRound;
+            break;
+        case ELogCutAction::Quarter:
+            FirstLength = GetLengthFraction();
+            SecondLength = GetLengthFraction();
+            FirstProfile = ELogCrossSectionProfile::QuarterRound;
+            SecondProfile = ELogCrossSectionProfile::QuarterRound;
+            break;
+        case ELogCutAction::SplitLengthHalf:
+            FirstLength = ELogLengthFraction::HalfLength;
+            SecondLength = ELogLengthFraction::HalfLength;
+            FirstProfile = GetCrossSectionProfile();
+            SecondProfile = GetCrossSectionProfile();
+            break;
+        case ELogCutAction::SplitLengthThreeQuarter:
+            FirstLength = ELogLengthFraction::ThreeQuarterLength;
+            SecondLength = ELogLengthFraction::QuarterLength;
+            FirstProfile = GetCrossSectionProfile();
+            SecondProfile = GetCrossSectionProfile();
+            break;
+        case ELogCutAction::SplitHalfLengthIntoQuarters:
+            FirstLength = ELogLengthFraction::QuarterLength;
+            SecondLength = ELogLengthFraction::QuarterLength;
+            FirstProfile = GetCrossSectionProfile();
+            SecondProfile = GetCrossSectionProfile();
+            break;
+        default:
+            bKnownSplitAction = false;
+            break;
+        }
+
+        const FName FirstDefinition = bKnownSplitAction
+            ? MakeCanonicalGeometryDefinitionId(RetryBase, FirstLength, FirstProfile)
+            : NAME_None;
+        const FName SecondDefinition = bKnownSplitAction
+            ? MakeCanonicalGeometryDefinitionId(RetryBase, SecondLength, SecondProfile)
+            : NAME_None;
+        if (!bKnownSplitAction || FirstDefinition.IsNone() || SecondDefinition.IsNone() ||
+            GetLengthFraction() != FirstLength || GetCrossSectionProfile() != FirstProfile ||
+            ExistingSplitRecords[0].DefinitionId != FirstDefinition ||
+            ExistingSplitRecords[1].DefinitionId != SecondDefinition)
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::Conflict,
+                OperationId,
+                FText::FromString(TEXT("This operation ID was already committed with a different cut action or output signature.")));
+        }
+
+        TArray<FName> RetryDefinitions;
+        RetryDefinitions.Add(FirstDefinition);
+        RetryDefinitions.Add(SecondDefinition);
+        TArray<FVector> RetryLocations;
+        RetryLocations.Add(ExistingSplitRecords[0].WorldLocation);
+        RetryLocations.Add(ExistingSplitRecords[1].WorldLocation);
+        TArray<FWorldOwnedItemRecord> RetriedRecords;
+        if (!SplitRetryOwnership->TrySplitItem(OperationId, CurrentSplitSource.ItemId,
+            CurrentSplitSource.Revision - 1, EWorldItemOwnerKind::World,
+            RetryDefinitions, RetryLocations, RetriedRecords) || RetriedRecords.Num() != 2)
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::Conflict,
+                OperationId,
+                FText::FromString(TEXT("The saved split receipt did not match the retried cut request.")));
+        }
+
+        TArray<FGuid> RetriedIds;
+        RetriedIds.Add(RetriedRecords[0].ItemId);
+        RetriedIds.Add(RetriedRecords[1].ItemId);
+        return FWorldOperationResult::Success(
+            OperationId,
+            FText::FromString(TEXT("The previous physical split result was returned.")),
+            RetriedIds);
+    }
+
+    // A retry of a legacy single-piece processing operation must return its
+    // committed result even though the first attempt changed the prerequisites.
     // though the first attempt has already changed PieceType and the prerequisites.
     ELogPieceType RetryTargetType = ELogPieceType::Other;
     const TCHAR* RetrySuffix = TEXT("Other");
