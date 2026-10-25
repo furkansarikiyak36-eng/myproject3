@@ -3,6 +3,7 @@
 #include "LogBuildPiece.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
+#include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Controller.h"
@@ -63,6 +64,22 @@ void ULogCarryComponent::TickComponent(
     {
         TimeUntilSnapRefresh = FMath::Max(0.01f, SnapRefreshInterval);
         FindBestSnapCandidate();
+    }
+
+    // Lightweight prototype feedback: a green marker indicates the currently
+    // selected target anchor. A proper mesh-based ghost preview can replace it.
+    if (bHasValidSnap && IsValid(CurrentSnapTarget) &&
+        CurrentTargetSnapPointIndex != INDEX_NONE)
+    {
+        const FVector MarkerLocation =
+            CurrentSnapTarget->GetSnapPointWorldTransform(
+                CurrentTargetSnapPointIndex).GetLocation();
+
+        DrawDebugSphere(GetWorld(), MarkerLocation, 20.0f, 12,
+            FColor::Green, false, 0.10f, 0, 2.0f);
+        DrawDebugLine(GetWorld(), MarkerLocation,
+            MarkerLocation + FVector::UpVector * 70.0f,
+            FColor::Green, false, 0.10f, 0, 2.0f);
     }
 }
 
