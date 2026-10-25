@@ -165,6 +165,7 @@ private:
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
 
     void GenerateDefaultSnapPoints();
+    void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
     void GenerateDefaultSideSnapPoints();
     FVector GetLongitudinalAxisVector() const;
