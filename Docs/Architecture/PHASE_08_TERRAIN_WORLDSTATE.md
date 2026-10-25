@@ -1,13 +1,13 @@
 # Phase 8 — Landscape Builder, Terrain World State and Constrained Digging
 
 **Status:** Partial logical state layer exists; physical Landscape/mesh integration is not implemented or engine-verified.  
-**Registry scope:** M071–M080  
+**Registry scope:** M071–M080; possible Landscape-driven extensions must use existing child requirements first and append M120+ only for distinct gameplay behavior.  
 **Prerequisites:** Core identity/clock/save contracts; structural graph integration where terrain supports buildings.  
 **Detailed plan:** `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md`
 
 ## Responsibility
 
-Own deterministic, bounded terrain edits and durable world-state changes. The goal is a reproducible outdoor Landscape plus selective digging for pits, short tunnels, underground rooms and traps—not unrestricted high-cost voxel editing across the entire world.
+Own deterministic, bounded terrain edits and durable world-state changes. The editor-side Landscape Builder is a toolchain, not automatically a new gameplay mechanic; see `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md` for scope-expansion policy. The goal is a reproducible outdoor Landscape plus selective digging for pits, short tunnels, underground rooms and traps—not unrestricted high-cost voxel editing across the entire world.
 
 ## Current source baseline
 
