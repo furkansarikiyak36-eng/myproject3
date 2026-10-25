@@ -7,6 +7,7 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 
 /**
  * Explicit state owner for one stick-derived physical piece.
@@ -25,6 +26,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Primitive")
     TObjectPtr<UStaticMeshComponent> Mesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Primitive|Structure")
+    TObjectPtr<UWorldObjectIdentityComponent> StructuralIdentity;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Primitive")
     EStickPrimitiveState PieceState = EStickPrimitiveState::Raw;
