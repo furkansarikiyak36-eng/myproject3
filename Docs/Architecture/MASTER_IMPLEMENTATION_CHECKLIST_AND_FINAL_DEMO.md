@@ -67,6 +67,9 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Her dünya değiştiren işlem için işlem kimliği, beklenen revizyon, sonuç kodu ve hata nedeni standardını tamamla.
 - [ ] Doğrulama başarısızsa kaynak durumunun değişmediğini güvence altına al.
 - [ ] Bir işlem birden çok sistemi değiştiriyorsa ön kontrol/commit/rollback sınırlarını belirle.
+- [x] Genel Operation Ledger için kararlı snapshot/restore eklendi; sabit-adım rollback ve SaveGame v6 kapsamına alındı. Kaynak kontrolü geçti, motor testleri açık.
+- [x] SaveGame, Pending operasyon varken reddediliyor; v4→v5→v6 kayıt uyumluluğu tanımlandı.
+- [ ] Gerçek oynanış işlemlerini genel ledger'a seçici bağla; domain'in kendi receipt/transaction mekanizmasıyla çifte yetki oluşturma.
 - [ ] Mantıksal saati tek yetkili dünya saati olarak kullan; tarım, baskın, üretim, hava ve hayatta kalma için ayrı saatler oluşturma.
 - [ ] Sabit zaman adımı sırasını tanımla ve her sistemin bir adımı iki kez çalıştırmasını engelle.
 - [x] Rollback başarısızlığı için fail-closed politika eklendi: simülasyon arızalı duruma geçer, yeni sabit adımlar reddedilir, readiness false döner ve açıklama Blueprint üzerinden okunabilir. Kaynak değişikliği; UE derleme/fault-injection henüz yapılmadı.
@@ -644,6 +647,28 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi/runtime doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Genel `WorldOperationLedgerSubsystem` geçmişi bu kapsamda kalıcılaştırılmadı; fiziksel aktör/terrain/structural graph kayıt eksikleri ayrı iştir.  
 **Sonraki bağımlı iş:** CORE-003 — genel Operation Ledger'ın kayıt/yükleme ve işlem idempotency sınırını incelemek; ardından kalan P0 işlem/sahiplik kusurlarını kapatmak.
+
+---
+
+### İş kaydı: CORE-003 — Genel Operation Ledger snapshot ve SaveGame kalıcılığı
+
+- [x] Ledger snapshot export/restore eklendi; kararlı sıralama var
+- [x] Restore, canlı haritayı değiştirmeden önce tüm kayıtları doğruluyor
+- [x] Sabit-adım rollback'i ledger snapshot'ını içeriyor
+- [x] Pending operasyon varken SaveGame reddediliyor
+- [x] SaveGame v6 operation ledger kayıtlarını yazıp geri yüklüyor
+- [x] v4→v5→v6 uyumluluk yolu statik olarak kontrol edildi
+- [ ] UE 5.8 UHT/UBT derlemesi
+- [ ] Save/load tekrar-deneme runtime testi
+- [ ] Pending-operation save-rejection runtime testi
+- [ ] Rollback/fault-injection testi
+
+**Kaynak dosyaları:** `WorldOperationLedgerSubsystem.h/.cpp`, `GameplayCoreTypes.h`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
+**Commit/PR:** `fix/durable-operation-ledger`; PR #20 açıldıktan sonra bağlantı eklenecek.  
+**Sonuç:** Genel Operation Ledger artık snapshot/restore edilebilir ve tamamlanmış operation sonuçlarını SaveGame v6 kapsamında koruyabilir. Kayıt esnasında Pending operation varsa kaydetme reddedilir; ledger'da işlem günlüğü olmadığı için yarım kalmış işlemi güvenli şekilde devam ettirecekmiş gibi gösterilmez.  
+**Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi ve çalışma zamanı doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** Genel ledger henüz bütün domain operasyonlarına bağlanmış değil. Altı önemli kaynak dosyasında doğrudan çağrı olmadığını kontrol ettim; sonraki adım gerçek operasyon sahiplerini haritalandırıp uygun noktalara ledger protokolünü seçici bağlamak.  
+**Sonraki bağımlı iş:** CORE-004 — domain işlem sahipliği/call-chain haritası ve ilk operasyon bağlantısı.
 
 ---
 
