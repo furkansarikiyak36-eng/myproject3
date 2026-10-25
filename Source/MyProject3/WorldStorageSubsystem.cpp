@@ -9,15 +9,15 @@ UWorldItemOwnershipSubsystem* UWorldStorageSubsystem::GetOwnership() const
     return World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
 }
 
-int32 UWorldStorageSubsystem::CountReservationsForStorage(const FGuid& StorageId) const
+int64 UWorldStorageSubsystem::CountReservationsForStorage(const FGuid& StorageId) const
 {
-    int32 Count = 0;
+    int64 Quantity = 0;
     for (const TPair<FGuid, FWorldStorageIncomingReservation>& Pair : IncomingReservations)
     {
         if (Pair.Value.DestinationStorageId == StorageId)
-            ++Count;
+            Quantity += FMath::Max(0, Pair.Value.Quantity);
     }
-    return Count;
+    return Quantity;
 }
 
 bool UWorldStorageSubsystem::RegisterStorage(const FGuid& StorageId, int32 CapacityUnits)
@@ -100,17 +100,18 @@ bool UWorldStorageSubsystem::CanAcceptItem(const FGuid& StorageId, const FGuid& 
         (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == StorageId))
         return false;
 
-    int32 StoredCount = 0;
+    int64 StoredQuantity = 0;
     TArray<FWorldOwnedItemRecord> AllItems;
     Ownership->ExportSnapshot(AllItems);
     for (const FWorldOwnedItemRecord& Candidate : AllItems)
     {
         if (Candidate.OwnerKind == EWorldItemOwnerKind::Storage &&
             Candidate.OwnerId == StorageId)
-            ++StoredCount;
+            StoredQuantity += FMath::Max(0, Candidate.Quantity);
     }
 
-    return StoredCount + CountReservationsForStorage(StorageId) < Storage->CapacityUnits;
+    return StoredQuantity + CountReservationsForStorage(StorageId) + Item.Quantity
+        <= Storage->CapacityUnits;
 }
 
 bool UWorldStorageSubsystem::TryReserveIncoming(
@@ -145,22 +146,24 @@ bool UWorldStorageSubsystem::TryReserveIncoming(
         Item.OwnerId == StorageId)
         return false;
 
-    int32 StoredCount = 0;
+    int64 StoredQuantity = 0;
     TArray<FWorldOwnedItemRecord> AllItems;
     Ownership->ExportSnapshot(AllItems);
     for (const FWorldOwnedItemRecord& Candidate : AllItems)
     {
         if (Candidate.OwnerKind == EWorldItemOwnerKind::Storage &&
             Candidate.OwnerId == StorageId)
-            ++StoredCount;
+            StoredQuantity += FMath::Max(0, Candidate.Quantity);
     }
-    if (StoredCount + CountReservationsForStorage(StorageId) >= Storage->CapacityUnits)
+    if (StoredQuantity + CountReservationsForStorage(StorageId) + Item.Quantity >
+        Storage->CapacityUnits)
         return false;
 
     FWorldStorageIncomingReservation Reservation;
     Reservation.CargoId = CargoId;
     Reservation.ItemId = ItemId;
     Reservation.DestinationStorageId = StorageId;
+    Reservation.Quantity = Item.Quantity;
     IncomingReservations.Add(CargoId, Reservation);
     ++Storage->Revision;
     return true;
@@ -294,6 +297,7 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
     for (const FWorldStorageIncomingReservation& Reservation : ReservationSnapshot)
     {
         if (!Reservation.CargoId.IsValid() || !Reservation.ItemId.IsValid() ||
+            Reservation.Quantity <= 0 ||
             !ProposedStorages.Contains(Reservation.DestinationStorageId) ||
             ProposedReservations.Contains(Reservation.CargoId) ||
             ReservedItems.Contains(Reservation.ItemId))
@@ -302,7 +306,7 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
         FWorldOwnedItemRecord Item;
         if (!Ownership->TryGetItem(Reservation.ItemId, Item) ||
             Item.OwnerKind != EWorldItemOwnerKind::InTransit ||
-            Item.OwnerId != Reservation.CargoId)
+            Item.OwnerId != Reservation.CargoId || Item.Quantity != Reservation.Quantity)
             return false;
 
         ProposedReservations.Add(Reservation.CargoId, Reservation);
@@ -311,20 +315,20 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
 
     for (const TPair<FGuid, FWorldStorageContainerRecord>& Pair : ProposedStorages)
     {
-        int32 StoredCount = 0;
+        int64 StoredQuantity = 0;
         TArray<FWorldOwnedItemRecord> AllItems;
         if (Ownership)
             Ownership->ExportSnapshot(AllItems);
         for (const FWorldOwnedItemRecord& Item : AllItems)
         {
             if (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == Pair.Key)
-                ++StoredCount;
+                StoredQuantity += FMath::Max(0, Item.Quantity);
         }
-        int32 ReservedCount = 0;
+        int64 ReservedQuantity = 0;
         for (const TPair<FGuid, FWorldStorageIncomingReservation>& Reservation : ProposedReservations)
             if (Reservation.Value.DestinationStorageId == Pair.Key)
-                ++ReservedCount;
-        if (StoredCount + ReservedCount > Pair.Value.CapacityUnits)
+                ReservedQuantity += FMath::Max(0, Reservation.Value.Quantity);
+        if (StoredQuantity + ReservedQuantity > Pair.Value.CapacityUnits)
             return false;
     }
 
