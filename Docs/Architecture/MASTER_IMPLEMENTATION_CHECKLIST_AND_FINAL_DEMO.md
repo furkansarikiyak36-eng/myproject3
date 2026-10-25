@@ -927,7 +927,8 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] UE 5.8 UHT/UBT, Editor/PIE, gerçek save→move/physics→load round-trip ve bozuk snapshot/failure-injection kabul testleri.
 - [ ] Fiziksel actor identity snapshot'ı yalnızca UWorldObjectIdentityComponent taşıyan aktörleri kapsıyor; identity bileşeni olmayan mevcut aktör sınıfları eklenmeli.
 - [ ] Snapshot aynı level'da mevcut actor setiyle birebir eşleşme ister; yok olan runtime aktörleri spawn etmez ve farklı level/streaming durumunda otomatik actor recreation/partition restore yapmaz.
-- [ ] Graph kenarları canonical graph subsystem'e geri yükleniyor; log/stone/stick actor-local SnapParent/AttachedPieces weak-reference listelerinin graph'tan tekrar kurulması ve snap-point rezervasyonlarının eşleştirilmesi ayrı doğrulama işi.
+- [x] Log aktörlerinde canonical graph restore sonrasında `SnapParent`, parent/own snap index, `AttachedPieces` ve iki uçtaki snap-point occupancy yeniden kuruluyor; graph edge tekrar eklenmiyor. Statik kaynak katmanı.
+- [ ] Stone/stick/foundation sınıflarının actor-local anchor/attachment state'ini aynı canonical graph'tan yeniden kurması ve UE runtime doğrulaması.
 - [ ] Envanterde Held owner durumu hâlâ save sırasında reddediliyor; carry component/attached actor state'inin tam save/load akışı açık.
 - [ ] Terrain edit deltasının görünür Landscape/mesh/collision/nav restore'u ve fiziksel crop/animal actor re-creation bu işin kapsamına dahil değil.
 
