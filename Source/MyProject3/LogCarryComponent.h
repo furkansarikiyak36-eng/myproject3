@@ -93,6 +93,15 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
     void CyclePlacementMode();
 
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
+    void CycleCutAction();
+
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
+    bool ProcessAimedPiece();
+
+    UFUNCTION(BlueprintPure, Category = "Log Carry|State")
+    ELogCutAction GetSelectedCutAction() const { return SelectedCutAction; }
+
     UFUNCTION(BlueprintPure, Category = "Log Carry|State")
     bool IsCarryingLog() const { return IsValid(HeldPiece); }
 
@@ -103,6 +112,7 @@ protected:
 private:
     float TimeUntilSnapRefresh = 0.0f;
     float HeldYawOffset = 0.0f;
+    ELogCutAction SelectedCutAction = ELogCutAction::SplitHalf;
     FTransform CurrentSnapActorTransform = FTransform::Identity;
 
     bool GetViewPoint(FVector& OutLocation, FRotator& OutRotation) const;
