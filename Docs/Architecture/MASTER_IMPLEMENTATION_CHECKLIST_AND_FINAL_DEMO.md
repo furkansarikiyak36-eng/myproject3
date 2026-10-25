@@ -36,7 +36,7 @@ Bir kutu yalnızca yanında yazan kabul ölçütü karşılandıktan sonra işar
 
 ### 1A. Kaynak temeli ve PR zinciri
 
-- [ ] H dalını (mechanic-detailing-pass-h-integrated-world-systems) mevcut entegre kaynakların inceleme temeli olarak sabitle.
+- [x] H dalını (mechanic-detailing-pass-h-integrated-world-systems) mevcut entegre kaynakların inceleme temeli olarak sabitle.
 - [ ] H dalındaki dosyaları M001–M119 ve sistem sahipleriyle eşleştir; mevcut, kısmi ve eksik alanları ayır.
 - [ ] `main`, eski faz dalları, A–H dalları ve Landscape plan dalı arasındaki atalık ilişkisini yeniden kontrol et.
 - [ ] Yığılmış A–H dallarını bağımsız özellikler gibi sırayla main'e birleştirme; her PR'ın benzersiz değişikliklerini kendi tabanına göre incele.
