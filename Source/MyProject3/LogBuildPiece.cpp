@@ -61,6 +61,8 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
 
+    SyncCanonicalGeometryFromLegacyPieceType();
+
     // Preserve hand-authored anchors (for example, test-map top sockets) but
     // rebuild only auto-generated sockets when mesh/spacing/axis properties change.
     RegenerateAutomaticSnapPoints();
@@ -70,6 +72,7 @@ void ALogBuildPiece::BeginPlay()
 {
     Super::BeginPlay();
 
+    SyncCanonicalGeometryFromLegacyPieceType();
     bIsPlaced = bStartsPlaced;
     if (!StructuralIdentity || !GetWorld())
     {
@@ -234,6 +237,79 @@ bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
     SetActorEnableCollision(true);
     SetActorTickEnabled(true);
     return true;
+}
+
+ELogLengthFraction ALogBuildPiece::LengthFractionFromLegacyType(ELogPieceType Type)
+{
+    switch (Type)
+    {
+    case ELogPieceType::ThreeQuarterLog: return ELogLengthFraction::ThreeQuarterLength;
+    case ELogPieceType::HalfLengthLog: return ELogLengthFraction::HalfLength;
+    case ELogPieceType::QuarterLog: return ELogLengthFraction::QuarterLength;
+    default: return ELogLengthFraction::FullLength;
+    }
+}
+
+ELogCrossSectionProfile ALogBuildPiece::CrossSectionFromLegacyType(ELogPieceType Type)
+{
+    switch (Type)
+    {
+    case ELogPieceType::WholeLog:
+    case ELogPieceType::ThreeQuarterLog:
+    case ELogPieceType::HalfLengthLog:
+    case ELogPieceType::QuarterLog:
+        return ELogCrossSectionProfile::Round;
+    case ELogPieceType::SplitHalfLog:
+        return ELogCrossSectionProfile::HalfRound;
+    case ELogPieceType::QuarterSectionLog:
+        return ELogCrossSectionProfile::QuarterRound;
+    case ELogPieceType::HewnLog:
+        return ELogCrossSectionProfile::Hewn;
+    case ELogPieceType::SquaredBeam:
+        return ELogCrossSectionProfile::SquareBeam;
+    case ELogPieceType::GutterLog:
+        return ELogCrossSectionProfile::GroovedHalfRound;
+    case ELogPieceType::TroughLog:
+        return ELogCrossSectionProfile::Trough;
+    case ELogPieceType::Plank:
+        return ELogCrossSectionProfile::Plank;
+    case ELogPieceType::NotchedLog:
+        return ELogCrossSectionProfile::Notched;
+    case ELogPieceType::JointPiece:
+        return ELogCrossSectionProfile::Joint;
+    case ELogPieceType::Other:
+    default:
+        return ELogCrossSectionProfile::Other;
+    }
+}
+
+ELogLengthFraction ALogBuildPiece::GetLengthFraction() const
+{
+    return bUseCanonicalGeometryDimensions
+        ? LengthFraction
+        : LengthFractionFromLegacyType(PieceType);
+}
+
+ELogCrossSectionProfile ALogBuildPiece::GetCrossSectionProfile() const
+{
+    return bUseCanonicalGeometryDimensions
+        ? CrossSectionProfile
+        : CrossSectionFromLegacyType(PieceType);
+}
+
+void ALogBuildPiece::SyncCanonicalGeometryFromLegacyPieceType()
+{
+    if (bUseCanonicalGeometryDimensions)
+        return;
+
+    LengthFraction = LengthFractionFromLegacyType(PieceType);
+    CrossSectionProfile = CrossSectionFromLegacyType(PieceType);
+}
+
+void ALogBuildPiece::SetCanonicalCrossSectionFromPieceType(ELogPieceType Type)
+{
+    CrossSectionProfile = CrossSectionFromLegacyType(Type);
+    bUseCanonicalGeometryDimensions = true;
 }
 
 void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -504,24 +580,24 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        return PieceType == ELogPieceType::WholeLog &&
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::Round &&
             IsValid(SplitHalfVariantMesh) &&
             IsValidCrossSectionCenterOffset(SplitHalfPieceCenterOffsetLocal, LongitudinalAxis);
     case ELogCutAction::Quarter:
-        return PieceType == ELogPieceType::SplitHalfLog &&
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound &&
             IsValid(QuarterVariantMesh) &&
             IsValidCrossSectionCenterOffset(QuarterPieceCenterOffsetLocal, LongitudinalAxis);
     case ELogCutAction::Hewn:
-        return PieceType == ELogPieceType::WholeLog && IsValid(HewnVariantMesh);
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::Round && IsValid(HewnVariantMesh);
     case ELogCutAction::Gutter:
         // A groove/gutter operation is valid only after the log has been split.
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(GutterVariantMesh);
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound && IsValid(GutterVariantMesh);
     case ELogCutAction::Trough:
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(TroughVariantMesh);
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound && IsValid(TroughVariantMesh);
     case ELogCutAction::Kalas:
-        return PieceType == ELogPieceType::WholeLog && IsValid(KalasVariantMesh);
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::Round && IsValid(KalasVariantMesh);
     case ELogCutAction::Plank:
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(PlankVariantMesh);
+        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound && IsValid(PlankVariantMesh);
     default:
         return false;
     }
@@ -668,6 +744,9 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     }
 
     Child->PieceType = OutputType;
+    Child->LengthFraction = GetLengthFraction();
+    Child->CrossSectionProfile = CrossSectionFromLegacyType(OutputType);
+    Child->bUseCanonicalGeometryDimensions = true;
     Child->BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
     Child->LongitudinalAxis = LongitudinalAxis;
@@ -779,6 +858,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     SetActorTransform(SourceOutputTransform, false, nullptr, ETeleportType::TeleportPhysics);
     SetPieceStaticMesh(OutputMesh);
     PieceType = OutputType;
+    SetCanonicalCrossSectionFromPieceType(OutputType);
     BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
     Identity->SetDefinitionId(OutputDefinitionId);
@@ -848,6 +928,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     ELogCutAction Action,
     FGuid OperationId)
 {
+    SyncCanonicalGeometryFromLegacyPieceType();
     if (!OperationId.IsValid())
     {
         OperationId = FGuid::NewGuid();
@@ -973,14 +1054,14 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             case ELogCutAction::SplitHalf:
             case ELogCutAction::Hewn:
             case ELogCutAction::Kalas:
-                bPrerequisiteMet = PieceType == ELogPieceType::WholeLog;
+                bPrerequisiteMet = GetCrossSectionProfile() == ELogCrossSectionProfile::Round;
                 break;
 
             case ELogCutAction::Quarter:
             case ELogCutAction::Gutter:
             case ELogCutAction::Trough:
             case ELogCutAction::Plank:
-                bPrerequisiteMet = PieceType == ELogPieceType::SplitHalfLog;
+                bPrerequisiteMet = GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound;
                 break;
 
             default:
@@ -1113,6 +1194,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
 
     SetPieceStaticMesh(NewMesh);
     PieceType = NewType;
+    SetCanonicalCrossSectionFromPieceType(NewType);
 
     FVector NewOrigin;
     FVector NewExtent;
@@ -1240,10 +1322,14 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::Other;
     }
+
+    bUseCanonicalGeometryDimensions = false;
+    SyncCanonicalGeometryFromLegacyPieceType();
 }
 
 bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
 {
+    SyncCanonicalGeometryFromLegacyPieceType();
     if (CurrentDefinitionId.IsNone() || BaseDefinitionId.IsNone() || !Mesh)
         return false;
 
@@ -1322,6 +1408,7 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
 
     SetPieceStaticMesh(VariantMesh);
     PieceType = VariantType;
+    SetCanonicalCrossSectionFromPieceType(VariantType);
     if (Mesh)
         Mesh->UpdateBounds();
 
