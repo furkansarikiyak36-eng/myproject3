@@ -2,6 +2,8 @@
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 AStoneBuildingPiece::AStoneBuildingPiece()
 {
@@ -9,6 +11,7 @@ AStoneBuildingPiece::AStoneBuildingPiece()
 
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StoneMesh"));
     SetRootComponent(Mesh);
+    StructuralIdentity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
     Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     Mesh->SetSimulatePhysics(false);
 }
@@ -18,6 +21,15 @@ void AStoneBuildingPiece::BeginPlay()
     Super::BeginPlay();
 
     bIsPlaced = bStartsPlaced;
+    if (StructuralIdentity)
+    {
+        StructuralIdentity->EnsureIdentity();
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(), EStructuralNodeKind::Stone,
+                bIsPlaced, 1.0f, 100000.0f, 100.0f);
+        }
+    }
     if (Mesh)
     {
         Mesh->SetSimulatePhysics(!bIsPlaced && !bIsHeld);
@@ -234,6 +246,23 @@ bool AStoneBuildingPiece::TryConnectToAnchor(
     ParentAnchorId = TargetAnchorId;
     OwnAnchorIdUsed = OwnAnchorId;
     TargetPiece->AttachedPieces.AddUnique(this);
+    if (StructuralIdentity && TargetPiece->StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            if (!Graph->TryConnect(TargetPiece->StructuralIdentity->GetInstanceId(), TargetAnchorId,
+                StructuralIdentity->GetInstanceId(), OwnAnchorId))
+            {
+                TargetPiece->ReleaseAnchorReservation(TargetAnchorId);
+                TargetPiece->AttachedPieces.Remove(this);
+                ReleaseAnchorReservation(OwnAnchorId);
+                ParentPiece.Reset(); ParentAnchorId = NAME_None; OwnAnchorIdUsed = NAME_None;
+                DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+                SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+                return false;
+            }
+        }
+    }
 
     bIsHeld = false;
     bIsPlaced = true;
@@ -257,6 +286,13 @@ void AStoneBuildingPiece::ReleaseAnchorReservation(FName AnchorId)
 
 bool AStoneBuildingPiece::RemoveConnection()
 {
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+        }
+    }
     AStoneBuildingPiece* Parent = ParentPiece.Get();
     if (!Parent)
     {
