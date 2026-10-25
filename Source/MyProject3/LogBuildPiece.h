@@ -33,6 +33,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     ELogPieceType PieceType = ELogPieceType::WholeLog;
 
+    /** Stable root definition; the ledger DefinitionId may change after processing. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
+    FName BaseDefinitionId = NAME_None;
+
     // Imported log meshes are expected to have their long axis along X by
     // default. Change this per mesh if its local orientation differs.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
