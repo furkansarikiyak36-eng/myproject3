@@ -70,7 +70,7 @@ bool UWorldCargoTransportSubsystem::StartTransport(
 bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Record)
 {
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Ownership || !Record.ItemId.IsValid() || !Record.CargoId.IsValid() ||
+    if (!Ownership || Record.Revision == MAX_int64 || !Record.ItemId.IsValid() || !Record.CargoId.IsValid() ||
         !Record.DestinationStorageId.IsValid() || !Record.DeliveryOperationId.IsValid())
         return false;
 
@@ -99,10 +99,16 @@ bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) con
     for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
         const FWorldCargoTransportRecord& Record = Pair.Value;
-        if (Record.State == ECargoTransportState::InTransit &&
-            (Record.Revision == MAX_int64 ||
-             !FMath::IsFinite(Record.Progress + Record.CostPerSecond * static_cast<float>(DeltaSeconds))))
-            return false;
+        if (Record.State == ECargoTransportState::InTransit)
+        {
+            const float ProposedProgress = Record.Progress +
+                Record.CostPerSecond * static_cast<float>(DeltaSeconds);
+            if (Record.Revision == MAX_int64 || !FMath::IsFinite(ProposedProgress))
+                return false;
+            if (FMath::Min(Record.RouteCost, ProposedProgress) >= Record.RouteCost &&
+                Record.Revision >= MAX_int64 - 1)
+                return false;
+        }
     }
     return true;
 }
