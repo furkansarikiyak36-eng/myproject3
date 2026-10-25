@@ -57,9 +57,76 @@ ALogBuildPiece::ALogBuildPiece()
     Mesh->SetSimulatePhysics(false);
 }
 
+void ALogBuildPiece::UpdateGeometryStateFromPieceType(bool bPreserveLengthFraction)
+{
+    const ELogLengthFraction PreviousLengthFraction = GeometryState.LengthFraction;
+    if (!bPreserveLengthFraction)
+    {
+        GeometryState.LengthFraction = ELogLengthFraction::FullLength;
+    }
+
+    switch (PieceType)
+    {
+    case ELogPieceType::WholeLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::ThreeQuarterLog:
+        GeometryState.LengthFraction = ELogLengthFraction::ThreeQuarterLength;
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::HalfLengthLog:
+        GeometryState.LengthFraction = ELogLengthFraction::HalfLength;
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::QuarterLog:
+        GeometryState.LengthFraction = ELogLengthFraction::QuarterLength;
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::SplitHalfLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::HalfRound;
+        break;
+    case ELogPieceType::QuarterSectionLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::QuarterRound;
+        break;
+    case ELogPieceType::HewnLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::HewnFlat;
+        break;
+    case ELogPieceType::SquaredBeam:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::SquareBeam;
+        break;
+    case ELogPieceType::GutterLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::Grooved;
+        break;
+    case ELogPieceType::TroughLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::Trough;
+        break;
+    case ELogPieceType::Plank:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::Plank;
+        break;
+    case ELogPieceType::NotchedLog:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::Notched;
+        break;
+    case ELogPieceType::JointPiece:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::Joint;
+        break;
+    case ELogPieceType::Other:
+    default:
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::Other;
+        break;
+    }
+
+    if (bPreserveLengthFraction)
+    {
+        GeometryState.LengthFraction = PreviousLengthFraction;
+    }
+}
+
 void ALogBuildPiece::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
+
+    // Keep the inspector's legacy piece label and the orthogonal geometry fields aligned.
+    UpdateGeometryStateFromPieceType(false);
 
     // Preserve hand-authored anchors (for example, test-map top sockets) but
     // rebuild only auto-generated sockets when mesh/spacing/axis properties change.
@@ -668,6 +735,8 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     }
 
     Child->PieceType = OutputType;
+    Child->GeometryState = GeometryState;
+    Child->UpdateGeometryStateFromPieceType(true);
     Child->BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
     Child->LongitudinalAxis = LongitudinalAxis;
@@ -735,6 +804,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
 
     const UStaticMesh* OldMesh = Mesh->GetStaticMesh();
     const ELogPieceType OldType = PieceType;
+    const FLogPieceGeometryState OldGeometryState = GeometryState;
     const FName OldBaseDefinition = BaseDefinitionId;
     const FName OldDefinition = Identity->GetDefinitionId();
     const TArray<FLogSnapPoint> OldSnapPoints = SnapPoints;
@@ -757,6 +827,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
         SetActorTransform(OldTransform, false, nullptr, ETeleportType::TeleportPhysics);
         SetPieceStaticMesh(const_cast<UStaticMesh*>(OldMesh));
         PieceType = OldType;
+        GeometryState = OldGeometryState;
         BaseDefinitionId = OldBaseDefinition;
         SnapPoints = OldSnapPoints;
         Identity->SetDefinitionId(OldDefinition);
@@ -779,6 +850,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     SetActorTransform(SourceOutputTransform, false, nullptr, ETeleportType::TeleportPhysics);
     SetPieceStaticMesh(OutputMesh);
     PieceType = OutputType;
+    UpdateGeometryStateFromPieceType(true);
     BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
     Identity->SetDefinitionId(OutputDefinitionId);
@@ -793,6 +865,10 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     Child->StructuralIdentity->InstanceId = OutputRecords[1].ItemId;
     Child->StructuralIdentity->SetDefinitionId(OutputRecords[1].DefinitionId);
     Child->FinishSpawning(ChildOutputTransform);
+    // Construction scripts synchronize legacy PieceType labels. Reapply the
+    // source's orthogonal length fraction after construction so splitting a
+    // shortened log does not silently turn it back into a full-length piece.
+    Child->GeometryState = GeometryState;
 
     FWorldOwnedItemRecord ChildItem;
     FStructuralNodeRecord ChildNode;
@@ -1113,6 +1189,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
 
     SetPieceStaticMesh(NewMesh);
     PieceType = NewType;
+    UpdateGeometryStateFromPieceType(true);
 
     FVector NewOrigin;
     FVector NewExtent;
@@ -1198,6 +1275,13 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::SplitHalfLog;
     }
+    // The current imported FBX names use RawLog + Quarter for a quarter-round
+    // cross-section, whereas a standalone QuarterLog label is a legacy length
+    // fraction. Keep these two interpretations distinct.
+    else if (Key.Contains(TEXT("rawlog")) && Key.Contains(TEXT("quarter")))
+    {
+        PieceType = ELogPieceType::QuarterSectionLog;
+    }
     else if (Key.Contains(TEXT("quarter")))
     {
         PieceType = ELogPieceType::QuarterLog;
@@ -1240,6 +1324,8 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::Other;
     }
+
+    UpdateGeometryStateFromPieceType(false);
 }
 
 bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
@@ -1255,6 +1341,7 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
         {
             Identity->SetDefinitionId(CurrentDefinitionId);
         }
+        UpdateGeometryStateFromPieceType(false);
         return true;
     }
 
@@ -1322,6 +1409,7 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
 
     SetPieceStaticMesh(VariantMesh);
     PieceType = VariantType;
+    UpdateGeometryStateFromPieceType(true);
     if (Mesh)
         Mesh->UpdateBounds();
 
