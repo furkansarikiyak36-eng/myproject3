@@ -39,6 +39,9 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Simulation")
     bool IsWorldSimulationReady() const;
 
+    /** Permanently blocks fixed-step advancement after an unrecoverable cross-system state failure. */
+    void MarkSimulationFaulted(const FString& Reason);
+
     /** True after a failed rollback; callers must stop simulation and recover/reset the world. */
     UFUNCTION(BlueprintPure, Category="World|Simulation")
     bool IsSimulationFaulted() const { return bSimulationFaulted; }
