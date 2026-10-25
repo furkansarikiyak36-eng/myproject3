@@ -5,6 +5,7 @@ This checklist distinguishes planning from verified implementation. Do not mark 
 ## Repository and compatibility
 - [x] Confirm the working branch and baseline commit (`phase-01-foundation-v2`, based on `main` at `ff2fd51444463afad598b837e820dbc3df2d439b`).
 - [ ] Inventory all current source files and build dependencies.
+- [x] Map tracked native state-transition and editor-script callers (`PHASE_01_STATE_TRANSITION_CALLER_MAP.md`); local/untracked Blueprint references remain unknown.
 - [x] Identify the authoritative log-processing/construction implementation (`ALogBuildPiece` plus `ULogCarryComponent`; broader Blueprint/editor dependency review remains open).
 - [ ] Identify unused/legacy classes and confirm they are not accidentally activated.
 - [ ] Record existing mechanic tests and their exact scope.
@@ -27,6 +28,7 @@ This checklist distinguishes planning from verified implementation. Do not mark 
 
 ## Validation
 - [ ] Static review completed.
+- [x] Guard the explicit failed-snap → free-placement fallback in source; runtime scenario remains pending.
 - [x] Complete the focused attachment/placement/physics source sub-review and record open risks (`PHASE_01_ATTACHMENT_PHYSICS_RISK_REGISTER.md`); full repository/Blueprint audit remains open.
 - [ ] Automated tests run where available.
 - [ ] Unreal Engine 5.8 build run and result captured.
