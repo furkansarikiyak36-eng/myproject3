@@ -36,7 +36,8 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stable grounded detection and one-shot output state. It refuses invalid/non-positive damage and missing harvest configuration. After health reaches zero, the tree mesh simulates physics; output is gated until its linear speed remains under a configured threshold and a ground trace reports contact for a configured hold interval. Only then are configured `ALogBuildPiece` actors spawned. Each spawned log uses the existing BeginPlay registration path for item ownership and the structural graph; no second tree-specific item ledger was added.
 
-**Still open:** no Unreal compile/PIE run; tree asset collision, physics mass/center-of-mass and trace channel are not measured; log actor subclass and `LogMeshVariantSetId` must be authored; species/size → output count/length fraction is not yet data-driven; save/load, partial spawn failures and retry behavior need acceptance. A failed/partial spawn is not automatically retried to avoid duplicating resources.
+**Progress:** a failed spawn or hidden/quarantined output now triggers source-level cleanup of every sibling actor from that harvest attempt; retry is still deliberately disabled to avoid duplicating resources.
+**Still open:** no Unreal compile/PIE run; tree asset collision, physics mass/center-of-mass and trace channel are not measured; log actor subclass and `LogMeshVariantSetId` must be authored; species/size → output count/length fraction is not yet data-driven; save/load, failure injection and retry behavior need acceptance. Full cross-system transaction rollback is not proven.
 
 ### WOOD-006 progress: loose-log physical push/roll
 
