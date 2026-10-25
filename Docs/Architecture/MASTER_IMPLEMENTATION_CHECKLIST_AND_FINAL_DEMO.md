@@ -884,8 +884,34 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-009 — Üretim stoğundan fiziksel kütük oluşturma
+
+- [x] TryMaterializeStockAsWorldLog eklendi; çağrı stok anahtarı, DefinitionId, BaseDefinitionId ve MeshVariantSetId'nin aynı sözleşmeye uymasını doğruluyor.
+- [x] İstasyon revizyonu ve eldeki stok miktarı spawn öncesi ve Blueprint/BeginPlay akışından sonra yeniden doğrulanıyor.
+- [x] Yeni output actor deferred spawn ile hidden/inert başlatılıyor; benzersiz item ID, definition/family ve graph node BeginPlay sonrası kontrol ediliyor.
+- [x] Varyant DefinitionId gerçek mesh ailesine ApplyDefinitionVariant üzerinden bağlanıyor; eksik/yanlış mesh tuple'ı varsa stok azaltılmadan actor geri alınıyor.
+- [x] Başarılı materialization fiziksel item için tekil World sahiplik kaydı oluşturuyor, stoktan bir birim indiriyor ve WorldItemId içeren kalıcı fiş kaydediyor.
+- [x] Aynı OperationId ve aynı istek tekrarlandığında yeni actor/ikinci stok azaltımı yapılmıyor; farklı istekle aynı ID reddediliyor.
+- [x] Materialization fişleri station snapshot'ına dahil; SaveGame schema v11 ve v10→v11 migration eklendi.
+- [x] Save/load öncesi intake ve materialization fişlerinin item ownership defterinde karşılığı olması denetleniyor.
+- [x] Operation ID'lerinin intake/enqueue/collect/materialize türleri arasında çakışması reddediliyor; restore duplicate output IDs ve stock-key tutarsızlığını fail-closed ele alıyor.
+- [x] İlgili dosyalarda source wiring, schema migration, brace-balance kontrolleri yapıldı.
+- [ ] UE 5.8 UHT/UBT, Editor/PIE, gerçek mesh family, physics/collision ve failed-spawn rollback kabul testleri.
+- [ ] Fiziksel aktör dönüşümleri genel SaveGame manifestine alınmalı; receipt yalnızca kimliği saklıyor, konum/dönüş/physics state'i geri kurmuyor.
+- [ ] Çıktıyı doğrudan depo/envantere alma ve fiziksel olmayan ürün türlerini aynı sahiplik sözleşmesine bağlama.
+- [ ] Stok anahtarlarını gerçek tarif/Blueprint verisine atama; üretim işinin recipe outputs ile materialization arasında uçtan uca çalıştığını doğrulama.
+
+**Kaynak dosyaları:** WorldProductionSubsystem.h/.cpp, WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp, WorldItemOwnershipSubsystem.h/.cpp, LogBuildPiece.h/.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Aggregate üretim stokundan, birim miktarı düşürerek benzersiz kimlikli fiziksel kütük aktörü oluşturma kaynak katmanı eklendi. Stok azalması ancak aktörün kimlik, mesh-varyant ve yapısal graph doğrulamaları tamamlandıktan sonra commit ediliyor.  
+**Kanıt seviyesi:** Kaynak değişikliği + statik yapısal kontrol; Unreal motoru doğrulanmadı.
+**Kalan sınırlamalar:** Fiziksel aktör transform/lifecycle save/load hâlâ genel kayıtta yer almıyor. Recipe output oluşturulması stok seviyesine kadar çalışıyor, ancak gerçek tarif verisi, makine aktörü ve save/load sonrası fiziksel dünyayı tam geri kurma kapısı açık.
+**Sonraki bağımlı iş:** WOOD-010 — fiziksel aktör transformları, mesh/physics state, structural graph bağlantıları ve item ownership'i tek bir SaveGame/restore aşamasında yeniden kurmak; ayrıca mevcut drop/intake/materialize akışında actor-state tutarlılığını sağlamlaştırmak.
+
+---
+
 ## 15. İlk yapılacak iş
 
 WOOD-004 data-driven mesh-set selector, geometry tuple resolver, ownership selector ve SaveGame v8 kaynak katmanı mevcut; gerçek FBX/Blueprint ataması ve UE doğrulaması açık. WOOD-005 ağaç devrilme/grounded adapter'ı mevcut; gerçek fizik/asset ve boyut→çıktı tablosu açık. WOOD-006 serbest kütüğe sınırlı push/roll kaynağı eklendi; drag, world-location kalıcılığı ve production-stock entegrasyonu tamamlanmadı.
 
-WOOD-007 artık kaynak katmanında mevcut: serbest fiziksel kütüğün üretim istasyonu stokuna tek sefer alınması ve retry receipt'leri eklendi. WOOD-008 artık kaynak katmanında mevcut: TryEnqueueJob ve TryCollectCompletedJob kalıcı OperationId fişleriyle tekrar-denemeye dayanıklı hâle getirildi; SaveGame şeması v10. Sıradaki iş **WOOD-009 — üretim çıktılarını gerçek eşya kimliği/aktör ve depo akışıyla eşleştirme**; stock, ownership ve fiziksel materialization arasında çift sahiplik oluşturmadan tamamlanmalı. Sonrasında ahşap varlık/Blueprint doğrulaması, taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
+WOOD-007 fiziksel kütük → station stock girişini, WOOD-008 iş kuyruğu/toplama retry fişlerini ve WOOD-009 stock → fiziksel log materialization kaynak katmanını ekledi; SaveGame şeması v11. Sıradaki iş **WOOD-010 — fiziksel aktör transform/lifecycle save-load**. Gerçek FBX/Blueprint atamaları, üretim tariflerinin anahtarlarla eşlenmesi ve UE kabul testleri hâlâ açık. Sonrasında ahşap durum/mesh açıkları, taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
