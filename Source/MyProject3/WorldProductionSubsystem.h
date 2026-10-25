@@ -4,6 +4,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldProductionSubsystem.generated.h"
 
+class ALogBuildPiece;
+
 USTRUCT(BlueprintType)
 struct FProductionIngredient
 {
@@ -76,6 +78,21 @@ struct FWorldProductionCollectReceipt
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
 };
 
+/** Durable receipt for materializing one aggregate stock unit as a physical world log. */
+USTRUCT(BlueprintType)
+struct FWorldProductionMaterializationReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName StockItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName DefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName BaseDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName MeshVariantSetId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid WorldItemId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedStationRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FWorldProductionStation
 {
@@ -90,6 +107,7 @@ struct FWorldProductionStation
     /** Durable request results; retained after a job is collected to make retries idempotent. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionEnqueueReceipt> EnqueueReceipts;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionCollectReceipt> CollectReceipts;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionMaterializationReceipt> MaterializationReceipts;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") int64 Revision = 1;
 };
 
@@ -110,6 +128,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
     /** Stable recipe key for physical resource stock; preserves the nominal mesh family when one is authored. */
     UFUNCTION(BlueprintPure, Category="World|Production") static FName MakePhysicalStockItemId(FName DefinitionId, FName MeshVariantSetId);
+    /** Converts one aggregate stock unit into a real world-owned physical log. Callers must reuse OperationId for retries. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryMaterializeStockAsWorldLog(FGuid StationId, FGuid OperationId, FName StockItemId, FName DefinitionId, FName BaseDefinitionId, FName MeshVariantSetId, int64 ExpectedStationRevision, const FTransform& SpawnTransform, TSubclassOf<ALogBuildPiece> LogActorClass, FGuid& OutWorldItemId);
     /** Retry-safe enqueue; caller must reuse OperationId when retrying the same request. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryEnqueueJob(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid& OutJobId);
     /** Legacy convenience wrapper. Use TryEnqueueJob for retry-safe callers. */
