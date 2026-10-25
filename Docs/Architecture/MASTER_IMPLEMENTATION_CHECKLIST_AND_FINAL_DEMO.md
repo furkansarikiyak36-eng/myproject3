@@ -706,6 +706,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [x] `SplitHalf` ve `Quarter` eylemleri için deferred ikinci actor oluşturma, benzersiz kimlik bağlama ve ownership/graph kayıt doğrulaması eklendi
 - [x] Kayıt veya graph doğrulaması başarısız olursa child actor, kaynak aktör transform/mesh/type ve item ledger snapshot geri alınmaya çalışılır
 - [x] Kesit ofseti sıfır/uzunlamasına ise işlem önceden reddedilir
+- [x] İkinci çıktının mesh-local rotasyonu split-half ve quarter-section için ayrı, Blueprint'te ayarlanabilir alanlar olarak tanımlandı ve child actor'a kopyalanıyor.
 - [x] Statik yapı kontrolleri, API eşleşmeleri ve brace-balance kontrol edildi
 - [ ] UE 5.8 UHT/UBT derlemesi
 - [ ] Her Blueprint için split output mesh ve center-offset değerlerini konfigüre et
@@ -716,7 +717,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 **Kaynak dosyaları:** `WorldItemOwnershipSubsystem.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
 **Commit/PR:** [PR #23 — Atomically split logs into uniquely owned physical pieces](https://github.com/furkansarikiyak36-eng/myproject3/pull/23); `fix/atomic-log-piece-splitting`.  
-**Sonuç:** Split işlemi artık yalnızca bir mesh/type değişikliği değildir. İstenen iki çıktı önce sahiplik sisteminde atomik olarak tanımlanır; kaynak ID ilk çıktıyı korur, ikinci çıktı yeni GUID alır. Child actor deferred spawn ile ledger ID'si verildikten sonra BeginPlay/graph kaydı tamamlanır. Başarısız doğrulamada rollback denenir. Offset ve mesh geometrisi Blueprint'te yazar tarafından doğrulanmalıdır.
+**Sonuç:** Split işlemi artık yalnızca bir mesh/type değişikliği değildir. İstenen iki çıktı önce sahiplik sisteminde atomik olarak tanımlanır; kaynak ID ilk çıktıyı korur, ikinci çıktı yeni GUID alır. Child actor deferred spawn ile ledger ID'si verildikten sonra BeginPlay/graph kaydı tamamlanır. Başarısız doğrulamada rollback denenir. Center-offset ve ikinci çıktı rotasyonu mesh'e göre Blueprint'te ayarlanabilir; doğru geometri/pivot eşleşmesi yine de Blueprint ve UE runtime'da doğrulanmalıdır.
 **Kanıt seviyesi:** Statik kaynak kontrolleri; Unreal motoru/PIE doğrulaması yapılmadı.
 **Kalan sınırlamalar:** Genel world save physical actor transforms/graph links'leri tamamen geri kurmadığından split receipt kalıcılığı tek başına tam actor persistence sağlamaz. Bu genel persistence açığı ayrı iş olarak kalır.
 **Sonraki bağımlı iş:** WOOD-003 — gerçek mesh/asset variant tablosu ve uzunluk kesri ile kesit biçimini birlikte temsil etme; ardından tam kaynak/atık miktar kuralları.
