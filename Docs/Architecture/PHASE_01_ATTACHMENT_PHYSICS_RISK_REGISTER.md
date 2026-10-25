@@ -37,7 +37,13 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 **Follow-up:** Keep the public function signature compatible for now. Add a structured validation/result API only after caller review, and add focused checks for None, reserved prefixes, duplicates against both custom and generated IDs, and valid unique IDs. This source change is not runtime-tested.
 
-### R2 — Snap reservation has no explicit rollback path
+### R2 — Snap reservation must remain atomic if actor attachment fails
+
+**Evidence:** Previously, `TryReserveSnapPoints` marked both anchors occupied before calling a void attachment helper, and the helper ignored the boolean result of `AttachToActor`. A failed engine attachment could therefore leave the structural anchor flags inconsistent with the actual actor hierarchy.
+
+**Impact:** The source path now calls a result-returning `AttachToSnapParent` before occupying either anchor. The helper validates its inputs, attempts `AttachToActor`, and only after success writes parent/index state, registers the child, and marks the piece placed. If attachment fails, `TryReserveSnapPoints` returns false without reserving either anchor. The target-chain guard also rejects already-corrupted cycles rather than traversing indefinitely.
+
+**Follow-up:** This is a source-level transactional safeguard, not proof that every engine attachment scenario succeeds. Add focused Unreal checks for failed attachment, valid attachment, occupancy rollback, and cleanup after detach. No build or runtime test has been run.
 
 **Evidence:** `TryReserveSnapPoints` validates first, then marks target/source occupied and calls `AttachToSnapParent`. The current attachment helper has no result value and no rollback contract.
 
