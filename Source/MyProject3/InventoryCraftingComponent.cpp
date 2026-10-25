@@ -138,7 +138,20 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
 
  WorldActor->SetActorHiddenInGame(true);
  WorldActor->SetActorEnableCollision(false);
- WorldActor->Destroy();
+ if (!WorldActor->Destroy())
+ {
+  const int32 StoredIndex = Items.IndexOfByPredicate([ItemId = Item.ItemId](const FInventoryStack& Stack)
+   { return Stack.OwnedWorldItemId == ItemId; });
+  if (Items.IsValidIndex(StoredIndex)) Items.RemoveAt(StoredIndex);
+  FWorldOwnedItemRecord RolledBack;
+  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
+      EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
+      FGuid(), WorldActor->GetActorLocation(), RolledBack))
+   UE_LOG(LogTemp, Error, TEXT("Physical actor destroy rollback failed for item %s."), *Item.ItemId.ToString());
+  WorldActor->SetActorHiddenInGame(false);
+  WorldActor->SetActorEnableCollision(true);
+  return false;
+ }
  return true;
 }
 
