@@ -793,8 +793,9 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [x] Sağlık sıfırlandığında tree mesh fizik simülasyonuna geçiyor ve chop direction üzerinden impulse alıyor
 - [x] Log üretimi yalnızca fizik hızı eşik altında kalıp görünürlük kanalında zemin teması `GroundedHoldSeconds` süresince doğrulanınca açılıyor
 - [x] Log sayısı, `ALogBuildPiece` subclass'ı ve `LogMeshVariantSetId` açık konfigürasyon; log actor'ları var olan ownership + structural graph BeginPlay kayıt yolunu kullanıyor
-- [x] Aynı tree actor'da grounded/harvest transition tekrar çalıştırılmıyor; kısmi spawn başarısızlığında otomatik tekrar yapılmıyor, böylece körlemesine ikinci hasat turu açılmıyor
-- [x] Kaynak dosyalarında brace-balance kontrolü sıfır fark
+- [x] Aynı tree actor'da grounded/harvest transition tekrar çalıştırılmıyor; kısmi spawn başarısızlığında otomatik tekrar yapılmıyor
+- [x] Bir output actor spawn/validation aşamasında başarısız olursa bu hasat denemesindeki bütün oluşturulmuş log actor'ları gizlenip destroy edilerek kısmi görünür kaynak seti temizleniyor; actor EndPlay mevcut sahiplik lifecycle'ını kullanıyor
+- [x] İlgili kaynak dosyalarında brace-balance kontrolü sıfır fark
 - [ ] UE 5.8 UHT/UBT derlemesi ve Blueprint oluşturma
 - [ ] Gerçek tree FBX collision, physics mass/center of mass, impulse, ground trace channel ve grounded hold süresi ayarı
 - [ ] Tür/ölçü → log count/length fraction/mesh family tablosu; filename'den ölçü tahmini yapılmayacak
@@ -806,7 +807,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Branch:** `fix/log-mesh-variant-sets`  
 **Sonuç:** İlk ağaç yaşam döngüsü adapter'ı eklendi; grounded gate hasat çıktısından önce gelir. Bu, ağaç asset'lerinin ayarlandığı, log count'un oyuna göre doğrulandığı veya motor içinde çalıştığı anlamına gelmez.
 **Kanıt seviyesi:** Kaynak dosyası incelemesi ve statik yapı kontrolü. Unreal derlemesi/PIE yapılmadı.
-**Kalan sınırlamalar:** Actor tree mesh asset'ini Blueprint'ten alır; gerçek collision/pivot/physics ayarları henüz bilinmiyor. Hasat çıktısı nominal mesh family selector ister. Actor transform/lifecycle SaveGame restore ile henüz entegre değil. Kısmi output spawn fail-closed'dur; otomatik retry/rollback kanıtlanmadı.
+**Kalan sınırlamalar:** Actor tree mesh asset'ini Blueprint'ten alır; gerçek collision/pivot/physics ayarları henüz bilinmiyor. Hasat çıktısı nominal mesh family selector ister. Actor transform/lifecycle SaveGame restore ile henüz entegre değil. Kısmi spawn actor'larını temizleme kaynak katmanı eklendi; gerçek actor/ledger davranışı, motor doğrulaması, otomatik retry ve tam işlem rollback'i kanıtlanmadı.
 **Sonraki bağımlı iş:** WOOD-006 — mevcut `LogCarryComponent` ve actor lifecycle sınırları denetlendi; serbest kütüğe sınırlı itme/yuvarlanma kaynak API'si eklendi. Kaynak miktarı/production stoğu aktarımı ve transform kalıcılığı WOOD-007 kapsamında açık kalıyor.
 
 ---
