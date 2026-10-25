@@ -216,7 +216,11 @@ A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stabl
 - [ ] Give blocked jobs actionable reasons for missing input, station, fuel, capacity or route, and ensure retries do not consume resources twice.
 - [ ] Physical conveyance/machine movement is not implemented merely by a logical cargo queue.
 
-**Next implementation:** close one raw wood → processed timber/plank → storage/transport chain before adding larger factories.
+**WOOD-007 source progress:** a bounded physical-log intake adapter now validates a loose, single-unit, world-owned log and station revision/capacity, converts the authoritative item to Transformed, increments one station stock key preserving DefinitionId plus optional MeshVariantSetId, and persists an idempotency receipt inside the station snapshot. Save schema v9 and v8→v9 additive migration are included.
+
+**Still open:** real recipe assets/configuration must use the same stock-key contract; station stock ingestion does not yet prove recipe input consumption, job completion, actual output item/actor materialization, physical machine presentation or full physical-world save/load. Source-level work only; no Unreal compile/PIE/failure-injection tests were run.
+
+**Next implementation:** WOOD-008 — make recipe input reservations/consumption, completion, output-capacity reservation, output creation/ownership and retry receipts one coherent transaction before expanding factory depth.
 
 ---
 
