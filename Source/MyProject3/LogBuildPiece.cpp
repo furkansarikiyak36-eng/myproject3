@@ -133,6 +133,81 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
     }
 }
 
+void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
+{
+    FString Key = TypeName.ToString().ToLower();
+    Key.ReplaceInline(TEXT("_"), TEXT(""));
+    Key.ReplaceInline(TEXT("-"), TEXT(""));
+    Key.ReplaceInline(TEXT(" "), TEXT(""));
+
+    if (Key == TEXT("whole") || Key == TEXT("wholelog") || Key == TEXT("rawlog"))
+    {
+        PieceType = ELogPieceType::WholeLog;
+    }
+    else if (Key.Contains(TEXT("threequarter")) || Key.Contains(TEXT("3quarter")))
+    {
+        PieceType = ELogPieceType::ThreeQuarterLog;
+    }
+    else if (Key.Contains(TEXT("halflength")) || Key == TEXT("halflog") || Key == TEXT("half"))
+    {
+        PieceType = ELogPieceType::HalfLengthLog;
+    }
+    else if (Key.Contains(TEXT("quarter")))
+    {
+        PieceType = ELogPieceType::QuarterLog;
+    }
+    else if (Key.Contains(TEXT("split")))
+    {
+        PieceType = ELogPieceType::SplitHalfLog;
+    }
+    else if (Key.Contains(TEXT("plank")) || Key.Contains(TEXT("kalas")))
+    {
+        PieceType = ELogPieceType::Plank;
+    }
+    else if (Key.Contains(TEXT("hewn")))
+    {
+        PieceType = ELogPieceType::HewnLog;
+    }
+    else if (Key.Contains(TEXT("gutter")) || Key.Contains(TEXT("trough")) || Key.Contains(TEXT("groove")))
+    {
+        PieceType = ELogPieceType::GutterLog;
+    }
+    else if (Key.Contains(TEXT("notch")) || Key.Contains(TEXT("crosslap")) ||
+        Key.Contains(TEXT("saddle")) || Key.Contains(TEXT("fork")))
+    {
+        PieceType = ELogPieceType::NotchedLog;
+    }
+    else if (Key.Contains(TEXT("joint")))
+    {
+        PieceType = ELogPieceType::JointPiece;
+    }
+    else
+    {
+        PieceType = ELogPieceType::Other;
+    }
+}
+
+void ALogBuildPiece::AddCustomSnapPoint(
+    FName PointId,
+    FName SnapTag,
+    FTransform LocalTransform,
+    bool bCanSource,
+    bool bCanReceive,
+    bool bAcceptAnyPieceType,
+    bool bFlipIncomingOrientation)
+{
+    FLogSnapPoint Point;
+    Point.PointId = PointId;
+    Point.SnapTag = SnapTag;
+    Point.LocalTransform = LocalTransform;
+    Point.bCanSource = bCanSource;
+    Point.bCanReceive = bCanReceive;
+    Point.bAcceptAnyPieceType = bAcceptAnyPieceType;
+    Point.bFlipIncomingOrientation = bFlipIncomingOrientation;
+    Point.bOccupied = false;
+    SnapPoints.Add(Point);
+}
+
 bool ALogBuildPiece::CanBePickedUp() const
 {
     return bCanBeCarried && !bIsHeld && GetAttachedPieceCount() == 0;
