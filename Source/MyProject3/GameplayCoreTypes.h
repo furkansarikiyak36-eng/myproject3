@@ -28,6 +28,25 @@ enum class EWorldOperationResultCode : uint8
     InternalError UMETA(DisplayName = "Internal Error")
 };
 
+/** Committed facts only; requests and previews are not world events. */
+UENUM(BlueprintType)
+enum class EWorldCommittedEventType : uint8
+{
+    None UMETA(DisplayName = "None"),
+    ObjectProcessed UMETA(DisplayName = "Object Processed"),
+    ResourceConsumed UMETA(DisplayName = "Resource Consumed"),
+    ConstructionAttached UMETA(DisplayName = "Construction Attached"),
+    ConstructionDetached UMETA(DisplayName = "Construction Detached"),
+    ConstructionDamaged UMETA(DisplayName = "Construction Damaged"),
+    TerrainChanged UMETA(DisplayName = "Terrain Changed"),
+    CropStateChanged UMETA(DisplayName = "Crop State Changed"),
+    AnimalStateChanged UMETA(DisplayName = "Animal State Changed"),
+    WeatherChanged UMETA(DisplayName = "Weather Changed"),
+    WorldHazardStarted UMETA(DisplayName = "World Hazard Started"),
+    WorldHazardEnded UMETA(DisplayName = "World Hazard Ended"),
+    DiscoveryRecorded UMETA(DisplayName = "Discovery Recorded")
+};
+
 /**
  * Generic lifecycle only. Wood-cut state, crop growth, durability, and other
  * domain-specific state must remain owned by their respective systems.
