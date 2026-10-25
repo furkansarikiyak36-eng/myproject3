@@ -38,6 +38,17 @@ public:
     FName DefaultEndSnapTag = FName(TEXT("LogEnd"));
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping")
+    bool bAutoGenerateSideSnapPoints = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping",
+        meta = (EditCondition = "bAutoGenerateSideSnapPoints", ClampMin = "50.0"))
+    float SideSnapSpacing = 150.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping",
+        meta = (EditCondition = "bAutoGenerateSideSnapPoints"))
+    FName SideSnapTag = FName(TEXT("LogEnd"));
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping")
     TArray<FLogSnapPoint> SnapPoints;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
@@ -153,7 +164,9 @@ private:
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
 
+    void GenerateDefaultSnapPoints();
     void GenerateDefaultEndSnapPoints();
+    void GenerateDefaultSideSnapPoints();
     FVector GetLongitudinalAxisVector() const;
     FRotator MakeOutwardRotation(const FVector& Direction) const;
 };
