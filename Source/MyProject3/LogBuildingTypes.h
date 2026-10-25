@@ -18,7 +18,11 @@ enum class ELogPieceType : uint8
     TroughLog       UMETA(DisplayName = "Hollow Trough"),
     NotchedLog      UMETA(DisplayName = "Notched Log"),
     JointPiece      UMETA(DisplayName = "Joint Piece"),
-    Other           UMETA(DisplayName = "Other")
+    Other           UMETA(DisplayName = "Other"),
+
+    // Added at the end to preserve existing serialized enum values. Unlike the
+    // legacy QuarterLog name, this explicitly describes a cross-section shape.
+    QuarterSectionLog UMETA(DisplayName = "Quarter-Round Cross Section")
 };
 
 UENUM(BlueprintType)
