@@ -18,6 +18,8 @@ This is the first playable prototype layer for physical log handling. It is deli
 - **G**: drop the carried log
 - **R**: rotate the carried piece by 90 degrees
 - **Right mouse button**: cycle horizontal / vertical / diagonal free-placement mode
+- **C**: cycle the selected processing action (split half, quarter, hewn, gutter, trough, kalas, plank)
+- **F**: apply the selected processing action to a loose, unplaced log in interaction range
 
 A green debug marker is shown at a candidate snap anchor while a valid snap is selected.
 
@@ -44,8 +46,11 @@ This iteration establishes the core interaction loop and anchor system. It is no
 - Custom anchors can be added for top/side/slot connections. The test map adds two top anchors to a placed support beam so a carried log can be snapped into a vertical post position.
 - A snapped piece is attached to its parent actor and reserves both connection anchors. A piece with attached children cannot be picked up until those children are removed.
 - Free placement can be restricted through `bAllowFreePlacement` / `bRequireSurfaceForFreePlacement`.
-- The current version does **not** yet inspect the physical cut state of a log, automatically generate a groove/notch from tool actions, compute realistic saw/chop cuts, or enforce every construction recipe. Those should be layered in next: cut-state data, target-specific snap tags, support/ground rules, and a no-overlap/placement validation pass.
+- The selected processing actions now swap to same-length pre-authored meshes, and transitions are guarded: a whole log may split or be hewn/squared; a split half-round may be quartered, grooved, hollowed, or made into a plank. Invalid transitions are rejected instead of silently reverting to a straight whole log.
+- The current processing action is a prototype interaction, not a physically animated axe/saw operation. Tool requirements, hit location, cut progress, cut animation, chips/sparks, and multiplayer authority are not implemented yet.
+- A split half-round's groove operation is accepted only when the piece is in the split-half state. The prototype does not yet generate new geometry procedurally; it selects the matching imported variant mesh.
 - The green anchor marker is development feedback, not a final ghost mesh or production HUD.
+- The code has been added to GitHub but has not been compiled or run in the user's Unreal Editor. The first editor build is still needed before the test-map script can execute.
 
 ## Assets used by the test
 
