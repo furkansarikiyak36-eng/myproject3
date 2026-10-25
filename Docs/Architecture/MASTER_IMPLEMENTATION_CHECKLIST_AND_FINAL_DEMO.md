@@ -459,6 +459,9 @@ Adaylar yalnızca inceleme konusudur, henüz kayıtlı mekanik değildir:
 
 ## 13. Final demo — 119 mekaniğin aynı dünyada birlikte çalıştığını kanıtla
 
+**Demo uygulama başlangıç belgesi:** [DEMO_VERTICAL_SLICE_PHASE_01.md](./DEMO_VERTICAL_SLICE_PHASE_01.md). Bu belge, ilk oynanabilir dikey dilimin alanlarını, sebep-sonuç akışını, negatif testlerini ve UE 5.8 kabul kapısını tanımlar; haritanın oluşturulduğu veya mekaniklerin çalıştığı anlamına gelmez.
+
+
 **Temel kural:** Final demo, 119 mekanik için 119 ayrı vitrinden veya birbirinden kopuk test adalarından oluşmayacak. Tek bir küçük, kalıcı ve birbirine bağlı dünyada, mekaniklerin birbirlerinin durumunu nasıl değiştirdiğini gösterecek. Yedi bölge yalnızca okunaklı yerleşim/işlev alanlarıdır; yedi bağımsız simülasyon, yedi ayrı kaynak sistemi veya birbirinden kopuk sahneler değildir.
 
 Demo aynı anda iki şeyi kanıtlamalı:
