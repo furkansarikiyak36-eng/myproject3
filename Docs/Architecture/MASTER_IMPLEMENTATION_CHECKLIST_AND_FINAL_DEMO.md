@@ -125,6 +125,11 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Taşıyıcı parça kaldırıldığında bağımlı parçaların güvenli sırayla çözülmesini tamamla.
 - [ ] Tamir, sökme, hurdaya ayırma ve yakma/geri kazanım çıktılarının eşya sahipliğini bağla.
 - [ ] Her kesme eylemi için durum → eylem → ön koşul → çıktı türü → mesh/çarpışma tablosunu tamamla.
+- [x] Legacy PieceType etiketinin yanında bağımsız LengthFraction ve CrossSectionShape metadata sözleşmesi eklendi; işlem ön koşulları kesit şekline göre kontrol ediliyor.
+- [x] SM_RawLog_150_Quarter_04 gibi RawLog + Quarter adları çeyrek kesit şekli olarak çözümleniyor; standalone QuarterLog uzunluk kesriyle karıştırılmıyor.
+- [ ] Gerçek FBX ölçü/pivot/yönlerini Unreal staging level'da doğrula ve her Blueprint'in mesh/offset/rotasyon ayarlarını kaydet.
+- [ ] SM_RawLog_75.fbx base-round mesh eksikliğini gider veya kayıtta bilinçli fallback tanımla.
+- [ ] Long_01..08 ve Short_01..04 için gerçek nominal ölçü/şekil etiketlerini belirle.
 - [ ] Özellikle yarım kesilen kütüğün yanlışlıkla tam/düz kütük mesh'ine dönmesi hatasını özel kabul koşulu olarak kapat.
 
 ### 3B. Taş ve duvarcılık — M029–M038
@@ -721,6 +726,28 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Kanıt seviyesi:** Statik kaynak kontrolleri; Unreal motoru/PIE doğrulaması yapılmadı.
 **Kalan sınırlamalar:** Genel world save physical actor transforms/graph links'leri tamamen geri kurmadığından split receipt kalıcılığı tek başına tam actor persistence sağlamaz. Bu genel persistence açığı ayrı iş olarak kalır.
 **Sonraki bağımlı iş:** WOOD-003 — gerçek mesh/asset variant tablosu ve uzunluk kesri ile kesit biçimini birlikte temsil etme; ardından tam kaynak/atık miktar kuralları.
+
+---
+
+### İş kaydı: WOOD-003 — Uzunluk kesri ve kesit geometrisini ayırma; FBX varyant kataloğu
+
+- [x] `ELogLengthFraction` enum'u eklendi: full, 3/4, 1/2, 1/4 length
+- [x] `ELogCrossSectionShape` enum'u eklendi: full-round, half-round, quarter-round, hewn, square, groove, trough, plank, notch, joint, other
+- [x] `FLogPieceGeometryState` bağımsız iki alanı taşır; `ALogBuildPiece` içinde SaveGame metadata ve Blueprint pure accessor var
+- [x] Legacy `PieceType` alanı korunurken işlem eylemlerinin ön koşulları `CrossSectionShape` üzerinden kontrol ediliyor; length fraction split sırasında korunuyor
+- [x] `SM_RawLog_150_Quarter_04` gibi RawLog+Quarter isimleri kesit biçimi olarak ayrılıyor; tek başına `QuarterLog` legacy length fraction olarak korunuyor
+- [x] Repo envanteri doğrulandı: 48 root FBX + 10 Archive FBX; boyut grupları ve belirsiz Long/Short adları kataloğa yazıldı
+- [ ] Gerçek FBX bounds/pivot/rotation UE 5.8 staging level'da doğrulandı
+- [ ] `SM_RawLog_75.fbx` base-round eksikliği çözüldü
+- [ ] Her blueprint output mesh, center-offset ve child rotation alanlarıyla yapılandırıldı
+- [ ] UHT/UBT derlemesi ve runtime işlem testleri
+
+**Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `AssetPackages/README.md`, `Docs/Architecture/WOOD_003_ASSET_VARIANT_CATALOG.md`  
+**Commit/PR:** PR #24 açıldıktan sonra eklenecek; `fix/log-geometry-dimensions`.  
+**Sonuç:** LengthFraction ile CrossSectionShape artık aynı birleşik etiketten ayrı tutuluyor. Fiziksel işlem eylemleri, örneğin 1/2 uzunluğundaki bir round log üzerinde de kesit-shape ön koşullarını kullanabilir; split işlemi length fraction metadata'sını korur. FBX listesi isimlerden çıkarılmıştır, gerçek geometri ölçümü olarak sunulmuyor.  
+**Kanıt seviyesi:** Kaynak değişikliği, API/koşul kontrolü ve GitHub asset-inventory incelemesi. Unreal geometri doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** Asset pivot/ölçü/ekseni, import edilmiş Content varlıkları ve Blueprint alan atamaları motor içinde kontrol edilmedi. `SM_RawLog_75.fbx` base mesh yok; Long/Short varlıklarının gerçek boyları belirsiz.  
+**Sonraki bağımlı iş:** WOOD-004 — 75/150/300/600 ve Long/Short mesh'leri UE içinde ölçüp durum/çıktı eşleme manifestini doğrula; ardından tree-felling/grounding ve kaynak miktarı zincirine geç.
 
 ---
 
