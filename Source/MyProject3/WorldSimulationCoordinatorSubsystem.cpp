@@ -21,7 +21,7 @@ bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
 {
     UWorldSimulationClockSubsystem* Clock = GetClock();
     UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
-    if (!Clock || !Threat || Clock->IsClockInitialized() ||
+    if (!Clock || !Threat || Clock->IsClockInitialized() || Threat->IsDirectorInitialized() ||
         !FMath::IsFinite(InitialTimeSeconds) || InitialTimeSeconds < 0.0 ||
         !FMath::IsFinite(FirstRaidDelaySeconds) || FirstRaidDelaySeconds < 0.0)
     {
@@ -78,5 +78,5 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
 {
     const UWorldSimulationClockSubsystem* Clock = GetClock();
     const UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
-    return Clock && Threat && Clock->IsClockInitialized();
+    return Clock && Threat && Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
 }
