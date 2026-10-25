@@ -6,6 +6,7 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     FWorldTerrainCellState& OutState)
 {
     if (!OperationId.IsValid() || DepthLayer < 0 ||
+        static_cast<uint8>(Edit) > static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial) ||
         DepthLayer >= MaxEditableDepthLayers || DepthLayer >= MaxDepthPerCell ||
         MaxEditedCells <= 0 || MaxDepthPerCell <= 0 ||
         (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(DepthLayer)))
@@ -15,7 +16,12 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
 
     if (const FWorldTerrainOperationReceipt* Receipt = Receipts.Find(OperationId))
     {
-        if (Receipt->Cell != Cell) return false;
+        if (Receipt->Cell != Cell || Receipt->RequestedDepthLayer != DepthLayer ||
+            Receipt->RequestedEdit != Edit || Receipt->RequestedMaterialId != MaterialId ||
+            Receipt->ExpectedRevision != ExpectedRevision)
+        {
+            return false;
+        }
         OutState = Receipt->ResultState;
         return true;
     }
@@ -69,6 +75,10 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     Receipt.Cell = Cell;
     Receipt.ResultingRevision = Updated.Revision;
     Receipt.ResultState = Updated;
+    Receipt.RequestedDepthLayer = DepthLayer;
+    Receipt.RequestedEdit = Edit;
+    Receipt.RequestedMaterialId = MaterialId;
+    Receipt.ExpectedRevision = ExpectedRevision;
     Receipts.Add(OperationId, Receipt);
     OutState = Updated;
     return true;
