@@ -1084,6 +1084,176 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     FName OutputDefinitionId,
     const FWorldOwnedItemRecord& CurrentItem)
 {
+    const ELogLengthFraction OutputLength = GetLengthFraction();
+    const ELogCrossSectionProfile OutputProfile = CrossSectionFromLegacyType(OutputType);
+    UStaticMesh* ResolvedOutputMesh = nullptr;
+    FVector LocalCenterOffset = FVector::ZeroVector;
+    FRotator ChildRotationOffset = FRotator::ZeroRotator;
+    if (!TryResolveGeometryVariant(OutputLength, OutputProfile,
+            ResolvedOutputMesh, &LocalCenterOffset, &ChildRotationOffset) ||
+        ResolvedOutputMesh != OutputMesh ||
+        !IsValidCrossSectionCenterOffset(LocalCenterOffset, LongitudinalAxis))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("Physical cross-section splitting requires an exact output mesh and a valid authored center offset.")));
+    }
+
+    const FTransform OriginalTransform = GetActorTransform();
+    const FVector WorldCenterOffset = OriginalTransform.TransformVector(LocalCenterOffset);
+    if (!IsFiniteVector(WorldCenterOffset) || WorldCenterOffset.SizeSquared() <= 1.0f)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("Configured cross-section offset collapses after applying actor scale.")));
+    }
+
+    const FVector FirstLocation = OriginalTransform.GetLocation() - WorldCenterOffset * 0.5f;
+    const FVector SecondLocation = OriginalTransform.GetLocation() + WorldCenterOffset * 0.5f;
+    const FQuat FirstRotation = OriginalTransform.GetRotation();
+    const FQuat SecondRotation =
+        OriginalTransform.GetRotation() * ChildRotationOffset.Quaternion();
+
+    TArray<FName> OutputDefinitionIds;
+    OutputDefinitionIds.Add(OutputDefinitionId);
+    OutputDefinitionIds.Add(OutputDefinitionId);
+    TArray<ELogLengthFraction> OutputLengths;
+    OutputLengths.Add(OutputLength);
+    OutputLengths.Add(OutputLength);
+    TArray<ELogCrossSectionProfile> OutputProfiles;
+    OutputProfiles.Add(OutputProfile);
+    OutputProfiles.Add(OutputProfile);
+    TArray<ELogPieceType> OutputLegacyTypes;
+    OutputLegacyTypes.Add(LegacyTypeFromCanonicalDimensions(OutputLength, OutputProfile));
+    OutputLegacyTypes.Add(LegacyTypeFromCanonicalDimensions(OutputLength, OutputProfile));
+    TArray<UStaticMesh*> OutputMeshes;
+    OutputMeshes.Add(OutputMesh);
+    OutputMeshes.Add(OutputMesh);
+    TArray<FTransform> OutputTransforms;
+    OutputTransforms.Emplace(FirstRotation, FirstLocation, OriginalTransform.GetScale3D());
+    OutputTransforms.Emplace(SecondRotation, SecondLocation, OriginalTransform.GetScale3D());
+
+    const FText SuccessMessage = FText::FromString(
+        Action == ELogCutAction::SplitHalf
+            ? TEXT("Log split into two half-round physical pieces.")
+            : TEXT("Split half-round into two quarter-section physical pieces."));
+    return TryCommitPhysicalSplitOutputs(
+        Action, OperationId, CurrentItem, OutputDefinitionIds, OutputLengths,
+        OutputProfiles, OutputLegacyTypes, OutputMeshes, OutputTransforms, SuccessMessage);
+}
+
+FWorldOperationResult ALogBuildPiece::TrySplitLengthOutputPieces(
+    ELogCutAction Action,
+    const FGuid& OperationId,
+    const FWorldOwnedItemRecord& CurrentItem)
+{
+    FLogLengthCutVariant Variant;
+    if (!TryResolveLengthCutVariant(Action, Variant))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("No unique, valid longitudinal length-cut recipe is configured for this source length and cross-section.")));
+    }
+
+    UStaticMesh* FirstMesh = nullptr;
+    UStaticMesh* SecondMesh = nullptr;
+    if (!TryResolveGeometryVariant(Variant.FirstOutputLengthFraction,
+            Variant.CrossSectionProfile, FirstMesh) ||
+        !TryResolveGeometryVariant(Variant.SecondOutputLengthFraction,
+            Variant.CrossSectionProfile, SecondMesh) ||
+        !IsValid(FirstMesh) || !IsValid(SecondMesh))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("Both length-cut output meshes must be authored for the exact output lengths and current cross-section.")));
+    }
+
+    const FTransform OriginalTransform = GetActorTransform();
+    const FVector FirstLocation =
+        OriginalTransform.TransformPosition(Variant.FirstOutputCenterOffsetLocal);
+    const FVector SecondLocation =
+        OriginalTransform.TransformPosition(Variant.SecondOutputCenterOffsetLocal);
+    const FQuat FirstRotation =
+        OriginalTransform.GetRotation() * Variant.FirstOutputRotationOffsetLocal.Quaternion();
+    const FQuat SecondRotation =
+        OriginalTransform.GetRotation() * Variant.SecondOutputRotationOffsetLocal.Quaternion();
+
+    const FName BaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.BaseDefinitionId
+        : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
+    const FName FirstDefinition = MakeCanonicalGeometryDefinitionId(
+        BaseDefinition, Variant.FirstOutputLengthFraction, Variant.CrossSectionProfile);
+    const FName SecondDefinition = MakeCanonicalGeometryDefinitionId(
+        BaseDefinition, Variant.SecondOutputLengthFraction, Variant.CrossSectionProfile);
+    if (FirstDefinition.IsNone() || SecondDefinition.IsNone())
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("The length-cut recipe cannot produce canonical output definitions.")));
+    }
+
+    TArray<FName> OutputDefinitionIds;
+    OutputDefinitionIds.Add(FirstDefinition);
+    OutputDefinitionIds.Add(SecondDefinition);
+    TArray<ELogLengthFraction> OutputLengths;
+    OutputLengths.Add(Variant.FirstOutputLengthFraction);
+    OutputLengths.Add(Variant.SecondOutputLengthFraction);
+    TArray<ELogCrossSectionProfile> OutputProfiles;
+    OutputProfiles.Add(Variant.CrossSectionProfile);
+    OutputProfiles.Add(Variant.CrossSectionProfile);
+    TArray<ELogPieceType> OutputLegacyTypes;
+    OutputLegacyTypes.Add(LegacyTypeFromCanonicalDimensions(
+        Variant.FirstOutputLengthFraction, Variant.CrossSectionProfile));
+    OutputLegacyTypes.Add(LegacyTypeFromCanonicalDimensions(
+        Variant.SecondOutputLengthFraction, Variant.CrossSectionProfile));
+    TArray<UStaticMesh*> OutputMeshes;
+    OutputMeshes.Add(FirstMesh);
+    OutputMeshes.Add(SecondMesh);
+    TArray<FTransform> OutputTransforms;
+    OutputTransforms.Emplace(FirstRotation, FirstLocation, OriginalTransform.GetScale3D());
+    OutputTransforms.Emplace(SecondRotation, SecondLocation, OriginalTransform.GetScale3D());
+
+    FText SuccessMessage;
+    switch (Action)
+    {
+    case ELogCutAction::SplitLengthHalf:
+        SuccessMessage = FText::FromString(TEXT("Full-length log cut into two half-length pieces."));
+        break;
+    case ELogCutAction::SplitLengthThreeQuarter:
+        SuccessMessage = FText::FromString(TEXT("Full-length log cut into three-quarter and quarter-length pieces."));
+        break;
+    case ELogCutAction::SplitHalfLengthIntoQuarters:
+        SuccessMessage = FText::FromString(TEXT("Half-length log cut into two quarter-length pieces."));
+        break;
+    default:
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Unsupported,
+            OperationId,
+            FText::FromString(TEXT("Unsupported longitudinal length-cut action.")));
+    }
+
+    return TryCommitPhysicalSplitOutputs(
+        Action, OperationId, CurrentItem, OutputDefinitionIds, OutputLengths,
+        OutputProfiles, OutputLegacyTypes, OutputMeshes, OutputTransforms, SuccessMessage);
+}
+
+FWorldOperationResult ALogBuildPiece::TryCommitPhysicalSplitOutputs(
+    ELogCutAction Action,
+    const FGuid& OperationId,
+    const FWorldOwnedItemRecord& CurrentItem,
+    const TArray<FName>& OutputDefinitionIds,
+    const TArray<ELogLengthFraction>& OutputLengths,
+    const TArray<ELogCrossSectionProfile>& OutputProfiles,
+    const TArray<ELogPieceType>& OutputLegacyTypes,
+    const TArray<UStaticMesh*>& OutputMeshes,
+    const TArray<FTransform>& OutputTransforms,
+    const FText& SuccessMessage)
+{
     UWorld* World = GetWorld();
     UWorldItemOwnershipSubsystem* Ownership =
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
@@ -1092,55 +1262,53 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     UWorldObjectIdentityComponent* Identity =
         FindComponentByClass<UWorldObjectIdentityComponent>();
 
-    const ELogLengthFraction OutputLength = GetLengthFraction();
-    const ELogCrossSectionProfile OutputProfile = CrossSectionFromLegacyType(OutputType);
-    UStaticMesh* ResolvedOutputMesh = nullptr;
-    FVector LocalOffset = FVector::ZeroVector;
-    FRotator ChildRotationOffset = FRotator::ZeroRotator;
-    if (!TryResolveGeometryVariant(OutputLength, OutputProfile,
-            ResolvedOutputMesh, &LocalOffset, &ChildRotationOffset) ||
-        ResolvedOutputMesh != OutputMesh ||
-        !World || !Ownership || !Graph || !Identity || !Mesh ||
-        !IsValid(OutputMesh) || OutputDefinitionId.IsNone() ||
-        CurrentItem.OwnerKind != EWorldItemOwnerKind::World ||
-        CurrentItem.Quantity != 1 ||
-        !IsValidCrossSectionCenterOffset(LocalOffset, LongitudinalAxis))
+    const int32 NumOutputs = OutputDefinitionIds.Num();
+    if (!World || !Ownership || !Graph || !Identity || !Mesh ||
+        !CurrentItem.ItemId.IsValid() || CurrentItem.OwnerKind != EWorldItemOwnerKind::World ||
+        CurrentItem.Quantity != 1 || CurrentItem.Revision <= 0 ||
+        OutputDefinitionIds.Num() != 2 || OutputLengths.Num() != NumOutputs ||
+        OutputProfiles.Num() != NumOutputs || OutputLegacyTypes.Num() != NumOutputs ||
+        OutputMeshes.Num() != NumOutputs || OutputTransforms.Num() != NumOutputs ||
+        OutputDefinitionIds[0].IsNone() || OutputDefinitionIds[1].IsNone() ||
+        OutputDefinitionIds[0] == CurrentItem.DefinitionId ||
+        !IsValid(OutputMeshes[0]) || !IsValid(OutputMeshes[1]))
     {
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::MissingConfiguration,
             OperationId,
-            FText::FromString(TEXT("Physical split is missing a valid ownership, mesh, or cross-section offset configuration.")));
+            FText::FromString(TEXT("Physical split output configuration is incomplete or inconsistent.")));
     }
 
-    const FTransform OriginalTransform = GetActorTransform();
-    const FVector WorldCenterOffset = OriginalTransform.TransformVector(LocalOffset);
-    if (!IsFiniteVector(WorldCenterOffset) || WorldCenterOffset.SizeSquared() <= 1.0f)
+    for (int32 Index = 0; Index < NumOutputs; ++Index)
+    {
+        const FTransform& Transform = OutputTransforms[Index];
+        const FVector Location = Transform.GetLocation();
+        const FQuat Rotation = Transform.GetRotation();
+        const FVector Scale = Transform.GetScale3D();
+        if (OutputDefinitionIds[Index].IsNone() ||
+            !IsFiniteVector(Location) ||
+            !FMath::IsFinite(Rotation.X) || !FMath::IsFinite(Rotation.Y) ||
+            !FMath::IsFinite(Rotation.Z) || !FMath::IsFinite(Rotation.W) ||
+            !IsFiniteVector(Scale))
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::MissingConfiguration,
+                OperationId,
+                FText::FromString(TEXT("A physical split output has an invalid definition or transform.")));
+        }
+    }
+    if (OutputTransforms[0].GetLocation().Equals(OutputTransforms[1].GetLocation(), 0.1f))
     {
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::MissingConfiguration,
             OperationId,
-            FText::FromString(TEXT("Configured split offset collapses after applying actor scale.")));
+            FText::FromString(TEXT("The two physical output centers must be distinct.")));
     }
 
-    const FVector SourceOutputLocation = OriginalTransform.GetLocation() - WorldCenterOffset * 0.5f;
-    const FVector ChildOutputLocation = OriginalTransform.GetLocation() + WorldCenterOffset * 0.5f;
-    // The additional piece must be oriented as the complementary cut
-    // section, not merely translated beside an identical half mesh. These
-    // authored local rotations are per-mesh because imported pivots/cut planes
-    // can differ. The defaults assume a log axis of X and may be overridden
-    // in the asset Blueprint.
-    const FQuat ChildOutputRotation =
-        OriginalTransform.GetRotation() * ChildRotationOffset.Quaternion();
-
-    const FTransform SourceOutputTransform(OriginalTransform.GetRotation(),
-        SourceOutputLocation, OriginalTransform.GetScale3D());
-    const FTransform ChildOutputTransform(ChildOutputRotation,
-        ChildOutputLocation, OriginalTransform.GetScale3D());
-
-    // Construct the child in deferred state so its stable ID and mesh are
-    // configured before BeginPlay attempts ownership/graph registration.
+    // Construct the second actor in deferred state. Its authoritative item ID
+    // is assigned before BeginPlay can register it with ownership or the graph.
     ALogBuildPiece* Child = World->SpawnActorDeferred<ALogBuildPiece>(
-        GetClass(), ChildOutputTransform, nullptr, nullptr,
+        GetClass(), OutputTransforms[1], nullptr, nullptr,
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
     if (!Child)
     {
@@ -1149,7 +1317,6 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
             OperationId,
             FText::FromString(TEXT("Could not allocate the second physical output actor.")));
     }
-
     if (!Child->StructuralIdentity || !Child->Mesh)
     {
         Child->Destroy();
@@ -1159,13 +1326,13 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
             FText::FromString(TEXT("The second output actor is missing its identity or mesh component.")));
     }
 
-    Child->PieceType = OutputType;
+    Child->PieceType = OutputLegacyTypes[1];
     Child->BaseLogVariantMesh = BaseLogVariantMesh;
     Child->BaseLogVariantLengthFraction = BaseLogVariantLengthFraction;
     Child->GeometryVariantMeshes = GeometryVariantMeshes;
     Child->LengthCutVariants = LengthCutVariants;
-    Child->LengthFraction = GetLengthFraction();
-    Child->CrossSectionProfile = CrossSectionFromLegacyType(OutputType);
+    Child->LengthFraction = OutputLengths[1];
+    Child->CrossSectionProfile = OutputProfiles[1];
     Child->bUseCanonicalGeometryDimensions = true;
     Child->BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
@@ -1191,7 +1358,8 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     Child->KalasVariantMesh = KalasVariantMesh;
     Child->PlankVariantMesh = PlankVariantMesh;
     Child->SnapPoints.Reset();
-    Child->SetPieceStaticMesh(OutputMesh);
+    Child->SetPieceStaticMesh(OutputMeshes[1]);
+    Child->SetActorEnableCollision(false);
     if (Child->Mesh)
     {
         Child->Mesh->SetSimulatePhysics(false);
@@ -1203,26 +1371,24 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     TArray<FWorldItemSplitReceipt> BeforeSplitReceipts;
     Ownership->ExportSnapshot(BeforeItems, BeforeTransferReceipts, BeforeSplitReceipts);
 
-    TArray<FName> OutputDefinitions;
-    OutputDefinitions.Add(OutputDefinitionId);
-    OutputDefinitions.Add(OutputDefinitionId);
     TArray<FVector> OutputLocations;
-    OutputLocations.Add(SourceOutputLocation);
-    OutputLocations.Add(ChildOutputLocation);
+    OutputLocations.Reserve(NumOutputs);
+    for (const FTransform& Transform : OutputTransforms)
+        OutputLocations.Add(Transform.GetLocation());
 
     TArray<FWorldOwnedItemRecord> OutputRecords;
     const bool bSplitCommitted = Ownership->TrySplitItem(OperationId, CurrentItem.ItemId,
         CurrentItem.Revision, EWorldItemOwnerKind::World,
-        OutputDefinitions, OutputLocations, OutputRecords);
+        OutputDefinitionIds, OutputLocations, OutputRecords);
     if (!bSplitCommitted)
     {
         Child->Destroy();
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::Conflict,
             OperationId,
-            FText::FromString(TEXT("Ownership ledger rejected the atomic split request.")));
+            FText::FromString(TEXT("Ownership ledger rejected the atomic multi-output split request.")));
     }
-    if (OutputRecords.Num() != 2)
+    if (OutputRecords.Num() != NumOutputs)
     {
         Ownership->RestoreSnapshot(BeforeItems, BeforeTransferReceipts, BeforeSplitReceipts);
         Child->Destroy();
@@ -1245,14 +1411,12 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     const FName OldCollisionProfile = Mesh->GetCollisionProfileName();
     const bool bOldActorCollisionEnabled = GetActorEnableCollision();
     const bool bOldHidden = IsHidden();
-    const FTransform OldTransform = OriginalTransform;
+    const FTransform OldTransform = GetActorTransform();
 
     auto RollbackPhysicalSplit = [&]()
     {
         if (IsValid(Child))
-        {
             Child->Destroy();
-        }
 
         const bool bOwnershipRestored =
             Ownership->RestoreSnapshot(BeforeItems, BeforeTransferReceipts, BeforeSplitReceipts);
@@ -1276,18 +1440,20 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
         if (!bOwnershipRestored)
         {
             UE_LOG(LogTemp, Error,
-                TEXT("Physical log split rollback failed for operation %s; stop world simulation and recover the world."),
+                TEXT("Physical split rollback failed for operation %s; stop world simulation and recover the world."),
                 *OperationId.ToString());
         }
     };
 
-    SetActorTransform(SourceOutputTransform, false, nullptr, ETeleportType::TeleportPhysics);
-    SetPieceStaticMesh(OutputMesh);
-    PieceType = OutputType;
-    SetCanonicalCrossSectionFromPieceType(OutputType);
+    SetActorTransform(OutputTransforms[0], false, nullptr, ETeleportType::TeleportPhysics);
+    SetPieceStaticMesh(OutputMeshes[0]);
+    PieceType = OutputLegacyTypes[0];
+    LengthFraction = OutputLengths[0];
+    CrossSectionProfile = OutputProfiles[0];
+    bUseCanonicalGeometryDimensions = true;
     BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
-    Identity->SetDefinitionId(OutputDefinitionId);
+    Identity->SetDefinitionId(OutputDefinitionIds[0]);
     if (Mesh)
     {
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
@@ -1298,22 +1464,25 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
 
     Child->StructuralIdentity->InstanceId = OutputRecords[1].ItemId;
     Child->StructuralIdentity->SetDefinitionId(OutputRecords[1].DefinitionId);
-    Child->FinishSpawning(ChildOutputTransform);
+    Child->FinishSpawning(OutputTransforms[1]);
 
     FWorldOwnedItemRecord ChildItem;
     FStructuralNodeRecord ChildNode;
+    FWorldOwnedItemRecord SourceAfterSplit;
+    FStructuralNodeRecord SourceNode;
     const bool bChildRegistered =
         Ownership->TryGetItem(OutputRecords[1].ItemId, ChildItem) &&
         ChildItem.OwnerKind == EWorldItemOwnerKind::World &&
-        ChildItem.DefinitionId == OutputDefinitionId &&
+        ChildItem.DefinitionId == OutputDefinitionIds[1] &&
         Graph->GetNode(OutputRecords[1].ItemId, ChildNode) &&
         ChildNode.Actor.Get() == Child;
-    FWorldOwnedItemRecord SourceAfterSplit;
     const bool bSourceCommitted =
         Ownership->TryGetItem(CurrentItem.ItemId, SourceAfterSplit) &&
         SourceAfterSplit.OwnerKind == EWorldItemOwnerKind::World &&
-        SourceAfterSplit.DefinitionId == OutputDefinitionId &&
-        SourceAfterSplit.Revision == CurrentItem.Revision + 1;
+        SourceAfterSplit.DefinitionId == OutputDefinitionIds[0] &&
+        SourceAfterSplit.Revision == CurrentItem.Revision + 1 &&
+        Graph->GetNode(CurrentItem.ItemId, SourceNode) &&
+        SourceNode.Actor.Get() == this;
     if (!bChildRegistered || !bSourceCommitted)
     {
         RollbackPhysicalSplit();
@@ -1326,11 +1495,6 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     TArray<FGuid> AffectedIds;
     AffectedIds.Add(OutputRecords[0].ItemId);
     AffectedIds.Add(OutputRecords[1].ItemId);
-    const FText Message = FText::FromString(
-        Action == ELogCutAction::SplitHalf
-            ? TEXT("Log split into two half-round physical pieces.")
-            : TEXT("Split half-round into two quarter-section physical pieces."));
-
     if (UWorldCommittedEventSubsystem* Events =
         World->GetSubsystem<UWorldCommittedEventSubsystem>())
     {
@@ -1338,7 +1502,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
         Event.Type = EWorldCommittedEventType::ObjectProcessed;
         Event.OperationId = OperationId;
         Event.AffectedObjectIds = AffectedIds;
-        Event.Message = Message;
+        Event.Message = SuccessMessage;
         if (!Events->PublishCommittedEvent(Event))
         {
             UE_LOG(LogTemp, Warning,
@@ -1347,7 +1511,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
         }
     }
 
-    return FWorldOperationResult::Success(OperationId, Message, AffectedIds);
+    return FWorldOperationResult::Success(OperationId, SuccessMessage, AffectedIds);
 }
 
 FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
