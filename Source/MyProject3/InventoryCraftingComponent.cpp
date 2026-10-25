@@ -1,8 +1,20 @@
 #include "InventoryCraftingComponent.h"
 
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
  PrimaryComponentTick.bCanEverTick = false;
+ InventoryOwnerId = FGuid::NewGuid();
+}
+
+void UInventoryCraftingComponent::BeginPlay()
+{
+ Super::BeginPlay();
+ if (!InventoryOwnerId.IsValid()) InventoryOwnerId = FGuid::NewGuid();
 }
 
 int32 UInventoryCraftingComponent::GetItemCount(FName ItemId) const
@@ -36,7 +48,7 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
   int32 Remaining = Addition.Quantity;
   for (FInventoryStack& Existing : Simulated)
   {
-   if (Existing.ItemId == Addition.ItemId && Existing.Quantity < Existing.MaxStack)
+   if (Existing.ItemId == Addition.ItemId && !Existing.OwnedWorldItemId.IsValid() && !Addition.OwnedWorldItemId.IsValid() && Existing.Quantity < Existing.MaxStack)
    {
     const int32 Delta = FMath::Min(Remaining, Existing.MaxStack - Existing.Quantity);
     Existing.Quantity += Delta; Remaining -= Delta;
@@ -69,7 +81,7 @@ bool UInventoryCraftingComponent::TryAddItem(const FInventoryStack& Incoming)
  int32 Remaining = Incoming.Quantity;
  for (FInventoryStack& Existing : Items)
  {
-  if (Existing.ItemId == Incoming.ItemId && Existing.Quantity < Existing.MaxStack)
+  if (Existing.ItemId == Incoming.ItemId && !Existing.OwnedWorldItemId.IsValid() && !Incoming.OwnedWorldItemId.IsValid() && Existing.Quantity < Existing.MaxStack)
   {
    const int32 Delta = FMath::Min(Remaining, Existing.MaxStack - Existing.Quantity);
    Existing.Quantity += Delta; Remaining -= Delta;
@@ -82,6 +94,51 @@ bool UInventoryCraftingComponent::TryAddItem(const FInventoryStack& Incoming)
   NewStack.Quantity = FMath::Min(Remaining, Incoming.MaxStack);
   Remaining -= NewStack.Quantity; Items.Add(NewStack);
  }
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
+{
+ if (!IsValid(WorldActor) || !GetWorld() || !InventoryOwnerId.IsValid()) return false;
+ UWorldObjectIdentityComponent* Identity =
+  WorldActor->FindComponentByClass<UWorldObjectIdentityComponent>();
+ UWorldItemOwnershipSubsystem* Ownership =
+  GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+ if (!Identity || !Identity->HasValidIdentity() || !Ownership) return false;
+
+ FWorldOwnedItemRecord Item;
+ if (!Ownership->TryGetItem(Identity->GetInstanceId(), Item) ||
+     Item.OwnerKind != EWorldItemOwnerKind::World ||
+     Item.DefinitionId.IsNone() || Item.Quantity != 1) return false;
+
+ FInventoryStack Incoming;
+ Incoming.ItemId = Item.DefinitionId;
+ Incoming.Quantity = 1;
+ Incoming.MaxStack = 1;
+ Incoming.OwnedWorldItemId = Item.ItemId;
+ if (!HasCapacityFor({Incoming})) return false;
+
+ FWorldOwnedItemRecord Stored;
+ if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+     EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
+     InventoryOwnerId, Item.WorldLocation, Stored)) return false;
+
+ if (!TryAddItem(Incoming))
+ {
+  FWorldOwnedItemRecord RolledBack;
+  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
+      EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
+      FGuid(), WorldActor->GetActorLocation(), RolledBack))
+  {
+   UE_LOG(LogTemp, Error, TEXT("Inventory rollback failed for physical item %s."),
+    *Item.ItemId.ToString());
+  }
+  return false;
+ }
+
+ WorldActor->SetActorHiddenInGame(true);
+ WorldActor->SetActorEnableCollision(false);
+ WorldActor->Destroy();
  return true;
 }
 
