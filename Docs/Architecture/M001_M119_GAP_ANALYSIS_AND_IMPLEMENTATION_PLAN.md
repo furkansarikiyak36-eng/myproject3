@@ -7,7 +7,7 @@
 
 ## Executive decision
 
-Do not treat the existence of 119 named mechanics, phase documents, C++ classes or a demo map as proof of a complete game loop. The next work is to turn each mechanic into a precise state/behavior contract, close the authoritative cross-system foundations, and then complete physical/world-facing adapters in dependency order.
+Do not treat the existence of 119 named mechanics, phase documents, C++ classes or a demo map as proof of a complete game loop. M001–M119 are the current scope baseline, not a permanent maximum. Keep their IDs and meanings stable; after overlap review, append M120+ only for distinct player-facing behavior. The next work is to turn each mechanic into a precise state/behavior contract, close the authoritative cross-system foundations, and then complete physical/world-facing adapters in dependency order.
 
 The canonical IDs M001–M119 remain fixed. Expand the acceptance requirements underneath those IDs; do not renumber them or silently create a second competing registry. Keep story/cinematics outside this implementation pass. Mesh artistry and animation polish are secondary to correct state transitions, physical outputs, placement constraints and persistence.
 
@@ -21,6 +21,19 @@ The registry currently contains all IDs M001–M119. In its CSV:
 - All 119 statuses remain `unreviewed`; static review, Unreal build and runtime columns remain `not_run`.
 
 That is the main specification gap: named scope exists, but many entries still lack exact inputs, state transitions, resulting geometry/actors/resources, rejection conditions, dependencies, user feedback, save behavior and test steps. The acceptance map assigns seven demo zones, but it is still a plan; it does not yet provide a complete executable setup/action/expected-state/cleanup script for every mechanic.
+
+## 1A. Can the Landscape work increase the canonical mechanic count?
+
+Yes, when it introduces genuinely new gameplay behavior. Do not count the Landscape Builder itself or its editor workflow as gameplay mechanics. The following are candidate concepts only, not registered IDs:
+
+- **M120 candidate:** slope/surface-aware traversal and hauling traction/cost, only if M106 and M111 do not already cover the precise rule.
+- **M121 candidate:** terrain/soil/slope-based build-site suitability, distinct from M060 structural support validation.
+- **M122 candidate:** geology/strata-based extractable deposits and resource output, if quarrying/mining is in the intended survival loop.
+- **M123 candidate:** outdoor landslide/rockfall and slope failure. M075 remains underground support/collapse.
+
+Features such as deterministic heightmap generation, macroform profiles, erosion settings, biome masks, Landscape Splines, PCG, heightmap import/export and generation manifests belong to LB0–LB7 tooling acceptance, not automatically to M120+.
+
+Before registering any candidate, decide whether the behavior belongs under an existing ID as a child requirement (e.g. `M106-R01`) or is sufficiently distinct to deserve a new M-ID. If approved, append IDs after M119 and update CSV/JSON/Markdown registry, schema, phase map, dependencies and acceptance map together. Do not renumber existing IDs or update a status without evidence.
 
 ## 2. Branch audit: which source is the useful baseline?
 
