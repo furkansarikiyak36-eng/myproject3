@@ -10,7 +10,26 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "InventoryCraftingTypes.h"
 #include "WorldSimulationSaveGame.generated.h"
+
+USTRUCT()
+struct FWorldInventorySnapshot
+{
+    GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    FGuid OwnerActorId;
+
+    UPROPERTY(SaveGame)
+    FGuid InventoryOwnerId;
+
+    UPROPERTY(SaveGame)
+    TArray<FInventoryStack> Items;
+
+    UPROPERTY(SaveGame)
+    FName QuickAccessItemId = NAME_None;
+};
 
 UCLASS()
 class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
@@ -22,6 +41,7 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldOwnedItemRecord> Items;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldInventorySnapshot> Inventories;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldTerrainCellState> TerrainCells;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldCropState> Crops;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldAnimalState> Animals;
