@@ -944,8 +944,10 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
-## 15. İlk yapılacak iş
+## 15. Sonraki uygulama sırası
 
-WOOD-004 data-driven mesh-set selector, geometry tuple resolver, ownership selector ve SaveGame v8 kaynak katmanı mevcut; gerçek FBX/Blueprint ataması ve UE doğrulaması açık. WOOD-005 ağaç devrilme/grounded adapter'ı mevcut; gerçek fizik/asset ve boyut→çıktı tablosu açık. WOOD-006 serbest kütüğe sınırlı push/roll kaynağı eklendi; drag, world-location kalıcılığı ve production-stock entegrasyonu tamamlanmadı.
+WOOD-004–010 kaynak katmanları ile WOOD-011 log-to-log actor-local graph rehydration dalda mevcut. WOOD-012 artık ayrı SaveGame kesme ilerlemesi ve ağaç mesh world-height bantlarına göre yield rule tablosu sunuyor; eski tek çağrılı kesme API'si uyumluluk için aynı progress kapısından %100 iş ile geçiyor. Yield tablosu boşsa eski sabit `LogsToSpawn` davranışı korunuyor.
 
-WOOD-007 fiziksel kütük → station stock girişini, WOOD-008 iş kuyruğu/toplama retry fişlerini, WOOD-009 stock → fiziksel log materialization ve WOOD-010 kimlik bağlı fiziksel aktör/graph snapshot kaynak katmanını ekledi; SaveGame şeması v13. Sıradaki iş **WOOD-011 — graph restore sonrasında actor-local attachment/snap state'i yeniden bağlama**. Gerçek FBX/Blueprint atamaları, üretim tariflerinin anahtarlarla eşlenmesi ve UE kabul testleri hâlâ açık. Sonrasında ahşap durum/mesh açıkları, taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
+**Kalan kapanış kapıları:** Held/carry SaveGame manifesti; gerçek FBX/Blueprint mesh family, pivot, orientation, collision ve split offset ölçüleri; her ağaç yüksekliği için onaylı kütük sayısı/uzunluk tablosu; drag/settle fizik akışı; stone/stick/foundation local-link rehydration; UE 5.8 build/PIE ve save→move/physics→load kabulü. Dosya adlarındaki 75/150/300/600 veya Long/Short etiketlerinden gerçek ölçü tahmin etme. Bu varlık ölçümleri olmadan asset-side iş tamamlandı sayılmayacak.
+
+Sıradaki kaynak işi **WOOD-013 — held/carry persistence ve world-location/physics settle sözleşmesi**. Sonrasında taş/çubuk ve ortak yapı sistemine devam; final demo en sonda.
