@@ -637,6 +637,13 @@ void ALogBuildPiece::SetPlacedState(bool bNewPlaced)
 {
     bIsPlaced = bNewPlaced;
     bStartsPlaced = bNewPlaced;
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->SetGroundSupported(StructuralIdentity->GetInstanceId(), bNewPlaced && !SnapParent.IsValid());
+        }
+    }
 
     if (!Mesh)
     {
@@ -817,6 +824,7 @@ bool ALogBuildPiece::AttachToSnapParent(
                 SnapPoints[MyPointIndex].PointId))
             {
                 Parent->ReleaseSnapPoint(ParentPointIndex);
+                ReleaseSnapPoint(MyPointIndex);
                 Parent->UnregisterAttachedPiece(this);
                 SnapParent.Reset();
                 ParentSnapPointIndex = INDEX_NONE;
