@@ -3,7 +3,7 @@
 **Status:** Plan only; no code implementation or Unreal validation is claimed.  
 **Baseline:** `mechanic-detailing-pass-h-integrated-world-systems`  
 **Work branch:** `landscape-builder-plan`  
-**Mechanic IDs:** Preserve M001–M119. This is a cross-cutting workstream, not a new registry.
+**Current mechanic baseline:** M001–M119. Existing IDs are immutable. The Landscape Builder toolchain is not itself a gameplay mechanic; distinct new gameplay behaviors may be appended as M120+ after duplicate/scope review.
 
 ## 1. Intent and terminology
 
@@ -127,9 +127,9 @@ Add terrain tests to the existing 7-zone/119-mechanic demo plan:
 
 Each case records expected visible geometry, collision/navigation, failure-with-no-mutation, retry/idempotency, persistence and evidence location. Unreal validation remains deferred to the user's later final-validation stage.
 
-## 6. M001–M119 touchpoints
+## 6. Existing mechanic touchpoints and scope expansion
 
-Do not add, remove or renumber IDs. This work supports:
+Do not remove or renumber M001–M119. First extend existing requirements under M071–M080, M106 and M118 where behavior is already covered. If Landscape introduces genuinely distinct player-facing gameplay behavior, append new canonical IDs from M120 onward after reviewing overlaps and updating the registry/schema/coverage map together. Do not count editor-only generator steps as gameplay mechanics. This work supports:
 - M024–M027 and M059–M070: anchors, foundations, structure stability and support invalidation.
 - M071–M076: bounded region/chunk edits, depth/material policy, visible pits/tunnels, support response and persistence.
 - M078–M080: optional environmental masks, runoff/moisture and discovery placement inputs.
@@ -137,6 +137,15 @@ Do not add, remove or renumber IDs. This work supports:
 - M118: shelter placement and surface exposure context.
 
 Landscape generation is an enabling toolchain; it does not mean these gameplay mechanics are implemented.
+
+### Candidate new gameplay mechanics (proposals, not yet registered)
+
+- **M120 candidate — Slope/surface-aware traversal:** movement or hauling cost/traction changes from slope, mud, loose stone or snow. Keep it separate only if M106 route costs and M111 exposure do not already own the exact behavior.
+- **M121 candidate — Terrain-based build-site suitability:** slope, soil class and surface stability gate foundations/large structures and provide a specific placement/grounding reason. Coordinate with M060 support-path rules; do not duplicate structural load validation.
+- **M122 candidate — Geological strata and resource deposits:** region/depth-specific extractable stone/ore/clay or soil types, with gathering output routed through the item-ownership system. Add only if the game scope explicitly includes resource extraction.
+- **M123 candidate — Surface slope failure / rockfall:** bounded landslide or rockfall caused by slope, water/weather or excavation, affecting routes and structures. M075 remains responsible for underground support; this candidate is for outdoor slope failure.
+
+These are deliberately candidates, not additions to the canonical registry yet. Before accepting any candidate, write its exact source state, action, prerequisites, result, rejection/rollback, save behavior, dependencies and demo case; then confirm it is not already a child requirement of an existing M-ID. If only authoring needs are added (heightmap profiles, erosion settings, biomes masks, spline authoring, PCG, seed/checksum manifest), track them under LB0–LB7/tooling acceptance, not M120+.
 
 ## 7. Guardrails and definition of done
 
