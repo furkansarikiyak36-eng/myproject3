@@ -5,6 +5,7 @@
 #include "LogBuildingTypes.h"
 #include "LogBuildPiece.generated.h"
 
+class UStaticMesh;
 class UStaticMeshComponent;
 
 UCLASS(Blueprintable)
