@@ -97,6 +97,10 @@ public:
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool CanSafelyRemove(FGuid NodeId) const;
 
+    /** Returns a deterministic leaf-first removal order for a subtree; does not mutate actors or graph. */
+    UFUNCTION(BlueprintPure, Category="Structure|Graph")
+    bool BuildDependentRemovalOrder(FGuid RootNodeId, TArray<FGuid>& OutLeafFirstOrder) const;
+
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     float GetAggregateLoad(FGuid NodeId) const;
 
