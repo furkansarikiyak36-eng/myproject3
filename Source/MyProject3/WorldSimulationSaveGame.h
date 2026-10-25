@@ -10,6 +10,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldStorageSubsystem.h"
 #include "InventoryCraftingTypes.h"
 #include "WorldSimulationSaveGame.generated.h"
 
@@ -36,7 +37,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 2;
+    static constexpr int32 CurrentSchemaVersion = 3;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
@@ -52,4 +53,6 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldProductionStation> ProductionStations;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldProductionRecipe> ProductionRecipes;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldCargoTransportRecord> Cargo;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageContainerRecord> StorageContainers;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageIncomingReservation> StorageReservations;
 };
