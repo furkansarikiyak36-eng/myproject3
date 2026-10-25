@@ -37,6 +37,22 @@ struct FWorldProductionJob
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") FName BlockedReason = NAME_None;
 };
 
+/** Durable idempotency receipt for converting one physical world item into station stock. */
+USTRUCT(BlueprintType)
+struct FWorldProductionPhysicalIntakeReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid SourceItemId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedItemRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedStationRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName SourceDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName SourceMeshVariantSetId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName StockItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingItemRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FWorldProductionStation
 {
@@ -46,6 +62,8 @@ struct FWorldProductionStation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production", meta=(ClampMin="1")) int32 StorageCapacityUnits = 128;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") TMap<FName, int32> Stock;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionJob> Jobs;
+    /** Receipts prevent one physical source actor from becoming station stock more than once. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionPhysicalIntakeReceipt> PhysicalIntakeReceipts;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") int64 Revision = 1;
 };
 
@@ -62,6 +80,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterRecipe(const FWorldProductionRecipe& Recipe);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterStation(const FWorldProductionStation& Station);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
+    /** Converts one loose, world-owned physical log into one station stock unit. OperationId must be reused for retries. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
+    /** Stable recipe key for physical resource stock; preserves the nominal mesh family when one is authored. */
+    UFUNCTION(BlueprintPure, Category="World|Production") static FName MakePhysicalStockItemId(FName DefinitionId, FName MeshVariantSetId);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool EnqueueJob(const FGuid& StationId, FName RecipeId, FGuid& OutJobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool CanAdvanceProductionStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AdvanceProductionStep(double DeltaSeconds);
