@@ -347,16 +347,40 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
 
     if (!CanApplyCutAction(Action))
     {
-        const EWorldOperationResultCode FailureCode =
-            (PieceType == ELogPieceType::WholeLog &&
-                (Action == ELogCutAction::Quarter ||
-                 Action == ELogCutAction::Gutter ||
-                 Action == ELogCutAction::Trough ||
-                 Action == ELogCutAction::Plank))
-            ? EWorldOperationResultCode::PrerequisiteNotMet
-            : ((!Mesh || !Mesh->GetStaticMesh())
-                ? EWorldOperationResultCode::InvalidTarget
-                : EWorldOperationResultCode::InvalidState);
+        EWorldOperationResultCode FailureCode =
+            EWorldOperationResultCode::InvalidState;
+
+        if (!bIsPlaced && !bIsHeld && GetAttachedPieceCount() == 0)
+        {
+            bool bPrerequisiteMet = false;
+            bool bActionSupported = true;
+
+            switch (Action)
+            {
+            case ELogCutAction::SplitHalf:
+            case ELogCutAction::Hewn:
+            case ELogCutAction::Kalas:
+                bPrerequisiteMet = PieceType == ELogPieceType::WholeLog;
+                break;
+
+            case ELogCutAction::Quarter:
+            case ELogCutAction::Gutter:
+            case ELogCutAction::Trough:
+            case ELogCutAction::Plank:
+                bPrerequisiteMet = PieceType == ELogPieceType::SplitHalfLog;
+                break;
+
+            default:
+                bActionSupported = false;
+                break;
+            }
+
+            FailureCode = !bActionSupported
+                ? EWorldOperationResultCode::Unsupported
+                : (!bPrerequisiteMet
+                    ? EWorldOperationResultCode::PrerequisiteNotMet
+                    : EWorldOperationResultCode::MissingConfiguration);
+        }
 
         return FWorldOperationResult::Failure(
             FailureCode,
