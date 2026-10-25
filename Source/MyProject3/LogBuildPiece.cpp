@@ -3,6 +3,7 @@
 #include "GameplayCoreTypes.h"
 #include "WorldCommittedEventSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -14,6 +15,7 @@ ALogBuildPiece::ALogBuildPiece()
 
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LogMesh"));
     SetRootComponent(Mesh);
+    StructuralIdentity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
 
     Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     Mesh->SetSimulatePhysics(false);
@@ -33,6 +35,15 @@ void ALogBuildPiece::BeginPlay()
     Super::BeginPlay();
 
     bIsPlaced = bStartsPlaced;
+    if (StructuralIdentity)
+    {
+        StructuralIdentity->EnsureIdentity();
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(), EStructuralNodeKind::Wood,
+                bIsPlaced, 1.0f, 100000.0f, 100.0f);
+        }
+    }
     if (Mesh)
     {
         Mesh->SetSimulatePhysics(!bIsPlaced);
@@ -797,12 +808,37 @@ bool ALogBuildPiece::AttachToSnapParent(
     ParentSnapPointIndex = ParentPointIndex;
     OwnSnapPointIndexUsed = MyPointIndex;
     Parent->RegisterAttachedPiece(this);
+    if (StructuralIdentity && Parent->StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            if (!Graph->TryConnect(Parent->StructuralIdentity->GetInstanceId(),
+                Parent->SnapPoints[ParentPointIndex].PointId, StructuralIdentity->GetInstanceId(),
+                SnapPoints[MyPointIndex].PointId))
+            {
+                Parent->ReleaseSnapPoint(ParentPointIndex);
+                Parent->UnregisterAttachedPiece(this);
+                SnapParent.Reset();
+                ParentSnapPointIndex = INDEX_NONE;
+                OwnSnapPointIndexUsed = INDEX_NONE;
+                DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+                return false;
+            }
+        }
+    }
     SetPlacedState(true);
     return true;
 }
 
 void ALogBuildPiece::DetachFromSnapParent()
 {
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+        }
+    }
     DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
     if (ALogBuildPiece* Parent = SnapParent.Get())
