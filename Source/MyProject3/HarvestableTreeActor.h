@@ -6,6 +6,7 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 class ALogBuildPiece;
 
 /**
@@ -26,6 +27,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Tree")
     TObjectPtr<UStaticMeshComponent> TreeMesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Tree|Identity")
+    TObjectPtr<UWorldObjectIdentityComponent> Identity;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="1.0"))
     float MaxChopHealth = 5.0f;
