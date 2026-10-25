@@ -1368,20 +1368,20 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             PieceType == ELogPieceType::QuarterSectionLog;
         const FName RequestedRetryDefinition =
             bLegacyQuarterRetryMatch ? LegacyQuarterDefinition : RetryDefinition;
-        if (bCanonicalRetryMatch && (Action == ELogCutAction::SplitHalf ||
-            Action == ELogCutAction::Quarter))
+        if ((bCanonicalRetryMatch || bLegacyQuarterRetryMatch) &&
+            (Action == ELogCutAction::SplitHalf || Action == ELogCutAction::Quarter))
         {
             TArray<FWorldOwnedItemRecord> PreviousSplitRecords;
             if (RetryOwnership->TryGetSplitResult(OperationId, PreviousSplitRecords) &&
                 PreviousSplitRecords.Num() == 2 &&
                 PreviousSplitRecords[0].ItemId == RetryCurrent.ItemId &&
                 PreviousSplitRecords[0].Revision == RetryCurrent.Revision &&
-                PreviousSplitRecords[0].DefinitionId == RetryDefinition &&
-                PreviousSplitRecords[1].DefinitionId == RetryDefinition)
+                PreviousSplitRecords[0].DefinitionId == RequestedRetryDefinition &&
+                PreviousSplitRecords[1].DefinitionId == RequestedRetryDefinition)
             {
                 TArray<FName> OutputDefinitions;
-                OutputDefinitions.Add(RetryDefinition);
-                OutputDefinitions.Add(RetryDefinition);
+                OutputDefinitions.Add(RequestedRetryDefinition);
+                OutputDefinitions.Add(RequestedRetryDefinition);
                 TArray<FVector> OutputLocations;
                 OutputLocations.Add(PreviousSplitRecords[0].WorldLocation);
                 OutputLocations.Add(PreviousSplitRecords[1].WorldLocation);
