@@ -40,6 +40,17 @@ public:
     UFUNCTION(BlueprintPure, Category = "Log Piece|Geometry")
     FLogPieceGeometryState GetGeometryState() const { return GeometryState; }
 
+    /** Explicit nominal asset families. If this list is non-empty, a valid set must be selected. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TArray<FLogProcessingMeshSet> ProcessingMeshSets;
+
+    /** Persisted selector so processed pieces keep resolving variants from the same source family. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
+    FName SelectedProcessingMeshSetId = NAME_None;
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
+    FName GetSelectedProcessingMeshSetId() const { return SelectedProcessingMeshSetId; }
+
     /** Stable root definition; the ledger DefinitionId may change after processing. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
     FName BaseDefinitionId = NAME_None;
@@ -220,6 +231,13 @@ private:
 
     /** Keeps orthogonal geometry metadata aligned with the legacy PieceType label. */
     void UpdateGeometryStateFromPieceType(bool bPreserveLengthFraction);
+
+    /** Selects a set only when the current mesh matches exactly one authored base-round mesh. */
+    bool SelectProcessingMeshSetFromCurrentMesh();
+    const FLogProcessingMeshSet* GetActiveProcessingMeshSet() const;
+    UStaticMesh* GetConfiguredMeshForPieceType(ELogPieceType Type) const;
+    FVector GetConfiguredSplitCenterOffset(ELogCutAction Action) const;
+    FRotator GetConfiguredSplitChildRotation(ELogCutAction Action) const;
 
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
