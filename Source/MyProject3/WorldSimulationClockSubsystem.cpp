@@ -18,14 +18,17 @@ bool UWorldSimulationClockSubsystem::InitializeClock(
     return true;
 }
 
+bool UWorldSimulationClockSubsystem::CanAdvanceSimulation(double DeltaSeconds) const
+{
+    return bInitialized &&
+        FMath::IsFinite(DeltaSeconds) && DeltaSeconds >= 0.0 &&
+        FMath::IsFinite(SimulationTimeSeconds + DeltaSeconds) &&
+        TickIndex < MAX_int64 && StateRevision < MAX_int64;
+}
+
 bool UWorldSimulationClockSubsystem::AdvanceSimulation(double DeltaSeconds)
 {
-    if (!bInitialized ||
-        !FMath::IsFinite(DeltaSeconds) ||
-        DeltaSeconds < 0.0 ||
-        !FMath::IsFinite(SimulationTimeSeconds + DeltaSeconds) ||
-        TickIndex == MAX_int64 ||
-        StateRevision == MAX_int64)
+    if (!CanAdvanceSimulation(DeltaSeconds))
     {
         return false;
     }
