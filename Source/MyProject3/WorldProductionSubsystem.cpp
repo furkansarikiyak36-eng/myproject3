@@ -154,6 +154,7 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
     for (TPair<FGuid, FWorldProductionStation>& Pair : Stations)
     {
         FWorldProductionStation& Station = Pair.Value;
+        bool bStationChanged = false;
         for (FWorldProductionJob& Job : Station.Jobs)
         {
             if (Job.State == EProductionJobState::Completed || Job.State == EProductionJobState::Blocked)
@@ -163,6 +164,7 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
             if (Job.State == EProductionJobState::Queued)
                 Job.State = EProductionJobState::Running;
             Job.ProgressSeconds = FMath::Min(Recipe.DurationSeconds, Job.ProgressSeconds + DeltaSeconds);
+            bStationChanged = true;
             if (Job.ProgressSeconds < Recipe.DurationSeconds) break;
 
             TMap<FName, int32> ProposedStock = Station.Stock;
@@ -182,9 +184,9 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
             Station.Stock = MoveTemp(ProposedStock);
             Job.State = EProductionJobState::Completed;
             Job.BlockedReason = NAME_None;
-            ++Station.Revision;
             break; // one physical production line processes one job at a time
         }
+        if (bStationChanged) ++Station.Revision;
     }
     return true;
 }
@@ -219,7 +221,7 @@ void UWorldProductionSubsystem::ExportSnapshot(
         { return A.StationId.ToString() < B.StationId.ToString(); });
     OutRecipes = Recipes;
     OutRecipes.Sort([](const FWorldProductionRecipe& A, const FWorldProductionRecipe& B)
-        { return A.RecipeId.LexicalLess(B.RecipeId); });
+        { return A.RecipeId.ToString() < B.RecipeId.ToString(); });
 }
 
 bool UWorldProductionSubsystem::RestoreSnapshot(
