@@ -835,8 +835,34 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-007 — Fiziksel kütüğü üretim istasyonu stokuna güvenli alma
+
+- [x] FWorldProductionPhysicalIntakeReceipt eklendi; işlem ID'si, kaynak item ID/revizyonu, istasyon revizyonu, kaynak DefinitionId, mesh-family ID, stok anahtarı ve sonuç revizyonlarını kaydediyor.
+- [x] TryIngestWorldOwnedLogPiece eklendi: yalnızca kimliği geçerli, tekil (Quantity == 1), World sahipliğinde, serbest, elde/yerleşimde/bağlı olmayan fiziksel ALogBuildPiece kabul ediliyor.
+- [x] Üretim istasyonunun mevcut miktarı, kapasitesi ve devam eden işlerin rezerve çıktı kapasitesi kaynak sahipliğini değiştirmeden önce denetleniyor.
+- [x] Kabul edilen fiziksel item sahiplik defterinde World → Transformed geçişi yapıyor; istasyon stok miktarı ve intake fişi aynı kaynak çağrısında güncelleniyor, fiziksel aktör gizlenip devre dışı bırakılıyor ve destroy ediliyor.
+- [x] Stok anahtarı DefinitionId ile varsa MeshVariantSetId bileşimini koruyor; nominal mesh aileleri sessizce tek bir genel stok türüne katılmıyor.
+- [x] Aynı OperationId ve aynı istek için retry mevcut fişi döndürüyor; aynı kaynak ID'sinin farklı işlem/istasyonla ikinci kez alınması reddediliyor.
+- [x] Intake fişleri istasyon snapshot'ının parçası; SaveGame şeması v9'a yükseltildi ve v8→v9 geçişi eski kayıtlarda boş yeni fiş dizisiyle uyumlu.
+- [x] Restore sırasında intake operation/source ID tekrarları ve geçersiz revizyonlar fail-closed reddediliyor.
+- [x] Kaynak dosyalarında brace balance ve declaration/definition/migration wiring statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT ve runtime retry/failure-injection testleri.
+- [ ] Gerçek üretim tariflerinin MakePhysicalStockItemId anahtar sözleşmesine göre yapılandırılması.
+- [ ] Tarif girdisinin stoktan atomik tüketilmesi, işin tamamlanması ve çıktı item/aktörlerinin aynı sahiplik akışında üretilmesi.
+- [ ] İstasyon stoklarına girmiş kaynakların save/load sonrası tarifler ve intake receipt'leri ile çapraz doğrulanması.
+- [ ] Stok girişinde actor destroy başarısızlığı ve save sırasında mevcut fiziksel aktörlerin tutarsız kalmaması için Unreal kabul testi.
+
+**Kaynak dosyaları:** WorldProductionSubsystem.h/.cpp, WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp, WorldItemOwnershipSubsystem.h/.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Fiziksel ve serbest dünya kütüğünü üretim istasyonundaki miktar tabanlı stoğa alma için kaynak katmanı eklendi. Kaynak sahipliği değiştirilmeden önce kapasite doğrulanıyor; değişiklik ve kalıcı intake fişi birlikte commit ediliyor. Bu iş henüz fiziksel makine/animasyon, tarif tüketimi veya çıktı aktörü oluşturma döngüsünü tamamlamıyor.
+**Kanıt seviyesi:** Kaynak değişikliği + statik yapı kontrolü. Unreal motoru doğrulanmadı.
+**Kalan sınırlamalar:** Stok yalnızca aggregate miktarı temsil eder; Transformed kaynak kaydı ve intake receipt fiziksel aktörü tanımlar, ancak tamamlanmış üretim işinin recipe tüketimi/output spawn/save-load çapraz bütünlüğü ayrı WOOD-008 işidir.
+**Sonraki bağımlı iş:** WOOD-008 — tarif başlatma/tamamlama, stock consumption, output capacity reservation ve output item creation arasında tek bir tekrar-denemeye dayanıklı üretim işlemi kurmak.
+
+---
+
 ## 15. İlk yapılacak iş
 
 WOOD-004 data-driven mesh-set selector, geometry tuple resolver, ownership selector ve SaveGame v8 kaynak katmanı mevcut; gerçek FBX/Blueprint ataması ve UE doğrulaması açık. WOOD-005 ağaç devrilme/grounded adapter'ı mevcut; gerçek fizik/asset ve boyut→çıktı tablosu açık. WOOD-006 serbest kütüğe sınırlı push/roll kaynağı eklendi; drag, world-location kalıcılığı ve production-stock entegrasyonu tamamlanmadı.
 
-Sıradaki iş **WOOD-007 — fiziksel kaynak miktarı ve üretim köprüsü**: birim kütük/işlenmiş parça sahipliğini, üretim istasyonu stok rezervasyonunu, recipe input tüketimini ve gerçek output item creation akışını aynı işlem sözleşmesinde bağla. Sonrasında 2.1'in açık kalmış asset/config ve kesme durumu işlerine; ardından taş/çubuk ve ortak yapı sistemine geç. 75/150/300/600 veya Long/Short dosya adlarından gerçek boyut tahmin etme. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
+WOOD-007 artık kaynak katmanında mevcut: serbest fiziksel kütüğün üretim istasyonu stokuna tek sefer alınması ve retry receipt'leri eklendi. Sıradaki iş **WOOD-008 — üretim transaction'ı**: tarif girdilerini/rezerve stokları doğru tüketmek, job tamamlanmasını ve output item/aktör yaratımını tek sahiplik ve retry sözleşmesine bağlamak. Sonrasında 2.1'in açık asset/config ve kesme durumu işlerine; taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
