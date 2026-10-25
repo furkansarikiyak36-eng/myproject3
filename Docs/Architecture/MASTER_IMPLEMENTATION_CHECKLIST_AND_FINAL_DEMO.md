@@ -936,10 +936,11 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
 **Sonuç:** Kimlikli ve mevcut level'da bulunan aktörlerin transform/SaveGame state/primitive physics/mesh referansları ile canonical structural graph snapshot'ı genel SaveGame akışına bağlandı. Eski kayıtlarda bulunmayan fiziksel durum tahmin edilmiyor; uyumsuz level/snapshot yüklemesi güvenli biçimde reddediliyor.  
 **Kanıt seviyesi:** Kaynak değişikliği + statik wiring/schema/brace kontrolü; Unreal motoru doğrulanmadı.
+**WOOD-012 kaynak ilerlemesi (2026-10-26):** `ALogBuildPiece::TryAdvanceCutProgress` artık SaveGame ile saklanan ayrı kesme ilerlemesi tutuyor; kesme işi tamamlanmadan geometri değiştiren `TryApplyCutAction` çalıştırılmıyor. Eylem/mesh önkoşulu eksikse ilerleme başlamıyor; tamamlanan iş mevcut atomik işlem yoluna devrediliyor. `AHarvestableTreeActor` artık isteğe bağlı, gerçek tree mesh world-height sınırlarına göre seçilen `YieldRules` tablosuyla kütük adedini ve çıktı `ELogPieceType` değerini belirleyebiliyor. Kural tablosu boşsa eski `LogsToSpawn` ayarı geriye uyumluluk için kullanılıyor. Bu, veri odaklı kaynak katmanıdır; gerçek ağaç ölçüleri ve her kütük Blueprint'inin uygun length/shape varyantı hâlâ elle eşleştirilip UE'de doğrulanmalıdır.
 **WOOD-011 kaynak ilerlemesi (2026-10-26):** `ALogBuildPiece` artık canonical graph restore sonrasında actor-local `SnapParent`, parent/own snap index'leri, `AttachedPieces` ve anchor occupancy bilgisini graph kenarlarından yeniden kuran ayrı bir yol sağlıyor. `UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot` yalnızca actor-local state'i yeniden kurar; `TryConnect` çağırmaz ve graph'ta ikinci bir kenar oluşturmaz. `WorldSaveCoordinatorSubsystem` bunu graph restore'un hemen ardından çağırıyor. Kaynak/statik inceleme düzeyinde; UE derleme ve runtime testi yapılmadı.
 **Açık kalanlar:** Held/carry bileşen state'i ve actor recreation politikası; stone/stick/foundation actor-local anchor rehydration; gerçek FBX/Blueprint konfigürasyonu ve fiziksel doğrulama.
 
-**Sonraki bağımlı iş:** WOOD-012 — kesme ilerlemesini tamamlanmış geometri durumundan ayırmak, ağaç ölçüsünden kütük uzunluğu/adedi üretmek ve gerçek asset aileleri için ölçüm tablosu hazırlamak.
+**Sonraki bağımlı iş:** WOOD-013 — held/carry SaveGame manifestini ve world-location/physics settle senkronizasyonunu tamamlamak; gerçek FBX/Blueprint varyant ölçümünü motor doğrulamasıyla kapatmak.
 
 ---
 
