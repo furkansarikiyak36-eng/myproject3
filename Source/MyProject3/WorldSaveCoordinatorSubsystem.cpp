@@ -20,6 +20,47 @@
 #include "EngineUtils.h"
 #include "Logging/LogMacros.h"
 
+namespace
+{
+bool ValidateProductionReceiptItemReferences(
+    const TArray<FWorldOwnedItemRecord>& Items,
+    const TArray<FWorldProductionStation>& Stations)
+{
+    TMap<FGuid, FWorldOwnedItemRecord> ItemsById;
+    ItemsById.Reserve(Items.Num());
+    for (const FWorldOwnedItemRecord& Item : Items)
+    {
+        if (!Item.ItemId.IsValid() || ItemsById.Contains(Item.ItemId))
+            return false;
+        ItemsById.Add(Item.ItemId, Item);
+    }
+
+    for (const FWorldProductionStation& Station : Stations)
+    {
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Station.PhysicalIntakeReceipts)
+        {
+            const FWorldOwnedItemRecord* Source = ItemsById.Find(Receipt.SourceItemId);
+            if (!Source || Source->OwnerKind != EWorldItemOwnerKind::Transformed ||
+                Source->DefinitionId != Receipt.SourceDefinitionId ||
+                Source->MeshVariantSetId != Receipt.SourceMeshVariantSetId ||
+                Source->Revision < Receipt.ResultingItemRevision)
+            {
+                return false;
+            }
+        }
+
+        for (const FWorldProductionMaterializationReceipt& Receipt : Station.MaterializationReceipts)
+        {
+            // A materialized output may later be held, stored, split or consumed,
+            // but its unique identity must remain in the ownership ledger history.
+            if (!ItemsById.Contains(Receipt.WorldItemId))
+                return false;
+        }
+    }
+    return true;
+}
+}
+
 bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGame* OutSave) const
 {
     UWorld* World = GetWorld();
@@ -77,6 +118,12 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
     Cargo->ExportSnapshot(OutSave->Cargo);
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
+    if (!ValidateProductionReceiptItemReferences(OutSave->Items, OutSave->ProductionStations))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World save refused because production receipts do not match authoritative item ownership records."));
+        return false;
+    }
     // Refuse a save that would restore orphaned cargo or exceed storage capacity.
     if (!Storage->RestoreSnapshot(OutSave->StorageContainers, OutSave->StorageReservations) ||
         !Cargo->RestoreSnapshot(OutSave->Cargo))
@@ -101,6 +148,13 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
     if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger)
         return false;
+
+    if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World load refused because production receipts do not match the snapshot item ownership ledger."));
+        return false;
+    }
 
     // Durable saves must never restore a half-finished operation. Runtime rollback
     // may restore Pending entries, but save/load only accepts Completed records.
