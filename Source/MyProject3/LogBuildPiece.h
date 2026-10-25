@@ -8,6 +8,7 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 
 UCLASS(Blueprintable)
 class MYPROJECT3_API ALogBuildPiece : public AActor
@@ -22,6 +23,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Piece")
     TObjectPtr<UStaticMeshComponent> Mesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Piece|Structure")
+    TObjectPtr<UWorldObjectIdentityComponent> StructuralIdentity;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     ELogPieceType PieceType = ELogPieceType::WholeLog;
