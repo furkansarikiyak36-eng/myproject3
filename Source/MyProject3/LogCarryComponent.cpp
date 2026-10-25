@@ -1,6 +1,7 @@
 #include "LogCarryComponent.h"
 
 #include "LogBuildPiece.h"
+#include "WorldObjectIdentityComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
 #include "DrawDebugHelpers.h"
@@ -197,6 +198,25 @@ bool ULogCarryComponent::TryPickupTarget()
     if (!IsValid(Piece) || !Piece->CanBePickedUp())
     {
         return false;
+    }
+
+    // If identity/lifecycle tracking is configured, move it through the same
+    // ownership transition as the domain actor. Actors without the optional
+    // component retain legacy behavior.
+    if (UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>())
+    {
+        const EWorldObjectLifecycleState Current = Identity->GetLifecycleState();
+        if (Current != EWorldObjectLifecycleState::World &&
+            Current != EWorldObjectLifecycleState::Placed)
+        {
+            return false;
+        }
+        if (!Identity->TryTransitionLifecycle(
+            Current, EWorldObjectLifecycleState::Held))
+        {
+            return false;
+        }
     }
 
     // A supporting log with dependent pieces cannot be removed yet. Remove
@@ -479,6 +499,21 @@ bool ULogCarryComponent::PlaceHeldPiece()
             PieceToPlace,
             CurrentSourceSnapPointIndex))
         {
+            if (UWorldObjectIdentityComponent* Identity =
+                PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
+            {
+                if (!Identity->TryTransitionLifecycle(
+                    EWorldObjectLifecycleState::Held,
+                    EWorldObjectLifecycleState::Placed))
+                {
+                    // Do not leave a structural connection behind when the
+                    // lifecycle owner rejects the corresponding transition.
+                    PieceToPlace->DetachFromSnapParent();
+                    PieceToPlace->SetActorTransform(PreviousTransform);
+                    return false;
+                }
+            }
+
             PieceToPlace->SetHeldState(false);
             PieceToPlace->SetPlacedState(true);
 
@@ -504,6 +539,16 @@ bool ULogCarryComponent::PlaceHeldPiece()
 
     // A free-placed log becomes a stable building piece and can receive
     // subsequent logs at its available snap points.
+    if (UWorldObjectIdentityComponent* Identity =
+        PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
+    {
+        if (!Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Held,
+            EWorldObjectLifecycleState::Placed))
+        {
+            return false;
+        }
+    }
     PieceToPlace->SetHeldState(false);
     PieceToPlace->SetPlacedState(true);
 
@@ -521,6 +566,17 @@ void ULogCarryComponent::DropHeldPiece()
     }
 
     ALogBuildPiece* PieceToDrop = HeldPiece;
+
+    if (UWorldObjectIdentityComponent* Identity =
+        PieceToDrop->FindComponentByClass<UWorldObjectIdentityComponent>())
+    {
+        if (!Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Held,
+            EWorldObjectLifecycleState::World))
+        {
+            return;
+        }
+    }
 
     FVector ViewLocation;
     FRotator ViewRotation;
