@@ -95,3 +95,33 @@ bool UWorldItemOwnershipSubsystem::TryGetItem(
     OutRecord = *Found;
     return true;
 }
+
+void UWorldItemOwnershipSubsystem::ExportSnapshot(TArray<FWorldOwnedItemRecord>& OutItems) const
+{
+    OutItems.Reset();
+    Items.GenerateValueArray(OutItems);
+    OutItems.Sort([](const FWorldOwnedItemRecord& A, const FWorldOwnedItemRecord& B)
+        { return A.ItemId.ToString() < B.ItemId.ToString(); });
+}
+
+bool UWorldItemOwnershipSubsystem::RestoreSnapshot(const TArray<FWorldOwnedItemRecord>& Snapshot)
+{
+    if (Snapshot.Num() > MaxTrackedItems || MaxTrackedItems <= 0) return false;
+    TMap<FGuid, FWorldOwnedItemRecord> Proposed;
+    for (const FWorldOwnedItemRecord& Item : Snapshot)
+    {
+        if (!Item.ItemId.IsValid() || Item.DefinitionId.IsNone() || Item.Quantity <= 0 ||
+            Item.Revision <= 0 || Proposed.Contains(Item.ItemId) ||
+            !FMath::IsFinite(Item.WorldLocation.X) || !FMath::IsFinite(Item.WorldLocation.Y) ||
+            !FMath::IsFinite(Item.WorldLocation.Z))
+            return false;
+        const bool bNeedsOwner = Item.OwnerKind == EWorldItemOwnerKind::Held ||
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory || Item.OwnerKind == EWorldItemOwnerKind::Storage ||
+            Item.OwnerKind == EWorldItemOwnerKind::InTransit;
+        if (bNeedsOwner && !Item.OwnerId.IsValid()) return false;
+        Proposed.Add(Item.ItemId, Item);
+    }
+    Items = MoveTemp(Proposed);
+    Receipts.Reset();
+    return true;
+}
