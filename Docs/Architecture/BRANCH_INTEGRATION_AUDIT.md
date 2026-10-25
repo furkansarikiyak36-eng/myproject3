@@ -11,8 +11,8 @@
 | `main` | identical | 0 | 0 | Default branch; not the only relevant source |
 | `Chatgpt` | behind | 0 | 63 | Older than main; inspect history before reusing |
 | `architecture-14-phase-skeletons` | ahead | 120 | 0 | Architecture/phase map; based on Phase 6, not an independent release branch |
-| `landscape-builder-plan` | ahead | 362 | 0 | H baseline plus 13 planning/documentation commits; five files in PR #17 are docs/roadmap changes |
-| `fix/world-simulation-fail-closed` | ahead | 367 | 0 | Work branch based on `landscape-builder-plan`; five commits add fail-closed handling, review evidence and tracker updates; proposed in draft PR #18 |
+| `landscape-builder-plan` | ahead | 365 | 0 | H baseline plus 16 planning/documentation commits; five files in PR #17 are docs/roadmap changes |
+| `fix/world-simulation-fail-closed` | ahead | 373 | 0 | Work branch based on `landscape-builder-plan`; eight commits include fail-closed handling, review evidence and tracker updates; proposed in draft PR #18 |
 | `mechanic-detailing-pass-01` | ahead | 121 | 0 | Earlier mechanic detail pass |
 | `mechanic-detailing-pass-a-core` | ahead | 131 | 0 | Core invariants/contracts pass |
 | `mechanic-detailing-pass-b-resource-lifecycle` | ahead | 134 | 0 | Resource lifecycle pass |
@@ -34,7 +34,7 @@
 
 - “Ahead” counts commits present in the branch but not in `main`; it does **not** mean the branch has that many complete mechanics.
 - A stacked branch can include its parent branch's commits. Therefore do not merge Pass A, B, C, D, E, F, G and H independently into `main` as though they were unrelated feature branches.
-- Live comparisons at this refresh: H is 349 commits ahead of `main`; `landscape-builder-plan` is 362 ahead of `main` and 13 commits ahead of H; `fix/world-simulation-fail-closed` is 367 ahead of `main` and adds two commits on top of the planning branch. H is 171 commits ahead of Pass G. These are ancestry counts, not feature-completion scores.
+- Live comparisons at this refresh: H is 349 commits ahead of `main`; `landscape-builder-plan` is 365 ahead of `main` and 16 commits ahead of H; `fix/world-simulation-fail-closed` is 373 ahead of `main` and eight commits ahead of `landscape-builder-plan`. H is 171 commits ahead of Pass G. These are ancestry counts, not feature-completion scores.
 - The architecture roadmap branch is based on Phase 6 and is not automatically interchangeable with H.
 - `phase-01-foundation` is both behind and ahead of `main`; review its unique three commits individually before deciding whether to cherry-pick anything.
 - Branch compare results must be re-run immediately before integration because the repository can change.
