@@ -103,7 +103,7 @@ public:
     ELogCutAction GetSelectedCutAction() const { return SelectedCutAction; }
 
     UFUNCTION(BlueprintPure, Category = "Log Carry|State")
-    bool IsCarryingLog() const { return IsValid(HeldPiece); }
+    bool IsCarryingLog() const { return HeldPiece.Get() != nullptr; }
 
 protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement")
@@ -123,4 +123,5 @@ private:
     void SetSnapCandidate(ALogBuildPiece* Target, int32 SourceIndex,
         int32 TargetIndex, const FTransform& DesiredActorTransform);
     FRotator MakePlacementRotation(float ViewYaw) const;
+    void ProcessAimedPieceInput();
 };
