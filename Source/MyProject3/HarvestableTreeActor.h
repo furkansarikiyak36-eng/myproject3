@@ -21,6 +21,7 @@ class MYPROJECT3_API AHarvestableTreeActor : public AActor
 public:
     AHarvestableTreeActor();
 
+    virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Tree")
