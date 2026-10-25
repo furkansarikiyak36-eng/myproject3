@@ -62,7 +62,8 @@ bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& S
         Station.StorageCapacityUnits <= 0 || Station.Revision <= 0 ||
         Stations.Contains(Station.StationId) || MaxStations <= 0 || Stations.Num() >= MaxStations ||
         !Station.Jobs.IsEmpty() || !Station.PhysicalIntakeReceipts.IsEmpty() ||
-        !Station.EnqueueReceipts.IsEmpty() || !Station.CollectReceipts.IsEmpty())
+        !Station.EnqueueReceipts.IsEmpty() || !Station.CollectReceipts.IsEmpty() ||
+        !Station.MaterializationReceipts.IsEmpty())
         return false;
     for (const TPair<FName, int32>& Pair : Station.Stock)
         if (Pair.Key.IsNone() || Pair.Value < 0) return false;
@@ -162,6 +163,11 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
         for (const FWorldProductionCollectReceipt& Collect : Pair.Value.CollectReceipts)
         {
             if (Collect.OperationId == OperationId)
+                return false;
+        }
+        for (const FWorldProductionMaterializationReceipt& Materialization : Pair.Value.MaterializationReceipts)
+        {
+            if (Materialization.OperationId == OperationId)
                 return false;
         }
         for (const FWorldProductionPhysicalIntakeReceipt& Receipt :
@@ -558,6 +564,11 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
             if (Receipt.OperationId == OperationId)
                 return false;
         }
+        for (const FWorldProductionMaterializationReceipt& Receipt : Pair.Value.MaterializationReceipts)
+        {
+            if (Receipt.OperationId == OperationId)
+                return false;
+        }
     }
 
     FWorldProductionStation* Station = Stations.Find(StationId);
@@ -792,6 +803,11 @@ bool UWorldProductionSubsystem::TryCollectCompletedJob(
             return Pair.Key == StationId && Receipt.JobId == JobId &&
                 Receipt.ExpectedStationRevision == ExpectedStationRevision;
         }
+        for (const FWorldProductionMaterializationReceipt& Receipt : Pair.Value.MaterializationReceipts)
+        {
+            if (Receipt.OperationId == OperationId)
+                return false;
+        }
     }
 
     FWorldProductionStation* Station = Stations.Find(StationId);
@@ -877,6 +893,7 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
     TSet<FGuid> ProductionOperationIds;
     TSet<FGuid> IntakeSourceItemIds;
     TSet<FGuid> EnqueuedJobIds;
+    TSet<FGuid> MaterializedWorldItemIds;
     for (const FWorldProductionStation& S : StationSnapshot)
     {
         if (!S.StationId.IsValid() || S.StationTag.IsNone() || S.StorageCapacityUnits <= 0 ||
@@ -931,6 +948,24 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
                 return false;
             }
             ProductionOperationIds.Add(Receipt.OperationId);
+        }
+        for (const FWorldProductionMaterializationReceipt& Receipt : S.MaterializationReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || Receipt.StockItemId.IsNone() ||
+                Receipt.DefinitionId.IsNone() || Receipt.BaseDefinitionId.IsNone() ||
+                !Receipt.WorldItemId.IsValid() ||
+                Receipt.StockItemId != MakePhysicalStockItemId(
+                    Receipt.DefinitionId, Receipt.MeshVariantSetId) ||
+                Receipt.ExpectedStationRevision <= 0 ||
+                Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionOperationIds.Contains(Receipt.OperationId) ||
+                MaterializedWorldItemIds.Contains(Receipt.WorldItemId))
+            {
+                return false;
+            }
+            ProductionOperationIds.Add(Receipt.OperationId);
+            MaterializedWorldItemIds.Add(Receipt.WorldItemId);
         }
         NewStations.Add(S.StationId, S);
     }
