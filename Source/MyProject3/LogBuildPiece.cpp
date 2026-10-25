@@ -83,13 +83,22 @@ void ALogBuildPiece::BeginPlay()
             return;
         }
 
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        UWorldStructuralGraphSubsystem* Graph =
+            GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+        FStructuralNodeRecord ExistingNode;
+        const FGuid NodeId = StructuralIdentity->GetInstanceId();
+        const bool bRegistered = Graph &&
+            (Graph->GetNode(NodeId, ExistingNode)
+                ? ExistingNode.Actor.Get() == this
+                : Graph->RegisterNode(this, NodeId, EStructuralNodeKind::Wood,
+                    bIsPlaced, 1.0f, 100000.0f, 100.0f));
+        if (!bRegistered)
         {
-            if (!Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(), EStructuralNodeKind::Wood,
-                bIsPlaced, 1.0f, 100000.0f, 100.0f))
-            {
-                UE_LOG(LogTemp, Error, TEXT("Log piece '%s' could not register structural graph node."), *GetName());
-            }
+            UE_LOG(LogTemp, Error, TEXT("Log piece '%s' could not register structural graph node."), *GetName());
+            if (Mesh) Mesh->SetSimulatePhysics(false);
+            SetActorHiddenInGame(true);
+            SetActorEnableCollision(false);
+            return;
         }
     }
     if (Mesh)
