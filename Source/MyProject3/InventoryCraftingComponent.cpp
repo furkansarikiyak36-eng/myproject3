@@ -421,6 +421,20 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  if (!IsValid(Spawned))
   return false;
 
+ // Construction scripts may initialize Blueprint defaults; reapply the canonical
+ // ledger identity and variant metadata after construction has completed.
+ Identity->InstanceId = Item.ItemId;
+ Identity->SetDefinitionId(Item.DefinitionId);
+ if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(Spawned))
+ {
+  LogPiece->bStartsPlaced = false;
+  LogPiece->BaseDefinitionId = Item.BaseDefinitionId.IsNone()
+   ? Item.DefinitionId : Item.BaseDefinitionId;
+ }
+ if (AStoneBuildingPiece* StonePiece = Cast<AStoneBuildingPiece>(Spawned))
+  StonePiece->DefinitionId = Item.DefinitionId;
+ if (AStickPrimitivePiece* StickPiece = Cast<AStickPrimitivePiece>(Spawned))
+  StickPiece->DefinitionId = Item.DefinitionId;
  Spawned->SetActorHiddenInGame(true);
  Spawned->SetActorEnableCollision(false);
 
@@ -438,8 +452,18 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  {
   bActivated = LogPiece->ActivateAfterOwnershipTransfer();
  }
+ else if (AStoneBuildingPiece* StonePiece = Cast<AStoneBuildingPiece>(Spawned))
+ {
+  bActivated = StonePiece->ActivateAfterOwnershipTransfer();
+ }
+ else if (AStickPrimitivePiece* StickPiece = Cast<AStickPrimitivePiece>(Spawned))
+ {
+  bActivated = StickPiece->ActivateAfterOwnershipTransfer();
+ }
  else
  {
+  // Generic physical-item classes are only supported if their actor/identity
+  // component is self-contained; domain actors must use their typed activation.
   Spawned->SetActorHiddenInGame(false);
   Spawned->SetActorEnableCollision(true);
  }
