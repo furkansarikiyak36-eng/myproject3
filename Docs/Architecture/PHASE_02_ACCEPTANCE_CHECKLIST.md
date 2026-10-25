@@ -5,10 +5,10 @@
 - [x] Result envelope distinguishes machine-readable code from human-readable message.
 - [x] Each result receives a valid operation GUID when caller supplies none.
 - [x] Failure factory rejects `Success` as a failure code and clears affected-object IDs.
-- [x] Existing log/carry public signatures remain unchanged.
+- [x] Existing log/carry public signatures remain unchanged.\n- [x] Request envelope includes operation ID/type, target IDs, optional definition keys/context and expected revisions.\n- [x] Structural validation rejects missing operation identity/type and invalid target/revision records.
 - [ ] Compile/UHT verification pending final integrated Unreal Engine 5.8 gate.
 
-## World-object identity
+## Unitized resource contract\n- [x] Resource amount requires definition ID and unit ID.\n- [x] Negative and non-finite quantities are rejected.\n- [x] Sufficiency check is read-only; inventory ownership/consumption remains in resource-domain implementation.\n\n## World-object identity
 - [x] Instance GUID field added.
 - [x] Definition key is a stable `FName`, separate from display text.
 - [x] Missing instance GUID is generated at BeginPlay.
@@ -27,4 +27,4 @@
 - [ ] Full UE build, editor/runtime checks and all-119 integrated demo remain deferred to the final test gate.
 
 ## Phase 2 exit criteria
-Phase 2 now includes identity/lifecycle, shared operation outcomes, and the minimal committed-event contract/dispatcher. Static source-contract work is ready for review; no existing mechanic has been migrated to use the new contracts. Engine-level acceptance remains open until Unreal Engine 5.8 build and runtime evidence are recorded.
+Phase 2 now includes identity/lifecycle, shared operation requests and outcomes, unitized resource validation, and the minimal committed-event contract/dispatcher. Static source-contract work is ready for review; no existing mechanic has been migrated to use the new contracts. Engine-level acceptance remains open until Unreal Engine 5.8 build and runtime evidence are recorded.
