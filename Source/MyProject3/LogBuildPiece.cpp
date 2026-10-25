@@ -140,7 +140,7 @@ bool ALogBuildPiece::SelectProcessingMeshSetFromCurrentMesh()
     const FLogProcessingMeshSet* Match = nullptr;
     for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
     {
-        if (Candidate.BaseRoundMesh != CurrentMesh)
+        if (Candidate.BaseRoundMesh.Get() != CurrentMesh)
             continue;
 
         if (Match)
@@ -247,7 +247,7 @@ UStaticMesh* ALogBuildPiece::GetConfiguredMeshForPieceType(ELogPieceType Type) c
         if (TargetLength == ELogLengthFraction::FullLength &&
             TargetShape == ELogCrossSectionShape::FullRound)
         {
-            return Set->BaseRoundMesh;
+            return Set->BaseRoundMesh.Get();
         }
 
         const FLogPieceMeshVariant* Match = nullptr;
