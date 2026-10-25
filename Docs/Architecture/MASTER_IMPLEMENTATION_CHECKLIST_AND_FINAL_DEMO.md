@@ -908,7 +908,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Sonuç:** Aggregate üretim stokundan, birim miktarı düşürerek benzersiz kimlikli fiziksel kütük aktörü oluşturma kaynak katmanı eklendi. Stok azalması ancak aktörün kimlik, mesh-varyant ve yapısal graph doğrulamaları tamamlandıktan sonra commit ediliyor.  
 **Kanıt seviyesi:** Kaynak değişikliği + statik yapısal kontrol; Unreal motoru doğrulanmadı.
 **Kalan sınırlamalar:** Fiziksel aktör transform/lifecycle save/load hâlâ genel kayıtta yer almıyor. Recipe output oluşturulması stok seviyesine kadar çalışıyor, ancak gerçek tarif verisi, makine aktörü ve save/load sonrası fiziksel dünyayı tam geri kurma kapısı açık.
-**Sonraki bağımlı iş:** WOOD-010 — fiziksel aktör transformları, mesh/physics state, structural graph bağlantıları ve item ownership'i tek bir SaveGame/restore aşamasında yeniden kurmak; ayrıca mevcut drop/intake/materialize akışında actor-state tutarlılığını sağlamlaştırmak.
+**Tamamlanan kaynak katmanı:** WOOD-010 — kimlik bağlı fiziksel aktör/graph snapshot (motor doğrulaması açık).
 
 ---
 
@@ -935,7 +935,10 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
 **Sonuç:** Kimlikli ve mevcut level'da bulunan aktörlerin transform/SaveGame state/primitive physics/mesh referansları ile canonical structural graph snapshot'ı genel SaveGame akışına bağlandı. Eski kayıtlarda bulunmayan fiziksel durum tahmin edilmiyor; uyumsuz level/snapshot yüklemesi güvenli biçimde reddediliyor.  
 **Kanıt seviyesi:** Kaynak değişikliği + statik wiring/schema/brace kontrolü; Unreal motoru doğrulanmadı.
-**Sonraki bağımlı iş:** WOOD-011 — actor-local snap/attachment referanslarını canonical graph restore sonrasında yeniden bağlamak; Held/carry akışını kaydetmek ve fiziksel aktör spawn/recreation politikası eklemek.
+**WOOD-011 kaynak ilerlemesi (2026-10-26):** `ALogBuildPiece` artık canonical graph restore sonrasında actor-local `SnapParent`, parent/own snap index'leri, `AttachedPieces` ve anchor occupancy bilgisini graph kenarlarından yeniden kuran ayrı bir yol sağlıyor. `UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot` yalnızca actor-local state'i yeniden kurar; `TryConnect` çağırmaz ve graph'ta ikinci bir kenar oluşturmaz. `WorldSaveCoordinatorSubsystem` bunu graph restore'un hemen ardından çağırıyor. Kaynak/statik inceleme düzeyinde; UE derleme ve runtime testi yapılmadı.
+**Açık kalanlar:** Held/carry bileşen state'i ve actor recreation politikası; stone/stick/foundation actor-local anchor rehydration; gerçek FBX/Blueprint konfigürasyonu ve fiziksel doğrulama.
+
+**Sonraki bağımlı iş:** WOOD-012 — kesme ilerlemesini tamamlanmış geometri durumundan ayırmak, ağaç ölçüsünden kütük uzunluğu/adedi üretmek ve gerçek asset aileleri için ölçüm tablosu hazırlamak.
 
 ---
 
