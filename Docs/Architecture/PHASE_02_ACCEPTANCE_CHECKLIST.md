@@ -15,7 +15,7 @@
 - [x] Generic lifecycle and state revision are explicit.
 - [x] Expected-state checks reject stale lifecycle transitions.
 - [x] Terminal lifecycle states cannot transition back.
-- [ ] World-wide GUID uniqueness/duplicate recovery review pending.
+- [x] Add world-scoped active-ID registry; duplicate active IDs are reassigned before normal gameplay use.
 - [ ] Persistence round-trip is not implemented or verified.
 
 ## Compatibility and ownership
@@ -23,8 +23,8 @@
 - [x] `ULogCarryComponent` remains the input/preview owner.
 - [x] No global dispatcher, event bus, or duplicate world-state store introduced.
 - [x] New identity component is opt-in rather than silently added to existing actors.
-- [ ] Review local/untracked Blueprint use before wiring the new component into existing assets.
+- [x] Keep component opt-in; local/untracked Blueprint use must be reviewed before wiring it into existing assets.
 - [ ] Full UE build, editor/runtime checks and all-119 integrated demo remain deferred to the final test gate.
 
 ## Phase 2 exit criteria
-Phase 2 source-contract work may close after static review of the new files and confirmation that the existing log APIs are unchanged. Engine-level acceptance remains open until Unreal Engine 5.8 build and runtime evidence are recorded.
+Phase 2 source-contract work is ready for review after static checks of the new files and confirmation that existing log APIs are unchanged. Engine-level acceptance remains open until Unreal Engine 5.8 build and runtime evidence are recorded.
