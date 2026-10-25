@@ -140,40 +140,41 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     Key.ReplaceInline(TEXT("-"), TEXT(""));
     Key.ReplaceInline(TEXT(" "), TEXT(""));
 
-    if (Key == TEXT("whole") || Key == TEXT("wholelog") || Key == TEXT("rawlog"))
-    {
-        PieceType = ELogPieceType::WholeLog;
-    }
-    else if (Key.Contains(TEXT("threequarter")) || Key.Contains(TEXT("3quarter")))
+    // Check cut/shape-specific variants before generic "raw log" names.
+    if (Key.Contains(TEXT("threequarter")) || Key.Contains(TEXT("3quarter")))
     {
         PieceType = ELogPieceType::ThreeQuarterLog;
     }
-    else if (Key.Contains(TEXT("halflength")) || Key.Contains(TEXT("halflog")) || Key.Contains(TEXT("half")))
+    else if (Key.Contains(TEXT("halflength")) || Key.Contains(TEXT("lengthhalf")))
     {
         PieceType = ELogPieceType::HalfLengthLog;
+    }
+    // In this library, SM_RawLog_<length>_Half means a longitudinally split
+    // half-round piece; it does NOT mean a log whose length is halved.
+    else if (Key.Contains(TEXT("rawlog")) && Key.Contains(TEXT("half")))
+    {
+        PieceType = ELogPieceType::SplitHalfLog;
     }
     else if (Key.Contains(TEXT("quarter")))
     {
         PieceType = ELogPieceType::QuarterLog;
     }
-    else if (Key.Contains(TEXT("split")))
+    else if (Key.Contains(TEXT("gutter")) || Key.Contains(TEXT("trough")) ||
+        Key.Contains(TEXT("groove")))
     {
-        PieceType = ELogPieceType::SplitHalfLog;
-    }
-    else if (Key.Contains(TEXT("plank")) || Key.Contains(TEXT("kalas")))
-    {
-        PieceType = ELogPieceType::Plank;
+        PieceType = ELogPieceType::GutterLog;
     }
     else if (Key.Contains(TEXT("hewn")))
     {
         PieceType = ELogPieceType::HewnLog;
     }
-    else if (Key.Contains(TEXT("gutter")) || Key.Contains(TEXT("trough")) || Key.Contains(TEXT("groove")))
+    else if (Key.Contains(TEXT("plank")) || Key.Contains(TEXT("kalas")))
     {
-        PieceType = ELogPieceType::GutterLog;
+        PieceType = ELogPieceType::Plank;
     }
     else if (Key.Contains(TEXT("notch")) || Key.Contains(TEXT("crosslap")) ||
-        Key.Contains(TEXT("saddle")) || Key.Contains(TEXT("fork")))
+        Key.Contains(TEXT("saddle")) || Key.Contains(TEXT("fork")) ||
+        Key.Contains(TEXT("flatnotch")))
     {
         PieceType = ELogPieceType::NotchedLog;
     }
@@ -181,7 +182,8 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::JointPiece;
     }
-    else if (Key.Contains(TEXT("rawlog")) || Key.Contains(TEXT("wholelog")))
+    else if (Key.Contains(TEXT("rawlog")) || Key.Contains(TEXT("wholelog")) ||
+        Key == TEXT("whole"))
     {
         PieceType = ELogPieceType::WholeLog;
     }
