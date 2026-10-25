@@ -51,7 +51,7 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 
 ## Structural reparenting/cycle guard
 
-`CanSnapPointAccept` now rejects a source piece that already has a parent link or parent-anchor indices, and rejects a source piece that still has attached children. It also walks the target's parent chain and rejects a connection that would make the source an ancestor of its own target, preventing a structural cycle through the low-level reservation API. This guards source-level state integrity; no Unreal build or runtime test has been run.
+`CanSnapPointAccept` now rejects a source piece that already has a parent link or parent-anchor indices, and rejects a source piece that still has attached children. It walks the target's parent chain and rejects a connection that would make the source an ancestor of its own target. The walk also detects a pre-existing repeated ancestor and rejects malformed cyclic state rather than looping indefinitely. This guards source-level state integrity; no Unreal build or runtime test has been run.
 
 ## Receiver-anchor revalidation safeguard
 
