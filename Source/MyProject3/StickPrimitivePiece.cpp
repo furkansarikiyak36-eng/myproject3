@@ -1,12 +1,15 @@
 #include "StickPrimitivePiece.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 AStickPrimitivePiece::AStickPrimitivePiece()
 {
     PrimaryActorTick.bCanEverTick = false;
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StickMesh"));
     SetRootComponent(Mesh);
+    StructuralIdentity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
     Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     Mesh->SetSimulatePhysics(true);
 }
@@ -14,6 +17,15 @@ AStickPrimitivePiece::AStickPrimitivePiece()
 void AStickPrimitivePiece::BeginPlay()
 {
     Super::BeginPlay();
+    if (StructuralIdentity)
+    {
+        StructuralIdentity->EnsureIdentity();
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(), EStructuralNodeKind::Stick,
+                bIsPlaced, 1.0f, 100000.0f, 100.0f);
+        }
+    }
     if (Mesh)
     {
         Mesh->SetSimulatePhysics(!bIsHeld && !bIsPlaced);
@@ -272,6 +284,23 @@ bool AStickPrimitivePiece::TryConnectToAnchor(
     ParentAnchorId = TargetAnchorId;
     OwnAnchorIdUsed = OwnAnchorId;
     TargetPiece->AttachedPieces.AddUnique(this);
+    if (StructuralIdentity && TargetPiece->StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            if (!Graph->TryConnect(TargetPiece->StructuralIdentity->GetInstanceId(), TargetAnchorId,
+                StructuralIdentity->GetInstanceId(), OwnAnchorId))
+            {
+                TargetPiece->ReleaseAnchor(TargetAnchorId);
+                TargetPiece->AttachedPieces.Remove(this);
+                ReleaseAnchor(OwnAnchorId);
+                ParentPiece.Reset(); ParentAnchorId = NAME_None; OwnAnchorIdUsed = NAME_None;
+                DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+                SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+                return false;
+            }
+        }
+    }
     bIsPlaced = true;
     if (Mesh)
     {
@@ -292,6 +321,13 @@ void AStickPrimitivePiece::ReleaseAnchor(FName AnchorId)
 
 bool AStickPrimitivePiece::RemoveConnection()
 {
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+        }
+    }
     AStickPrimitivePiece* Parent = ParentPiece.Get();
     if (!Parent)
     {
