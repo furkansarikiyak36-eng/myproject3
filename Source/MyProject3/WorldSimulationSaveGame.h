@@ -61,6 +61,15 @@ struct FWorldPhysicalActorSnapshot
     FTransform ActorTransform = FTransform::Identity;
 
     UPROPERTY(SaveGame)
+    bool bActorHiddenInGame = false;
+
+    UPROPERTY(SaveGame)
+    bool bActorCollisionEnabled = true;
+
+    UPROPERTY(SaveGame)
+    bool bActorTickEnabled = true;
+
+    UPROPERTY(SaveGame)
     FName DefinitionId = NAME_None;
 
     UPROPERTY(SaveGame)
