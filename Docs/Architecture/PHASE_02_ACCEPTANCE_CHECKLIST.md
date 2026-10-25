@@ -18,7 +18,7 @@
 - [x] Add world-scoped active-ID registry; duplicate active IDs are reassigned before normal gameplay use.
 - [ ] Persistence round-trip is not implemented or verified.
 
-## Compatibility and ownership
+## Committed events\n- [x] Event payload contains schema version, event ID, operation ID, event type, affected stable IDs and world time.\n- [x] Dispatcher rejects invalid event type, unsupported schema and missing operation ID.\n- [x] Dispatcher is notification-only and does not mutate domain state or claim durable delivery.\n- [ ] Domain integration must call it only after authoritative state commit; no existing gameplay operation has been migrated to emit events yet.\n\n## Compatibility and ownership
 - [x] Existing `ALogBuildPiece` remains the current log-processing/construction authority.
 - [x] `ULogCarryComponent` remains the input/preview owner.
 - [x] No global dispatcher, event bus, or duplicate world-state store introduced.
@@ -27,4 +27,4 @@
 - [ ] Full UE build, editor/runtime checks and all-119 integrated demo remain deferred to the final test gate.
 
 ## Phase 2 exit criteria
-Phase 2 source-contract work is ready for review after static checks of the new files and confirmation that existing log APIs are unchanged. Engine-level acceptance remains open until Unreal Engine 5.8 build and runtime evidence are recorded.
+Phase 2 now includes identity/lifecycle, shared operation outcomes, and the minimal committed-event contract/dispatcher. Static source-contract work is ready for review; no existing mechanic has been migrated to use the new contracts. Engine-level acceptance remains open until Unreal Engine 5.8 build and runtime evidence are recorded.
