@@ -25,6 +25,34 @@ enum class ELogPieceType : uint8
     QuarterSectionLog UMETA(DisplayName = "Quarter-Round Cross Section")
 };
 
+/** Longitudinal amount of the original log represented by this piece. */
+UENUM(BlueprintType)
+enum class ELogLengthFraction : uint8
+{
+    FullLength UMETA(DisplayName = "Full Length"),
+    ThreeQuarterLength UMETA(DisplayName = "3/4 Length"),
+    HalfLength UMETA(DisplayName = "1/2 Length"),
+    QuarterLength UMETA(DisplayName = "1/4 Length"),
+    Other UMETA(DisplayName = "Other / Authored Length")
+};
+
+/** Cross-section/processing shape, independent of longitudinal length. */
+UENUM(BlueprintType)
+enum class ELogCrossSectionProfile : uint8
+{
+    Round UMETA(DisplayName = "Round"),
+    HalfRound UMETA(DisplayName = "Half-Round"),
+    QuarterRound UMETA(DisplayName = "Quarter-Round"),
+    Hewn UMETA(DisplayName = "Hewn / Flattened"),
+    SquareBeam UMETA(DisplayName = "Squared Beam"),
+    GroovedHalfRound UMETA(DisplayName = "Grooved Half-Round"),
+    Trough UMETA(DisplayName = "Hollow Trough"),
+    Plank UMETA(DisplayName = "Plank"),
+    Notched UMETA(DisplayName = "Notched"),
+    Joint UMETA(DisplayName = "Joint Piece"),
+    Other UMETA(DisplayName = "Other / Authored Profile")
+};
+
 UENUM(BlueprintType)
 enum class ELogLongitudinalAxis : uint8
 {
