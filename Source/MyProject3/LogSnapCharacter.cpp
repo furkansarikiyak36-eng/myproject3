@@ -65,8 +65,8 @@ void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
     PlayerInputComponent->BindAxisKey(EKeys::A, this, &ALogSnapCharacter::MoveLeft);
     PlayerInputComponent->BindAxisKey(EKeys::MouseX, this, &ALogSnapCharacter::Turn);
     PlayerInputComponent->BindAxisKey(EKeys::MouseY, this, &ALogSnapCharacter::LookUp);
-    PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, FName(TEXT("Jump")));
-    PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Released, this, FName(TEXT("StopJumping")));
+    PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &ALogSnapCharacter::HandleJumpPressed);
+    PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Released, this, &ALogSnapCharacter::HandleJumpReleased);
 
     if (LogCarry)
     {
@@ -110,4 +110,14 @@ void ALogSnapCharacter::Turn(float Value)
 void ALogSnapCharacter::LookUp(float Value)
 {
     AddControllerPitchInput(Value);
+}
+
+void ALogSnapCharacter::HandleJumpPressed()
+{
+    Jump();
+}
+
+void ALogSnapCharacter::HandleJumpReleased()
+{
+    StopJumping();
 }
