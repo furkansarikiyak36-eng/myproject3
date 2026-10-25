@@ -18,6 +18,8 @@ public:
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory") TArray<FInventoryStack> Items;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") TArray<FCraftingRecipe> Recipes;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory") TMap<FName, int32> ItemWeightGrams;
+ /** Explicit class map used when a unique ledger-owned item is materialized in the world. */
+ UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Inventory|World Items") TMap<FName, TSubclassOf<AActor>> PhysicalItemActorClasses;
  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory") FName QuickAccessItemId = NAME_None;
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryAddItem(const FInventoryStack& Incoming);
  /** Moves one registered physical actor into this inventory and destroys its world representation after commit. */
@@ -26,6 +28,8 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryMoveOwnedItemToStorage(FGuid ItemId, FGuid StorageId);
  /** Moves a stored unique item to this inventory without duplicating the ledger record. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryWithdrawStoredItem(FGuid ItemId, FGuid StorageId);
+ /** Spawns a configured physical actor and atomically transfers its unique item to world ownership. */
+ UFUNCTION(BlueprintCallable, Category="Inventory|World Items") bool TryDropOwnedItem(FGuid ItemId, FVector SpawnLocation, AActor*& OutActor);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryRemoveItem(FName ItemId, int32 Quantity);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool SetQuickAccessItem(FName ItemId);
  UFUNCTION(BlueprintPure, Category="Inventory") int32 GetItemCount(FName ItemId) const;
