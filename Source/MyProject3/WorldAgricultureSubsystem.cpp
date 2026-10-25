@@ -57,23 +57,15 @@ bool UWorldAgricultureSubsystem::FeedAnimal(
     return true;
 }
 
-bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
+bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) const
 {
-    // Bounded catch-up prevents a paused game or malformed caller from applying
-    // unbounded growth/hunger in one operation.
-    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
-    {
-        return false;
-    }
-    if (!FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
+    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
+        !FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
         MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(HungerPerHour) ||
         HungerPerHour < 0.0f || !FMath::IsFinite(ProductHungerLimit) ||
         ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f)
-    {
         return false;
-    }
 
-    // Preflight all mutations before touching any crop or animal.
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         const FWorldCropState& Crop = Pair.Value;
@@ -92,6 +84,12 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
              Animal.ProductUnits == MAX_int32))
             return false;
     }
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
+{
+    if (!CanAdvanceAgricultureStep(DeltaSeconds)) return false;
 
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
@@ -124,7 +122,6 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
         if (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
             !Animal.ProductDefinitionId.IsNone() && Animal.ProductUnits < MAX_int32)
         {
-            // One product unit per simulated hour at a healthy, adequately fed state.
             if (DeltaSeconds >= 3600.0) ++Animal.ProductUnits;
         }
         ++Animal.Revision;
