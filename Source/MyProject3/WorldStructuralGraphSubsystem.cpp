@@ -198,6 +198,53 @@ bool UWorldStructuralGraphSubsystem::CanSafelyRemove(FGuid NodeId) const
     return Node && GetDirectDependents(NodeId).IsEmpty();
 }
 
+bool UWorldStructuralGraphSubsystem::BuildDependentRemovalOrder(
+    FGuid RootNodeId, TArray<FGuid>& OutLeafFirstOrder) const
+{
+    OutLeafFirstOrder.Reset();
+    if (!Nodes.Contains(RootNodeId)) return false;
+
+    TSet<FGuid> Visited;
+    if (!CollectDependentsDepthFirst(RootNodeId, Visited, OutLeafFirstOrder))
+    {
+        OutLeafFirstOrder.Reset();
+        return false;
+    }
+
+    // No partial graph/actor mutation is performed here. The caller receives
+    // a stable leaf-first plan and must commit actor + graph removal together.
+    for (const FGuid& Id : OutLeafFirstOrder)
+    {
+        const FStructuralNodeRecord* Node = Nodes.Find(Id);
+        if (!Node || Node->Revision == MAX_int64)
+        {
+            OutLeafFirstOrder.Reset();
+            return false;
+        }
+    }
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::CollectDependentsDepthFirst(
+    FGuid NodeId, TSet<FGuid>& Visited, TArray<FGuid>& OutOrder) const
+{
+    const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+    if (!Node || Visited.Contains(NodeId)) return false;
+    Visited.Add(NodeId);
+
+    TArray<FGuid> Children = GetDirectDependents(NodeId);
+    Children.Sort([](const FGuid& A, const FGuid& B)
+    {
+        return A.ToString() < B.ToString();
+    });
+    for (const FGuid& ChildId : Children)
+    {
+        if (!CollectDependentsDepthFirst(ChildId, Visited, OutOrder)) return false;
+    }
+    OutOrder.Add(NodeId);
+    return true;
+}
+
 float UWorldStructuralGraphSubsystem::GetAggregateLoad(FGuid NodeId) const
 {
     TSet<FGuid> Visiting;
@@ -244,7 +291,7 @@ bool UWorldStructuralGraphSubsystem::ApplyDamage(
 {
     bOutThresholdExceeded = false;
     FStructuralNodeRecord* Node = Nodes.Find(NodeId);
-    if (!Node || !FMath::IsFinite(DamageAmount) || DamageAmount <= 0.0f)
+    if (!Node || Node->Revision == MAX_int64 || !FMath::IsFinite(DamageAmount) || DamageAmount <= 0.0f)
     {
         return false;
     }
