@@ -6,6 +6,7 @@
 
 class UWorldLogisticsRouteSubsystem;
 class UWorldItemOwnershipSubsystem;
+class UWorldStorageSubsystem;
 
 UENUM(BlueprintType)
 enum class ECargoTransportState : uint8 { InTransit, Delivered, Blocked, Cancelled };
@@ -51,5 +52,6 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Logistics") TMap<FGuid, FWorldCargoTransportRecord> Cargo;
     UWorldLogisticsRouteSubsystem* GetRoutes() const;
     UWorldItemOwnershipSubsystem* GetOwnership() const;
+    UWorldStorageSubsystem* GetStorage() const;
     bool TryDeliver(FWorldCargoTransportRecord& Record);
 };
