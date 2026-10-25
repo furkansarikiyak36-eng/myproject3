@@ -1363,6 +1363,46 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     return FWorldOperationResult::Success(OperationId, Message, AffectedIds);
 }
 
+FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
+    ELogCutAction Action, float NormalizedWork, FGuid OperationId)
+{
+    if (!FMath::IsFinite(NormalizedWork) || NormalizedWork <= 0.0f ||
+        NormalizedWork > 1.0f)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InvalidState, OperationId,
+            FText::FromString(TEXT("Cut work must be finite and within (0, 1].")));
+    }
+
+    if (!CanApplyCutAction(Action))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration, OperationId,
+            FText::FromString(GetCutActionBlockReason(Action)));
+    }
+
+    if (!bHasActiveCutProgress || ActiveCutAction != Action)
+    {
+        ActiveCutAction = Action;
+        CutProgress = 0.0f;
+        bHasActiveCutProgress = true;
+    }
+
+    CutProgress = FMath::Clamp(CutProgress + NormalizedWork, 0.0f, 1.0f);
+    if (CutProgress < 1.0f)
+    {
+        return FWorldOperationResult::Success(
+            OperationId,
+            FText::FromString(FString::Printf(TEXT("Cut progress: %.0f%%."), CutProgress * 100.0f)),
+            TArray<FGuid>());
+    }
+
+    const FWorldOperationResult CommitResult = TryApplyCutAction(Action, OperationId);
+    CutProgress = 0.0f;
+    bHasActiveCutProgress = false;
+    return CommitResult;
+}
+
 FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     ELogCutAction Action,
     FGuid OperationId)
