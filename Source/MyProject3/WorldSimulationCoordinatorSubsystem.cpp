@@ -136,12 +136,14 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     auto RollbackStep = [&]() -> bool
     {
         bool bRollbackSucceeded = true;
+        // Restore ownership before cargo because cargo snapshot validation is
+        // intentionally cross-domain and checks the ledger's current owner/revision.
+        bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems) && bRollbackSucceeded;
         bRollbackSucceeded = Cargo->RestoreSnapshot(BeforeCargo) && bRollbackSucceeded;
         bRollbackSucceeded = Production->RestoreSnapshot(BeforeStations, BeforeRecipes) && bRollbackSucceeded;
         bRollbackSucceeded = Survival->RestoreSnapshot(BeforeProfiles, BeforeDiscoveries,
             BeforeWeather, BeforeWeatherSeverity) && bRollbackSucceeded;
         bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
-        bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems) && bRollbackSucceeded;
         bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
         if (!bRollbackSucceeded)
