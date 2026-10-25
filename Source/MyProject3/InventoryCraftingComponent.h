@@ -4,6 +4,8 @@
 #include "InventoryCraftingTypes.h"
 #include "InventoryCraftingComponent.generated.h"
 
+class AActor;
+
 UCLASS(ClassGroup=(Gameplay), meta=(BlueprintSpawnableComponent))
 class MYPROJECT3_API UInventoryCraftingComponent : public UActorComponent
 {
