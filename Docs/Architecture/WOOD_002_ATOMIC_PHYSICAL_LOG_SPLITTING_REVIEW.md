@@ -3,6 +3,7 @@
 **Branch:** `fix/atomic-log-piece-splitting`  
 **Base:** `fix/log-quarter-cross-section-semantics`  
 **Pull request:** [#23 — Atomically split logs into uniquely owned physical pieces](https://github.com/furkansarikiyak36-eng/myproject3/pull/23)  
+**Pull request:** [#23 — Atomically split logs into uniquely owned physical pieces](https://github.com/furkansarikiyak36-eng/myproject3/pull/23)  
 **Scope:** Create two physical outputs for the cross-section split/quarter actions while preserving source identity, creating a unique second identity, and keeping ownership receipts consistent through rollback/save snapshots.  
 **Evidence level:** Static source review and structural checks only. UE 5.8 UHT/UBT, Editor, PIE, failure injection, asset-pivot validation, and save/load runtime tests were not run.
 
