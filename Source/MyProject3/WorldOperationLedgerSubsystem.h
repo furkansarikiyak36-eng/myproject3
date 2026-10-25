@@ -17,23 +17,23 @@ struct FWorldOperationLedgerEntry
 {
     GENERATED_BODY()
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     FGuid OperationId;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     EWorldOperationLedgerEntryState State = EWorldOperationLedgerEntryState::Pending;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     FWorldOperationResult Result;
 };
 
 /**
- * World-local in-memory deduplication ledger.
+ * World-local deduplication ledger with explicit snapshot/restore support.
  *
  * Call TryBeginOperation before a mutation. A caller must only commit a
  * mutation after successfully reserving the operation ID, then complete the
  * entry with the final result. This ledger does not itself make mutations
- * atomic and is not durable across world teardown/restart.
+ * atomic. Save coordination rejects snapshots while an operation is Pending.
  */
 UCLASS()
 class MYPROJECT3_API UWorldOperationLedgerSubsystem : public UWorldSubsystem
@@ -61,6 +61,13 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
     int32 GetEntryCount() const { return Entries.Num(); }
+
+    UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
+    bool HasPendingOperations() const;
+
+    /** Stable ordered checkpoint for rollback/save coordination. */
+    void ExportSnapshot(TArray<FWorldOperationLedgerEntry>& OutEntries) const;
+    bool RestoreSnapshot(const TArray<FWorldOperationLedgerEntry>& Snapshot);
 
 private:
     UPROPERTY(Transient)
