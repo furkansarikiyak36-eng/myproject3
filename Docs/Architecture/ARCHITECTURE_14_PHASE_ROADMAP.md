@@ -8,7 +8,7 @@
 
 Maintain one dependency-aware map for all 14 phases. Phase/pass branches are stacked work, not independent proof of completion. Compare each branch against its intended base before integration; do not merge work branches directly to `main` before the final integration gate.
 
-Canonical IDs M001–M119 are immutable. Landscape Builder is a cross-cutting terrain-authoring workstream supporting existing IDs, not a new mechanic-ID set.
+Canonical IDs M001–M119 are immutable. Landscape Builder is a cross-cutting terrain-authoring workstream supporting existing IDs, not a new mechanic-ID set. The detailed missing-behavior analysis and dependency plan is in `M001_M119_GAP_ANALYSIS_AND_IMPLEMENTATION_PLAN.md`; use it alongside the registry rather than treating names as complete specifications.
 
 ## Phase map
 
@@ -42,7 +42,7 @@ The canonical registry groups M101–M119 under one broad owner. Phases 11–14 
 7. Logistics and production queues, then survival systems.
 8. Integrated save/load, discovery persistence, cross-domain consistency and final 119-mechanic demo.
 
-Detailed terrain plan: `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md`.
+Detailed plans: `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md` (terrain authoring) and `M001_M119_GAP_ANALYSIS_AND_IMPLEMENTATION_PLAN.md` (scope, source gaps and dependency-ordered closure).
 
 ## Landscape Builder scope
 
@@ -52,7 +52,7 @@ Do not duplicate the full native Landscape editor. Do not treat a heightfield as
 
 ## Required mechanic record
 
-Every M-ID must record canonical name/owner, prerequisites/configuration, authoritative state owner/transitions, success effect, failure/no-partial-mutation behavior, cross-system contracts, retry/idempotency, persistence schema/restore order, acceptance criteria and verification status.
+Every M-ID must record canonical name/owner, prerequisites/configuration, authoritative state owner/transitions, success effect, exact physical/logical output, failure/no-partial-mutation behavior, cross-system contracts, retry/idempotency, persistence schema/restore order, player-facing feedback, step-by-step acceptance evidence and verification status. Use child requirement keys such as `M019-R01` to refine criteria without adding or renumbering canonical M-IDs.
 
 ## Status vocabulary
 
