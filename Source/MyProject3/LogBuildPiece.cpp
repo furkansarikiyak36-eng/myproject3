@@ -780,85 +780,99 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
         return false;
     }
 
+    ELogPieceType OutputType = ELogPieceType::Other;
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::FullRound &&
-            IsValid(SplitHalfVariantMesh) &&
-            IsValidCrossSectionCenterOffset(SplitHalfPieceCenterOffsetLocal, LongitudinalAxis);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound)
+            return false;
+        OutputType = ELogPieceType::SplitHalfLog;
+        return IsValid(GetConfiguredMeshForPieceType(OutputType)) &&
+            IsValidCrossSectionCenterOffset(GetConfiguredSplitCenterOffset(Action), LongitudinalAxis);
     case ELogCutAction::Quarter:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::HalfRound &&
-            IsValid(QuarterVariantMesh) &&
-            IsValidCrossSectionCenterOffset(QuarterPieceCenterOffsetLocal, LongitudinalAxis);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return false;
+        OutputType = ELogPieceType::QuarterSectionLog;
+        return IsValid(GetConfiguredMeshForPieceType(OutputType)) &&
+            IsValidCrossSectionCenterOffset(GetConfiguredSplitCenterOffset(Action), LongitudinalAxis);
     case ELogCutAction::Hewn:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::FullRound &&
-            IsValid(HewnVariantMesh);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound)
+            return false;
+        OutputType = ELogPieceType::HewnLog;
+        break;
     case ELogCutAction::Gutter:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::HalfRound &&
-            IsValid(GutterVariantMesh);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return false;
+        OutputType = ELogPieceType::GutterLog;
+        break;
     case ELogCutAction::Trough:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::HalfRound &&
-            IsValid(TroughVariantMesh);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return false;
+        OutputType = ELogPieceType::TroughLog;
+        break;
     case ELogCutAction::Kalas:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::FullRound &&
-            IsValid(KalasVariantMesh);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound)
+            return false;
+        OutputType = ELogPieceType::SquaredBeam;
+        break;
     case ELogCutAction::Plank:
-        return GeometryState.CrossSectionShape == ELogCrossSectionShape::HalfRound &&
-            IsValid(PlankVariantMesh);
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return false;
+        OutputType = ELogPieceType::Plank;
+        break;
     default:
         return false;
     }
+
+    return IsValid(GetConfiguredMeshForPieceType(OutputType));
 }
 
 FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
 {
     if (bIsPlaced)
-    {
         return TEXT("Remove the log from the structure before processing it.");
-    }
     if (bIsHeld)
-    {
         return TEXT("Drop the log before processing it.");
-    }
     if (GetAttachedPieceCount() > 0)
-    {
         return TEXT("Remove attached pieces before processing the support log.");
-    }
+
+    if (!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet())
+        return TEXT("No unique processing mesh set is selected. Select a set whose base-round mesh matches this actor; mesh length is not inferred from its filename.");
 
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
         if (GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound)
             return TEXT("Only a full-round cross-section can be split into half-rounds.");
-        if (!IsValid(SplitHalfVariantMesh))
-            return TEXT("No split-half output mesh is configured.");
-        return TEXT("Configure a non-zero cross-section center offset for the two half-round outputs.");
+        if (!IsValid(GetConfiguredMeshForPieceType(ELogPieceType::SplitHalfLog)))
+            return TEXT("No split-half output mesh is configured for this processing mesh set.");
+        return TEXT("Configure a non-zero cross-section center offset for the two half-round outputs in the active mesh set.");
     case ELogCutAction::Quarter:
         if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
             return TEXT("Quarter-round shaping requires a half-round cross-section first.");
-        if (!IsValid(QuarterVariantMesh))
-            return TEXT("No quarter cross-section mesh is configured.");
-        return TEXT("Configure a non-zero cross-section center offset for the two quarter-section outputs.");
+        if (!IsValid(GetConfiguredMeshForPieceType(ELogPieceType::QuarterSectionLog)))
+            return TEXT("No quarter cross-section mesh is configured for this processing mesh set.");
+        return TEXT("Configure a non-zero cross-section center offset for the two quarter-section outputs in the active mesh set.");
     case ELogCutAction::Gutter:
-        return GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound
-            ? TEXT("A groove can only be cut into a half-round cross-section.")
-            : TEXT("No gutter mesh is configured for this log length.");
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return TEXT("A groove can only be cut into a half-round cross-section.");
+        return TEXT("No gutter mesh is configured for this processing mesh set.");
     case ELogCutAction::Trough:
-        return GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound
-            ? TEXT("A trough can only be carved into a half-round cross-section.")
-            : TEXT("No trough mesh is configured for this log length.");
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return TEXT("A trough can only be carved into a half-round cross-section.");
+        return TEXT("No trough mesh is configured for this processing mesh set.");
     case ELogCutAction::Hewn:
-        return GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound
-            ? TEXT("Hewing is available only on a full-round cross-section in this prototype.")
-            : TEXT("No hewn mesh is configured for this log length.");
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound)
+            return TEXT("Hewing is available only on a full-round cross-section in this prototype.");
+        return TEXT("No hewn mesh is configured for this processing mesh set.");
     case ELogCutAction::Kalas:
-        return GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound
-            ? TEXT("Kalas shaping requires a full-round cross-section in this prototype.")
-            : TEXT("No kalas mesh is configured for this log length.");
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::FullRound)
+            return TEXT("Kalas shaping requires a full-round cross-section in this prototype.");
+        return TEXT("No squared-beam mesh is configured for this processing mesh set.");
     case ELogCutAction::Plank:
-        return GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound
-            ? TEXT("Plank shaping requires a half-round cross-section first.")
-            : TEXT("No plank mesh is configured for this log length.");
+        if (GeometryState.CrossSectionShape != ELogCrossSectionShape::HalfRound)
+            return TEXT("Plank shaping requires a half-round cross-section first.");
+        return TEXT("No plank mesh is configured for this processing mesh set.");
     default:
         return TEXT("Unsupported processing action.");
     }
