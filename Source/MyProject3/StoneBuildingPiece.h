@@ -7,6 +7,7 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 
 /**
  * Domain owner for one physical stone piece. Anchors and connection state are
@@ -25,6 +26,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stone")
     TObjectPtr<UStaticMeshComponent> Mesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Stone|Structure")
+    TObjectPtr<UWorldObjectIdentityComponent> StructuralIdentity;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone")
     EStonePieceType PieceType = EStonePieceType::RawStone;
