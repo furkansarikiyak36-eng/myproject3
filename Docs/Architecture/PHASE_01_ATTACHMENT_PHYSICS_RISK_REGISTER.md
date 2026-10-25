@@ -45,6 +45,15 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 **Follow-up:** Keep validation before mutation. When attachment can fail, make the operation return a result and either perform a guaranteed commit step or roll back both occupancy flags and any partially registered relationship. Do not add a speculative global transaction framework in this phase.
 
+
+### R7 — Receiver anchor was not independently revalidated by the acceptance function
+
+**Evidence:** `CanSnapPointAccept` now explicitly requires the target anchor to have `bCanReceive=true` and `bOccupied=false`. Before this guard, the carry component's candidate search checked receiver availability, but the acceptance/reservation API itself did not independently enforce both target conditions.
+
+**Impact:** Direct or future callers of `TryReserveSnapPoints` could otherwise attempt to reserve an occupied or source-only target anchor if they bypassed the carry component's candidate search.
+
+**Follow-up:** Source guard added. Add focused Unreal checks for occupied target, source-only target, occupied source, incompatible tag/type, and a valid receiver. No build or runtime test has been run.
+
 ### R3 — Runtime placement mutates the startup-default property
 
 **Evidence:** `SetPlacedState` writes both `bIsPlaced` and `bStartsPlaced`. `BeginPlay` initializes `bIsPlaced` from `bStartsPlaced`.
