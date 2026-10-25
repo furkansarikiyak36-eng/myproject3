@@ -1363,6 +1363,16 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     return FWorldOperationResult::Success(OperationId, Message, AffectedIds);
 }
 
+FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
+    ELogCutAction Action,
+    FGuid OperationId)
+{
+    // Compatibility entry point for existing Blueprints. New chopping tools can
+    // call TryAdvanceCutProgress repeatedly; legacy one-shot actions still pass
+    // through the same progress state and geometry commit boundary.
+    return TryAdvanceCutProgress(Action, 1.0f, OperationId);
+}
+
 FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
     ELogCutAction Action, float NormalizedWork, FGuid OperationId)
 {
@@ -1397,13 +1407,13 @@ FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
             TArray<FGuid>());
     }
 
-    const FWorldOperationResult CommitResult = TryApplyCutAction(Action, OperationId);
+    const FWorldOperationResult CommitResult = CommitCutAction(Action, OperationId);
     CutProgress = 0.0f;
     bHasActiveCutProgress = false;
     return CommitResult;
 }
 
-FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
+FWorldOperationResult ALogBuildPiece::CommitCutAction(
     ELogCutAction Action,
     FGuid OperationId)
 {
