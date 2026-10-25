@@ -108,6 +108,7 @@ bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Recor
 
     FWorldOwnedItemRecord Item;
     if (!Ownership->TryGetItem(Record.ItemId, Item) ||
+        Item.Revision != Record.ItemRevision ||
         Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != Record.CargoId)
         return false;
 
@@ -126,6 +127,15 @@ bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Recor
             Record.CargoId, Item.WorldLocation, RolledBack))
         {
             Record.ItemRevision = RolledBack.Revision;
+            // The previous delivery operation has an immutable success receipt.
+            // Never reuse that id after compensation: the next attempt is new work.
+            Record.DeliveryOperationId = FGuid::NewGuid();
+            if (!Record.DeliveryOperationId.IsValid())
+            {
+                UE_LOG(LogTemp, Error, TEXT("Could not issue a fresh delivery operation ID for cargo %s."),
+                    *Record.CargoId.ToString());
+                return false;
+            }
         }
         else
         {
