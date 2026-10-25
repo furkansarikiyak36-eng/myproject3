@@ -78,6 +78,9 @@ public:
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool InitializeDirector(double FirstRaidDelaySeconds = 900.0);
 
+    UFUNCTION(BlueprintPure, Category="Threat")
+    bool IsDirectorInitialized() const { return bInitialized; }
+
     /** Call from the fixed-step world simulation driver, not every render frame. */
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool AdvanceDirector();
