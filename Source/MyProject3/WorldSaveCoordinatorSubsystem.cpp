@@ -451,7 +451,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
-    if (!Items->RestoreSnapshot(Snapshot->Items, Snapshot->ItemTransferReceipts, Snapshot->ItemSplitReceipts)) return false;
+    if (!Items->RestoreSnapshot(ValidatedPhysicalItems, Snapshot->ItemTransferReceipts, Snapshot->ItemSplitReceipts)) return false;
     if (!OperationLedger->RestoreSnapshot(Snapshot->OperationLedgerEntries)) return false;
     if (!ApplyPhysicalActorSnapshots(World, Snapshot->PhysicalActors))
     {
