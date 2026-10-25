@@ -255,6 +255,62 @@ bool ALogBuildPiece::SelectProcessingMeshSetFromCurrentMesh()
     return true;
 }
 
+void ALogBuildPiece::SynchronizeGeometryStateFromCurrentMeshSet()
+{
+    const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+    const UStaticMesh* CurrentMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+    if (!Set || !CurrentMesh)
+        return;
+
+    if (Set->BaseRoundMesh.Get() == CurrentMesh)
+    {
+        GeometryState.LengthFraction = ELogLengthFraction::FullLength;
+        GeometryState.CrossSectionShape = ELogCrossSectionShape::FullRound;
+        PieceType = ELogPieceType::WholeLog;
+        return;
+    }
+
+    const FLogPieceMeshVariant* Match = nullptr;
+    for (const FLogPieceMeshVariant& Variant : Set->MeshVariants)
+    {
+        if (Variant.Mesh.Get() != CurrentMesh)
+            continue;
+        if (Match)
+            return; // A shared mesh assigned to multiple states is ambiguous.
+        Match = &Variant;
+    }
+    if (!Match)
+        return;
+
+    GeometryState.LengthFraction = Match->LengthFraction;
+    GeometryState.CrossSectionShape = Match->CrossSectionShape;
+
+    switch (Match->CrossSectionShape)
+    {
+    case ELogCrossSectionShape::FullRound:
+        switch (Match->LengthFraction)
+        {
+        case ELogLengthFraction::ThreeQuarterLength: PieceType = ELogPieceType::ThreeQuarterLog; break;
+        case ELogLengthFraction::HalfLength: PieceType = ELogPieceType::HalfLengthLog; break;
+        case ELogLengthFraction::QuarterLength: PieceType = ELogPieceType::QuarterLog; break;
+        case ELogLengthFraction::FullLength:
+        default: PieceType = ELogPieceType::WholeLog; break;
+        }
+        break;
+    case ELogCrossSectionShape::HalfRound: PieceType = ELogPieceType::SplitHalfLog; break;
+    case ELogCrossSectionShape::QuarterRound: PieceType = ELogPieceType::QuarterSectionLog; break;
+    case ELogCrossSectionShape::HewnFlat: PieceType = ELogPieceType::HewnLog; break;
+    case ELogCrossSectionShape::SquareBeam: PieceType = ELogPieceType::SquaredBeam; break;
+    case ELogCrossSectionShape::Grooved: PieceType = ELogPieceType::GutterLog; break;
+    case ELogCrossSectionShape::Trough: PieceType = ELogPieceType::TroughLog; break;
+    case ELogCrossSectionShape::Plank: PieceType = ELogPieceType::Plank; break;
+    case ELogCrossSectionShape::Notched: PieceType = ELogPieceType::NotchedLog; break;
+    case ELogCrossSectionShape::Joint: PieceType = ELogPieceType::JointPiece; break;
+    case ELogCrossSectionShape::Other:
+    default: PieceType = ELogPieceType::Other; break;
+    }
+}
+
 const FLogProcessingMeshSet* ALogBuildPiece::GetActiveProcessingMeshSet() const
 {
     if (ProcessingMeshSets.IsEmpty() || SelectedProcessingMeshSetId.IsNone())
@@ -461,8 +517,10 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
             *GetName());
     }
 
-    // Keep the inspector's legacy piece label and the orthogonal geometry fields aligned.
+    // Keep the inspector's legacy piece label and the orthogonal geometry fields aligned,
+    // then let an exact mesh-table match override it with authoritative orthogonal state.
     UpdateGeometryStateFromPieceType(false);
+    SynchronizeGeometryStateFromCurrentMeshSet();
 
     // Preserve hand-authored anchors (for example, test-map top sockets) but
     // rebuild only auto-generated sockets when mesh/spacing/axis properties change.
