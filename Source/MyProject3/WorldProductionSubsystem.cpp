@@ -421,7 +421,7 @@ bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
 
     Identity->InstanceId = NewItemId;
     Identity->SetDefinitionId(DefinitionId);
-    UGameplayStatics::FinishSpawningActor(Piece, SpawnTransform);
+    Piece->FinishSpawning(SpawnTransform);
     if (!IsValid(Piece))
         return false;
 
