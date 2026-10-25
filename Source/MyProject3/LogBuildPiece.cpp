@@ -869,55 +869,76 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
 FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
 {
     if (bIsPlaced)
-    {
         return TEXT("Remove the log from the structure before processing it.");
-    }
     if (bIsHeld)
-    {
         return TEXT("Drop the log before processing it.");
-    }
     if (GetAttachedPieceCount() > 0)
-    {
         return TEXT("Remove attached pieces before processing the support log.");
-    }
 
+    ELogCrossSectionProfile RequiredProfile = ELogCrossSectionProfile::Other;
+    bool bNeedsSplitConfiguration = false;
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        if (PieceType != ELogPieceType::WholeLog)
-            return TEXT("Only a whole log can be split into half-rounds.");
-        if (!IsValid(SplitHalfVariantMesh))
-            return TEXT("No split-half output mesh is configured.");
-        return TEXT("Configure a non-zero cross-section center offset for the two half-round outputs.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
+            return TEXT("Splitting into half-rounds requires a round cross-section.");
+        RequiredProfile = ELogCrossSectionProfile::HalfRound;
+        bNeedsSplitConfiguration = true;
+        break;
     case ELogCutAction::Quarter:
-        if (PieceType != ELogPieceType::SplitHalfLog)
-            return TEXT("Quarter-round shaping requires a split half-round log first.");
-        if (!IsValid(QuarterVariantMesh))
-            return TEXT("No quarter cross-section mesh is configured.");
-        return TEXT("Configure a non-zero cross-section center offset for the two quarter-section outputs.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return TEXT("Quarter-round shaping requires a half-round cross-section first.");
+        RequiredProfile = ELogCrossSectionProfile::QuarterRound;
+        bNeedsSplitConfiguration = true;
+        break;
     case ELogCutAction::Gutter:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("A groove can only be cut into a split half-round log.")
-            : TEXT("No gutter mesh is configured for this log length.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return TEXT("A groove can only be cut into a half-round cross-section.");
+        RequiredProfile = ELogCrossSectionProfile::GroovedHalfRound;
+        break;
     case ELogCutAction::Trough:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("A trough can only be carved into a split half-round log.")
-            : TEXT("No trough mesh is configured for this log length.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return TEXT("A trough requires a half-round cross-section first.");
+        RequiredProfile = ELogCrossSectionProfile::Trough;
+        break;
     case ELogCutAction::Hewn:
-        return PieceType != ELogPieceType::WholeLog
-            ? TEXT("Hewing is available only on a whole log in this prototype.")
-            : TEXT("No hewn mesh is configured for this log length.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
+            return TEXT("Hewing requires a round cross-section in this prototype.");
+        RequiredProfile = ELogCrossSectionProfile::Hewn;
+        break;
     case ELogCutAction::Kalas:
-        return PieceType != ELogPieceType::WholeLog
-            ? TEXT("Kalas shaping requires a whole log in this prototype.")
-            : TEXT("No kalas mesh is configured for this log length.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
+            return TEXT("Squared-beam shaping requires a round cross-section.");
+        RequiredProfile = ELogCrossSectionProfile::SquareBeam;
+        break;
     case ELogCutAction::Plank:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("Plank shaping requires a split half-round log first.")
-            : TEXT("No plank mesh is configured for this log length.");
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return TEXT("Plank shaping requires a half-round cross-section first.");
+        RequiredProfile = ELogCrossSectionProfile::Plank;
+        break;
     default:
         return TEXT("Unsupported processing action.");
     }
+
+    UStaticMesh* OutputMesh = nullptr;
+    FVector Offset = FVector::ZeroVector;
+    FRotator Rotation = FRotator::ZeroRotator;
+    if (!TryResolveGeometryVariant(GetLengthFraction(), RequiredProfile,
+        OutputMesh, &Offset, &Rotation) || !IsValid(OutputMesh))
+    {
+        return FString::Printf(
+            TEXT("No mesh is configured for length '%s' and cross-section '%s'. Add an exact GeometryVariantMeshes entry; legacy mesh slots only cover full-length pieces."),
+            *UEnum::GetValueAsString(GetLengthFraction()),
+            *UEnum::GetValueAsString(RequiredProfile));
+    }
+
+    if (bNeedsSplitConfiguration &&
+        !IsValidCrossSectionCenterOffset(Offset, LongitudinalAxis))
+    {
+        return TEXT("Configure a valid, non-zero cross-section center offset for this exact length/profile mesh variant.");
+    }
+
+    return TEXT("The requested processing action is currently blocked.");
 }
 
 bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
@@ -941,10 +962,15 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     UWorldObjectIdentityComponent* Identity =
         FindComponentByClass<UWorldObjectIdentityComponent>();
 
-    const FVector LocalOffset = Action == ELogCutAction::SplitHalf
-        ? SplitHalfPieceCenterOffsetLocal
-        : QuarterPieceCenterOffsetLocal;
-    if (!World || !Ownership || !Graph || !Identity || !Mesh ||
+    const ELogLengthFraction OutputLength = GetLengthFraction();
+    const ELogCrossSectionProfile OutputProfile = CrossSectionFromLegacyType(OutputType);
+    UStaticMesh* ResolvedOutputMesh = nullptr;
+    FVector LocalOffset = FVector::ZeroVector;
+    FRotator ChildRotationOffset = FRotator::ZeroRotator;
+    if (!TryResolveGeometryVariant(OutputLength, OutputProfile,
+            ResolvedOutputMesh, &LocalOffset, &ChildRotationOffset) ||
+        ResolvedOutputMesh != OutputMesh ||
+        !World || !Ownership || !Graph || !Identity || !Mesh ||
         !IsValid(OutputMesh) || OutputDefinitionId.IsNone() ||
         CurrentItem.OwnerKind != EWorldItemOwnerKind::World ||
         CurrentItem.Quantity != 1 ||
@@ -973,9 +999,6 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     // authored local rotations are per-mesh because imported pivots/cut planes
     // can differ. The defaults assume a log axis of X and may be overridden
     // in the asset Blueprint.
-    const FRotator ChildRotationOffset = Action == ELogCutAction::SplitHalf
-        ? SplitHalfChildRotationOffsetLocal
-        : QuarterChildRotationOffsetLocal;
     const FQuat ChildOutputRotation =
         OriginalTransform.GetRotation() * ChildRotationOffset.Quaternion();
 
@@ -1239,12 +1262,17 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         const FName RetryBase = !RetryCurrent.BaseDefinitionId.IsNone()
             ? RetryCurrent.BaseDefinitionId
             : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : RetryCurrent.DefinitionId);
-        const FName RetryDefinition(*FString::Printf(
+        const ELogCrossSectionProfile RetryProfile = CrossSectionFromLegacyType(RetryTargetType);
+        const FName RetryDefinition = MakeCanonicalGeometryDefinitionId(
+            RetryBase, GetLengthFraction(), RetryProfile);
+        const FName LegacyActionDefinition(*FString::Printf(
             TEXT("%s.%s"), *RetryBase.ToString(), RetrySuffix));
         const FName LegacyQuarterDefinition(*FString::Printf(
             TEXT("%s.QuarterLog"), *RetryBase.ToString()));
         const bool bCanonicalRetryMatch =
             RetryCurrent.DefinitionId == RetryDefinition && PieceType == RetryTargetType;
+        const bool bLegacyActionRetryMatch =
+            RetryCurrent.DefinitionId == LegacyActionDefinition && PieceType == RetryTargetType;
         // Pre-migration cut operations stored ".QuarterLog". Accept that receipt
         // only when the loaded actor has already resolved the legacy suffix to
         // the explicit QuarterSectionLog type.
@@ -1287,7 +1315,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             }
         }
 
-        if (bCanonicalRetryMatch || bLegacyQuarterRetryMatch)
+        if (bCanonicalRetryMatch || bLegacyActionRetryMatch || bLegacyQuarterRetryMatch)
         {
             FWorldOwnedItemRecord PreviousResult;
             if (RetryOwnership->TryUpdateItemDefinition(OperationId, RetryCurrent.ItemId,
@@ -1353,31 +1381,24 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        NewMesh = SplitHalfVariantMesh;
         NewType = ELogPieceType::SplitHalfLog;
         break;
     case ELogCutAction::Quarter:
-        NewMesh = QuarterVariantMesh;
         NewType = ELogPieceType::QuarterSectionLog;
         break;
     case ELogCutAction::Hewn:
-        NewMesh = HewnVariantMesh;
         NewType = ELogPieceType::HewnLog;
         break;
     case ELogCutAction::Gutter:
-        NewMesh = GutterVariantMesh;
         NewType = ELogPieceType::GutterLog;
         break;
     case ELogCutAction::Trough:
-        NewMesh = TroughVariantMesh;
         NewType = ELogPieceType::TroughLog;
         break;
     case ELogCutAction::Kalas:
-        NewMesh = KalasVariantMesh;
         NewType = ELogPieceType::SquaredBeam;
         break;
     case ELogCutAction::Plank:
-        NewMesh = PlankVariantMesh;
         NewType = ELogPieceType::Plank;
         break;
     default:
@@ -1387,8 +1408,14 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             FText::FromString(TEXT("Unsupported processing action.")));
     }
 
-    // Recheck the selected output before mutating any authoritative state.
-    if (!IsValid(NewMesh) || !Mesh)
+    // Resolve the exact authored output for this length/profile pair. A legacy
+    // single-slot mesh is never silently reused for a shorter log.
+    FVector OutputSplitOffset = FVector::ZeroVector;
+    FRotator OutputChildRotation = FRotator::ZeroRotator;
+    if (!TryResolveGeometryVariant(GetLengthFraction(),
+            CrossSectionFromLegacyType(NewType), NewMesh,
+            &OutputSplitOffset, &OutputChildRotation) ||
+        !IsValid(NewMesh) || !Mesh)
     {
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::MissingConfiguration,
@@ -1429,8 +1456,8 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     case ELogPieceType::Plank: VariantSuffix = TEXT("Plank"); break;
     default: break;
     }
-    const FName NewDefinitionId(*FString::Printf(
-        TEXT("%s.%s"), *EffectiveBaseDefinition.ToString(), VariantSuffix));
+    const FName NewDefinitionId = MakeCanonicalGeometryDefinitionId(
+        EffectiveBaseDefinition, GetLengthFraction(), CrossSectionFromLegacyType(NewType));
 
     if (Action == ELogCutAction::SplitHalf || Action == ELogCutAction::Quarter)
     {
