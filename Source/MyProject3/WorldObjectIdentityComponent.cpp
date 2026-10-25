@@ -1,5 +1,8 @@
 #include "WorldObjectIdentityComponent.h"
 
+#include "Engine/World.h"
+#include "WorldObjectIdentitySubsystem.h"
+
 UWorldObjectIdentityComponent::UWorldObjectIdentityComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
@@ -8,7 +11,40 @@ UWorldObjectIdentityComponent::UWorldObjectIdentityComponent()
 void UWorldObjectIdentityComponent::BeginPlay()
 {
     Super::BeginPlay();
-    EnsureIdentity();
+
+    if (!EnsureIdentity())
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("WorldObjectIdentityComponent on '%s' could not create an instance ID."),
+            *GetNameSafe(GetOwner()));
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    UWorldObjectIdentitySubsystem* IdentitySubsystem =
+        World ? World->GetSubsystem<UWorldObjectIdentitySubsystem>() : nullptr;
+
+    if (!IdentitySubsystem || !IdentitySubsystem->RegisterIdentity(this))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("WorldObjectIdentityComponent on '%s' could not register its instance ID."),
+            *GetNameSafe(GetOwner()));
+    }
+}
+
+void UWorldObjectIdentityComponent::EndPlay(
+    const EEndPlayReason::Type EndPlayReason)
+{
+    if (UWorld* World = GetWorld())
+    {
+        if (UWorldObjectIdentitySubsystem* IdentitySubsystem =
+            World->GetSubsystem<UWorldObjectIdentitySubsystem>())
+        {
+            IdentitySubsystem->UnregisterIdentity(this);
+        }
+    }
+
+    Super::EndPlay(EndPlayReason);
 }
 
 bool UWorldObjectIdentityComponent::EnsureIdentity()
