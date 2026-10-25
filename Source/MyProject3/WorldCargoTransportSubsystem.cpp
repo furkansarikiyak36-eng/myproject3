@@ -173,13 +173,46 @@ bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTran
     {
         if (!R.CargoId.IsValid() || !R.ItemId.IsValid() || !R.DestinationStorageId.IsValid() ||
             R.OriginNode.IsNone() || R.DestinationNode.IsNone() || R.Route.Num() < 2 ||
+            R.Route[0] != R.OriginNode || R.Route.Last() != R.DestinationNode ||
             !FMath::IsFinite(R.RouteCost) || R.RouteCost < 0.0f ||
             !FMath::IsFinite(R.Progress) || R.Progress < 0.0f || R.Progress > R.RouteCost ||
             !FMath::IsFinite(R.CostPerSecond) || R.CostPerSecond <= 0.0f ||
             R.ItemRevision <= 0 || R.Revision <= 0 || !R.DeliveryOperationId.IsValid() ||
+            static_cast<uint8>(R.State) > static_cast<uint8>(ECargoTransportState::Cancelled) ||
             Proposed.Contains(R.CargoId)) return false;
         Proposed.Add(R.CargoId, R);
     }
+
+    // Cargo snapshots are only valid when their item-ledger ownership agrees.
+    // This rejects orphaned cargo, duplicated ownership and stale delivery records.
+    UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
+    if (!Ownership) return false;
+    for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Proposed)
+    {
+        const FWorldCargoTransportRecord& R = Pair.Value;
+        FWorldOwnedItemRecord Item;
+        if (!Ownership->TryGetItem(R.ItemId, Item) || Item.Revision != R.ItemRevision)
+            return false;
+
+        if (R.State == ECargoTransportState::InTransit || R.State == ECargoTransportState::Blocked)
+        {
+            if (Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != R.CargoId)
+                return false;
+        }
+        else if (R.State == ECargoTransportState::Delivered)
+        {
+            if (Item.OwnerKind != EWorldItemOwnerKind::Storage ||
+                Item.OwnerId != R.DestinationStorageId || R.Progress < R.RouteCost)
+                return false;
+        }
+        else if (R.State == ECargoTransportState::Cancelled)
+        {
+            // A cancelled shipment must not still claim the item is in transit.
+            if (Item.OwnerKind == EWorldItemOwnerKind::InTransit && Item.OwnerId == R.CargoId)
+                return false;
+        }
+    }
+
     Cargo = MoveTemp(Proposed);
     return true;
 }
