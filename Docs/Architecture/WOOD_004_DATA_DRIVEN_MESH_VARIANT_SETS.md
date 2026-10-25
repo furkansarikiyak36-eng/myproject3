@@ -2,6 +2,7 @@
 
 **Branch:** `fix/log-mesh-variant-sets`  
 **Base:** `fix/log-geometry-dimensions`  
+**Pull request:** [#26 — Data-drive log mesh variants and preserve geometry identity](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
 **Scope:** Select exact output meshes by nominal family + length fraction + cross-section shape, and preserve the selection across split, inventory drop and SaveGame.  
 **Evidence level:** Source inspection, repository asset inventory and targeted structural checks. Unreal 5.8 UHT/UBT, Editor, PIE, imported mesh inspection and runtime tests were not run.
 
