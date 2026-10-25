@@ -33,6 +33,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     ELogPieceType PieceType = ELogPieceType::WholeLog;
 
+    /** Orthogonal geometry metadata: piece length fraction and cross-section profile. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Geometry")
+    FLogPieceGeometryState GeometryState;
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Geometry")
+    FLogPieceGeometryState GetGeometryState() const { return GeometryState; }
+
     /** Stable root definition; the ledger DefinitionId may change after processing. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
     FName BaseDefinitionId = NAME_None;
@@ -210,6 +217,9 @@ private:
 
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
+
+    /** Keeps orthogonal geometry metadata aligned with the legacy PieceType label. */
+    void UpdateGeometryStateFromPieceType(bool bPreserveLengthFraction);
 
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
