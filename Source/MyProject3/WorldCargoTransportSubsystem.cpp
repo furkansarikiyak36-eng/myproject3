@@ -143,23 +143,49 @@ bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Recor
 bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) const
 {
     UWorldStorageSubsystem* Storage = GetStorage();
-    if (!Storage || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+    UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
+    if (!Storage || !Ownership || !FMath::IsFinite(DeltaSeconds) ||
+        DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
         return false;
+
     for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
         const FWorldCargoTransportRecord& Record = Pair.Value;
-        if (Record.State == ECargoTransportState::InTransit)
+        if (Record.State != ECargoTransportState::InTransit)
+            continue;
+
+        if (Record.Revision >= MAX_int64 - 1 ||
+            !FMath::IsFinite(Record.RouteCost) || Record.RouteCost < 0.0f ||
+            !FMath::IsFinite(Record.Progress) || Record.Progress < 0.0f ||
+            Record.Progress > Record.RouteCost ||
+            !FMath::IsFinite(Record.CostPerSecond) || Record.CostPerSecond <= 0.0f ||
+            !Storage->HasIncomingReservation(
+                Record.DestinationStorageId, Record.CargoId, Record.ItemId))
+            return false;
+
+        FWorldOwnedItemRecord Item;
+        if (!Ownership->TryGetItem(Record.ItemId, Item) ||
+            Item.Revision != Record.ItemRevision ||
+            Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != Record.CargoId)
+            return false;
+
+        const float ProposedProgress = Record.Progress +
+            Record.CostPerSecond * static_cast<float>(DeltaSeconds);
+        if (!FMath::IsFinite(ProposedProgress))
+            return false;
+
+        const bool bWillArrive = FMath::Min(Record.RouteCost, ProposedProgress) >= Record.RouteCost;
+        if (bWillArrive)
         {
-            if (!Storage->HasIncomingReservation(
+            if (!Storage->CanCommitIncomingReservation(
                 Record.DestinationStorageId, Record.CargoId, Record.ItemId))
                 return false;
-            const float ProposedProgress = Record.Progress +
-                Record.CostPerSecond * static_cast<float>(DeltaSeconds);
-            if (Record.Revision == MAX_int64 || !FMath::IsFinite(ProposedProgress))
-                return false;
-            if (FMath::Min(Record.RouteCost, ProposedProgress) >= Record.RouteCost &&
-                Record.Revision >= MAX_int64 - 1)
-                return false;
+        }
+        else if (Record.Revision >= MAX_int64 - 2)
+        {
+            // A non-final progress update must not consume the last revision
+            // and strand cargo permanently one step short of delivery.
+            return false;
         }
     }
     return true;
@@ -167,24 +193,33 @@ bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) con
 
 bool UWorldCargoTransportSubsystem::AdvanceCargoStep(double DeltaSeconds)
 {
-    if (!CanAdvanceCargoStep(DeltaSeconds)) return false;
+    if (!CanAdvanceCargoStep(DeltaSeconds))
+        return false;
 
     for (TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
         FWorldCargoTransportRecord& Record = Pair.Value;
-        if (Record.State == ECargoTransportState::Delivered ||
-            Record.State == ECargoTransportState::Cancelled)
-            continue;
-        if (Record.State == ECargoTransportState::Blocked)
+        if (Record.State != ECargoTransportState::InTransit)
             continue;
 
-        Record.Progress = FMath::Min(Record.RouteCost,
-            Record.Progress + Record.CostPerSecond * static_cast<float>(DeltaSeconds));
-        ++Record.Revision;
-        if (Record.Progress >= Record.RouteCost && !TryDeliver(Record))
+        const float ProposedProgress = Record.Progress +
+            Record.CostPerSecond * static_cast<float>(DeltaSeconds);
+        Record.Progress = FMath::Min(Record.RouteCost, ProposedProgress);
+
+        if (Record.Progress >= Record.RouteCost)
         {
-            Record.State = ECargoTransportState::Blocked;
-            Record.BlockedReason = FName(TEXT("OwnershipOrDestinationUnavailable"));
+            // TryDeliver owns the single revision increment for successful
+            // arrival. A rejected delivery becomes an explicit blocked result.
+            if (!TryDeliver(Record))
+            {
+                ++Record.Revision;
+                Record.State = ECargoTransportState::Blocked;
+                Record.BlockedReason = FName(TEXT("OwnershipOrDestinationUnavailable"));
+            }
+        }
+        else
+        {
+            ++Record.Revision;
         }
     }
     return true;
