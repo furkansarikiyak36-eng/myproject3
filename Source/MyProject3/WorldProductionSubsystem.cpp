@@ -210,3 +210,50 @@ bool UWorldProductionSubsystem::GetStation(
     OutStation = *Found;
     return true;
 }
+
+void UWorldProductionSubsystem::ExportSnapshot(
+    TArray<FWorldProductionStation>& OutStations, TArray<FWorldProductionRecipe>& OutRecipes) const
+{
+    Stations.GenerateValueArray(OutStations);
+    OutStations.Sort([](const FWorldProductionStation& A, const FWorldProductionStation& B)
+        { return A.StationId.ToString() < B.StationId.ToString(); });
+    OutRecipes = Recipes;
+    OutRecipes.Sort([](const FWorldProductionRecipe& A, const FWorldProductionRecipe& B)
+        { return A.RecipeId.LexicalLess(B.RecipeId); });
+}
+
+bool UWorldProductionSubsystem::RestoreSnapshot(
+    const TArray<FWorldProductionStation>& StationSnapshot,
+    const TArray<FWorldProductionRecipe>& RecipeSnapshot)
+{
+    if (StationSnapshot.Num() > MaxStations || RecipeSnapshot.Num() > MaxRecipes ||
+        MaxStations <= 0 || MaxRecipes <= 0) return false;
+    TArray<FWorldProductionRecipe> NewRecipes;
+    TSet<FName> RecipeIds;
+    for (const FWorldProductionRecipe& R : RecipeSnapshot)
+    {
+        if (R.RecipeId.IsNone() || RecipeIds.Contains(R.RecipeId) || R.Inputs.IsEmpty() ||
+            R.Outputs.IsEmpty() || !FMath::IsFinite(R.DurationSeconds) || R.DurationSeconds <= 0.0)
+            return false;
+        for (const FProductionIngredient& I : R.Inputs)
+            if (I.ItemId.IsNone() || I.Quantity <= 0) return false;
+        for (const FProductionIngredient& O : R.Outputs)
+            if (O.ItemId.IsNone() || O.Quantity <= 0) return false;
+        RecipeIds.Add(R.RecipeId);
+        NewRecipes.Add(R);
+    }
+    TMap<FGuid, FWorldProductionStation> NewStations;
+    for (const FWorldProductionStation& S : StationSnapshot)
+    {
+        if (!S.StationId.IsValid() || S.StationTag.IsNone() || S.StorageCapacityUnits <= 0 ||
+            S.Revision <= 0 || NewStations.Contains(S.StationId) ||
+            CountStockUnits(S.Stock) > S.StorageCapacityUnits) return false;
+        for (const FWorldProductionJob& J : S.Jobs)
+            if (!J.JobId.IsValid() || !RecipeIds.Contains(J.RecipeId) ||
+                !FMath::IsFinite(J.ProgressSeconds) || J.ProgressSeconds < 0.0) return false;
+        NewStations.Add(S.StationId, S);
+    }
+    Recipes = MoveTemp(NewRecipes);
+    Stations = MoveTemp(NewStations);
+    return true;
+}
