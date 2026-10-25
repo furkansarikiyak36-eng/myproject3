@@ -20,6 +20,9 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/ObjectAndNameAsStringProxyArchive.h"
 #include "EngineUtils.h"
 #include "Logging/LogMacros.h"
 
@@ -93,13 +96,15 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
         ActorState.DefinitionId = Identity->DefinitionId;
         ActorState.LifecycleState = Identity->LifecycleState;
         ActorState.StateRevision = Identity->StateRevision;
+        {
+            FMemoryWriter Writer(ActorState.ActorSaveGameData, true);
+            FObjectAndNameAsStringProxyArchive ActorArchive(Writer, true);
+            ActorArchive.ArIsSaveGame = true;
+            Actor->Serialize(ActorArchive);
+        }
 
         TArray<UPrimitiveComponent*> Primitives;
         Actor->GetComponents<UPrimitiveComponent>(Primitives);
-        Primitives.Sort([](const UPrimitiveComponent& A, const UPrimitiveComponent& B)
-        {
-            return A.GetFName().LexicalLess(B.GetFName());
-        });
         for (UPrimitiveComponent* Primitive : Primitives)
         {
             if (!IsValid(Primitive))
@@ -171,7 +176,6 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
             {
                 return false;
             }
-            UActorComponent* FoundComponent = (*Found)->GetComponentByClass(UPrimitiveComponent::StaticClass());
             bool bFoundNamedComponent = false;
             TArray<UPrimitiveComponent*> Primitives;
             (*Found)->GetComponents<UPrimitiveComponent>(Primitives);
@@ -230,6 +234,14 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
         if (!Actor || !Identity)
             return false;
 
+        {
+            FMemoryReader Reader(State.ActorSaveGameData, true);
+            FObjectAndNameAsStringProxyArchive ActorArchive(Reader, true);
+            ActorArchive.ArIsSaveGame = true;
+            Actor->Serialize(ActorArchive);
+            if (Reader.IsError())
+                return false;
+        }
         Identity->DefinitionId = State.DefinitionId;
         Identity->LifecycleState = State.LifecycleState;
         Identity->StateRevision = State.StateRevision;
