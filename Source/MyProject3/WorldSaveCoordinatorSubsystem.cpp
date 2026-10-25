@@ -12,6 +12,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "Logging/LogMacros.h"
 
 bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGame* OutSave) const
 {
@@ -97,6 +98,10 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     // Every subsystem validates its replacement in local temporaries before
     // swapping state. If a later domain rejects a payload, restore the captured
     // pre-load manifest so callers do not continue with a mixed-world snapshot.
-    ApplySnapshot(Before);
+    if (!ApplySnapshot(Before))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("World save load failed and rollback also failed. World state may be mixed; stop simulation and capture diagnostics."));
+    }
     return false;
 }
