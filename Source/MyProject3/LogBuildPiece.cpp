@@ -19,12 +19,9 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
 
-    if (bAutoGenerateEndSnapPoints || bAutoGenerateSideSnapPoints)
-    {
-        // Preserve hand-authored anchors (for example, test-map top sockets) but
-        // rebuild only the auto-generated sockets when properties are changed.
-        RegenerateAutomaticSnapPoints();
-    }
+    // Preserve hand-authored anchors (for example, test-map top sockets) but
+    // rebuild only auto-generated sockets when mesh/spacing/axis properties change.
+    RegenerateAutomaticSnapPoints();
 }
 
 void ALogBuildPiece::BeginPlay()
