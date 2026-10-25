@@ -98,6 +98,9 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Storage")
     TMap<FGuid, FWorldStorageIncomingReservation> IncomingReservations;
 
+    UPROPERTY(Transient)
+    TSet<FGuid> LiveStorageIds;
+
     class UWorldItemOwnershipSubsystem* GetOwnership() const;
     int32 CountReservationsForStorage(const FGuid& StorageId) const;
 };
