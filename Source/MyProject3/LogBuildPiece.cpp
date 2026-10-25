@@ -148,7 +148,7 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::ThreeQuarterLog;
     }
-    else if (Key.Contains(TEXT("halflength")) || Key == TEXT("halflog") || Key == TEXT("half"))
+    else if (Key.Contains(TEXT("halflength")) || Key.Contains(TEXT("halflog")) || Key.Contains(TEXT("half"))
     {
         PieceType = ELogPieceType::HalfLengthLog;
     }
@@ -180,6 +180,10 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     else if (Key.Contains(TEXT("joint")))
     {
         PieceType = ELogPieceType::JointPiece;
+    }
+    else if (Key.Contains(TEXT("rawlog")) || Key.Contains(TEXT("wholelog")))
+    {
+        PieceType = ELogPieceType::WholeLog;
     }
     else
     {
