@@ -32,7 +32,7 @@ Working branch: `phase-01-foundation-v2`
 
 - `TickComponent` updates the held preview and periodically calls `FindBestSnapCandidate`.
 - `FindBestSnapCandidate` requires the crosshair trace to hit an already placed, non-held `ALogBuildPiece`. It evaluates compatible/free source and receiving anchors and computes the held actor transform from the anchor transforms.
-- `PlaceHeldPiece` first attempts `TryReserveSnapPoints` when a snap candidate exists. On success, both anchors become occupied and the child is attached to the target. Otherwise free placement is allowed only when enabled and, if configured, a valid non-build-piece surface is present.
+- `PlaceHeldPiece` first attempts `TryReserveSnapPoints` when a snap candidate exists. On success, both anchors become occupied and the child is attached to the target. Otherwise free placement is allowed only when enabled and, if configured, a valid non-build-piece surface is present. If a valid snap candidate was explicitly attempted but reservation fails, the current branch restores the prior transform, clears the candidate and returns false instead of falling through to free placement.
 - `CanSnapPointAccept` checks source/target validity, source capability/occupancy, tag/type compatibility, and that the receiving host is already placed and not held.
 - `TryReserveSnapPoints` performs the occupancy mutation and calls `AttachToSnapParent`. `DetachFromSnapParent` releases the parent anchor and removes the child from the parent's attached-piece list.
 
@@ -50,7 +50,7 @@ Working branch: `phase-01-foundation-v2`
 
 ## Attachment / placement / physics sub-review
 
-The follow-up static review is recorded in `PHASE_01_ATTACHMENT_PHYSICS_RISK_REGISTER.md`. It covers pickup/drop, free and snapped placement, anchor reservation/release, child restrictions, physics/collision call order, the `bStartsPlaced` startup-default concern, reserved automatic-anchor ID collisions, and the need to test stale snap-candidate fallback. These are source-level findings and follow-up risks, not confirmed runtime defects. No Unreal build or Editor/runtime test was run.
+The follow-up static review is recorded in `PHASE_01_ATTACHMENT_PHYSICS_RISK_REGISTER.md`; the tracked caller inventory is in `PHASE_01_STATE_TRANSITION_CALLER_MAP.md`. It covers pickup/drop, free and snapped placement, anchor reservation/release, child restrictions, physics/collision call order, the `bStartsPlaced` startup-default concern, reserved automatic-anchor ID collisions, and the need to test stale snap-candidate fallback. These are source-level findings and follow-up risks, not confirmed runtime defects. No Unreal build or Editor/runtime test was run.
 
 ## Phase 1 exit requirements still open
 
