@@ -34,7 +34,7 @@ The repository currently exposes 20 branches. The default `main` tree has 99 fil
 | `mechanic-detailing-pass-h-integrated-world-systems` | Largest reviewed integrated source baseline in this audit: 209 files and 62 `.h/.cpp` files; contains ownership, clock, save coordinator, structural, terrain, farming, threat, logistics and production layers. | Use as the source review baseline, not as an engine-verified build. |
 | `landscape-builder-plan` | H-based planning branch; adds documentation, not gameplay code. | Keep the M119 gap plan and Landscape Builder plan together for review; do not treat docs as implementation. |
 
-At the time of this snapshot, the Landscape Builder plan branch is three commits ahead of H and the H branch is substantially ahead of G. Ahead/behind counts measure Git ancestry, not mechanic completion. Re-run comparisons before integration.
+At this audit point, `landscape-builder-plan` is seven commits ahead of H; the added/modified files in this PR are documentation only. H is substantially ahead of G. Ahead/behind counts measure Git ancestry, not mechanic completion. Re-run comparisons before integration.
 
 ## 3. Confirmed source/document gaps by domain
 
