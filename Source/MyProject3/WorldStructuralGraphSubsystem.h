@@ -65,7 +65,7 @@ struct FStructuralNodeRecord
  * their geometry and anchor definitions; this subsystem owns graph relations,
  * support-path checks and aggregate-load validation.
  *
- * Existing log/stone/stick actors are not automatically migrated by this class.
+ * Log, stone, and stick actors register themselves and synchronize attachment edges through this subsystem.
  */
 UCLASS()
 class MYPROJECT3_API UWorldStructuralGraphSubsystem : public UWorldSubsystem
