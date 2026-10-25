@@ -191,18 +191,21 @@ bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTran
     {
         const FWorldCargoTransportRecord& R = Pair.Value;
         FWorldOwnedItemRecord Item;
-        if (!Ownership->TryGetItem(R.ItemId, Item) || Item.Revision != R.ItemRevision)
+        if (!Ownership->TryGetItem(R.ItemId, Item))
             return false;
 
         if (R.State == ECargoTransportState::InTransit || R.State == ECargoTransportState::Blocked)
         {
-            if (Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != R.CargoId)
+            // Active cargo must still be the sole owner of the in-transit item.
+            if (Item.Revision != R.ItemRevision ||
+                Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != R.CargoId)
                 return false;
         }
         else if (R.State == ECargoTransportState::Delivered)
         {
-            if (Item.OwnerKind != EWorldItemOwnerKind::Storage ||
-                Item.OwnerId != R.DestinationStorageId || R.Progress < R.RouteCost)
+            // Delivered cargo is historical: the item may since have been stored,
+            // crafted, consumed or sent on a later shipment.
+            if (R.Progress < R.RouteCost || Item.Revision < R.ItemRevision)
                 return false;
         }
         else if (R.State == ECargoTransportState::Cancelled)
