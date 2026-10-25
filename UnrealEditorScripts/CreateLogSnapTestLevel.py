@@ -132,7 +132,7 @@ def bounds_and_floor_actor(actor, x, y):
     return origin, extent
 
 
-def spawn_native_piece(piece_class, mesh, role, location, placed=False, variants=None):
+def spawn_native_piece(piece_class, mesh, role, location, placed=False, variants=None, variant_assets=None):
     actor = unreal.EditorLevelLibrary.spawn_actor_from_class(
         piece_class, location, unreal.Rotator(0.0, 0.0, 0.0)
     )
@@ -149,7 +149,7 @@ def spawn_native_piece(piece_class, mesh, role, location, placed=False, variants
     # actor only permits a transition if the current piece state makes sense.
     if variants:
         for property_name, asset_role in variants.items():
-            variant_mesh = assets_for_variants.get(asset_role)
+            variant_mesh = (variant_assets or {}).get(asset_role)
             if variant_mesh is not None:
                 actor.set_editor_property(property_name, variant_mesh)
 
@@ -342,7 +342,6 @@ def main():
 
     # Only the full 300-length log receives a complete same-length processing
     # set. A player can split it, then quarter it or make a groove/trough/plank.
-    assets_for_variants = assets
     cut_variants_300 = {
         "split_half_variant_mesh": "SplitHalf300",
         "quarter_variant_mesh": "Quarter300",
@@ -371,7 +370,8 @@ def main():
             label,
             unreal.Vector(x, y, 0.0),
             placed=False,
-            variants=cut_variants_300 if attach_variants else None
+            variants=cut_variants_300 if attach_variants else None,
+            variant_assets=assets
         )
         bounds_and_floor_actor(actor, x, y)
 
