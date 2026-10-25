@@ -53,6 +53,27 @@ void ALogBuildPiece::BeginPlay()
     }
 }
 
+void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    DetachFromSnapParent();
+    for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
+    {
+        if (Child.IsValid())
+        {
+            Child->DetachFromSnapParent();
+        }
+    }
+    AttachedPieces.Reset();
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->UnregisterNode(StructuralIdentity->GetInstanceId(), false);
+        }
+    }
+    Super::EndPlay(EndPlayReason);
+}
+
 FVector ALogBuildPiece::GetLongitudinalAxisVector() const
 {
     switch (LongitudinalAxis)
