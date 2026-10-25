@@ -1367,6 +1367,11 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     ELogCutAction Action,
     FGuid OperationId)
 {
+    // Preserve idempotent retries first: after a successful commit, prerequisites
+    // are intentionally false, but CommitCutAction can resolve its durable receipt.
+    if (!CanApplyCutAction(Action))
+        return CommitCutAction(Action, OperationId);
+
     // Compatibility entry point for existing Blueprints. New chopping tools can
     // call TryAdvanceCutProgress repeatedly; legacy one-shot actions still pass
     // through the same progress state and geometry commit boundary.
