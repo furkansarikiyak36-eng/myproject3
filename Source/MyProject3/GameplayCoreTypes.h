@@ -70,22 +70,22 @@ struct FWorldOperationResult
 {
     GENERATED_BODY()
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     bool bSucceeded = false;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     EWorldOperationResultCode Code = EWorldOperationResultCode::InternalError;
 
     /** Unique diagnostic/request identifier; may be invalid for legacy callers. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     FGuid OperationId;
 
     /** Human-readable explanation. Code remains the stable machine-readable value. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     FText Message;
 
     /** Stable IDs of objects actually changed by a successful commit. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Operation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Gameplay|Operation")
     TArray<FGuid> AffectedObjectIds;
 
     bool IsSuccess() const
