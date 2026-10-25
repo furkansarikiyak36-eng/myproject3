@@ -744,7 +744,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] Uzunlamasına kesim eylemlerini ve 3/4 + 1/4 gibi yan ürün miktarlarını ayrı bir atomik çoklu-çıktı işi olarak uygula.
 
 **Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `InventoryCraftingComponent.cpp` (mevcut base-class variant restore call-site)  
-**Commit/PR:** PR #24 açıldıktan sonra bağlantı eklenecek; `feat/log-canonical-dimensions`.  
+**Commit/PR:** [PR #25 — Separate log length fraction and cross-section geometry](https://github.com/furkansarikiyak36-eng/myproject3/pull/25); `feat/log-canonical-dimensions`.  
 **Sonuç:** Kod artık boy kesrini ve kesit şeklini tek bir enum'da karıştırmıyor. Mesh seçimi exact length/profile çiftine bağlandı ve item definition bu iki değeri taşıyor. Bu, gerçek Blueprint asset tablosunun doldurulduğu veya doğru mesh/pivot/çarpışmanın motor içinde kanıtlandığı anlamına gelmiyor. Kısalmış bir log için eşleşen mesh yoksa işlem güvenli biçimde reddediliyor.
 **Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi, UHT, PIE, asset doğrulaması ve runtime Save/Load testi yapılmadı.
 **Kalan sınırlamalar:** Uzunluk boyunca gerçek kesme eylemleri, 3/4 + 1/4 gibi farklı boylarda çoklu fiziksel çıktı ve bu çıktılar için konum/yan ürün miktarı sözleşmesi henüz uygulanmadı. Eski belirsiz `.QuarterLog` tanımlarındaki tarihsel uzunluk/kesit niyeti kesin olarak geri kazanılamaz; bunlar uyumluluk alias'ı olarak okunur.
