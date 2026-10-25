@@ -11,7 +11,7 @@
 | `main` | identical | 0 | 0 | Default branch; not the only relevant source |
 | `Chatgpt` | behind | 0 | 63 | Older than main; inspect history before reusing |
 | `architecture-14-phase-skeletons` | ahead | 120 | 0 | Architecture/phase map; based on Phase 6, not an independent release branch |
-| `landscape-builder-plan` | ahead | 352 | 0 | H-integrated baseline plus documentation-only Landscape Builder and M119 gap-analysis updates |
+| `landscape-builder-plan` | ahead | 356 | 0 | H-integrated baseline plus documentation-only Landscape Builder and M119 gap-analysis updates |
 | `mechanic-detailing-pass-01` | ahead | 121 | 0 | Earlier mechanic detail pass |
 | `mechanic-detailing-pass-a-core` | ahead | 131 | 0 | Core invariants/contracts pass |
 | `mechanic-detailing-pass-b-resource-lifecycle` | ahead | 134 | 0 | Resource lifecycle pass |
