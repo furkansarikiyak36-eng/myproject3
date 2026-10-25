@@ -1,6 +1,7 @@
 #include "StoneBuildingPiece.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
