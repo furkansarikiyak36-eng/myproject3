@@ -145,6 +145,13 @@ bool AStoneBuildingPiece::TryCommitGroundPlacement(
         ETeleportType::TeleportPhysics);
     bIsHeld = false;
     bIsPlaced = true;
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->SetGroundSupported(StructuralIdentity->GetInstanceId(), true);
+        }
+    }
 
     if (Mesh)
     {
