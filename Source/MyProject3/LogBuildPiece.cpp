@@ -103,7 +103,7 @@ void ALogBuildPiece::BeginPlay()
 
 bool ALogBuildPiece::TryTransferOwnership(
     EWorldItemOwnerKind ExpectedOwner, EWorldItemOwnerKind NewOwner,
-    const FGuid& NewOwnerId, FWorldOwnedItemRecord& OutRecord)
+    const FGuid& NewOwnerId, const FVector& NewWorldLocation, FWorldOwnedItemRecord& OutRecord)
 {
     if (!StructuralIdentity || !StructuralIdentity->HasValidIdentity() || !GetWorld())
     {
@@ -125,7 +125,7 @@ bool ALogBuildPiece::TryTransferOwnership(
     }
 
     return Ownership->TryTransferItem(FGuid::NewGuid(), Current.ItemId, Current.Revision,
-        ExpectedOwner, NewOwner, NewOwnerId, GetActorLocation(), OutRecord);
+        ExpectedOwner, NewOwner, NewOwnerId, NewWorldLocation, OutRecord);
 }
 
 void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
