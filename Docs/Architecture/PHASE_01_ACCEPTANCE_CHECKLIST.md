@@ -27,6 +27,7 @@ This checklist distinguishes planning from verified implementation. Do not mark 
 
 ## Validation
 - [ ] Static review completed.
+- [x] Complete the focused attachment/placement/physics source sub-review and record open risks (`PHASE_01_ATTACHMENT_PHYSICS_RISK_REGISTER.md`); full repository/Blueprint audit remains open.
 - [ ] Automated tests run where available.
 - [ ] Unreal Engine 5.8 build run and result captured.
 - [ ] Editor/runtime scenarios run and result captured.
