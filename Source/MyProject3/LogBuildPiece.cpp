@@ -415,6 +415,137 @@ void ALogBuildPiece::SetCanonicalCrossSectionFromPieceType(ELogPieceType Type)
     bUseCanonicalGeometryDimensions = true;
 }
 
+ELogPieceType ALogBuildPiece::LegacyTypeFromCanonicalDimensions(
+    ELogLengthFraction InLength, ELogCrossSectionProfile InProfile)
+{
+    if (InProfile == ELogCrossSectionProfile::Round)
+    {
+        switch (InLength)
+        {
+        case ELogLengthFraction::ThreeQuarterLength: return ELogPieceType::ThreeQuarterLog;
+        case ELogLengthFraction::HalfLength: return ELogPieceType::HalfLengthLog;
+        case ELogLengthFraction::QuarterLength: return ELogPieceType::QuarterLog;
+        case ELogLengthFraction::FullLength: return ELogPieceType::WholeLog;
+        case ELogLengthFraction::Other:
+        default: return ELogPieceType::Other;
+        }
+    }
+
+    switch (InProfile)
+    {
+    case ELogCrossSectionProfile::HalfRound: return ELogPieceType::SplitHalfLog;
+    case ELogCrossSectionProfile::QuarterRound: return ELogPieceType::QuarterSectionLog;
+    case ELogCrossSectionProfile::Hewn: return ELogPieceType::HewnLog;
+    case ELogCrossSectionProfile::SquareBeam: return ELogPieceType::SquaredBeam;
+    case ELogCrossSectionProfile::GroovedHalfRound: return ELogPieceType::GutterLog;
+    case ELogCrossSectionProfile::Trough: return ELogPieceType::TroughLog;
+    case ELogCrossSectionProfile::Plank: return ELogPieceType::Plank;
+    case ELogCrossSectionProfile::Notched: return ELogPieceType::NotchedLog;
+    case ELogCrossSectionProfile::Joint: return ELogPieceType::JointPiece;
+    case ELogCrossSectionProfile::Other:
+    case ELogCrossSectionProfile::Round:
+    default: return ELogPieceType::Other;
+    }
+}
+
+bool ALogBuildPiece::TryResolveGeometryVariant(
+    ELogLengthFraction InLength,
+    ELogCrossSectionProfile InProfile,
+    UStaticMesh*& OutMesh,
+    FVector* OutSecondPieceCenterOffset,
+    FRotator* OutSecondPieceRotationOffset) const
+{
+    OutMesh = nullptr;
+    if (OutSecondPieceCenterOffset)
+        *OutSecondPieceCenterOffset = FVector::ZeroVector;
+    if (OutSecondPieceRotationOffset)
+        *OutSecondPieceRotationOffset = FRotator::ZeroRotator;
+
+    const FLogGeometryVariantMesh* Match = nullptr;
+    for (const FLogGeometryVariantMesh& Variant : GeometryVariantMeshes)
+    {
+        if (Variant.LengthFraction != InLength || Variant.CrossSectionProfile != InProfile)
+            continue;
+
+        // Two equally specific entries would make output selection non-deterministic.
+        if (Match)
+            return false;
+        Match = &Variant;
+    }
+
+    if (Match)
+    {
+        if (!IsValid(Match->Mesh))
+            return false;
+        OutMesh = Match->Mesh;
+        if (OutSecondPieceCenterOffset)
+            *OutSecondPieceCenterOffset = Match->SecondPieceCenterOffsetLocal;
+        if (OutSecondPieceRotationOffset)
+            *OutSecondPieceRotationOffset = Match->SecondPieceRotationOffsetLocal;
+        return true;
+    }
+
+    // A raw/base mesh can only stand in for the exact authored length it represents.
+    if (InProfile == ELogCrossSectionProfile::Round &&
+        InLength == GetLengthFraction() && IsValid(BaseLogVariantMesh))
+    {
+        OutMesh = BaseLogVariantMesh;
+        return true;
+    }
+
+    // The legacy per-profile properties only describe the original full-length
+    // content path. Never silently reuse those assets for a shorter log.
+    if (InLength != ELogLengthFraction::FullLength)
+        return false;
+
+    switch (InProfile)
+    {
+    case ELogCrossSectionProfile::Round:
+        if (IsValid(BaseLogVariantMesh))
+            OutMesh = BaseLogVariantMesh;
+        else if (GetCrossSectionProfile() == ELogCrossSectionProfile::Round &&
+            Mesh && IsValid(Mesh->GetStaticMesh()))
+            OutMesh = Mesh->GetStaticMesh();
+        break;
+    case ELogCrossSectionProfile::HalfRound:
+        OutMesh = SplitHalfVariantMesh;
+        if (OutSecondPieceCenterOffset)
+            *OutSecondPieceCenterOffset = SplitHalfPieceCenterOffsetLocal;
+        if (OutSecondPieceRotationOffset)
+            *OutSecondPieceRotationOffset = SplitHalfChildRotationOffsetLocal;
+        break;
+    case ELogCrossSectionProfile::QuarterRound:
+        OutMesh = QuarterVariantMesh;
+        if (OutSecondPieceCenterOffset)
+            *OutSecondPieceCenterOffset = QuarterPieceCenterOffsetLocal;
+        if (OutSecondPieceRotationOffset)
+            *OutSecondPieceRotationOffset = QuarterChildRotationOffsetLocal;
+        break;
+    case ELogCrossSectionProfile::Hewn:
+        OutMesh = HewnVariantMesh;
+        break;
+    case ELogCrossSectionProfile::SquareBeam:
+        OutMesh = KalasVariantMesh;
+        break;
+    case ELogCrossSectionProfile::GroovedHalfRound:
+        OutMesh = GutterVariantMesh;
+        break;
+    case ELogCrossSectionProfile::Trough:
+        OutMesh = TroughVariantMesh;
+        break;
+    case ELogCrossSectionProfile::Plank:
+        OutMesh = PlankVariantMesh;
+        break;
+    case ELogCrossSectionProfile::Notched:
+    case ELogCrossSectionProfile::Joint:
+    case ELogCrossSectionProfile::Other:
+    default:
+        return false;
+    }
+
+    return IsValid(OutMesh);
+}
+
 void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     // A gameplay-destroyed physical piece must not remain as a world-owned
