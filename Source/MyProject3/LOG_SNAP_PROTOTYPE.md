@@ -26,15 +26,24 @@ A green debug marker is shown at a candidate snap anchor while a valid snap is s
 ## Install / run
 
 1. Pull the latest `main` branch.
-2. Build the **MyProject3Editor / Win64 / Development** target with the project's Unreal 5.8 toolchain. These are new reflected C++ classes, so a full editor-target build is required before the Python level script can load them. A Python import does not compile C++.
-3. Start/reopen the Unreal Editor for this project.
+2. Close Unreal Editor, then in PowerShell run:
+
+   ```powershell
+   cd "C:\Users\merts\Downloads\MyProject3"
+   git pull origin main
+   powershell -ExecutionPolicy Bypass -File .\UnrealEditorScripts\BuildLogSnapPrototype.ps1
+   ```
+
+   If Unreal Engine 5.8 is not installed in a standard path, add `-EngineRoot "D:\Path\To\UE_5.8"`. These are new reflected C++ classes, so the `MyProject3Editor / Win64 / Development` target must compile before the level script can load them. The helper only builds; it does not launch Unreal or run game tests.
+
+3. Reopen the project in Unreal Editor.
 4. In Output Log, change the input mode to **Cmd** and run:
 
    ```text
    py "C:\Users\merts\Downloads\MyProject3\UnrealEditorScripts\CreateLogSnapTestLevel.py"
    ```
 
-5. Open `/Game/Maps/LogSnap_Playground`, then use **Play**.
+5. When the log reports `PLAYGROUND READY`, open `/Game/Maps/LogSnap_Playground` and press **Play**.
 
 The setup script saves the currently open level before changing maps, only cleans actors it created in its own generated map, and does not change `Generated_Cube_Test`.
 
