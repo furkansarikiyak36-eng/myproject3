@@ -32,6 +32,12 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Progress in WOOD-001 / WOOD-002:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `TrySplitItem` now atomically registers the first output (retaining the source ID) and a new output (new GUID) with a durable split receipt; `SplitHalf` / `Quarter` actor paths spawn a deferred second physical actor, bind its ownership ID, validate its structural node and attempt rollback on failure. SaveGame v7/fixed-step rollback carry split receipts. **Still partial:** mesh-specific center offsets and child rotations must be configured and visually verified per mesh. UE 5.8 build/PIE, failure injection, exact physical geometry, actor transform persistence and end-to-end source counts remain unverified.
 
+### WOOD-005 progress: tree felling lifecycle adapter
+
+A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stable grounded detection and one-shot output state. It refuses invalid/non-positive damage and missing harvest configuration. After health reaches zero, the tree mesh simulates physics; output is gated until its linear speed remains under a configured threshold and a ground trace reports contact for a configured hold interval. Only then are configured `ALogBuildPiece` actors spawned. Each spawned log uses the existing BeginPlay registration path for item ownership and the structural graph; no second tree-specific item ledger was added.
+
+**Still open:** no Unreal compile/PIE run; tree asset collision, physics mass/center-of-mass and trace channel are not measured; log actor subclass and `LogMeshVariantSetId` must be authored; species/size → output count/length fraction is not yet data-driven; save/load, partial spawn failures and retry behavior need acceptance. A failed/partial spawn is not automatically retried to avoid duplicating resources.
+
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
 - `CanApplyCutAction` maps whole/split-half states to specific configured output mesh slots for split-half, quarter, hewn, gutter, trough, squared-beam and plank operations.
