@@ -103,6 +103,65 @@ bool UInventoryCraftingComponent::TryAddItem(const FInventoryStack& Incoming)
  return true;
 }
 
+void UInventoryCraftingComponent::ExportSnapshot(
+ FGuid& OutOwnerActorId, FGuid& OutInventoryOwnerId,
+ TArray<FInventoryStack>& OutItems, FName& OutQuickAccessItemId) const
+{
+ OutOwnerActorId.Invalidate();
+ if (AActor* Owner = GetOwner())
+ {
+  if (UWorldObjectIdentityComponent* Identity =
+      Owner->FindComponentByClass<UWorldObjectIdentityComponent>())
+   OutOwnerActorId = Identity->GetInstanceId();
+ }
+ OutInventoryOwnerId = InventoryOwnerId;
+ OutItems = Items;
+ OutQuickAccessItemId = QuickAccessItemId;
+}
+
+bool UInventoryCraftingComponent::RestoreSnapshot(
+ const FGuid& InInventoryOwnerId, const TArray<FInventoryStack>& Snapshot,
+ FName InQuickAccessItemId)
+{
+ if (!InInventoryOwnerId.IsValid() || Snapshot.Num() > MaxSlots || MaxSlots <= 0 ||
+     MaxCarryWeightGrams <= 0) return false;
+
+ UWorldItemOwnershipSubsystem* Ownership =
+  GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+ TSet<FGuid> OwnedIds;
+ int64 TotalWeight = 0;
+ for (const FInventoryStack& Stack : Snapshot)
+ {
+  if (Stack.ItemId.IsNone() || Stack.Quantity <= 0 || Stack.MaxStack <= 0 ||
+      Stack.Quantity > Stack.MaxStack) return false;
+  const int32* Weight = ItemWeightGrams.Find(Stack.ItemId);
+  if (!Weight || *Weight <= 0) return false;
+  TotalWeight += static_cast<int64>(*Weight) * Stack.Quantity;
+  if (TotalWeight > MaxCarryWeightGrams) return false;
+
+  if (Stack.OwnedWorldItemId.IsValid())
+  {
+   if (!Ownership || Stack.Quantity != 1 || Stack.MaxStack != 1 ||
+       OwnedIds.Contains(Stack.OwnedWorldItemId)) return false;
+   OwnedIds.Add(Stack.OwnedWorldItemId);
+   FWorldOwnedItemRecord Item;
+   if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Item) ||
+       Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+       Item.OwnerId != InInventoryOwnerId || Item.DefinitionId != Stack.ItemId)
+    return false;
+  }
+ }
+ if (!InQuickAccessItemId.IsNone() &&
+     !Snapshot.ContainsByPredicate([InQuickAccessItemId](const FInventoryStack& Stack)
+      { return Stack.ItemId == InQuickAccessItemId && Stack.Quantity > 0; }))
+  return false;
+
+ InventoryOwnerId = InInventoryOwnerId;
+ Items = Snapshot;
+ QuickAccessItemId = InQuickAccessItemId;
+ return true;
+}
+
 bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
 {
  if (!IsValid(WorldActor) || !GetWorld() || !InventoryOwnerId.IsValid()) return false;
