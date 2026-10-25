@@ -2,6 +2,7 @@
 
 **Branch:** `feat/log-canonical-dimensions`  
 **Base:** `fix/atomic-log-piece-splitting`  
+**Pull request:** [#25 — Separate log length fraction and cross-section geometry](https://github.com/furkansarikiyak36-eng/myproject3/pull/25)  
 **Scope:** Separate longitudinal length fraction from cross-section profile, select geometry by an exact authored variant key, and persist those dimensions in the authoritative item definition.  
 **Evidence level:** Static source inspection and structural checks only. UE 5.8 UHT/UBT, Editor, PIE, mesh/pivot/collision validation and runtime save/load tests were not run.
 
