@@ -31,6 +31,11 @@ public:
  UFUNCTION(BlueprintPure, Category="Crafting") bool CanCraft(FName RecipeId, TArray<FInventoryStack>& OutMissing) const;
  UFUNCTION(BlueprintCallable, Category="Crafting") bool TryCraft(FName RecipeId);
  UFUNCTION(BlueprintCallable, Category="Crafting") bool RegisterRecipe(const FCraftingRecipe& Recipe);
+ void ExportSnapshot(FGuid& OutOwnerActorId, FGuid& OutInventoryOwnerId,
+  TArray<FInventoryStack>& OutItems, FName& OutQuickAccessItemId) const;
+ bool RestoreSnapshot(const FGuid& InInventoryOwnerId, const TArray<FInventoryStack>& Snapshot,
+  FName InQuickAccessItemId);
+ FGuid GetInventoryOwnerId() const { return InventoryOwnerId; }
 private:
  int32 FindRecipeIndex(FName RecipeId) const;
  bool HasCapacityFor(const TArray<FInventoryStack>& Additions) const;
