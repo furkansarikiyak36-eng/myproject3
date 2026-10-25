@@ -330,11 +330,22 @@ void ULogCarryComponent::FindBestSnapCandidate()
                 const FTransform TargetWorldTransform =
                     TargetPiece->GetSnapPointWorldTransform(TargetIndex);
 
-                const float Distance = FVector::Distance(
+                const float AnchorDistance = FVector::Distance(
                     SourceWorldTransform.GetLocation(),
                     TargetWorldTransform.GetLocation());
 
-                if (Distance > BestDistance)
+                // The carried actor's free-preview origin may be offset from
+                // the intended socket by half a log length. Aiming directly
+                // at a target's anchor should still acquire it, then the exact
+                // source-to-target transform is computed below.
+                const float AimToAnchorDistance = FVector::Distance(
+                    AimHit.ImpactPoint,
+                    TargetWorldTransform.GetLocation());
+
+                const float CandidateDistance =
+                    FMath::Min(AnchorDistance, AimToAnchorDistance);
+
+                if (CandidateDistance > BestDistance)
                 {
                     continue;
                 }
@@ -352,7 +363,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
                 const FTransform DesiredActorWorld =
                     SourcePoint.LocalTransform.Inverse() * DesiredAnchorWorld;
 
-                BestDistance = Distance;
+                BestDistance = CandidateDistance;
                 BestTarget = TargetPiece;
                 BestSourceIndex = SourceIndex;
                 BestTargetIndex = TargetIndex;
