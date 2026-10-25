@@ -1,0 +1,14 @@
+# Phase 6 Acceptance Checklist
+- [x] Stack, ingredient and recipe data contracts added.
+- [x] Inventory enforces slot count and configured item-weight limit on additions.
+- [x] Item stacks merge up to their per-stack limit.
+- [x] Removal prechecks availability before mutation.
+- [x] Quick access only references an item currently in inventory.
+- [x] Recipe registration rejects duplicate/invalid IDs and invalid ingredients.
+- [x] Missing consumed ingredients are reported.
+- [x] Non-consumed tools remain in inventory during crafting.
+- [x] Output/byproduct capacity is preflighted before consumption.
+- [x] Unexpected crafting mutation failure restores the inventory snapshot.
+- [ ] Integrate world pickups, crafting UI/area, alternate recipe presentation and cancel/collect flow.
+- [ ] Integrate persistence.
+- [ ] Unreal build/UHT and runtime validation at final gate only.
