@@ -203,6 +203,10 @@ public:
         int32 MyPointIndex);
     /** Disconnects graph and actor state together; force-local cleanup is reserved for EndPlay. */
     bool DetachFromSnapParent(bool bAllowGraphFailure = false);
+    /** Rebuild transient actor/anchor bookkeeping after canonical graph restore; never mutates the graph. */
+    void ResetActorLocalSnapStateForGraphRestore();
+    bool RestoreActorLocalSnapLinkFromGraph(ALogBuildPiece* Parent, FName ParentAnchorId,
+        FName OwnAnchorId, bool bPlaced);
     void RegisterAttachedPiece(ALogBuildPiece* Child);
     void UnregisterAttachedPiece(ALogBuildPiece* Child);
     int32 GetAttachedPieceCount() const;
