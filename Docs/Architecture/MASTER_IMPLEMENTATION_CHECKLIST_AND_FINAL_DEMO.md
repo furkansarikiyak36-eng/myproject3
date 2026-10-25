@@ -111,6 +111,9 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Yarım parçayı çeyrekleme işleminin ön koşullarını ve çıktısını tanımla.
 - [ ] Yontma/kareleme işleminde kaynak durumu ile çıktı mesh'ini birlikte değiştir.
 - [ ] Oluk işlemini yalnızca gerekli boyuna yarma ön koşulundan sonra kabul et.
+- [x] `SplitHalf` ve `Quarter` eylemleri için kaynak-level atomik çoklu eşya sahipliği/split receipt API'si eklendi; ikinci fiziksel aktör spawn edilip graph/ownership kaydı doğrulanıyor, hata durumunda aktör ve ledger rollback'i var. SaveGame v7 ve sabit-adım rollback split receipt'lerini koruyor. UE doğrulaması açık.
+- [ ] Blueprint/mesh başına `SplitHalfPieceCenterOffsetLocal` ve `QuarterPieceCenterOffsetLocal` değerlerini ayarla; bunlar sıfırsa eylem kasıtlı olarak reddediliyor.
+- [ ] Kesit mesh pivot/offset/geometri/çarpışma eşleşmesini UE içinde doğrula; kabul testleri ertelendi.
 - [x] Çeyrek kesit geometrisi için açık `QuarterSectionLog` türü ve `.QuarterSectionLog` yeni tanım eki eklendi; eski `.QuarterLog` işleme ekine geriye uyumluluk alias'ı bırakıldı. Bu, adlandırma/yeniden yükleme belirsizliğini daraltır; fiziksel ikinci parça üretimini tamamlamaz.
 - [ ] Kanal/tekne biçimi çıktısı için doğru giriş durumu ve fiziksel mesh bulunduğunu doğrula.
 - [ ] Tahta üretimini doğru giriş parçası, çıktı miktarı ve geometriyle bağla.
@@ -694,6 +697,32 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-002 — Fiziksel kütük bölme için atomik çıktı sahipliği
+
+- [x] `TrySplitItem` tek işlemde kaynak kaydı ile yeni benzersiz output item kayıtlarını üretir
+- [x] Split receipt aynı OperationId ve aynı tam istek için eski output kayıtlarını döndürür; farklı istekle ID yeniden kullanımı reddedilir
+- [x] Split receipt snapshot/restore kapsamına ve SaveGame şema v7'ye eklendi
+- [x] Sabit-adım rollback artık split receipt'lerini de geri alır
+- [x] `SplitHalf` ve `Quarter` eylemleri için deferred ikinci actor oluşturma, benzersiz kimlik bağlama ve ownership/graph kayıt doğrulaması eklendi
+- [x] Kayıt veya graph doğrulaması başarısız olursa child actor, kaynak aktör transform/mesh/type ve item ledger snapshot geri alınmaya çalışılır
+- [x] Kesit ofseti sıfır/uzunlamasına ise işlem önceden reddedilir
+- [x] Statik yapı kontrolleri, API eşleşmeleri ve brace-balance kontrol edildi
+- [ ] UE 5.8 UHT/UBT derlemesi
+- [ ] Her Blueprint için split output mesh ve center-offset değerlerini konfigüre et
+- [ ] PIE/runtime testi: half-round ve quarter-section iki ayrı görünür aktör ve unique item ID oluşturur
+- [ ] Runtime retry testi: aynı OperationId yeni aktör üretmez, iki kayıtlı sonucu döndürür
+- [ ] Failure injection: ikinci actor/graph kaydı başarısız olduğunda kaynak/ledger/graph geri alınır
+- [ ] Save/load sonrası iki aktör ve split receipt/ownership ilişkisi geri kurulur
+
+**Kaynak dosyaları:** `WorldItemOwnershipSubsystem.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
+**Commit/PR:** PR #23 oluşturulduktan sonra bağlantı eklenecek; `fix/atomic-log-piece-splitting`.  
+**Sonuç:** Split işlemi artık yalnızca bir mesh/type değişikliği değildir. İstenen iki çıktı önce sahiplik sisteminde atomik olarak tanımlanır; kaynak ID ilk çıktıyı korur, ikinci çıktı yeni GUID alır. Child actor deferred spawn ile ledger ID'si verildikten sonra BeginPlay/graph kaydı tamamlanır. Başarısız doğrulamada rollback denenir. Offset ve mesh geometrisi Blueprint'te yazar tarafından doğrulanmalıdır.
+**Kanıt seviyesi:** Statik kaynak kontrolleri; Unreal motoru/PIE doğrulaması yapılmadı.
+**Kalan sınırlamalar:** Genel world save physical actor transforms/graph links'leri tamamen geri kurmadığından split receipt kalıcılığı tek başına tam actor persistence sağlamaz. Bu genel persistence açığı ayrı iş olarak kalır.
+**Sonraki bağımlı iş:** WOOD-003 — gerçek mesh/asset variant tablosu ve uzunluk kesri ile kesit biçimini birlikte temsil etme; ardından tam kaynak/atık miktar kuralları.
+
+---
+
 ## 15. İlk yapılacak iş
 
-Sıradaki sıra: **1A'daki kalan dal/PR atalık ve benzersiz diff denetimini** kapat; sonra **CORE-004 — domain işlem call-chain haritası** çıkar ve ledger'ı yalnızca kendi idempotency receipt'i bulunmayan uygun operasyonlara bağla. Her iş sonunda bu belge ve kanıtları güncellenecek; final demo ise bütün mekaniklerin aynı dünyada birlikte çalıştığı kabul kapısı olarak en sonda kurulacak.
+Sıradaki sıra: **WOOD-003 — mesh/asset durum tablosu ve uzunluk-kesit boyutlarının ayrılması**; sonra 2.1'in geri kalan fiziksel kaynak/taşıma/inşa kriterleri. Sonraki referans oyun ve LB0–LB4 işlerine de aynı kanıt standardıyla geçilecek; final demo tüm mekanikleri tek dünyada birlikte çalıştıran son kabul kapısı olarak en sonda kurulacak.
