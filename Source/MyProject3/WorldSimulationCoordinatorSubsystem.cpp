@@ -9,6 +9,7 @@
 #include "WorldCargoTransportSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldStorageSubsystem.h"
+#include "WorldOperationLedgerSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -116,7 +117,9 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UWorldStorageSubsystem* Storage =
         World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
-    if (!Ownership || !Storage) return false;
+    UWorldOperationLedgerSubsystem* OperationLedger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
+    if (!Ownership || !Storage || !OperationLedger) return false;
 
     const FWorldSimulationClockSnapshot BeforeClock = Clock->ExportSnapshot();
     const FWorldThreatDirectorSnapshot BeforeThreat = Threat->ExportSnapshot();
@@ -139,6 +142,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     TArray<FWorldStorageContainerRecord> BeforeStorages;
     TArray<FWorldStorageIncomingReservation> BeforeReservations;
     Storage->ExportSnapshot(BeforeStorages, BeforeReservations);
+    TArray<FWorldOperationLedgerEntry> BeforeOperationLedgerEntries;
+    OperationLedger->ExportSnapshot(BeforeOperationLedgerEntries);
 
     auto RollbackStep = [&]() -> bool
     {
@@ -146,6 +151,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         // Restore ownership before cargo because cargo snapshot validation is
         // intentionally cross-domain and checks the ledger's current owner/revision.
         bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems, BeforeItemTransferReceipts) && bRollbackSucceeded;
+        bRollbackSucceeded = OperationLedger->RestoreSnapshot(BeforeOperationLedgerEntries) && bRollbackSucceeded;
         // Cargo restore validates its incoming reservations against the storage
         // subsystem; restore the storage manifest before attempting cargo.
         bRollbackSucceeded = Storage->RestoreSnapshot(BeforeStorages, BeforeReservations) && bRollbackSucceeded;
@@ -199,7 +205,9 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     const UWorldStorageSubsystem* Storage =
         World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    const UWorldOperationLedgerSubsystem* OperationLedger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
     return !bSimulationFaulted && Clock && Threat && Agriculture && Survival &&
-        Production && Cargo && Ownership && Storage &&
+        Production && Cargo && Ownership && Storage && OperationLedger &&
         Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
 }
