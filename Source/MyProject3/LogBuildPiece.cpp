@@ -1,5 +1,9 @@
 #include "LogBuildPiece.h"
 
+#include "GameplayCoreTypes.h"
+#include "WorldCommittedEventSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Math/RotationMatrix.h"
@@ -329,9 +333,35 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
 
 bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
 {
+    return TryApplyCutAction(Action, FGuid::NewGuid()).IsSuccess();
+}
+
+FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
+    ELogCutAction Action,
+    FGuid OperationId)
+{
+    if (!OperationId.IsValid())
+    {
+        OperationId = FGuid::NewGuid();
+    }
+
     if (!CanApplyCutAction(Action))
     {
-        return false;
+        const EWorldOperationResultCode FailureCode =
+            (PieceType == ELogPieceType::WholeLog &&
+                (Action == ELogCutAction::Quarter ||
+                 Action == ELogCutAction::Gutter ||
+                 Action == ELogCutAction::Trough ||
+                 Action == ELogCutAction::Plank))
+            ? EWorldOperationResultCode::PrerequisiteNotMet
+            : ((!Mesh || !Mesh->GetStaticMesh())
+                ? EWorldOperationResultCode::InvalidTarget
+                : EWorldOperationResultCode::InvalidState);
+
+        return FWorldOperationResult::Failure(
+            FailureCode,
+            OperationId,
+            FText::FromString(GetCutActionBlockReason(Action)));
     }
 
     UStaticMesh* NewMesh = nullptr;
@@ -368,11 +398,22 @@ bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
         NewType = ELogPieceType::Plank;
         break;
     default:
-        return false;
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Unsupported,
+            OperationId,
+            FText::FromString(TEXT("Unsupported processing action.")));
     }
 
-    // Preserve the mesh's bottom world height when replacing the geometry, so
-    // a half-round does not turn into a floating whole log or sink into ground.
+    // Recheck the selected output before mutating any authoritative state.
+    if (!IsValid(NewMesh) || !Mesh)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("The output mesh for this processing action is not configured.")));
+    }
+
+    // Preserve the mesh's bottom world height when replacing the geometry.
     FVector OldOrigin;
     FVector OldExtent;
     GetActorBounds(false, OldOrigin, OldExtent);
@@ -396,7 +437,45 @@ bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
         }
     }
 
-    return true;
+    TArray<FGuid> AffectedObjectIds;
+    if (UWorldObjectIdentityComponent* Identity =
+        FindComponentByClass<UWorldObjectIdentityComponent>())
+    {
+        if (Identity->EnsureIdentity())
+        {
+            AffectedObjectIds.Add(Identity->GetInstanceId());
+        }
+    }
+
+    const FText SuccessMessage = FText::FromString(
+        FString::Printf(TEXT("Log processed successfully. New piece type: %s."),
+            *UEnum::GetValueAsString(NewType)));
+
+    FWorldOperationResult Result = FWorldOperationResult::Success(
+        OperationId, SuccessMessage, AffectedObjectIds);
+
+    // Notify listeners only after mesh, type and transform have been committed.
+    // Event delivery is transient; it does not determine operation success.
+    if (UWorld* World = GetWorld())
+    {
+        if (UWorldCommittedEventSubsystem* Events =
+            World->GetSubsystem<UWorldCommittedEventSubsystem>())
+        {
+            FWorldCommittedEvent Event;
+            Event.Type = EWorldCommittedEventType::ObjectProcessed;
+            Event.OperationId = OperationId;
+            Event.AffectedObjectIds = AffectedObjectIds;
+            Event.Message = SuccessMessage;
+            if (!Events->PublishCommittedEvent(Event))
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("Log processing committed for operation %s, but its notification was not published."),
+                    *OperationId.ToString());
+            }
+        }
+    }
+
+    return Result;
 }
 
 void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
