@@ -115,6 +115,9 @@ public:
     bool TryTransferOwnership(EWorldItemOwnerKind ExpectedOwner, EWorldItemOwnerKind NewOwner,
         const FGuid& NewOwnerId, const FVector& NewWorldLocation, FWorldOwnedItemRecord& OutRecord);
 
+    // Completes the actor-side registration after a unique inventory item becomes world-owned.
+    bool ActivateAfterOwnershipTransfer();
+
     UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
     bool CanApplyCutAction(ELogCutAction Action) const;
 
