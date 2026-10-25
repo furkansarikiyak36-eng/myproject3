@@ -2,6 +2,7 @@
 
 **Branch:** `fix/ownership-transfer-receipt-snapshots`  
 **Base:** `fix/world-simulation-fail-closed`  
+**Pull request:** [#19 — Preserve item transfer receipts across rollback and saves](https://github.com/furkansarikiyak36-eng/myproject3/pull/19)  
 **Scope:** Preserve transfer/definition-change idempotency receipts in fixed-step rollback and SaveGame snapshots.  
 **Evidence level:** Static source review and targeted structural checks only. UE 5.8 UHT/UBT, Editor, PIE, and runtime retry tests were not run.
 
