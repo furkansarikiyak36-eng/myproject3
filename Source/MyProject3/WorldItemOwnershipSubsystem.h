@@ -31,6 +31,10 @@ struct FWorldOwnedItemRecord
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
     FName BaseDefinitionId = NAME_None;
 
+    /** Authored nominal mesh-family selector; this is not inferred from filename digits. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
+    FName MeshVariantSetId = NAME_None;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items", meta=(ClampMin="1"))
     int32 Quantity = 1;
 
