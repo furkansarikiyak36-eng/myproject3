@@ -126,3 +126,51 @@ bool UWorldSurvivalSubsystem::GetProfile(
     OutProfile = *Found;
     return true;
 }
+
+void UWorldSurvivalSubsystem::ExportSnapshot(
+    TArray<FWorldSurvivalProfile>& OutProfiles, TArray<FWorldDiscoveryRecord>& OutDiscoveries,
+    EWorldWeatherState& OutWeather, float& OutSeverity) const
+{
+    Profiles.GenerateValueArray(OutProfiles);
+    OutProfiles.Sort([](const FWorldSurvivalProfile& A, const FWorldSurvivalProfile& B)
+        { return A.EntityId.ToString() < B.EntityId.ToString(); });
+    OutDiscoveries = Discoveries;
+    OutWeather = Weather;
+    OutSeverity = WeatherSeverity;
+}
+
+bool UWorldSurvivalSubsystem::RestoreSnapshot(
+    const TArray<FWorldSurvivalProfile>& ProfileSnapshot,
+    const TArray<FWorldDiscoveryRecord>& DiscoverySnapshot,
+    EWorldWeatherState InWeather, float InSeverity)
+{
+    if (!FMath::IsFinite(InSeverity) || InSeverity < 0.0f || InSeverity > 1.0f) return false;
+    TMap<FGuid, FWorldSurvivalProfile> Proposed;
+    for (const FWorldSurvivalProfile& P : ProfileSnapshot)
+    {
+        if (!P.EntityId.IsValid() || P.Revision <= 0 || Proposed.Contains(P.EntityId) ||
+            !FMath::IsFinite(P.Health) || P.Health < 0.0f || P.Health > 100.0f ||
+            !FMath::IsFinite(P.Hunger) || P.Hunger < 0.0f || P.Hunger > 100.0f ||
+            !FMath::IsFinite(P.Thirst) || P.Thirst < 0.0f || P.Thirst > 100.0f ||
+            !FMath::IsFinite(P.Stamina) || P.Stamina < 0.0f || P.Stamina > 100.0f ||
+            !FMath::IsFinite(P.Fatigue) || P.Fatigue < 0.0f || P.Fatigue > 100.0f ||
+            !FMath::IsFinite(P.ClothingInsulation) || P.ClothingInsulation < 0.0f || P.ClothingInsulation > 1.0f ||
+            !FMath::IsFinite(P.ShelterProtection) || P.ShelterProtection < 0.0f || P.ShelterProtection > 1.0f ||
+            !FMath::IsFinite(P.Wetness) || P.Wetness < 0.0f || P.Wetness > 1.0f) return false;
+        Proposed.Add(P.EntityId, P);
+    }
+    TSet<FName> SeenDiscoveries;
+    for (const FWorldDiscoveryRecord& D : DiscoverySnapshot)
+    {
+        if (D.DiscoveryId.IsNone() || SeenDiscoveries.Contains(D.DiscoveryId) ||
+            !FMath::IsFinite(D.Location.X) || !FMath::IsFinite(D.Location.Y) ||
+            !FMath::IsFinite(D.Location.Z) || !FMath::IsFinite(D.DiscoveredAtTime) ||
+            D.DiscoveredAtTime < 0.0) return false;
+        SeenDiscoveries.Add(D.DiscoveryId);
+    }
+    Profiles = MoveTemp(Proposed);
+    Discoveries = DiscoverySnapshot;
+    Weather = InWeather;
+    WeatherSeverity = InSeverity;
+    return true;
+}
