@@ -188,6 +188,7 @@ bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
     }
 
     StructuralIdentity->SetDefinitionId(Item.DefinitionId);
+    BaseDefinitionId = Item.BaseDefinitionId.IsNone() ? Item.DefinitionId : Item.BaseDefinitionId;
     bIsPlaced = false;
     bStartsPlaced = false;
     SetHeldState(false);
@@ -643,6 +644,55 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             OperationId,
             FText::FromString(TEXT("The output mesh for this processing action is not configured.")));
     }
+
+    // Transform the authoritative ledger definition before changing geometry.
+    // The stable base ID allows repeated processing to replace the current suffix,
+    // rather than building a nested chain of item names.
+    UWorldObjectIdentityComponent* ItemIdentity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord CurrentItem;
+    if (!ItemIdentity || !Ownership ||
+        !Ownership->TryGetItem(ItemIdentity->GetInstanceId(), CurrentItem) ||
+        CurrentItem.OwnerKind != EWorldItemOwnerKind::World)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InvalidState,
+            OperationId,
+            FText::FromString(TEXT("The log does not currently have world ownership.")));
+    }
+
+    const FName EffectiveBaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.BaseDefinitionId
+        : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
+    const TCHAR* VariantSuffix = TEXT("Other");
+    switch (NewType)
+    {
+    case ELogPieceType::SplitHalfLog: VariantSuffix = TEXT("SplitHalfLog"); break;
+    case ELogPieceType::QuarterLog: VariantSuffix = TEXT("QuarterLog"); break;
+    case ELogPieceType::HewnLog: VariantSuffix = TEXT("HewnLog"); break;
+    case ELogPieceType::GutterLog: VariantSuffix = TEXT("GutterLog"); break;
+    case ELogPieceType::TroughLog: VariantSuffix = TEXT("TroughLog"); break;
+    case ELogPieceType::SquaredBeam: VariantSuffix = TEXT("SquaredBeam"); break;
+    case ELogPieceType::Plank: VariantSuffix = TEXT("Plank"); break;
+    default: break;
+    }
+    const FName NewDefinitionId(*FString::Printf(
+        TEXT("%s.%s"), *EffectiveBaseDefinition.ToString(), VariantSuffix));
+
+    FWorldOwnedItemRecord TransformedItem;
+    if (!Ownership->TryUpdateItemDefinition(OperationId, CurrentItem.ItemId,
+        CurrentItem.Revision, EWorldItemOwnerKind::World, NewDefinitionId, TransformedItem))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Conflict,
+            OperationId,
+            FText::FromString(TEXT("The world-item definition changed or could not be committed.")));
+    }
+
+    BaseDefinitionId = EffectiveBaseDefinition;
+    ItemIdentity->SetDefinitionId(NewDefinitionId);
 
     // Preserve the mesh's bottom world height when replacing the geometry.
     FVector OldOrigin;
