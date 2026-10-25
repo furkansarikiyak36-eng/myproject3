@@ -160,3 +160,12 @@ For every imported mesh, record:
 ## Next acceptance gate
 
 After entering actual UE-derived asset measurements, lock a data row for every used combination of nominal source mesh + length fraction + cross-section shape. Only then assign Blueprint variants and accept the physical split behavior. Filename classification alone must not be counted as geometry-verified.
+
+
+## Data-driven mesh family contract added after this inventory
+
+The C++ source now exposes `FLogProcessingMeshSet` and `FLogPieceMeshVariant`. Each authored set contains a stable `VariantSetId`, descriptive `NominalLengthLabel`, one `BaseRoundMesh`, and explicit rows of `LengthFraction + CrossSectionShape + Mesh`. The actor selects a set from the authored selector or a unique match against the current base/variant mesh. Duplicate set IDs, ambiguous mesh matches, duplicate geometry tuples and missing mappings are rejected rather than choosing an arbitrary size.
+
+The selected set ID travels with `FWorldOwnedItemRecord`; split outputs inherit it and inventory drop restores it to the actor. Item DefinitionId can also carry an orthogonal geometry state such as `LengthHalf.SplitHalfLog`; SaveGame schema v8 stores the set selector and has a v7→v8 compatibility step.
+
+**No real set is assigned by the code automatically.** The data table requires Blueprint/content authoring for each actual nominal asset family. The filename list above must not be treated as evidence that the corresponding mesh bounds, pivots, rotations or collision are correct. UE asset import, value assignment and runtime acceptance remain open.
