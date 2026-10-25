@@ -970,48 +970,45 @@ bool ALogBuildPiece::AttachToSnapParent(
     int32 ParentPointIndex,
     int32 MyPointIndex)
 {
-    if (!IsValid(Parent) ||
-        Parent == this ||
+    if (!IsValid(Parent) || Parent == this ||
         !Parent->SnapPoints.IsValidIndex(ParentPointIndex) ||
         !SnapPoints.IsValidIndex(MyPointIndex) ||
-        SnapParent.IsValid() ||
-        ParentSnapPointIndex != INDEX_NONE ||
-        OwnSnapPointIndexUsed != INDEX_NONE)
+        SnapParent.IsValid() || ParentSnapPointIndex != INDEX_NONE ||
+        OwnSnapPointIndexUsed != INDEX_NONE ||
+        !StructuralIdentity || !Parent->StructuralIdentity || !GetWorld())
     {
         return false;
     }
 
-    // Do not publish parent/child bookkeeping until Unreal confirms the actor
-    // attachment. A failed attach must not leave stale weak-child entries or
-    // occupied anchors.
-    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
-    {
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Graph)
         return false;
-    }
+
+    // Do not publish parent/child bookkeeping until Unreal attachment and the
+    // canonical graph edge have both committed successfully.
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+        return false;
 
     SnapParent = Parent;
     ParentSnapPointIndex = ParentPointIndex;
     OwnSnapPointIndexUsed = MyPointIndex;
     Parent->RegisterAttachedPiece(this);
-    if (StructuralIdentity && Parent->StructuralIdentity)
+
+    if (!Graph->TryConnect(Parent->StructuralIdentity->GetInstanceId(),
+        Parent->SnapPoints[ParentPointIndex].PointId,
+        StructuralIdentity->GetInstanceId(), SnapPoints[MyPointIndex].PointId))
     {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
-        {
-            if (!Graph->TryConnect(Parent->StructuralIdentity->GetInstanceId(),
-                Parent->SnapPoints[ParentPointIndex].PointId, StructuralIdentity->GetInstanceId(),
-                SnapPoints[MyPointIndex].PointId))
-            {
-                Parent->ReleaseSnapPoint(ParentPointIndex);
-                ReleaseSnapPoint(MyPointIndex);
-                Parent->UnregisterAttachedPiece(this);
-                SnapParent.Reset();
-                ParentSnapPointIndex = INDEX_NONE;
-                OwnSnapPointIndexUsed = INDEX_NONE;
-                DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-                return false;
-            }
-        }
+        Parent->ReleaseSnapPoint(ParentPointIndex);
+        ReleaseSnapPoint(MyPointIndex);
+        Parent->UnregisterAttachedPiece(this);
+        SnapParent.Reset();
+        ParentSnapPointIndex = INDEX_NONE;
+        OwnSnapPointIndexUsed = INDEX_NONE;
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        return false;
     }
+
     SetPlacedState(true);
     return true;
 }
