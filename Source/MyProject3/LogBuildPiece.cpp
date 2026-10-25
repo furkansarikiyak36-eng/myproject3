@@ -629,9 +629,20 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
 
     const FVector SourceOutputLocation = OriginalTransform.GetLocation() - WorldCenterOffset * 0.5f;
     const FVector ChildOutputLocation = OriginalTransform.GetLocation() + WorldCenterOffset * 0.5f;
+    // The additional piece must be oriented as the complementary cut
+    // section, not merely translated beside an identical half mesh. These
+    // authored local rotations are per-mesh because imported pivots/cut planes
+    // can differ. The defaults assume a log axis of X and may be overridden
+    // in the asset Blueprint.
+    const FRotator ChildRotationOffset = Action == ELogCutAction::SplitHalf
+        ? SplitHalfChildRotationOffsetLocal
+        : QuarterChildRotationOffsetLocal;
+    const FQuat ChildOutputRotation =
+        OriginalTransform.GetRotation() * ChildRotationOffset.Quaternion();
+
     const FTransform SourceOutputTransform(OriginalTransform.GetRotation(),
         SourceOutputLocation, OriginalTransform.GetScale3D());
-    const FTransform ChildOutputTransform(OriginalTransform.GetRotation(),
+    const FTransform ChildOutputTransform(ChildOutputRotation,
         ChildOutputLocation, OriginalTransform.GetScale3D());
 
     // Construct the child in deferred state so its stable ID and mesh are
@@ -662,8 +673,10 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     Child->SideSnapTag = SideSnapTag;
     Child->SplitHalfVariantMesh = SplitHalfVariantMesh;
     Child->SplitHalfPieceCenterOffsetLocal = SplitHalfPieceCenterOffsetLocal;
+    Child->SplitHalfChildRotationOffsetLocal = SplitHalfChildRotationOffsetLocal;
     Child->QuarterVariantMesh = QuarterVariantMesh;
     Child->QuarterPieceCenterOffsetLocal = QuarterPieceCenterOffsetLocal;
+    Child->QuarterChildRotationOffsetLocal = QuarterChildRotationOffsetLocal;
     Child->HewnVariantMesh = HewnVariantMesh;
     Child->GutterVariantMesh = GutterVariantMesh;
     Child->TroughVariantMesh = TroughVariantMesh;
