@@ -140,11 +140,23 @@ bool ALogBuildPiece::SelectProcessingMeshSetFromCurrentMesh()
     const FLogProcessingMeshSet* Match = nullptr;
     for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
     {
-        if (Candidate.BaseRoundMesh.Get() != CurrentMesh)
+        bool bCandidateUsesCurrentMesh = Candidate.BaseRoundMesh.Get() == CurrentMesh;
+        if (!bCandidateUsesCurrentMesh)
+        {
+            for (const FLogPieceMeshVariant& Variant : Candidate.MeshVariants)
+            {
+                if (Variant.Mesh.Get() == CurrentMesh)
+                {
+                    bCandidateUsesCurrentMesh = true;
+                    break;
+                }
+            }
+        }
+        if (!bCandidateUsesCurrentMesh)
             continue;
 
         if (Match)
-            return false; // Ambiguous base-mesh assignment must not select arbitrarily.
+            return false; // Ambiguous base/variant mesh assignment must not select arbitrarily.
         Match = &Candidate;
     }
 
@@ -389,6 +401,25 @@ void ALogBuildPiece::BeginPlay()
             return;
         }
 
+        if (!Item.MeshVariantSetId.IsNone())
+            SelectedProcessingMeshSetId = Item.MeshVariantSetId;
+
+        if (!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet())
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("Log '%s' requires missing/ambiguous mesh variant set '%s'; actor was quarantined."),
+                *GetName(), *SelectedProcessingMeshSetId.ToString());
+            if (Mesh)
+            {
+                Mesh->SetSimulatePhysics(false);
+                Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+            SetActorHiddenInGame(true);
+            SetActorEnableCollision(false);
+            SetActorTickEnabled(false);
+            return;
+        }
+
         if (Item.BaseDefinitionId.IsNone())
             Item.BaseDefinitionId = Item.DefinitionId;
         BaseDefinitionId = Item.BaseDefinitionId;
@@ -400,6 +431,7 @@ void ALogBuildPiece::BeginPlay()
         Item.DefinitionId = StructuralIdentity->GetDefinitionId().IsNone()
             ? BaseDefinitionId : StructuralIdentity->GetDefinitionId();
         Item.BaseDefinitionId = BaseDefinitionId;
+        Item.MeshVariantSetId = SelectedProcessingMeshSetId;
         Item.Quantity = 1;
         Item.OwnerKind = EWorldItemOwnerKind::World;
         Item.WorldLocation = GetActorLocation();
@@ -485,6 +517,11 @@ bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
     if (!Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item) ||
         Item.OwnerKind != EWorldItemOwnerKind::World ||
         Item.DefinitionId.IsNone())
+        return false;
+
+    if (!Item.MeshVariantSetId.IsNone())
+        SelectedProcessingMeshSetId = Item.MeshVariantSetId;
+    if (!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet())
         return false;
 
     FStructuralNodeRecord ExistingNode;
