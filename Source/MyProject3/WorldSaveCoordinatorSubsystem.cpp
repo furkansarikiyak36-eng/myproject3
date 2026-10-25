@@ -607,8 +607,17 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     // pre-load manifest so callers do not continue with a mixed-world snapshot.
     if (!ApplySnapshot(Before))
     {
-        UE_LOG(LogTemp, Error,
-            TEXT("World save load failed and rollback also failed. World state may be mixed; stop simulation and capture diagnostics."));
+        const FString FaultReason = TEXT(
+            "World save load failed and rollback also failed; authoritative world state may be mixed. Stop simulation and recover/reset the world.");
+        UE_LOG(LogTemp, Error, TEXT("%s"), *FaultReason);
+        if (UWorld* World = GetWorld())
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(FaultReason);
+            }
+        }
     }
     return false;
 }
