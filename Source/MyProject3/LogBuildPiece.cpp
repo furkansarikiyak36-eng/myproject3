@@ -203,12 +203,12 @@ void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
         }
     }
 
-    DetachFromSnapParent();
+    DetachFromSnapParent(true);
     for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
     {
         if (Child.IsValid())
         {
-            Child->DetachFromSnapParent();
+            Child->DetachFromSnapParent(true);
         }
     }
     AttachedPieces.Reset();
@@ -1007,18 +1007,43 @@ bool ALogBuildPiece::AttachToSnapParent(
     return true;
 }
 
-void ALogBuildPiece::DetachFromSnapParent()
+bool ALogBuildPiece::DetachFromSnapParent(bool bAllowGraphFailure)
 {
-    if (StructuralIdentity)
+    ALogBuildPiece* Parent = SnapParent.Get();
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+
+    if (Parent && (!StructuralIdentity || !Parent->StructuralIdentity || !Graph))
     {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        if (!bAllowGraphFailure)
+            return false;
+    }
+
+    if (StructuralIdentity && Graph)
+    {
+        FStructuralNodeRecord Node;
+        if (Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) &&
+            Node.ParentNodeId.IsValid())
         {
-            Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+            const FGuid ExpectedParentId = Parent && Parent->StructuralIdentity
+                ? Parent->StructuralIdentity->GetInstanceId() : FGuid();
+            if ((!ExpectedParentId.IsValid() || Node.ParentNodeId != ExpectedParentId ||
+                 !Graph->TryDisconnect(StructuralIdentity->GetInstanceId())) &&
+                !bAllowGraphFailure)
+            {
+                return false;
+            }
         }
     }
-    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    else if (Parent && !bAllowGraphFailure)
+    {
+        return false;
+    }
 
-    if (ALogBuildPiece* Parent = SnapParent.Get())
+    // Graph disconnect has either committed, or this is lifecycle cleanup while
+    // the actor is already being destroyed. Only now mutate actor/anchor state.
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    if (Parent)
     {
         Parent->ReleaseSnapPoint(ParentSnapPointIndex);
         Parent->UnregisterAttachedPiece(this);
@@ -1033,6 +1058,7 @@ void ALogBuildPiece::DetachFromSnapParent()
     ParentSnapPointIndex = INDEX_NONE;
     OwnSnapPointIndexUsed = INDEX_NONE;
     SetPlacedState(false);
+    return true;
 }
 
 void ALogBuildPiece::RegisterAttachedPiece(ALogBuildPiece* Child)
