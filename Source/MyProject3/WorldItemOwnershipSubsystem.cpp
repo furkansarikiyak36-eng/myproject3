@@ -316,6 +316,7 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
         Output.ItemId = NewId;
         Output.DefinitionId = OutputDefinitionIds[Index];
         Output.BaseDefinitionId = BaseDefinition;
+        Output.MeshVariantSetId = Source->MeshVariantSetId;
         Output.Quantity = 1;
         Output.OwnerKind = EWorldItemOwnerKind::World;
         Output.OwnerId.Invalidate();
