@@ -51,8 +51,9 @@ The setup script saves the currently open level before changing maps, only clean
 
 This iteration establishes the core interaction loop and anchor system. It is not yet a complete Sons of the Forest construction implementation.
 
-- Auto-generated anchors are located at the two ends of a mesh whose long axis is set to local X (configurable per piece).
-- Custom anchors can be added for top/side/slot connections. The test map adds two top anchors to a placed support beam so a carried log can be snapped into a vertical post position.
+- Auto-generated anchors are located at both ends of a mesh and receiving sockets are generated along the four side directions at configurable spacing. The assumed long axis is local X by default, configurable per piece.
+- Custom anchors can be added for top/side/slot connections. The test map adds top anchors to placed support beams so a carried log can snap into a vertical post position.
+- Snap selection is crosshair-guided: the aimed placed log must be the target, compatible sockets must be free, and the carried piece is aligned to the target anchor. A green point and anchor-name label show the candidate.
 - A snapped piece is attached to its parent actor and reserves both connection anchors. A piece with attached children cannot be picked up until those children are removed.
 - Free placement can be restricted through `bAllowFreePlacement` / `bRequireSurfaceForFreePlacement`.
 - The selected processing actions now swap to same-length pre-authored meshes, and transitions are guarded: a whole log may split or be hewn/squared; a split half-round may be quartered, grooved, hollowed, or made into a plank. Invalid transitions are rejected instead of silently reverting to a straight whole log.
