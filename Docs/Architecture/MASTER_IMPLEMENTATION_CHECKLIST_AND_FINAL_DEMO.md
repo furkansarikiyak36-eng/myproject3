@@ -743,7 +743,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] UHT/UBT derlemesi ve runtime işlem testleri
 
 **Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `AssetPackages/README.md`, `Docs/Architecture/WOOD_003_ASSET_VARIANT_CATALOG.md`  
-**Commit/PR:** PR #24 açıldıktan sonra eklenecek; `fix/log-geometry-dimensions`.  
+**Commit/PR:** [PR #24 — Separate log length fraction from cross-section geometry](https://github.com/furkansarikiyak36-eng/myproject3/pull/24); `fix/log-geometry-dimensions`.  
 **Sonuç:** LengthFraction ile CrossSectionShape artık aynı birleşik etiketten ayrı tutuluyor. Fiziksel işlem eylemleri, örneğin 1/2 uzunluğundaki bir round log üzerinde de kesit-shape ön koşullarını kullanabilir; split işlemi length fraction metadata'sını korur. FBX listesi isimlerden çıkarılmıştır, gerçek geometri ölçümü olarak sunulmuyor.  
 **Kanıt seviyesi:** Kaynak değişikliği, API/koşul kontrolü ve GitHub asset-inventory incelemesi. Unreal geometri doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Asset pivot/ölçü/ekseni, import edilmiş Content varlıkları ve Blueprint alan atamaları motor içinde kontrol edilmedi. `SM_RawLog_75.fbx` base mesh yok; Long/Short varlıklarının gerçek boyları belirsiz.  
@@ -753,4 +753,4 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ## 15. İlk yapılacak iş
 
-Sıradaki sıra: **WOOD-003 — mesh/asset durum tablosu ve uzunluk-kesit boyutlarının ayrılması**; sonra 2.1'in geri kalan fiziksel kaynak/taşıma/inşa kriterleri. Sonraki referans oyun ve LB0–LB4 işlerine de aynı kanıt standardıyla geçilecek; final demo tüm mekanikleri tek dünyada birlikte çalıştıran son kabul kapısı olarak en sonda kurulacak.
+WOOD-003 kod ve dosya-adı kataloğu tamamlandı; gerçek mesh geometri ölçümü ve Blueprint bağlaması UE erişimi olduğunda kalacak. Sıradaki kaynak işi **WOOD-004 — kaynak kütüğün nominal varyant setini açıkça seçtiren data-driven mesh eşlemesi**; 75/150/300/600 ya da Long/Short adlarından boyutu varsaymayacak. Ardından 2.1'in geri kalan ağaç-kütük miktarı, kaynak sahipliği, taşıma/inşa entegrasyonuna devam edilecek. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
