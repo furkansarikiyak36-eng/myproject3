@@ -53,6 +53,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Exploration") bool RecordDiscovery(FName DiscoveryId, FVector Location, double LogicalTimeSeconds);
     UFUNCTION(BlueprintPure, Category="World|Survival") bool GetProfile(const FGuid& EntityId, FWorldSurvivalProfile& OutProfile) const;
     UFUNCTION(BlueprintPure, Category="World|Exploration") TArray<FWorldDiscoveryRecord> GetDiscoveries() const { return Discoveries; }
+    void ExportSnapshot(TArray<FWorldSurvivalProfile>& OutProfiles, TArray<FWorldDiscoveryRecord>& OutDiscoveries, EWorldWeatherState& OutWeather, float& OutSeverity) const;
+    bool RestoreSnapshot(const TArray<FWorldSurvivalProfile>& ProfileSnapshot, const TArray<FWorldDiscoveryRecord>& DiscoverySnapshot, EWorldWeatherState InWeather, float InSeverity);
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Survival") TMap<FGuid, FWorldSurvivalProfile> Profiles;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Exploration") TArray<FWorldDiscoveryRecord> Discoveries;
