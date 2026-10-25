@@ -914,6 +914,7 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
     TSet<FGuid> ProductionOperationIds;
     TSet<FGuid> IntakeSourceItemIds;
     TSet<FGuid> EnqueuedJobIds;
+    TSet<FGuid> SnapshotJobIds;
     TSet<FGuid> MaterializedWorldItemIds;
     for (const FWorldProductionStation& S : StationSnapshot)
     {
@@ -930,7 +931,8 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
         for (const FWorldProductionJob& J : S.Jobs)
         {
             const FWorldProductionRecipe* Recipe = FindSnapshotRecipe(J.RecipeId);
-            if (!J.JobId.IsValid() || StationJobIds.Contains(J.JobId) || !Recipe ||
+            if (!J.JobId.IsValid() || StationJobIds.Contains(J.JobId) ||
+                SnapshotJobIds.Contains(J.JobId) || !Recipe ||
                 static_cast<uint8>(J.State) > static_cast<uint8>(EProductionJobState::Blocked) ||
                 !FMath::IsFinite(J.ProgressSeconds) || J.ProgressSeconds < 0.0 ||
                 J.ProgressSeconds > Recipe->DurationSeconds)
@@ -938,6 +940,7 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
                 return false;
             }
             StationJobIds.Add(J.JobId);
+            SnapshotJobIds.Add(J.JobId);
 
             if (J.State == EProductionJobState::Queued || J.State == EProductionJobState::Running)
             {
