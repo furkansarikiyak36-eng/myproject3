@@ -774,7 +774,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] Runtime: yanlış/eksik tuple, duplicate state mapping ve eksik variant asset eylemi reddediyor; kaynak state değişmiyor
 
 **Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`, `InventoryCraftingComponent.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
-**Commit/PR:** PR #25 açıldıktan sonra eklenecek; `fix/log-mesh-variant-sets`.  
+**Commit/PR:** [PR #26 — Data-drive log mesh variants and preserve geometry identity](https://github.com/furkansarikiyak36-eng/myproject3/pull/26); `fix/log-mesh-variant-sets`.  
 **Sonuç:** Tek bir nominal kaynak mesh ailesine ait işlenmiş şekiller için sabit tek mesh pointer'ları yerine açık state tuple tablosu kullanılabiliyor. Doğru set seçimi ownership record ve definition ID boyunca korunuyor. Bu, gerçek FBX'ler tabloya atanmış veya geometri UE içinde doğrulanmış demek değildir.  
 **Kanıt seviyesi:** Statik kaynak incelemesi ve targeted structural checks; Unreal motor doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** `SM_RawLog_75.fbx` base-round mesh yok; Long/Short dosyalarının gerçek ölçüleri belirsiz. Yeni data-driven tablolar için mevcut Blueprint/content asset atamaları henüz yapılmadı.  
