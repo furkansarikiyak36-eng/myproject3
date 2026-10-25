@@ -6,6 +6,7 @@
 #include "WorldAgricultureSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
+#include "WorldCargoTransportSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -35,6 +36,12 @@ UWorldProductionSubsystem* UWorldSimulationCoordinatorSubsystem::GetProduction()
 {
     UWorld* World = GetWorld();
     return World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+}
+
+UWorldCargoTransportSubsystem* UWorldSimulationCoordinatorSubsystem::GetCargo() const
+{
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldCargoTransportSubsystem>() : nullptr;
 }
 
 bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
@@ -80,7 +87,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorldAgricultureSubsystem* Agriculture = GetAgriculture();
     UWorldSurvivalSubsystem* Survival = GetSurvival();
     UWorldProductionSubsystem* Production = GetProduction();
-    if (!Clock || !Threat || !Agriculture || !Survival || !Production ||
+    UWorldCargoTransportSubsystem* Cargo = GetCargo();
+    if (!Clock || !Threat || !Agriculture || !Survival || !Production || !Cargo ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() ||
         !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
         CompletedCoordinatorSteps == MAX_int64 || !Clock->CanAdvanceSimulation(DeltaSeconds))
@@ -93,6 +101,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     if (!Agriculture->CanAdvanceAgricultureStep(DeltaSeconds) ||
         !Survival->CanAdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->CanAdvanceProductionStep(DeltaSeconds) ||
+        !Cargo->CanAdvanceCargoStep(DeltaSeconds) ||
         !Threat->CanAdvanceDirectorAtTime(TargetTime, TargetTick))
     {
         return false;
@@ -104,6 +113,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     if (!Agriculture->AdvanceAgricultureStep(DeltaSeconds) ||
         !Survival->AdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->AdvanceProductionStep(DeltaSeconds) ||
+        !Cargo->AdvanceCargoStep(DeltaSeconds) ||
         !Threat->AdvanceDirectorAtTime(TargetTime, TargetTick) ||
         !Clock->AdvanceSimulation(DeltaSeconds))
     {
@@ -123,6 +133,7 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
     const UWorldAgricultureSubsystem* Agriculture = GetAgriculture();
     const UWorldSurvivalSubsystem* Survival = GetSurvival();
     const UWorldProductionSubsystem* Production = GetProduction();
-    return Clock && Threat && Agriculture && Survival && Production &&
+    const UWorldCargoTransportSubsystem* Cargo = GetCargo();
+    return Clock && Threat && Agriculture && Survival && Production && Cargo &&
         Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
 }
