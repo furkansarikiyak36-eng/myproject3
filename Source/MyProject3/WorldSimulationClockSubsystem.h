@@ -52,6 +52,9 @@ public:
     bool AdvanceSimulation(double DeltaSeconds);
 
     UFUNCTION(BlueprintPure, Category = "World|Clock")
+    bool IsClockInitialized() const { return bInitialized; }
+
+    UFUNCTION(BlueprintPure, Category = "World|Clock")
     double GetSimulationTimeSeconds() const { return SimulationTimeSeconds; }
 
     UFUNCTION(BlueprintPure, Category = "World|Clock")
