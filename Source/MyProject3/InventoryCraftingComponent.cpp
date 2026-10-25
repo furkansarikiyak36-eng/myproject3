@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldStorageSubsystem.h"
 #include "LogBuildPiece.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
@@ -237,6 +238,8 @@ bool UInventoryCraftingComponent::TryMoveOwnedItemToStorage(FGuid ItemId, FGuid 
 {
  if (!ItemId.IsValid() || !StorageId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid())
   return false;
+ UWorldStorageSubsystem* Storage = GetWorld()->GetSubsystem<UWorldStorageSubsystem>();
+ if (!Storage || !Storage->CanAcceptItem(StorageId, ItemId)) return false;
  const int32 Index = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
   { return Stack.OwnedWorldItemId == ItemId; });
  if (!Items.IsValidIndex(Index)) return false;
@@ -259,6 +262,48 @@ bool UInventoryCraftingComponent::TryMoveOwnedItemToStorage(FGuid ItemId, FGuid 
  Items.RemoveAt(Index);
  if (!QuickAccessItemId.IsNone() && GetItemCount(QuickAccessItemId) <= 0)
   QuickAccessItemId = NAME_None;
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryWithdrawStoredItem(FGuid ItemId, FGuid StorageId)
+{
+ if (!ItemId.IsValid() || !StorageId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid())
+  return false;
+
+ UWorldStorageSubsystem* Storage = GetWorld()->GetSubsystem<UWorldStorageSubsystem>();
+ UWorldItemOwnershipSubsystem* Ownership = GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+ if (!Storage || !Ownership) return false;
+
+ FWorldStorageContainerRecord StorageRecord;
+ if (!Storage->GetStorage(StorageId, StorageRecord)) return false;
+
+ FWorldOwnedItemRecord Item;
+ if (!Ownership->TryGetItem(ItemId, Item) ||
+     Item.OwnerKind != EWorldItemOwnerKind::Storage || Item.OwnerId != StorageId)
+  return false;
+
+ FInventoryStack Incoming;
+ Incoming.ItemId = Item.DefinitionId;
+ Incoming.Quantity = 1;
+ Incoming.MaxStack = 1;
+ Incoming.OwnedWorldItemId = ItemId;
+ if (!HasCapacityFor({Incoming})) return false;
+
+ FWorldOwnedItemRecord Transferred;
+ if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, Item.Revision,
+     EWorldItemOwnerKind::Storage, EWorldItemOwnerKind::Inventory,
+     InventoryOwnerId, Item.WorldLocation, Transferred))
+  return false;
+
+ if (!TryAddItem(Incoming))
+ {
+  FWorldOwnedItemRecord RolledBack;
+  if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, Transferred.Revision,
+      EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Storage,
+      StorageId, Item.WorldLocation, RolledBack))
+   UE_LOG(LogTemp, Error, TEXT("Storage withdrawal rollback failed for item %s."), *ItemId.ToString());
+  return false;
+ }
  return true;
 }
 
