@@ -8,14 +8,21 @@ This is the repository's shared asset inbox / inventory. Store incoming archives
 - `UnrealExport/` — FBX static meshes used by the log mechanic prototype.
 - `UnrealExport/Archive/` — special notches and joint geometry.
 
-## Log FBX groups
+## Log FBX groups (filename-derived inventory)
 
-The current FBX set includes:
-- Whole-log lengths: 150, 300, 600 and additional short/long variants.
-- Prepared shape variants: `Half` (split half-round, not a shorter log), `Quarter`, `Gutter`, `Trough`, `Hewn1/2`, `Kalas`, `Plank`, and flat-notch variants.
-- Archive joint parts: cross-lap, half-lap, fork, V-notch, saddle and related mating pieces.
+The current `UnrealExport/` directory contains **48 root FBX meshes and 10 Archive/joinery FBX meshes**.
 
-Names are treated as metadata hints, not as a substitute for checking actual mesh dimensions and orientation. The prototype assumes the log's long axis is local X by default; correct this per asset if a mesh was exported on another axis.
+- Nominal size groups `75`, `150`, `300`, and `600` have nine files each, except the 75 group has no `SM_RawLog_75.fbx` base-round mesh (it has eight shaped outputs plus `FlatNotch_TopBottom`).
+- Base round meshes are present for `SM_RawLog_150.fbx`, `SM_RawLog_300.fbx`, and `SM_RawLog_600.fbx`.
+- The `Half` filename is documented as a split half-round, **not** a shorter log.
+- `Quarter_04` is catalogued as a likely quarter-round cross-section output from the package naming, but its actual geometry/pivot still needs visual import verification. It must not be assumed to mean a quarter-length log.
+- `Gutter`, `Trough`, `Hewn1`, `Hewn2`, `Kalas`, and `Plank` are shape-processing variants. Match an output to a base nominal size only when the corresponding asset exists.
+- `SM_RawLog_Long_01..08` and `SM_RawLog_Short_01..04` have ambiguous names and need dimensions/shape metadata from the imported meshes.
+- `Archive/` contains ten joinery pieces: CrossLap lower/upper, Notch Fork/HalfLap/Saddle/V, and SaddleA/SaddleB mating parts.
+
+This is a **filename inventory**, not a geometric audit. The importer script groups/imports FBXs into `/Game/ImportedLogs` and creates a staging gallery, but it does not configure `ALogBuildPiece` Blueprint variant fields, collision equivalence, center offsets or output rotations. `AssetPackages/` is not the Unreal `Content/` folder; the repository does not currently include a configured production Blueprint/material setup for each variant.
+
+Names remain metadata hints, not a substitute for checking actual mesh dimensions, pivot, local axes and orientation. The prototype assumes the long axis is local X by default; correct this per asset if a mesh was exported on another axis.
 
 ## Adding new packages
 
