@@ -6,6 +6,7 @@
 #include "LogBuildPiece.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 int32 UWorldProductionSubsystem::FindRecipe(FName RecipeId) const
 {
@@ -307,6 +308,213 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
             *ItemId.ToString());
     }
 
+    return true;
+}
+
+bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
+    FGuid StationId,
+    FGuid OperationId,
+    FName StockItemId,
+    FName DefinitionId,
+    FName BaseDefinitionId,
+    FName MeshVariantSetId,
+    int64 ExpectedStationRevision,
+    const FTransform& SpawnTransform,
+    TSubclassOf<ALogBuildPiece> LogActorClass,
+    FGuid& OutWorldItemId)
+{
+    OutWorldItemId.Invalidate();
+    const FVector Location = SpawnTransform.GetLocation();
+    const FVector Scale = SpawnTransform.GetScale3D();
+    const FQuat Rotation = SpawnTransform.GetRotation();
+    if (!GetWorld() || !StationId.IsValid() || !OperationId.IsValid() ||
+        StockItemId.IsNone() || DefinitionId.IsNone() || BaseDefinitionId.IsNone() ||
+        ExpectedStationRevision <= 0 || ExpectedStationRevision == MAX_int64 ||
+        !LogActorClass || !LogActorClass->IsChildOf(ALogBuildPiece::StaticClass()) ||
+        MakePhysicalStockItemId(DefinitionId, MeshVariantSetId) != StockItemId ||
+        !FMath::IsFinite(Location.X) || !FMath::IsFinite(Location.Y) ||
+        !FMath::IsFinite(Location.Z) || !FMath::IsFinite(Scale.X) ||
+        !FMath::IsFinite(Scale.Y) || !FMath::IsFinite(Scale.Z) ||
+        FMath::IsNearlyZero(Scale.X) || FMath::IsNearlyZero(Scale.Y) ||
+        FMath::IsNearlyZero(Scale.Z) || !FMath::IsFinite(Rotation.X) ||
+        !FMath::IsFinite(Rotation.Y) || !FMath::IsFinite(Rotation.Z) ||
+        !FMath::IsFinite(Rotation.W) || !Rotation.IsNormalized())
+    {
+        return false;
+    }
+
+    // Operation IDs are unique across intake, enqueue, collect and materialize.
+    for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
+    {
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Pair.Value.PhysicalIntakeReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionCollectReceipt& Receipt : Pair.Value.CollectReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionMaterializationReceipt& Receipt : Pair.Value.MaterializationReceipts)
+        {
+            if (Receipt.OperationId != OperationId)
+                continue;
+            if (Pair.Key != StationId || Receipt.StockItemId != StockItemId ||
+                Receipt.DefinitionId != DefinitionId || Receipt.BaseDefinitionId != BaseDefinitionId ||
+                Receipt.MeshVariantSetId != MeshVariantSetId ||
+                Receipt.ExpectedStationRevision != ExpectedStationRevision)
+            {
+                return false;
+            }
+            OutWorldItemId = Receipt.WorldItemId;
+            return OutWorldItemId.IsValid();
+        }
+    }
+
+    FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station || Station->Revision != ExpectedStationRevision ||
+        Station->Revision == MAX_int64 || Station->Stock.FindRef(StockItemId) <= 0)
+    {
+        return false;
+    }
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Ownership || !Graph)
+        return false;
+
+    FGuid NewItemId;
+    bool bUniqueItemId = false;
+    for (int32 Attempt = 0; Attempt < 8 && !bUniqueItemId; ++Attempt)
+    {
+        NewItemId = FGuid::NewGuid();
+        FWorldOwnedItemRecord Existing;
+        bUniqueItemId = NewItemId.IsValid() && !Ownership->TryGetItem(NewItemId, Existing);
+    }
+    if (!bUniqueItemId)
+        return false;
+
+    ALogBuildPiece* Piece = GetWorld()->SpawnActorDeferred<ALogBuildPiece>(
+        LogActorClass, SpawnTransform, nullptr, nullptr,
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    if (!IsValid(Piece))
+        return false;
+
+    Piece->SetActorHiddenInGame(true);
+    Piece->SetActorEnableCollision(false);
+    Piece->bStartsPlaced = false;
+    Piece->BaseDefinitionId = BaseDefinitionId;
+    Piece->SelectedProcessingMeshSetId = MeshVariantSetId;
+
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    if (!Identity)
+    {
+        Piece->Destroy();
+        return false;
+    }
+
+    Identity->InstanceId = NewItemId;
+    Identity->SetDefinitionId(DefinitionId);
+    UGameplayStatics::FinishSpawningActor(Piece, SpawnTransform);
+    if (!IsValid(Piece))
+        return false;
+
+    // Keep the output inert until the stock decrement and receipt are committed.
+    Piece->SetActorHiddenInGame(true);
+    Piece->SetActorEnableCollision(false);
+
+    auto RollbackOutputActor = [Piece, Identity, Ownership, NewItemId]()
+    {
+        if (!IsValid(Piece))
+            return;
+        Piece->SetActorHiddenInGame(true);
+        Piece->SetActorEnableCollision(false);
+        if (UStaticMeshComponent* Mesh = Piece->GetLogMesh())
+            Mesh->SetSimulatePhysics(false);
+
+        FWorldOwnedItemRecord Current;
+        if (Identity && Ownership && Ownership->TryGetItem(NewItemId, Current) &&
+            Current.OwnerKind == EWorldItemOwnerKind::World &&
+            Current.Revision < MAX_int64)
+        {
+            FWorldOwnedItemRecord Consumed;
+            Ownership->TryTransferItem(FGuid::NewGuid(), NewItemId, Current.Revision,
+                EWorldItemOwnerKind::World, EWorldItemOwnerKind::Consumed,
+                FGuid(), Piece->GetActorLocation(), Consumed);
+        }
+        Piece->Destroy();
+    };
+
+    FWorldOwnedItemRecord RegisteredItem;
+    FStructuralNodeRecord RegisteredNode;
+    if (!Identity->HasValidIdentity() || Identity->GetInstanceId() != NewItemId ||
+        !Ownership->TryGetItem(NewItemId, RegisteredItem) ||
+        RegisteredItem.OwnerKind != EWorldItemOwnerKind::World ||
+        RegisteredItem.Quantity != 1 || RegisteredItem.DefinitionId != DefinitionId ||
+        RegisteredItem.BaseDefinitionId != BaseDefinitionId ||
+        RegisteredItem.MeshVariantSetId != MeshVariantSetId ||
+        !Graph->GetNode(NewItemId, RegisteredNode) ||
+        RegisteredNode.Actor.Get() != Piece ||
+        !IsValid(Piece->GetLogMesh()) || !Piece->GetLogMesh()->GetStaticMesh())
+    {
+        RollbackOutputActor();
+        return false;
+    }
+
+    // Apply the definition only after BeginPlay has registered the item/node.
+    // Missing variant tuples fail closed and leave station stock untouched.
+    if (!Piece->ApplyDefinitionVariant(DefinitionId) ||
+        !IsValid(Piece->GetLogMesh()) || !Piece->GetLogMesh()->GetStaticMesh())
+    {
+        RollbackOutputActor();
+        return false;
+    }
+
+    // FinishSpawning may run Blueprint logic. Recheck the station revision and
+    // stock count before commit so a re-entrant change cannot consume stale stock.
+    Station = Stations.Find(StationId);
+    if (!Station || Station->Revision != ExpectedStationRevision ||
+        Station->Revision == MAX_int64 || Station->Stock.FindRef(StockItemId) <= 0)
+    {
+        RollbackOutputActor();
+        return false;
+    }
+
+    TMap<FName, int32> ProposedStock = Station->Stock;
+    const int32 Remaining = ProposedStock.FindRef(StockItemId) - 1;
+    ProposedStock.Add(StockItemId, Remaining);
+    if (CountStockUnits(ProposedStock) == MAX_int64)
+    {
+        RollbackOutputActor();
+        return false;
+    }
+
+    // All failure-prone actor/mesh/graph checks have completed. Stock decrement,
+    // durable receipt, and activation are committed in this synchronous call.
+    Station->Stock = MoveTemp(ProposedStock);
+    ++Station->Revision;
+
+    FWorldProductionMaterializationReceipt& Receipt =
+        Station->MaterializationReceipts.AddDefaulted_GetRef();
+    Receipt.OperationId = OperationId;
+    Receipt.StockItemId = StockItemId;
+    Receipt.DefinitionId = DefinitionId;
+    Receipt.BaseDefinitionId = BaseDefinitionId;
+    Receipt.MeshVariantSetId = MeshVariantSetId;
+    Receipt.WorldItemId = NewItemId;
+    Receipt.ExpectedStationRevision = ExpectedStationRevision;
+    Receipt.ResultingStationRevision = Station->Revision;
+
+    if (UStaticMeshComponent* Mesh = Piece->GetLogMesh())
+    {
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(true);
+        Mesh->WakeAllRigidBodies();
+    }
+    Piece->SetActorEnableCollision(true);
+    Piece->SetActorHiddenInGame(false);
+
+    OutWorldItemId = NewItemId;
     return true;
 }
 
