@@ -10,6 +10,7 @@
 #include "StoneBuildingPiece.h"
 #include "StickPrimitivePiece.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -704,24 +705,77 @@ bool UInventoryCraftingComponent::TryCraft(FName RecipeId)
  const FName BeforeQuickAccess = QuickAccessItemId;
  auto RollbackCraft = [&]()
  {
+  // Restore the inventory view, then verify that every unique physical item
+  // represented by that view is still owned by this inventory in the ledger.
+  // If any ledger repair fails, block world simulation instead of continuing
+  // with two conflicting sources of truth.
   Items = BeforeItems;
   QuickAccessItemId = BeforeQuickAccess;
+
+  bool bRollbackConsistent = true;
+  UWorld* World = GetWorld();
   UWorldItemOwnershipSubsystem* Ownership =
-   GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
-  if (!Ownership) return;
+   World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+
   for (const FInventoryStack& Stack : BeforeItems)
   {
    if (!Stack.OwnedWorldItemId.IsValid()) continue;
-   FWorldOwnedItemRecord Item;
-   if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Item) ||
-       Item.OwnerKind != EWorldItemOwnerKind::Consumed || Item.Revision == MAX_int64)
+
+   if (!Ownership)
+   {
+    bRollbackConsistent = false;
+    UE_LOG(LogTemp, Error, TEXT("Craft rollback has no ownership subsystem for physical item %s."),
+     *Stack.OwnedWorldItemId.ToString());
     continue;
+   }
+
+   FWorldOwnedItemRecord Item;
+   if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Item))
+   {
+    bRollbackConsistent = false;
+    UE_LOG(LogTemp, Error, TEXT("Craft rollback cannot find physical item %s in ownership ledger."),
+     *Stack.OwnedWorldItemId.ToString());
+    continue;
+   }
+
+   if (Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+       Item.OwnerId == InventoryOwnerId)
+   {
+    continue; // TryRemoveItem may have failed before consuming this item.
+   }
+
+   if (Item.OwnerKind != EWorldItemOwnerKind::Consumed ||
+       Item.Revision == MAX_int64)
+   {
+    bRollbackConsistent = false;
+    UE_LOG(LogTemp, Error, TEXT("Craft rollback found unexpected ownership for physical item %s."),
+     *Item.ItemId.ToString());
+    continue;
+   }
+
    FWorldOwnedItemRecord Restored;
    if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
        EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
        InventoryOwnerId, Item.WorldLocation, Restored))
+   {
+    bRollbackConsistent = false;
     UE_LOG(LogTemp, Error, TEXT("Craft rollback could not restore physical item %s."),
      *Item.ItemId.ToString());
+   }
+  }
+
+  if (!bRollbackConsistent && World)
+  {
+   if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+       World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+   {
+    Coordinator->MarkSimulationFaulted(
+     TEXT("Craft rollback failed to reconcile inventory and physical-item ownership; stop simulation and recover/reset the world."));
+   }
+   else
+   {
+    UE_LOG(LogTemp, Error, TEXT("Craft rollback is inconsistent and no simulation coordinator is available."));
+   }
   }
  };
  for (const TPair<FName,int32>& P : Required)
