@@ -73,8 +73,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> SplitHalfVariantMesh;
 
+    /**
+     * Local-space vector between the centers of the two resulting half-round
+     * pieces. Configure per mesh/Blueprint; zero or longitudinal offsets are
+     * rejected rather than creating overlapping/misplaced output pieces.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    FVector SplitHalfPieceCenterOffsetLocal = FVector::ZeroVector;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> QuarterVariantMesh;
+
+    /** Local-space center-to-center offset for the two quarter-section outputs. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    FVector QuarterPieceCenterOffsetLocal = FVector::ZeroVector;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> HewnVariantMesh;
@@ -196,4 +208,8 @@ private:
     void GenerateDefaultSideSnapPoints();
     FVector GetLongitudinalAxisVector() const;
     FRotator MakeOutwardRotation(const FVector& Direction) const;
+
+    FWorldOperationResult TrySplitOutputPieces(ELogCutAction Action,
+        const FGuid& OperationId, UStaticMesh* OutputMesh, ELogPieceType OutputType,
+        FName OutputDefinitionId, const FWorldOwnedItemRecord& CurrentItem);
 };
