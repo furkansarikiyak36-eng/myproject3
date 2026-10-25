@@ -3,6 +3,7 @@
 #include "Engine/World.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldStorageSubsystem.h"
 
 UWorldLogisticsRouteSubsystem* UWorldCargoTransportSubsystem::GetRoutes() const
 {
@@ -16,18 +17,33 @@ UWorldItemOwnershipSubsystem* UWorldCargoTransportSubsystem::GetOwnership() cons
     return World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
 }
 
+UWorldStorageSubsystem* UWorldCargoTransportSubsystem::GetStorage() const
+{
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+}
+
 bool UWorldCargoTransportSubsystem::StartTransport(
     const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& SourceStorageId,
     FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
     float CostPerSecond, FGuid& OutCargoId)
 {
+    OutCargoId.Invalidate();
     UWorldLogisticsRouteSubsystem* Routes = GetRoutes();
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Routes || !Ownership || !ItemId.IsValid() || ExpectedItemRevision <= 0 ||
+    UWorldStorageSubsystem* Storage = GetStorage();
+    if (!Routes || !Ownership || !Storage || !ItemId.IsValid() || ExpectedItemRevision <= 0 ||
         !SourceStorageId.IsValid() || !DestinationStorageId.IsValid() ||
+        SourceStorageId == DestinationStorageId ||
         OriginNode.IsNone() || DestinationNode.IsNone() ||
         OriginNode == DestinationNode || !FMath::IsFinite(CostPerSecond) || CostPerSecond <= 0.0f ||
         MaxActiveCargo <= 0 || Cargo.Num() >= MaxActiveCargo)
+        return false;
+
+    FWorldStorageContainerRecord SourceStorage;
+    FWorldStorageContainerRecord DestinationStorage;
+    if (!Storage->GetStorage(SourceStorageId, SourceStorage) ||
+        !Storage->GetStorage(DestinationStorageId, DestinationStorage))
         return false;
 
     TArray<FName> Path;
@@ -55,11 +71,21 @@ bool UWorldCargoTransportSubsystem::StartTransport(
         Cargo.Contains(Record.CargoId))
         return false;
 
+    // Reserve destination capacity before changing item ownership. Manual
+    // deposits count reservations, so multiple shipments cannot overbook it.
+    if (!Storage->TryReserveIncoming(DestinationStorageId, Record.CargoId, ItemId))
+        return false;
+
     FWorldOwnedItemRecord UpdatedItem;
     if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, ExpectedItemRevision,
         EWorldItemOwnerKind::Storage, EWorldItemOwnerKind::InTransit, Record.CargoId,
         Item.WorldLocation, UpdatedItem))
+    {
+        if (!Storage->ReleaseIncomingReservation(Record.CargoId))
+            UE_LOG(LogTemp, Error, TEXT("Failed to release destination reservation for rejected cargo %s."),
+                *Record.CargoId.ToString());
         return false;
+    }
 
     Record.ItemRevision = UpdatedItem.Revision;
     Cargo.Add(Record.CargoId, Record);
@@ -70,8 +96,12 @@ bool UWorldCargoTransportSubsystem::StartTransport(
 bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Record)
 {
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Ownership || Record.Revision == MAX_int64 || !Record.ItemId.IsValid() || !Record.CargoId.IsValid() ||
-        !Record.DestinationStorageId.IsValid() || !Record.DeliveryOperationId.IsValid())
+    UWorldStorageSubsystem* Storage = GetStorage();
+    if (!Ownership || !Storage || Record.Revision >= MAX_int64 - 1 ||
+        !Record.ItemId.IsValid() || !Record.CargoId.IsValid() ||
+        !Record.DestinationStorageId.IsValid() || !Record.DeliveryOperationId.IsValid() ||
+        !Storage->CanCommitIncomingReservation(
+            Record.DestinationStorageId, Record.CargoId, Record.ItemId))
         return false;
 
     FWorldOwnedItemRecord Item;
@@ -85,6 +115,24 @@ bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Recor
         Record.DestinationStorageId, Item.WorldLocation, Delivered))
         return false;
 
+    if (!Storage->CommitIncomingReservation(
+        Record.DestinationStorageId, Record.CargoId, Record.ItemId))
+    {
+        FWorldOwnedItemRecord RolledBack;
+        if (Ownership->TryTransferItem(FGuid::NewGuid(), Record.ItemId, Delivered.Revision,
+            EWorldItemOwnerKind::Storage, EWorldItemOwnerKind::InTransit,
+            Record.CargoId, Item.WorldLocation, RolledBack))
+        {
+            Record.ItemRevision = RolledBack.Revision;
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("Cargo delivery rollback failed; item %s must be reconciled."),
+                *Record.ItemId.ToString());
+        }
+        return false;
+    }
+
     Record.ItemRevision = Delivered.Revision;
     Record.State = ECargoTransportState::Delivered;
     Record.BlockedReason = NAME_None;
@@ -94,13 +142,17 @@ bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Recor
 
 bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) const
 {
-    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+    UWorldStorageSubsystem* Storage = GetStorage();
+    if (!Storage || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
         return false;
     for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
         const FWorldCargoTransportRecord& Record = Pair.Value;
         if (Record.State == ECargoTransportState::InTransit)
         {
+            if (!Storage->HasIncomingReservation(
+                Record.DestinationStorageId, Record.CargoId, Record.ItemId))
+                return false;
             const float ProposedProgress = Record.Progress +
                 Record.CostPerSecond * static_cast<float>(DeltaSeconds);
             if (Record.Revision == MAX_int64 || !FMath::IsFinite(ProposedProgress))
@@ -141,8 +193,10 @@ bool UWorldCargoTransportSubsystem::AdvanceCargoStep(double DeltaSeconds)
 bool UWorldCargoTransportSubsystem::RetryBlockedDelivery(const FGuid& CargoId)
 {
     FWorldCargoTransportRecord* Record = Cargo.Find(CargoId);
-    if (!Record || Record->State != ECargoTransportState::Blocked ||
-        Record->Revision == MAX_int64)
+    UWorldStorageSubsystem* Storage = GetStorage();
+    if (!Record || !Storage || Record->State != ECargoTransportState::Blocked ||
+        Record->Revision >= MAX_int64 - 1 ||
+        !Storage->HasIncomingReservation(Record->DestinationStorageId, Record->CargoId, Record->ItemId))
         return false;
     if (!TryDeliver(*Record))
         return false;
@@ -186,7 +240,8 @@ bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTran
     // Cargo snapshots are only valid when their item-ledger ownership agrees.
     // This rejects orphaned cargo, duplicated ownership and stale delivery records.
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Ownership) return false;
+    UWorldStorageSubsystem* Storage = GetStorage();
+    if (!Ownership || !Storage) return false;
     for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Proposed)
     {
         const FWorldCargoTransportRecord& R = Pair.Value;
@@ -196,22 +251,27 @@ bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTran
 
         if (R.State == ECargoTransportState::InTransit || R.State == ECargoTransportState::Blocked)
         {
-            // Active cargo must still be the sole owner of the in-transit item.
+            // Active cargo must still be the sole owner of the in-transit item
+            // and hold one reserved slot at its destination.
             if (Item.Revision != R.ItemRevision ||
-                Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != R.CargoId)
+                Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != R.CargoId ||
+                !Storage->HasIncomingReservation(R.DestinationStorageId, R.CargoId, R.ItemId))
                 return false;
         }
         else if (R.State == ECargoTransportState::Delivered)
         {
             // Delivered cargo is historical: the item may since have been stored,
             // crafted, consumed or sent on a later shipment.
-            if (R.Progress < R.RouteCost || Item.Revision < R.ItemRevision)
+            if (R.Progress < R.RouteCost || Item.Revision < R.ItemRevision ||
+                Storage->HasIncomingReservation(R.DestinationStorageId, R.CargoId, R.ItemId))
                 return false;
         }
         else if (R.State == ECargoTransportState::Cancelled)
         {
-            // A cancelled shipment must not still claim the item is in transit.
-            if (Item.OwnerKind == EWorldItemOwnerKind::InTransit && Item.OwnerId == R.CargoId)
+            // A cancelled shipment must not still claim the item is in transit
+            // or retain an inbound capacity reservation.
+            if ((Item.OwnerKind == EWorldItemOwnerKind::InTransit && Item.OwnerId == R.CargoId) ||
+                Storage->HasIncomingReservation(R.DestinationStorageId, R.CargoId, R.ItemId))
                 return false;
         }
     }
