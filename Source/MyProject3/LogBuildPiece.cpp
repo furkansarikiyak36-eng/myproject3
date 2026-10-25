@@ -11,6 +11,40 @@
 #include "Engine/World.h"
 #include "Math/RotationMatrix.h"
 
+namespace
+{
+    bool IsFiniteVector(const FVector& Value)
+    {
+        return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
+    }
+
+    FVector GetLocalLongitudinalAxis(ELogLongitudinalAxis Axis)
+    {
+        switch (Axis)
+        {
+        case ELogLongitudinalAxis::Y: return FVector::YAxisVector;
+        case ELogLongitudinalAxis::Z: return FVector::UpVector;
+        case ELogLongitudinalAxis::X:
+        default: return FVector::XAxisVector;
+        }
+    }
+
+    bool IsValidCrossSectionCenterOffset(
+        const FVector& Offset, ELogLongitudinalAxis LongitudinalAxis)
+    {
+        if (!IsFiniteVector(Offset) || Offset.SizeSquared() <= 1.0f)
+            return false;
+
+        // The two output centers must separate across the cross-section, not
+        // down the log's length. Mesh-specific offset magnitude is authored.
+        const float LongitudinalComponent =
+            FMath::Abs(FVector::DotProduct(Offset.GetSafeNormal(),
+                GetLocalLongitudinalAxis(LongitudinalAxis)));
+        return LongitudinalComponent <= 0.05f;
+    }
+}
+
+
 ALogBuildPiece::ALogBuildPiece()
 {
     PrimaryActorTick.bCanEverTick = false;
@@ -470,9 +504,13 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        return PieceType == ELogPieceType::WholeLog && IsValid(SplitHalfVariantMesh);
+        return PieceType == ELogPieceType::WholeLog &&
+            IsValid(SplitHalfVariantMesh) &&
+            IsValidCrossSectionCenterOffset(SplitHalfPieceCenterOffsetLocal, LongitudinalAxis);
     case ELogCutAction::Quarter:
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(QuarterVariantMesh);
+        return PieceType == ELogPieceType::SplitHalfLog &&
+            IsValid(QuarterVariantMesh) &&
+            IsValidCrossSectionCenterOffset(QuarterPieceCenterOffsetLocal, LongitudinalAxis);
     case ELogCutAction::Hewn:
         return PieceType == ELogPieceType::WholeLog && IsValid(HewnVariantMesh);
     case ELogCutAction::Gutter:
@@ -507,13 +545,17 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        return PieceType != ELogPieceType::WholeLog
-            ? TEXT("Only a whole log can be split into half-rounds.")
-            : TEXT("No split-half mesh is configured for this log length.");
+        if (PieceType != ELogPieceType::WholeLog)
+            return TEXT("Only a whole log can be split into half-rounds.");
+        if (!IsValid(SplitHalfVariantMesh))
+            return TEXT("No split-half output mesh is configured.");
+        return TEXT("Configure a non-zero cross-section center offset for the two half-round outputs.");
     case ELogCutAction::Quarter:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("Quarter-round shaping requires a split half-round log first.")
-            : TEXT("No quarter cross-section mesh is configured for this log length.");
+        if (PieceType != ELogPieceType::SplitHalfLog)
+            return TEXT("Quarter-round shaping requires a split half-round log first.");
+        if (!IsValid(QuarterVariantMesh))
+            return TEXT("No quarter cross-section mesh is configured.");
+        return TEXT("Configure a non-zero cross-section center offset for the two quarter-section outputs.");
     case ELogCutAction::Gutter:
         return PieceType != ELogPieceType::SplitHalfLog
             ? TEXT("A groove can only be cut into a split half-round log.")
@@ -542,6 +584,236 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
 bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
 {
     return TryApplyCutAction(Action, FGuid::NewGuid()).IsSuccess();
+}
+
+FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
+    ELogCutAction Action,
+    const FGuid& OperationId,
+    UStaticMesh* OutputMesh,
+    ELogPieceType OutputType,
+    FName OutputDefinitionId,
+    const FWorldOwnedItemRecord& CurrentItem)
+{
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldObjectIdentityComponent* Identity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+
+    const FVector LocalOffset = Action == ELogCutAction::SplitHalf
+        ? SplitHalfPieceCenterOffsetLocal
+        : QuarterPieceCenterOffsetLocal;
+    if (!World || !Ownership || !Graph || !Identity || !Mesh ||
+        !IsValid(OutputMesh) || !OutputDefinitionId.IsNone() == false ||
+        CurrentItem.OwnerKind != EWorldItemOwnerKind::World ||
+        CurrentItem.Quantity != 1 ||
+        !IsValidCrossSectionCenterOffset(LocalOffset, LongitudinalAxis))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("Physical split is missing a valid ownership, mesh, or cross-section offset configuration.")));
+    }
+
+    const FTransform OriginalTransform = GetActorTransform();
+    const FVector WorldCenterOffset = OriginalTransform.TransformVector(LocalOffset);
+    if (!IsFiniteVector(WorldCenterOffset) || WorldCenterOffset.SizeSquared() <= 1.0f)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("Configured split offset collapses after applying actor scale.")));
+    }
+
+    const FVector SourceOutputLocation = OriginalTransform.GetLocation() - WorldCenterOffset * 0.5f;
+    const FVector ChildOutputLocation = OriginalTransform.GetLocation() + WorldCenterOffset * 0.5f;
+    const FTransform SourceOutputTransform(OriginalTransform.GetRotation(),
+        SourceOutputLocation, OriginalTransform.GetScale3D());
+    const FTransform ChildOutputTransform(OriginalTransform.GetRotation(),
+        ChildOutputLocation, OriginalTransform.GetScale3D());
+
+    // Construct the child in deferred state so its stable ID and mesh are
+    // configured before BeginPlay attempts ownership/graph registration.
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.SpawnCollisionHandlingOverride =
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    ALogBuildPiece* Child = World->SpawnActorDeferred<ALogBuildPiece>(
+        GetClass(), ChildOutputTransform, nullptr, nullptr,
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    if (!Child)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InternalError,
+            OperationId,
+            FText::FromString(TEXT("Could not allocate the second physical output actor.")));
+    }
+
+    Child->PieceType = OutputType;
+    Child->BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
+    Child->LongitudinalAxis = LongitudinalAxis;
+    Child->bCanBeCarried = bCanBeCarried;
+    Child->bStartsPlaced = false;
+    Child->bIsPlaced = false;
+    Child->bIsHeld = false;
+    Child->bAutoGenerateEndSnapPoints = bAutoGenerateEndSnapPoints;
+    Child->DefaultEndSnapTag = DefaultEndSnapTag;
+    Child->bAutoGenerateSideSnapPoints = bAutoGenerateSideSnapPoints;
+    Child->SideSnapSpacing = SideSnapSpacing;
+    Child->SideSnapTag = SideSnapTag;
+    Child->SplitHalfVariantMesh = SplitHalfVariantMesh;
+    Child->SplitHalfPieceCenterOffsetLocal = SplitHalfPieceCenterOffsetLocal;
+    Child->QuarterVariantMesh = QuarterVariantMesh;
+    Child->QuarterPieceCenterOffsetLocal = QuarterPieceCenterOffsetLocal;
+    Child->HewnVariantMesh = HewnVariantMesh;
+    Child->GutterVariantMesh = GutterVariantMesh;
+    Child->TroughVariantMesh = TroughVariantMesh;
+    Child->KalasVariantMesh = KalasVariantMesh;
+    Child->PlankVariantMesh = PlankVariantMesh;
+    Child->SnapPoints.Reset();
+    Child->SetPieceStaticMesh(OutputMesh);
+    Child->SetActorEnableCollision(false);
+    if (Child->Mesh)
+    {
+        Child->Mesh->SetSimulatePhysics(false);
+        Child->Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    TArray<FWorldOwnedItemRecord> BeforeItems;
+    TArray<FWorldItemTransferReceipt> BeforeTransferReceipts;
+    TArray<FWorldItemSplitReceipt> BeforeSplitReceipts;
+    Ownership->ExportSnapshot(BeforeItems, BeforeTransferReceipts, BeforeSplitReceipts);
+
+    TArray<FName> OutputDefinitions;
+    OutputDefinitions.Add(OutputDefinitionId);
+    OutputDefinitions.Add(OutputDefinitionId);
+    TArray<FVector> OutputLocations;
+    OutputLocations.Add(SourceOutputLocation);
+    OutputLocations.Add(ChildOutputLocation);
+
+    TArray<FWorldOwnedItemRecord> OutputRecords;
+    if (!Ownership->TrySplitItem(OperationId, CurrentItem.ItemId, CurrentItem.Revision,
+        EWorldItemOwnerKind::World, OutputDefinitions, OutputLocations, OutputRecords) ||
+        OutputRecords.Num() != 2)
+    {
+        Child->Destroy();
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Conflict,
+            OperationId,
+            FText::FromString(TEXT("Ownership ledger rejected the atomic split request.")));
+    }
+
+    const UStaticMesh* OldMesh = Mesh->GetStaticMesh();
+    const ELogPieceType OldType = PieceType;
+    const FName OldBaseDefinition = BaseDefinitionId;
+    const FName OldDefinition = Identity->GetDefinitionId();
+    const TArray<FLogSnapPoint> OldSnapPoints = SnapPoints;
+    const bool bOldSimulatesPhysics = Mesh->IsSimulatingPhysics();
+    const ECollisionEnabled::Type OldCollisionEnabled = Mesh->GetCollisionEnabled();
+    const FName OldCollisionProfile = Mesh->GetCollisionProfileName();
+    const bool bOldActorCollisionEnabled = GetActorEnableCollision();
+    const bool bOldHidden = IsHidden();
+    const FTransform OldTransform = OriginalTransform;
+
+    auto RollbackPhysicalSplit = [&]()
+    {
+        if (IsValid(Child))
+        {
+            Child->Destroy();
+        }
+
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(BeforeItems, BeforeTransferReceipts, BeforeSplitReceipts);
+        SetActorTransform(OldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        SetPieceStaticMesh(const_cast<UStaticMesh*>(OldMesh));
+        PieceType = OldType;
+        BaseDefinitionId = OldBaseDefinition;
+        SnapPoints = OldSnapPoints;
+        Identity->SetDefinitionId(OldDefinition);
+        SetActorHiddenInGame(bOldHidden);
+        SetActorEnableCollision(bOldActorCollisionEnabled);
+        if (Mesh)
+        {
+            Mesh->SetSimulatePhysics(bOldSimulatesPhysics);
+            Mesh->SetCollisionProfileName(OldCollisionProfile);
+            Mesh->SetCollisionEnabled(OldCollisionEnabled);
+        }
+        if (!bOwnershipRestored)
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("Physical log split rollback failed for operation %s; stop world simulation and recover the world."),
+                *OperationId.ToString());
+        }
+    };
+
+    SetActorTransform(SourceOutputTransform, false, nullptr, ETeleportType::TeleportPhysics);
+    SetPieceStaticMesh(OutputMesh);
+    PieceType = OutputType;
+    BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
+    Identity->SetDefinitionId(OutputDefinitionId);
+    if (Mesh)
+    {
+        Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(true);
+        Mesh->UpdateBounds();
+    }
+
+    Child->StructuralIdentity->InstanceId = OutputRecords[1].ItemId;
+    Child->StructuralIdentity->SetDefinitionId(OutputRecords[1].DefinitionId);
+    Child->FinishSpawning(ChildOutputTransform);
+
+    FWorldOwnedItemRecord ChildItem;
+    FStructuralNodeRecord ChildNode;
+    const bool bChildRegistered =
+        Ownership->TryGetItem(OutputRecords[1].ItemId, ChildItem) &&
+        ChildItem.OwnerKind == EWorldItemOwnerKind::World &&
+        ChildItem.DefinitionId == OutputDefinitionId &&
+        Graph->GetNode(OutputRecords[1].ItemId, ChildNode) &&
+        ChildNode.Actor.Get() == Child;
+    FWorldOwnedItemRecord SourceAfterSplit;
+    const bool bSourceCommitted =
+        Ownership->TryGetItem(CurrentItem.ItemId, SourceAfterSplit) &&
+        SourceAfterSplit.OwnerKind == EWorldItemOwnerKind::World &&
+        SourceAfterSplit.DefinitionId == OutputDefinitionId &&
+        SourceAfterSplit.Revision == CurrentItem.Revision + 1;
+    if (!bChildRegistered || !bSourceCommitted)
+    {
+        RollbackPhysicalSplit();
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InternalError,
+            OperationId,
+            FText::FromString(TEXT("Physical split output registration failed; the transaction was rolled back.")));
+    }
+
+    TArray<FGuid> AffectedIds;
+    AffectedIds.Add(OutputRecords[0].ItemId);
+    AffectedIds.Add(OutputRecords[1].ItemId);
+    const FText Message = FText::FromString(
+        Action == ELogCutAction::SplitHalf
+            ? TEXT("Log split into two half-round physical pieces.")
+            : TEXT("Split half-round into two quarter-section physical pieces."));
+
+    if (UWorldCommittedEventSubsystem* Events =
+        World->GetSubsystem<UWorldCommittedEventSubsystem>())
+    {
+        FWorldCommittedEvent Event;
+        Event.Type = EWorldCommittedEventType::ObjectProcessed;
+        Event.OperationId = OperationId;
+        Event.AffectedObjectIds = AffectedIds;
+        Event.Message = Message;
+        if (!Events->PublishCommittedEvent(Event))
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("Physical split committed for operation %s but its event was not published."),
+                *OperationId.ToString());
+        }
+    }
+
+    return FWorldOperationResult::Success(OperationId, Message, AffectedIds);
 }
 
 FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
@@ -608,6 +880,39 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             PieceType == ELogPieceType::QuarterSectionLog;
         const FName RequestedRetryDefinition =
             bLegacyQuarterRetryMatch ? LegacyQuarterDefinition : RetryDefinition;
+        if (bCanonicalRetryMatch && (Action == ELogCutAction::SplitHalf ||
+            Action == ELogCutAction::Quarter))
+        {
+            TArray<FWorldOwnedItemRecord> PreviousSplitRecords;
+            if (RetryOwnership->TryGetSplitResult(OperationId, PreviousSplitRecords) &&
+                PreviousSplitRecords.Num() == 2 &&
+                PreviousSplitRecords[0].ItemId == RetryCurrent.ItemId &&
+                PreviousSplitRecords[0].Revision == RetryCurrent.Revision &&
+                PreviousSplitRecords[0].DefinitionId == RetryDefinition &&
+                PreviousSplitRecords[1].DefinitionId == RetryDefinition)
+            {
+                TArray<FName> OutputDefinitions;
+                OutputDefinitions.Add(RetryDefinition);
+                OutputDefinitions.Add(RetryDefinition);
+                TArray<FVector> OutputLocations;
+                OutputLocations.Add(PreviousSplitRecords[0].WorldLocation);
+                OutputLocations.Add(PreviousSplitRecords[1].WorldLocation);
+                TArray<FWorldOwnedItemRecord> RetriedRecords;
+                if (RetryOwnership->TrySplitItem(OperationId, RetryCurrent.ItemId,
+                    RetryCurrent.Revision - 1, EWorldItemOwnerKind::World,
+                    OutputDefinitions, OutputLocations, RetriedRecords))
+                {
+                    TArray<FGuid> RetriedIds;
+                    for (const FWorldOwnedItemRecord& Record : RetriedRecords)
+                        RetriedIds.Add(Record.ItemId);
+                    return FWorldOperationResult::Success(
+                        OperationId,
+                        FText::FromString(TEXT("The previous multi-piece processing result was returned.")),
+                        RetriedIds);
+                }
+            }
+        }
+
         if (bCanonicalRetryMatch || bLegacyQuarterRetryMatch)
         {
             FWorldOwnedItemRecord PreviousResult;
@@ -752,6 +1057,12 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     }
     const FName NewDefinitionId(*FString::Printf(
         TEXT("%s.%s"), *EffectiveBaseDefinition.ToString(), VariantSuffix));
+
+    if (Action == ELogCutAction::SplitHalf || Action == ELogCutAction::Quarter)
+    {
+        return TrySplitOutputPieces(
+            Action, OperationId, NewMesh, NewType, NewDefinitionId, CurrentItem);
+    }
 
     FWorldOwnedItemRecord TransformedItem;
     if (!Ownership->TryUpdateItemDefinition(OperationId, CurrentItem.ItemId,
