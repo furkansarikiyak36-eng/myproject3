@@ -204,7 +204,7 @@ bool ULogCarryComponent::TryPickupTarget()
 
     FWorldOwnedItemRecord HeldRecord;
     if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::World,
-        EWorldItemOwnerKind::Held, CarryOwnerId, HeldRecord))
+        EWorldItemOwnerKind::Held, CarryOwnerId, Piece->GetActorLocation(), HeldRecord))
     {
         return false;
     }
@@ -219,7 +219,7 @@ bool ULogCarryComponent::TryPickupTarget()
         {
             FWorldOwnedItemRecord RolledBack;
             Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World,
-                FGuid(), RolledBack);
+                FGuid(), Piece->GetActorLocation(), RolledBack);
             return false;
         }
     }
@@ -519,7 +519,7 @@ bool ULogCarryComponent::PlaceHeldPiece()
 
             FWorldOwnedItemRecord WorldRecord;
             if (!PieceToPlace->TryTransferOwnership(EWorldItemOwnerKind::Held,
-                EWorldItemOwnerKind::World, FGuid(), WorldRecord))
+                EWorldItemOwnerKind::World, FGuid(), PieceToPlace->GetActorLocation(), WorldRecord))
             {
                 if (UWorldObjectIdentityComponent* Identity =
                     PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
@@ -569,7 +569,7 @@ bool ULogCarryComponent::PlaceHeldPiece()
     }
     FWorldOwnedItemRecord WorldRecord;
     if (!PieceToPlace->TryTransferOwnership(EWorldItemOwnerKind::Held,
-        EWorldItemOwnerKind::World, FGuid(), WorldRecord))
+        EWorldItemOwnerKind::World, FGuid(), PieceToPlace->GetActorLocation(), WorldRecord))
     {
         if (UWorldObjectIdentityComponent* Identity =
             PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
@@ -606,7 +606,7 @@ void ULogCarryComponent::DropHeldPiece()
 
     FWorldOwnedItemRecord WorldRecord;
     if (!PieceToDrop->TryTransferOwnership(EWorldItemOwnerKind::Held,
-        EWorldItemOwnerKind::World, FGuid(), WorldRecord))
+        EWorldItemOwnerKind::World, FGuid(), DropLocation, WorldRecord))
     {
         return;
     }
@@ -620,7 +620,7 @@ void ULogCarryComponent::DropHeldPiece()
         {
             FWorldOwnedItemRecord RolledBack;
             PieceToDrop->TryTransferOwnership(EWorldItemOwnerKind::World,
-                EWorldItemOwnerKind::Held, CarryOwnerId, RolledBack);
+                EWorldItemOwnerKind::Held, CarryOwnerId, PieceToDrop->GetActorLocation(), RolledBack);
             return;
         }
     }
