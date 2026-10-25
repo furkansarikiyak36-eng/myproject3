@@ -21,7 +21,7 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 | `ULogCarryComponent::DropHeldPiece` | `SetHeldState(false)` → `SetPlacedState(false)` | Re-enables collision and then enables physics for a loose piece. |
 | `ALogBuildPiece::AttachToSnapParent` | Validates parent/anchor inputs → attempts `AttachToActor` → only on success sets parent/anchor indices, registers child, and calls `SetPlacedState(true)` | Returns success/failure. A rejected actor attachment leaves structural bookkeeping untouched. No separate structural-load validation is present in this path. |
 | `ALogBuildPiece::DetachFromSnapParent` | Detaches actor; releases parent anchor; unregisters child; releases own anchor; clears parent indices | Source-level cleanup path for a child being picked up. |
-| `ALogBuildPiece::TryReserveSnapPoints` | Calls `CanSnapPointAccept`; then marks both anchors occupied and calls `AttachToSnapParent` | Acceptance now independently checks target receiver capability and occupancy, as well as source capability/occupancy. There is still no explicit rollback if attachment later becomes fallible. |
+| `ALogBuildPiece::TryReserveSnapPoints` | Calls `CanSnapPointAccept`; attempts result-returning actor attachment; marks both anchors occupied only after attachment succeeds | Acceptance independently checks both anchors. A failed attachment returns false before either occupancy flag is changed. |
 
 ## Editor-script call sites
 
