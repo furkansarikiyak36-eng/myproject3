@@ -30,7 +30,7 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Status: PARTIAL — not complete.**
 
-**Progress in WOOD-001 / WOOD-002:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `TrySplitItem` now atomically registers the first output (retaining the source ID) and a new output (new GUID) with a durable split receipt; `SplitHalf` / `Quarter` actor paths spawn a deferred second physical actor, bind its ownership ID, validate its structural node and attempt rollback on failure. SaveGame v7/fixed-step rollback carry split receipts. **Still partial:** mesh-specific cross-section offsets must be configured, and UE 5.8 build/PIE, failure injection, full physical geometry, actor transform persistence and end-to-end source counts remain unverified.
+**Progress in WOOD-001 / WOOD-002:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `TrySplitItem` now atomically registers the first output (retaining the source ID) and a new output (new GUID) with a durable split receipt; `SplitHalf` / `Quarter` actor paths spawn a deferred second physical actor, bind its ownership ID, validate its structural node and attempt rollback on failure. SaveGame v7/fixed-step rollback carry split receipts. **Still partial:** mesh-specific center offsets and child rotations must be configured and visually verified per mesh. UE 5.8 build/PIE, failure injection, exact physical geometry, actor transform persistence and end-to-end source counts remain unverified.
 
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
