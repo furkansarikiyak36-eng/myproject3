@@ -512,8 +512,8 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
             : TEXT("No split-half mesh is configured for this log length.");
     case ELogCutAction::Quarter:
         return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("Quartering requires a split half-round log first.")
-            : TEXT("No quarter mesh is configured for this log length.");
+            ? TEXT("Quarter-round shaping requires a split half-round log first.")
+            : TEXT("No quarter cross-section mesh is configured for this log length.");
     case ELogCutAction::Gutter:
         return PieceType != ELogPieceType::SplitHalfLog
             ? TEXT("A groove can only be cut into a split half-round log.")
@@ -563,7 +563,9 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     case ELogCutAction::SplitHalf:
         RetryTargetType = ELogPieceType::SplitHalfLog; RetrySuffix = TEXT("SplitHalfLog"); break;
     case ELogCutAction::Quarter:
-        RetryTargetType = ELogPieceType::QuarterLog; RetrySuffix = TEXT("QuarterLog"); break;
+        RetryTargetType = ELogPieceType::QuarterSectionLog;
+        RetrySuffix = TEXT("QuarterSectionLog");
+        break;
     case ELogCutAction::Hewn:
         RetryTargetType = ELogPieceType::HewnLog; RetrySuffix = TEXT("HewnLog"); break;
     case ELogCutAction::Gutter:
@@ -593,12 +595,25 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : RetryCurrent.DefinitionId);
         const FName RetryDefinition(*FString::Printf(
             TEXT("%s.%s"), *RetryBase.ToString(), RetrySuffix));
-        if (RetryCurrent.DefinitionId == RetryDefinition && PieceType == RetryTargetType)
+        const FName LegacyQuarterDefinition(*FString::Printf(
+            TEXT("%s.QuarterLog"), *RetryBase.ToString()));
+        const bool bCanonicalRetryMatch =
+            RetryCurrent.DefinitionId == RetryDefinition && PieceType == RetryTargetType;
+        // Pre-migration cut operations stored ".QuarterLog". Accept that receipt
+        // only when the loaded actor has already resolved the legacy suffix to
+        // the explicit QuarterSectionLog type.
+        const bool bLegacyQuarterRetryMatch =
+            Action == ELogCutAction::Quarter &&
+            RetryCurrent.DefinitionId == LegacyQuarterDefinition &&
+            PieceType == ELogPieceType::QuarterSectionLog;
+        const FName RequestedRetryDefinition =
+            bLegacyQuarterRetryMatch ? LegacyQuarterDefinition : RetryDefinition;
+        if (bCanonicalRetryMatch || bLegacyQuarterRetryMatch)
         {
             FWorldOwnedItemRecord PreviousResult;
             if (RetryOwnership->TryUpdateItemDefinition(OperationId, RetryCurrent.ItemId,
                 RetryCurrent.Revision - 1, EWorldItemOwnerKind::World,
-                RetryDefinition, PreviousResult))
+                RequestedRetryDefinition, PreviousResult))
             {
                 TArray<FGuid> RetriedIds;
                 RetriedIds.Add(RetryCurrent.ItemId);
@@ -664,7 +679,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         break;
     case ELogCutAction::Quarter:
         NewMesh = QuarterVariantMesh;
-        NewType = ELogPieceType::QuarterLog;
+        NewType = ELogPieceType::QuarterSectionLog;
         break;
     case ELogCutAction::Hewn:
         NewMesh = HewnVariantMesh;
@@ -727,7 +742,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     switch (NewType)
     {
     case ELogPieceType::SplitHalfLog: VariantSuffix = TEXT("SplitHalfLog"); break;
-    case ELogPieceType::QuarterLog: VariantSuffix = TEXT("QuarterLog"); break;
+    case ELogPieceType::QuarterSectionLog: VariantSuffix = TEXT("QuarterSectionLog"); break;
     case ELogPieceType::HewnLog: VariantSuffix = TEXT("HewnLog"); break;
     case ELogPieceType::GutterLog: VariantSuffix = TEXT("GutterLog"); break;
     case ELogPieceType::TroughLog: VariantSuffix = TEXT("TroughLog"); break;
@@ -823,8 +838,15 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     Key.ReplaceInline(TEXT("-"), TEXT(""));
     Key.ReplaceInline(TEXT(" "), TEXT(""));
 
-    // Specific geometry states must be detected before the generic raw-log name.
-    if (Key.Contains(TEXT("threequarter")) || Key.Contains(TEXT("3quarter")))
+    // Explicit cross-section names must be resolved before generic "quarter".
+    // "QuarterLog" remains a legacy length-piece label; the cut action now emits
+    // the unambiguous QuarterSectionLog type.
+    if (Key.Contains(TEXT("quartersection")) || Key.Contains(TEXT("quarterround")))
+    {
+        PieceType = ELogPieceType::QuarterSectionLog;
+    }
+    // Specific length states must be detected before the generic raw-log name.
+    else if (Key.Contains(TEXT("threequarter")) || Key.Contains(TEXT("3quarter")))
     {
         PieceType = ELogPieceType::ThreeQuarterLog;
     }
@@ -911,10 +933,14 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
         VariantMesh = SplitHalfVariantMesh;
         VariantType = ELogPieceType::SplitHalfLog;
     }
-    else if (Suffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
+    else if (Suffix.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
+        Suffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
     {
+        // ".QuarterLog" is a backwards-compatibility alias emitted by earlier
+        // versions for this cross-section operation. New commits use the
+        // explicit ".QuarterSectionLog" suffix.
         VariantMesh = QuarterVariantMesh;
-        VariantType = ELogPieceType::QuarterLog;
+        VariantType = ELogPieceType::QuarterSectionLog;
     }
     else if (Suffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
     {
