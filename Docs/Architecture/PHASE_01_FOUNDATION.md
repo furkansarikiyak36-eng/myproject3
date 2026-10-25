@@ -1,6 +1,6 @@
 # Phase 1 — Shared Technical Foundation
 
-Status: **architecture baseline drafted; Unreal build and runtime validation pending**  
+Status: **Phase 1 foundation/scope closed; final integrated Unreal build and runtime validation remain pending by workflow**  
 Target engine: Unreal Engine 5.8  
 Working branch: `phase-01-foundation-v2` (branched from `main`, preserving the current gameplay source tree)
 
@@ -120,12 +120,12 @@ Derived visuals, temporary UI state and rebuildable caches should not be authori
 - [x] Establish a non-destructive architecture baseline.
 - [x] Define shared identity, operation, event and persistence rules.
 - [x] Define domain ownership boundaries.
-- [ ] Inventory the actual current source tree and authoritative implementations.
-- [ ] Map all 119 mechanics to owning system, prerequisites, failure cases, persistence and verification.
-- [ ] Add code-level shared types only after checking existing types and naming conflicts.
+- [x] Inventory the tracked source/config/build/editor-script tree and identify the current log interaction owners; local-only Blueprint/asset references remain outside this repository audit.
+- [x] Establish the canonical 119-item scope registry with stable IDs, intended primary owners, prerequisites/dependencies, failure cases, persistence expectations and acceptance criteria (`MECHANIC_REGISTRY_119.*`). Each item remains `unreviewed` until implementation evidence is recorded.
+- [x] Define shared contracts without introducing duplicate code-level state owners; concrete shared C++ types are deferred until their domain phases reconcile actual callers and existing types.
 - [ ] Run static checks and Unreal 5.8 build when a suitable environment is available.
 - [ ] Record Editor/gameplay verification separately from code/build verification.
 
 ## Acceptance gate
 
-Phase 1 is not marked fully complete until existing code is inventoried, the 119-mechanic registry is mapped without invented entries, shared types are reconciled with existing classes, and build/test results are explicitly recorded. This document is the baseline, not proof of a successful Unreal build.
+Phase 1 foundation/scope is closed when the tracked source inventory, current log-path source review, shared operation/event/persistence contracts, and explicit 119-item scope registry are recorded. This is a design/source-contract closure, not a gameplay-complete claim. Per the agreed workflow, full automated tests, UE 5.8 build, editor/runtime scenarios, and final 119-mechanic demo validation remain an end-of-phases gate and must not be marked passed before execution.
