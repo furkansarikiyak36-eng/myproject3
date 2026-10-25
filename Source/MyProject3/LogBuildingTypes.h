@@ -110,7 +110,46 @@ enum class ELogCutAction : uint8
     Gutter    UMETA(DisplayName = "Cut Groove / Gutter"),
     Trough    UMETA(DisplayName = "Hollow Trough"),
     Kalas     UMETA(DisplayName = "Kalas / Squared Beam"),
-    Plank     UMETA(DisplayName = "Plank")
+    Plank     UMETA(DisplayName = "Plank"),
+
+    // Appended so existing serialized ELogCutAction values remain unchanged.
+    SplitLengthHalf UMETA(DisplayName = "Cut Full Length into Two Half-Length Pieces"),
+    SplitLengthThreeQuarter UMETA(DisplayName = "Cut Full Length into 3/4 + 1/4 Length"),
+    SplitHalfLengthIntoQuarters UMETA(DisplayName = "Cut Half-Length into Two Quarter-Length Pieces")
+};
+
+USTRUCT(BlueprintType)
+struct FLogLengthCutVariant
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    ELogCutAction Action = ELogCutAction::SplitLengthHalf;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    ELogLengthFraction SourceLengthFraction = ELogLengthFraction::FullLength;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    ELogCrossSectionProfile CrossSectionProfile = ELogCrossSectionProfile::Round;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    ELogLengthFraction FirstOutputLengthFraction = ELogLengthFraction::HalfLength;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    ELogLengthFraction SecondOutputLengthFraction = ELogLengthFraction::HalfLength;
+
+    /** Output centers relative to the original actor pivot, in local space. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    FVector FirstOutputCenterOffsetLocal = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    FVector SecondOutputCenterOffsetLocal = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    FRotator FirstOutputRotationOffsetLocal = FRotator::ZeroRotator;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    FRotator SecondOutputRotationOffsetLocal = FRotator::ZeroRotator;
 };
 
 USTRUCT(BlueprintType)
