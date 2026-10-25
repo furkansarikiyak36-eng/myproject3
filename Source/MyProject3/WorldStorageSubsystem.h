@@ -17,6 +17,9 @@ struct FWorldStorageContainerRecord
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Storage")
     int64 Revision = 1;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Storage")
+    bool bAvailable = true;
 };
 
 USTRUCT(BlueprintType)
@@ -54,6 +57,12 @@ public:
 
     UFUNCTION(BlueprintPure, Category="World|Storage")
     bool GetStorage(const FGuid& StorageId, FWorldStorageContainerRecord& OutStorage) const;
+
+    UFUNCTION(BlueprintPure, Category="World|Storage")
+    bool IsStorageAvailable(const FGuid& StorageId) const;
+
+    UFUNCTION(BlueprintCallable, Category="World|Storage")
+    bool SetStorageAvailable(const FGuid& StorageId, bool bAvailable);
 
     UFUNCTION(BlueprintPure, Category="World|Storage")
     bool CanAcceptItem(const FGuid& StorageId, const FGuid& ItemId) const;
