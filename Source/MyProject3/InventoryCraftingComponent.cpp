@@ -540,44 +540,60 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  if (!bActivated)
  {
   FWorldOwnedItemRecord RolledBack;
-  const bool bRolledBack = Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId,
+  const bool bRollbackTransferSucceeded = Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId,
       WorldItem.Revision, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
       InventoryOwnerId, Item.WorldLocation, RolledBack);
 
   FWorldOwnedItemRecord ActualItem;
   const bool bCurrentItemExists = Ownership->TryGetItem(Item.ItemId, ActualItem);
-  const bool bLedgerStillBelongsToInventory = bCurrentItemExists &&
+  const bool bSafelyInventoryOwned = bCurrentItemExists &&
       ActualItem.OwnerKind == EWorldItemOwnerKind::Inventory &&
       ActualItem.OwnerId == InventoryOwnerId;
 
   Spawned->SetActorHiddenInGame(true);
   Spawned->SetActorEnableCollision(false);
-  if (bRolledBack || bLedgerStillBelongsToInventory)
+  if (bSafelyInventoryOwned)
   {
+   // The ledger is authoritative: keep the inventory row and destroy this
+   // failed world representation, whether compensation returned true or false.
    Spawned->Destroy();
-  }
-  else if (!bCurrentItemExists || ActualItem.OwnerKind != EWorldItemOwnerKind::World)
-  {
-   // The ledger no longer grants World ownership; destroy this representation
-   // and remove the stale inventory row so no second owner is presented.
-   Spawned->Destroy();
-   const int32 StaleIndex = Items.IndexOfByPredicate([ItemId](const FInventoryStack& S)
-    { return S.OwnedWorldItemId == ItemId; });
-   if (Items.IsValidIndex(StaleIndex)) Items.RemoveAt(StaleIndex);
   }
   else
   {
-   // Keep one quarantined representation rather than destroy a world-owned item
-   // after its actor activation failed. It remains hidden for diagnosis.
+   // There is no verified inventory owner. Never leave the stale inventory row
+   // alongside a world-owned, missing, or unexpectedly owned ledger record.
    const int32 StaleIndex = Items.IndexOfByPredicate([ItemId](const FInventoryStack& S)
     { return S.OwnedWorldItemId == ItemId; });
    if (Items.IsValidIndex(StaleIndex)) Items.RemoveAt(StaleIndex);
-   UE_LOG(LogTemp, Error, TEXT("Physical item %s is world-owned but its actor activation failed; actor quarantined hidden."),
-    *Item.ItemId.ToString());
+
+   if (bCurrentItemExists && ActualItem.OwnerKind == EWorldItemOwnerKind::World)
+   {
+    // Preserve the one world-owned representation, but quarantine it hidden.
+    UE_LOG(LogTemp, Error, TEXT("Physical item %s remains world-owned but activation failed; actor quarantined hidden."),
+     *Item.ItemId.ToString());
+   }
+   else
+   {
+    // The ledger no longer confirms this actor as world-owned; it must not
+    // remain as a visible or collidable representation.
+    Spawned->Destroy();
+   }
+
+   if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+       GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+   {
+    Coordinator->MarkSimulationFaulted(
+     TEXT("Physical-item drop activation failed and ownership could not be restored to the inventory; stop simulation and recover/reset the world."));
+   }
+   else
+   {
+    UE_LOG(LogTemp, Error, TEXT("Drop activation failure left item %s without verified inventory ownership; simulation coordinator unavailable."),
+     *Item.ItemId.ToString());
+   }
   }
 
-  UE_LOG(LogTemp, Error, TEXT("Dropped item activation failed for %s (rollback=%d)."),
-      *Item.ItemId.ToString(), bRolledBack ? 1 : 0);
+  UE_LOG(LogTemp, Error, TEXT("Dropped item activation failed for %s (rollback-transfer=%d, inventory-owned=%d)."),
+      *Item.ItemId.ToString(), bRollbackTransferSucceeded ? 1 : 0, bSafelyInventoryOwned ? 1 : 0);
   return false;
  }
 
