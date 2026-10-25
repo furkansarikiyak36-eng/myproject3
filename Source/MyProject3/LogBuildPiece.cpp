@@ -540,8 +540,14 @@ void ALogBuildPiece::BeginPlay()
     else
     {
         Item.ItemId = StructuralIdentity->GetInstanceId();
-        Item.DefinitionId = StructuralIdentity->GetDefinitionId().IsNone()
-            ? BaseDefinitionId : StructuralIdentity->GetDefinitionId();
+        const FName AuthoredDefinitionId = StructuralIdentity->GetDefinitionId();
+        Item.DefinitionId = AuthoredDefinitionId.IsNone() ||
+            AuthoredDefinitionId == BaseDefinitionId
+            ? BuildGeometryDefinitionId(BaseDefinitionId, GeometryState.LengthFraction,
+                GeometryState.CrossSectionShape)
+            : AuthoredDefinitionId;
+        if (Item.DefinitionId.IsNone())
+            Item.DefinitionId = BaseDefinitionId;
         Item.BaseDefinitionId = BaseDefinitionId;
         Item.MeshVariantSetId = SelectedProcessingMeshSetId;
         Item.Quantity = 1;
@@ -1310,26 +1316,23 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     // A retry of the same cut operation must return its committed result even
     // though the first attempt has already changed PieceType and the prerequisites.
     ELogPieceType RetryTargetType = ELogPieceType::Other;
-    const TCHAR* RetrySuffix = TEXT("Other");
     bool bRetryTargetSupported = true;
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        RetryTargetType = ELogPieceType::SplitHalfLog; RetrySuffix = TEXT("SplitHalfLog"); break;
+        RetryTargetType = ELogPieceType::SplitHalfLog; break;
     case ELogCutAction::Quarter:
-        RetryTargetType = ELogPieceType::QuarterSectionLog;
-        RetrySuffix = TEXT("QuarterSectionLog");
-        break;
+        RetryTargetType = ELogPieceType::QuarterSectionLog; break;
     case ELogCutAction::Hewn:
-        RetryTargetType = ELogPieceType::HewnLog; RetrySuffix = TEXT("HewnLog"); break;
+        RetryTargetType = ELogPieceType::HewnLog; break;
     case ELogCutAction::Gutter:
-        RetryTargetType = ELogPieceType::GutterLog; RetrySuffix = TEXT("GutterLog"); break;
+        RetryTargetType = ELogPieceType::GutterLog; break;
     case ELogCutAction::Trough:
-        RetryTargetType = ELogPieceType::TroughLog; RetrySuffix = TEXT("TroughLog"); break;
+        RetryTargetType = ELogPieceType::TroughLog; break;
     case ELogCutAction::Kalas:
-        RetryTargetType = ELogPieceType::SquaredBeam; RetrySuffix = TEXT("SquaredBeam"); break;
+        RetryTargetType = ELogPieceType::SquaredBeam; break;
     case ELogCutAction::Plank:
-        RetryTargetType = ELogPieceType::Plank; RetrySuffix = TEXT("Plank"); break;
+        RetryTargetType = ELogPieceType::Plank; break;
     default:
         bRetryTargetSupported = false; break;
     }
@@ -1347,8 +1350,9 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         const FName RetryBase = !RetryCurrent.BaseDefinitionId.IsNone()
             ? RetryCurrent.BaseDefinitionId
             : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : RetryCurrent.DefinitionId);
-        const FName RetryDefinition(*FString::Printf(
-            TEXT("%s.%s"), *RetryBase.ToString(), RetrySuffix));
+        const FName RetryDefinition = BuildGeometryDefinitionId(
+            RetryBase, GeometryState.LengthFraction,
+            GetCrossSectionForPieceType(RetryTargetType));
         const FName LegacyQuarterDefinition(*FString::Printf(
             TEXT("%s.QuarterLog"), *RetryBase.ToString()));
         const bool bCanonicalRetryMatch =
@@ -1358,6 +1362,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         // the explicit QuarterSectionLog type.
         const bool bLegacyQuarterRetryMatch =
             Action == ELogCutAction::Quarter &&
+            GeometryState.LengthFraction == ELogLengthFraction::FullLength &&
             RetryCurrent.DefinitionId == LegacyQuarterDefinition &&
             PieceType == ELogPieceType::QuarterSectionLog;
         const FName RequestedRetryDefinition =
@@ -1522,20 +1527,16 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     const FName EffectiveBaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.BaseDefinitionId
         : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
-    const TCHAR* VariantSuffix = TEXT("Other");
-    switch (NewType)
+    const FName NewDefinitionId = BuildGeometryDefinitionId(
+        EffectiveBaseDefinition, GeometryState.LengthFraction,
+        GetCrossSectionForPieceType(NewType));
+    if (NewDefinitionId.IsNone())
     {
-    case ELogPieceType::SplitHalfLog: VariantSuffix = TEXT("SplitHalfLog"); break;
-    case ELogPieceType::QuarterSectionLog: VariantSuffix = TEXT("QuarterSectionLog"); break;
-    case ELogPieceType::HewnLog: VariantSuffix = TEXT("HewnLog"); break;
-    case ELogPieceType::GutterLog: VariantSuffix = TEXT("GutterLog"); break;
-    case ELogPieceType::TroughLog: VariantSuffix = TEXT("TroughLog"); break;
-    case ELogPieceType::SquaredBeam: VariantSuffix = TEXT("SquaredBeam"); break;
-    case ELogPieceType::Plank: VariantSuffix = TEXT("Plank"); break;
-    default: break;
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("Could not create a stable definition ID for the requested geometry state.")));
     }
-    const FName NewDefinitionId(*FString::Printf(
-        TEXT("%s.%s"), *EffectiveBaseDefinition.ToString(), VariantSuffix));
 
     if (Action == ELogCutAction::SplitHalf || Action == ELogCutAction::Quarter)
     {
