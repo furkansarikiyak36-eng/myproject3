@@ -257,8 +257,14 @@ void ULogCarryComponent::UpdateHeldPreview()
         FVector BoundsExtent;
         HeldPiece->GetActorBounds(false, BoundsOrigin, BoundsExtent);
 
+        // Account for imported FBX pivots whose mesh bounds origin is not
+        // exactly at the actor origin. The mesh bottom should sit on the hit
+        // surface regardless of where the DCC pivot was authored.
+        const float BottomOffsetFromActor =
+            BoundsOrigin.Z - HeldPiece->GetActorLocation().Z - BoundsExtent.Z;
+        const float RequiredLift = -BottomOffsetFromActor + 2.0f;
         PreviewLocation = PlacementHit.ImpactPoint +
-            FVector::UpVector * (BoundsExtent.Z + 2.0f);
+            FVector::UpVector * RequiredLift;
     }
 
     HeldPiece->SetActorLocation(PreviewLocation);
