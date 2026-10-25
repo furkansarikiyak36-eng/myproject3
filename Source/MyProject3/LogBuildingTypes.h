@@ -25,6 +25,47 @@ enum class ELogPieceType : uint8
     QuarterSectionLog UMETA(DisplayName = "Quarter-Round Cross Section")
 };
 
+
+/** Length fraction is independent of the cross-section profile of a log piece. */
+UENUM(BlueprintType)
+enum class ELogLengthFraction : uint8
+{
+    FullLength UMETA(DisplayName = "Full Length"),
+    ThreeQuarterLength UMETA(DisplayName = "3/4 Length"),
+    HalfLength UMETA(DisplayName = "1/2 Length"),
+    QuarterLength UMETA(DisplayName = "1/4 Length")
+};
+
+/** Cross-section/processing shape is independent of the log's length fraction. */
+UENUM(BlueprintType)
+enum class ELogCrossSectionShape : uint8
+{
+    FullRound UMETA(DisplayName = "Full Round"),
+    HalfRound UMETA(DisplayName = "Half Round"),
+    QuarterRound UMETA(DisplayName = "Quarter Round"),
+    HewnFlat UMETA(DisplayName = "Hewn / Flattened"),
+    SquareBeam UMETA(DisplayName = "Squared Beam"),
+    Grooved UMETA(DisplayName = "Grooved"),
+    Trough UMETA(DisplayName = "Hollow Trough"),
+    Plank UMETA(DisplayName = "Plank"),
+    Notched UMETA(DisplayName = "Notched"),
+    Joint UMETA(DisplayName = "Joint Piece"),
+    Other UMETA(DisplayName = "Other")
+};
+
+/** Orthogonal geometry metadata used alongside the legacy combined ELogPieceType. */
+USTRUCT(BlueprintType)
+struct FLogPieceGeometryState
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Geometry")
+    ELogLengthFraction LengthFraction = ELogLengthFraction::FullLength;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Geometry")
+    ELogCrossSectionShape CrossSectionShape = ELogCrossSectionShape::FullRound;
+};
+
 UENUM(BlueprintType)
 enum class ELogLongitudinalAxis : uint8
 {
