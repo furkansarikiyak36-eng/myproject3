@@ -145,3 +145,29 @@ bool UWorldCargoTransportSubsystem::GetCargo(
     OutCargo = *Found;
     return true;
 }
+
+void UWorldCargoTransportSubsystem::ExportSnapshot(TArray<FWorldCargoTransportRecord>& OutCargo) const
+{
+    Cargo.GenerateValueArray(OutCargo);
+    OutCargo.Sort([](const FWorldCargoTransportRecord& A, const FWorldCargoTransportRecord& B)
+        { return A.CargoId.ToString() < B.CargoId.ToString(); });
+}
+
+bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTransportRecord>& Snapshot)
+{
+    if (Snapshot.Num() > MaxActiveCargo || MaxActiveCargo <= 0) return false;
+    TMap<FGuid, FWorldCargoTransportRecord> Proposed;
+    for (const FWorldCargoTransportRecord& R : Snapshot)
+    {
+        if (!R.CargoId.IsValid() || !R.ItemId.IsValid() || !R.DestinationStorageId.IsValid() ||
+            R.OriginNode.IsNone() || R.DestinationNode.IsNone() || R.Route.Num() < 2 ||
+            !FMath::IsFinite(R.RouteCost) || R.RouteCost < 0.0f ||
+            !FMath::IsFinite(R.Progress) || R.Progress < 0.0f || R.Progress > R.RouteCost ||
+            !FMath::IsFinite(R.CostPerSecond) || R.CostPerSecond <= 0.0f ||
+            R.ItemRevision <= 0 || R.Revision <= 0 || !R.DeliveryOperationId.IsValid() ||
+            Proposed.Contains(R.CargoId)) return false;
+        Proposed.Add(R.CargoId, R);
+    }
+    Cargo = MoveTemp(Proposed);
+    return true;
+}
