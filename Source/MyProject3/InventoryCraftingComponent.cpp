@@ -355,10 +355,31 @@ bool UInventoryCraftingComponent::TryWithdrawStoredItem(FGuid ItemId, FGuid Stor
  if (!TryAddItem(Incoming))
  {
   FWorldOwnedItemRecord RolledBack;
-  if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, Transferred.Revision,
+  const bool bRollbackSucceeded = Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, Transferred.Revision,
       EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Storage,
-      StorageId, Item.WorldLocation, RolledBack))
-   UE_LOG(LogTemp, Error, TEXT("Storage withdrawal rollback failed for item %s."), *ItemId.ToString());
+      StorageId, Item.WorldLocation, RolledBack);
+
+  if (!bRollbackSucceeded)
+  {
+   // Do not assume a failed compensation left the ledger unchanged. Inspect the
+   // authoritative record before deciding whether the world can keep running.
+   FWorldOwnedItemRecord ActualItem;
+   const bool bRecordExists = Ownership->TryGetItem(ItemId, ActualItem);
+   const bool bBackInStorage = bRecordExists &&
+       ActualItem.OwnerKind == EWorldItemOwnerKind::Storage &&
+       ActualItem.OwnerId == StorageId;
+   if (!bBackInStorage)
+   {
+    UE_LOG(LogTemp, Error, TEXT("Storage withdrawal rollback left item %s in an inconsistent owner state."),
+     *ItemId.ToString());
+    if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+        GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+    {
+     Coordinator->MarkSimulationFaulted(
+      TEXT("Storage withdrawal rollback failed to reconcile the inventory and storage owner; stop simulation and recover/reset the world."));
+    }
+   }
+  }
   return false;
  }
  return true;
