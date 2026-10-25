@@ -1625,15 +1625,54 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
     if (CurrentDefinitionId.IsNone() || BaseDefinitionId.IsNone() || !Mesh)
         return false;
 
-    // The unprocessed/base definition is configured by the actor Blueprint.
-    if (CurrentDefinitionId == BaseDefinitionId)
+    const FTransform OriginalTransform = GetActorTransform();
+    FVector OldOrigin;
+    FVector OldExtent;
+    GetActorBounds(false, OldOrigin, OldExtent);
+    const float OldBottomZ = OldOrigin.Z - OldExtent.Z;
+
+    auto ApplyResolvedVariant = [this, &OriginalTransform, OldBottomZ, &CurrentDefinitionId](
+        ELogLengthFraction InLength, ELogCrossSectionProfile InProfile,
+        UStaticMesh* InMesh) -> bool
     {
+        if (!IsValid(InMesh))
+            return false;
+
+        SetActorTransform(OriginalTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        SetPieceStaticMesh(InMesh);
+        LengthFraction = InLength;
+        CrossSectionProfile = InProfile;
+        bUseCanonicalGeometryDimensions = true;
+        PieceType = LegacyTypeFromCanonicalDimensions(InLength, InProfile);
+
+        FVector NewOrigin;
+        FVector NewExtent;
+        GetActorBounds(false, NewOrigin, NewExtent);
+        AddActorWorldOffset(FVector(0.0f, 0.0f,
+            OldBottomZ - (NewOrigin.Z - NewExtent.Z)), false);
+        if (Mesh)
+            Mesh->UpdateBounds();
+
         if (UWorldObjectIdentityComponent* Identity =
             FindComponentByClass<UWorldObjectIdentityComponent>())
         {
             Identity->SetDefinitionId(CurrentDefinitionId);
         }
         return true;
+    };
+
+    // An unprocessed item restores the authored base mesh for this actor's length.
+    if (CurrentDefinitionId == BaseDefinitionId)
+    {
+        UStaticMesh* BaseMesh = nullptr;
+        FVector IgnoredOffset = FVector::ZeroVector;
+        FRotator IgnoredRotation = FRotator::ZeroRotator;
+        if (!TryResolveGeometryVariant(GetLengthFraction(),
+            ELogCrossSectionProfile::Round, BaseMesh, &IgnoredOffset, &IgnoredRotation))
+        {
+            return false;
+        }
+        return ApplyResolvedVariant(GetLengthFraction(), ELogCrossSectionProfile::Round, BaseMesh);
     }
 
     const FString BaseText = BaseDefinitionId.ToString();
@@ -1643,79 +1682,56 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
         return false;
 
     const FString Suffix = CurrentText.RightChop(Prefix.Len());
-    UStaticMesh* VariantMesh = nullptr;
-    ELogPieceType VariantType = ELogPieceType::Other;
-    if (Suffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
+
+    // Canonical definitions carry both orthogonal dimensions, e.g.
+    // Base.Geom.Half.HalfRound. Resolve the exact mesh before mutating the actor.
+    ELogLengthFraction ParsedLength = ELogLengthFraction::FullLength;
+    ELogCrossSectionProfile ParsedProfile = ELogCrossSectionProfile::Other;
+    if (TryParseCanonicalGeometrySuffix(Suffix, ParsedLength, ParsedProfile))
     {
-        VariantMesh = SplitHalfVariantMesh;
-        VariantType = ELogPieceType::SplitHalfLog;
+        UStaticMesh* CanonicalMesh = nullptr;
+        FVector IgnoredOffset = FVector::ZeroVector;
+        FRotator IgnoredRotation = FRotator::ZeroRotator;
+        if (!TryResolveGeometryVariant(ParsedLength, ParsedProfile,
+            CanonicalMesh, &IgnoredOffset, &IgnoredRotation))
+        {
+            return false;
+        }
+        return ApplyResolvedVariant(ParsedLength, ParsedProfile, CanonicalMesh);
     }
+
+    // Backwards compatibility for pre-canonical single-suffix item definitions.
+    // Shortened legacy pieces require an exact GeometryVariantMeshes entry; old
+    // full-length slots are deliberately not applied to shorter pieces.
+    ELogCrossSectionProfile LegacyProfile = ELogCrossSectionProfile::Other;
+    if (Suffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
+        LegacyProfile = ELogCrossSectionProfile::HalfRound;
     else if (Suffix.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
         Suffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
-    {
-        // ".QuarterLog" is a backwards-compatibility alias emitted by earlier
-        // versions for this cross-section operation. New commits use the
-        // explicit ".QuarterSectionLog" suffix.
-        VariantMesh = QuarterVariantMesh;
-        VariantType = ELogPieceType::QuarterSectionLog;
-    }
+        LegacyProfile = ELogCrossSectionProfile::QuarterRound;
     else if (Suffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
-    {
-        VariantMesh = HewnVariantMesh;
-        VariantType = ELogPieceType::HewnLog;
-    }
+        LegacyProfile = ELogCrossSectionProfile::Hewn;
     else if (Suffix.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
-    {
-        VariantMesh = GutterVariantMesh;
-        VariantType = ELogPieceType::GutterLog;
-    }
+        LegacyProfile = ELogCrossSectionProfile::GroovedHalfRound;
     else if (Suffix.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
-    {
-        VariantMesh = TroughVariantMesh;
-        VariantType = ELogPieceType::TroughLog;
-    }
+        LegacyProfile = ELogCrossSectionProfile::Trough;
     else if (Suffix.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
-    {
-        VariantMesh = KalasVariantMesh;
-        VariantType = ELogPieceType::SquaredBeam;
-    }
+        LegacyProfile = ELogCrossSectionProfile::SquareBeam;
     else if (Suffix.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
-    {
-        VariantMesh = PlankVariantMesh;
-        VariantType = ELogPieceType::Plank;
-    }
+        LegacyProfile = ELogCrossSectionProfile::Plank;
     else
+        return false;
+
+    UStaticMesh* LegacyMesh = nullptr;
+    FVector IgnoredOffset = FVector::ZeroVector;
+    FRotator IgnoredRotation = FRotator::ZeroRotator;
+    const ELogLengthFraction LegacyLength = GetLengthFraction();
+    if (!TryResolveGeometryVariant(LegacyLength, LegacyProfile,
+        LegacyMesh, &IgnoredOffset, &IgnoredRotation))
     {
         return false;
     }
-
-    if (!IsValid(VariantMesh))
-        return false;
-
-    // Preserve the lower contact plane as geometry dimensions change.
-    FVector OldOrigin;
-    FVector OldExtent;
-    GetActorBounds(false, OldOrigin, OldExtent);
-    const float OldBottomZ = OldOrigin.Z - OldExtent.Z;
-
-    SetPieceStaticMesh(VariantMesh);
-    PieceType = VariantType;
-    SetCanonicalCrossSectionFromPieceType(VariantType);
-    if (Mesh)
-        Mesh->UpdateBounds();
-
-    FVector NewOrigin;
-    FVector NewExtent;
-    GetActorBounds(false, NewOrigin, NewExtent);
-    const float NewBottomZ = NewOrigin.Z - NewExtent.Z;
-    AddActorWorldOffset(FVector(0.0f, 0.0f, OldBottomZ - NewBottomZ), false);
-
-    if (UWorldObjectIdentityComponent* Identity =
-        FindComponentByClass<UWorldObjectIdentityComponent>())
-    {
-        Identity->SetDefinitionId(CurrentDefinitionId);
-    }
-    return true;
+    return ApplyResolvedVariant(LegacyLength, LegacyProfile, LegacyMesh);
 }
 
 void ALogBuildPiece::AddCustomSnapPoint(
