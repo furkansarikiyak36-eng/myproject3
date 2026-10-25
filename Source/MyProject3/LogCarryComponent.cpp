@@ -94,11 +94,11 @@ void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
 
     // Use this helper from a Character/Controller setup event. Projects using
     // Enhanced Input can bind the Blueprint-callable actions to Input Actions.
-    InputComponent->BindKey(EKeys::E, IE_Pressed, this, FName(TEXT("Interact")));
-    InputComponent->BindKey(EKeys::G, IE_Pressed, this, FName(TEXT("DropHeldPiece")));
-    InputComponent->BindKey(EKeys::R, IE_Pressed, this, FName(TEXT("RotateHeldPiece")));
+    InputComponent->BindKey(EKeys::E, IE_Pressed, this, &ULogCarryComponent::Interact);
+    InputComponent->BindKey(EKeys::G, IE_Pressed, this, &ULogCarryComponent::DropHeldPiece);
+    InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ULogCarryComponent::RotateHeldPiece);
     InputComponent->BindKey(
-        EKeys::RightMouseButton, IE_Pressed, this, FName(TEXT("CyclePlacementMode")));
+        EKeys::RightMouseButton, IE_Pressed, this, &ULogCarryComponent::CyclePlacementMode);
 }
 
 bool ULogCarryComponent::GetViewPoint(
