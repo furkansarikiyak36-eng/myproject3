@@ -899,9 +899,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     UWorldObjectIdentityComponent* Identity =
         FindComponentByClass<UWorldObjectIdentityComponent>();
 
-    const FVector LocalOffset = Action == ELogCutAction::SplitHalf
-        ? SplitHalfPieceCenterOffsetLocal
-        : QuarterPieceCenterOffsetLocal;
+    const FVector LocalOffset = GetConfiguredSplitCenterOffset(Action);
     if (!World || !Ownership || !Graph || !Identity || !Mesh ||
         !IsValid(OutputMesh) || OutputDefinitionId.IsNone() ||
         CurrentItem.OwnerKind != EWorldItemOwnerKind::World ||
@@ -931,9 +929,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     // authored local rotations are per-mesh because imported pivots/cut planes
     // can differ. The defaults assume a log axis of X and may be overridden
     // in the asset Blueprint.
-    const FRotator ChildRotationOffset = Action == ELogCutAction::SplitHalf
-        ? SplitHalfChildRotationOffsetLocal
-        : QuarterChildRotationOffsetLocal;
+    const FRotator ChildRotationOffset = GetConfiguredSplitChildRotation(Action);
     const FQuat ChildOutputRotation =
         OriginalTransform.GetRotation() * ChildRotationOffset.Quaternion();
 
@@ -969,6 +965,8 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     Child->UpdateGeometryStateFromPieceType(true);
     Child->BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
+    Child->ProcessingMeshSets = ProcessingMeshSets;
+    Child->SelectedProcessingMeshSetId = SelectedProcessingMeshSetId;
     Child->LongitudinalAxis = LongitudinalAxis;
     Child->bCanBeCarried = bCanBeCarried;
     Child->bStartsPlaced = false;
@@ -1315,31 +1313,24 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        NewMesh = SplitHalfVariantMesh;
         NewType = ELogPieceType::SplitHalfLog;
         break;
     case ELogCutAction::Quarter:
-        NewMesh = QuarterVariantMesh;
         NewType = ELogPieceType::QuarterSectionLog;
         break;
     case ELogCutAction::Hewn:
-        NewMesh = HewnVariantMesh;
         NewType = ELogPieceType::HewnLog;
         break;
     case ELogCutAction::Gutter:
-        NewMesh = GutterVariantMesh;
         NewType = ELogPieceType::GutterLog;
         break;
     case ELogCutAction::Trough:
-        NewMesh = TroughVariantMesh;
         NewType = ELogPieceType::TroughLog;
         break;
     case ELogCutAction::Kalas:
-        NewMesh = KalasVariantMesh;
         NewType = ELogPieceType::SquaredBeam;
         break;
     case ELogCutAction::Plank:
-        NewMesh = PlankVariantMesh;
         NewType = ELogPieceType::Plank;
         break;
     default:
@@ -1348,6 +1339,8 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             OperationId,
             FText::FromString(TEXT("Unsupported processing action.")));
     }
+
+    NewMesh = GetConfiguredMeshForPieceType(NewType);
 
     // Recheck the selected output before mutating any authoritative state.
     if (!IsValid(NewMesh) || !Mesh)
@@ -1588,7 +1581,7 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
     ELogPieceType VariantType = ELogPieceType::Other;
     if (Suffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
     {
-        VariantMesh = SplitHalfVariantMesh;
+        
         VariantType = ELogPieceType::SplitHalfLog;
     }
     else if (Suffix.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
@@ -1597,32 +1590,32 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
         // ".QuarterLog" is a backwards-compatibility alias emitted by earlier
         // versions for this cross-section operation. New commits use the
         // explicit ".QuarterSectionLog" suffix.
-        VariantMesh = QuarterVariantMesh;
+        
         VariantType = ELogPieceType::QuarterSectionLog;
     }
     else if (Suffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
     {
-        VariantMesh = HewnVariantMesh;
+        
         VariantType = ELogPieceType::HewnLog;
     }
     else if (Suffix.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
     {
-        VariantMesh = GutterVariantMesh;
+        
         VariantType = ELogPieceType::GutterLog;
     }
     else if (Suffix.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
     {
-        VariantMesh = TroughVariantMesh;
+        
         VariantType = ELogPieceType::TroughLog;
     }
     else if (Suffix.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
     {
-        VariantMesh = KalasVariantMesh;
+        
         VariantType = ELogPieceType::SquaredBeam;
     }
     else if (Suffix.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
     {
-        VariantMesh = PlankVariantMesh;
+        
         VariantType = ELogPieceType::Plank;
     }
     else
@@ -1630,6 +1623,7 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
         return false;
     }
 
+    VariantMesh = GetConfiguredMeshForPieceType(VariantType);
     if (!IsValid(VariantMesh))
         return false;
 
