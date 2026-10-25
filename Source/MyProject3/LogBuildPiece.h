@@ -80,6 +80,10 @@ public:
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     FVector SplitHalfPieceCenterOffsetLocal = FVector::ZeroVector;
+    /** Local mesh-space rotation applied only to the second split-half output. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    FRotator SplitHalfChildRotationOffsetLocal = FRotator(0.0f, 0.0f, 180.0f);
+
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> QuarterVariantMesh;
@@ -87,6 +91,10 @@ public:
     /** Local-space center-to-center offset for the two quarter-section outputs. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     FVector QuarterPieceCenterOffsetLocal = FVector::ZeroVector;
+    /** Local mesh-space rotation applied only to the second quarter-section output. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    FRotator QuarterChildRotationOffsetLocal = FRotator(0.0f, 180.0f, 0.0f);
+
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> HewnVariantMesh;
