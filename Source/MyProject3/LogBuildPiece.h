@@ -135,7 +135,7 @@ public:
     bool TryReserveSnapPoints(int32 TargetPointIndex,
         ALogBuildPiece* SourcePiece, int32 SourcePointIndex);
     void ReleaseSnapPoint(int32 Index);
-    void AttachToSnapParent(ALogBuildPiece* Parent, int32 ParentPointIndex,
+    bool AttachToSnapParent(ALogBuildPiece* Parent, int32 ParentPointIndex,
         int32 MyPointIndex);
     void DetachFromSnapParent();
     void RegisterAttachedPiece(ALogBuildPiece* Child);
