@@ -48,6 +48,10 @@ Working branch: `phase-01-foundation-v2`
 
 `ALogBuildPiece::SetPieceStaticMesh` originally called `GenerateDefaultSnapPoints`, whose `SnapPoints.Reset()` discarded custom anchors. In this Phase 1 branch, it now calls `RegenerateAutomaticSnapPoints`, matching `OnConstruction`: only auto-generated `AutoEnd_` / `AutoSide_` points are replaced, while custom points are retained. This is a source change only; still review whether each custom anchor is semantically valid for each replacement geometry and verify in Unreal. Preserving a custom transform does not guarantee that it fits every mesh variant.
 
+## Attachment / placement / physics sub-review
+
+The follow-up static review is recorded in `PHASE_01_ATTACHMENT_PHYSICS_RISK_REGISTER.md`. It covers pickup/drop, free and snapped placement, anchor reservation/release, child restrictions, physics/collision call order, the `bStartsPlaced` startup-default concern, reserved automatic-anchor ID collisions, and the need to test stale snap-candidate fallback. These are source-level findings and follow-up risks, not confirmed runtime defects. No Unreal build or Editor/runtime test was run.
+
 ## Phase 1 exit requirements still open
 
 - Obtain and reconcile the authoritative list of 119 mechanics; this repository review cannot invent that list.
