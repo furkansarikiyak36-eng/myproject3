@@ -476,6 +476,21 @@ bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
         return false;
     }
 
+    // Applying a shorter/cut mesh may adjust actor Z to preserve its contact
+    // plane. Keep the ownership ledger location aligned with the final transform.
+    if (!RegisteredItem.WorldLocation.Equals(Piece->GetActorLocation(), 0.1f))
+    {
+        FWorldOwnedItemRecord LocatedItem;
+        if (!Ownership->TryTransferItem(FGuid::NewGuid(), NewItemId,
+            RegisteredItem.Revision, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::World, FGuid(), Piece->GetActorLocation(), LocatedItem))
+        {
+            RollbackOutputActor();
+            return false;
+        }
+        RegisteredItem = LocatedItem;
+    }
+
     // FinishSpawning may run Blueprint logic. Recheck the station revision and
     // stock count before commit so a re-entrant change cannot consume stale stock.
     Station = Stations.Find(StationId);
