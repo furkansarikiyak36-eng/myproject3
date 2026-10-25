@@ -9,7 +9,8 @@ This checklist distinguishes planning from verified implementation. Do not mark 
 - [x] Document current placed/held/startup-default semantics and compatibility gate (`PHASE_01_PLACEMENT_HELD_STATE_CONTRACT.md`); no risky API refactor made before Blueprint audit.
 - [x] Guard custom snap-point IDs against None, reserved automatic prefixes, and duplicates in source; Unreal/Blueprint behavior remains unverified.
 - [x] Make snap acceptance independently reject occupied or non-receiving target anchors; Unreal runtime coverage remains pending.
-- [x] Reject direct snap reparenting, support-with-children attachment, and target-chain cycles in source; Unreal runtime coverage remains pending.
+- [x] Reject direct snap reparenting, support-with-children attachment, and target-chain cycles (including malformed existing cycles) in source; Unreal runtime coverage remains pending.
+- [x] Make snap reservation conditional on successful actor attachment; only commit parent/child bookkeeping and anchor occupancy after the attachment succeeds; Unreal runtime coverage remains pending.
 - [x] Identify the authoritative log-processing/construction implementation (`ALogBuildPiece` plus `ULogCarryComponent`; broader Blueprint/editor dependency review remains open).
 - [ ] Identify unused/legacy classes and confirm they are not accidentally activated.
 - [ ] Record existing mechanic tests and their exact scope.
