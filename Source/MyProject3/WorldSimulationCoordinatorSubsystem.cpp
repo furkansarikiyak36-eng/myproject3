@@ -90,7 +90,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorldSurvivalSubsystem* Survival = GetSurvival();
     UWorldProductionSubsystem* Production = GetProduction();
     UWorldCargoTransportSubsystem* Cargo = GetCargo();
-    if (!Clock || !Threat || !Agriculture || !Survival || !Production || !Cargo ||
+    if (bSimulationFaulted || !Clock || !Threat || !Agriculture || !Survival || !Production || !Cargo ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() ||
         !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
         CompletedCoordinatorSteps == MAX_int64 || !Clock->CanAdvanceSimulation(DeltaSeconds))
@@ -157,8 +157,13 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
         if (!bRollbackSucceeded)
         {
-            UE_LOG(LogTemp, Error,
-                TEXT("World fixed-step rollback failed. Stop simulation and capture diagnostics immediately."));
+            // A partially restored world must never continue consuming fixed
+            // steps. Fail closed until the owning world is reset/reloaded.
+            bSimulationFaulted = true;
+            SimulationFaultReason = TEXT(
+                "Fixed-step rollback failed; authoritative world state may be inconsistent. Stop simulation and recover/reset the world.");
+            UE_LOG(LogTemp, Error, TEXT("World simulation entered fail-closed state: %s"),
+                *SimulationFaultReason);
         }
         return bRollbackSucceeded;
     };
@@ -193,6 +198,7 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     const UWorldStorageSubsystem* Storage =
         World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
-    return Clock && Threat && Agriculture && Survival && Production && Cargo &&
-        Ownership && Storage && Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
+    return !bSimulationFaulted && Clock && Threat && Agriculture && Survival &&
+        Production && Cargo && Ownership && Storage &&
+        Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
 }
