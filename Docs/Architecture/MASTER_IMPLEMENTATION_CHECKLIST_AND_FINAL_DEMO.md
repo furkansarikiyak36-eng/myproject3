@@ -4,7 +4,7 @@
 **Belge rolü:** Bu belge, referans oyunlardan çıkarılan eksiklerin kapatılması için tek ana ilerleme takip noktasıdır.  
 **Planın kaynak dalı:** `landscape-builder-plan`  
 **Kaynak inceleme temeli:** `mechanic-detailing-pass-h-integrated-world-systems`  
-**Son güncelleme:** 2026-10-25  
+**Son güncelleme:** 2026-10-26  
 **Mevcut kanıt seviyesi:** Kaynak/doküman incelemesi. Unreal Engine derlemesi, UHT, Editor, PIE veya oynanış doğrulaması yapıldığı varsayılmaz.
 
 ---
@@ -807,10 +807,35 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Sonuç:** İlk ağaç yaşam döngüsü adapter'ı eklendi; grounded gate hasat çıktısından önce gelir. Bu, ağaç asset'lerinin ayarlandığı, log count'un oyuna göre doğrulandığı veya motor içinde çalıştığı anlamına gelmez.
 **Kanıt seviyesi:** Kaynak dosyası incelemesi ve statik yapı kontrolü. Unreal derlemesi/PIE yapılmadı.
 **Kalan sınırlamalar:** Actor tree mesh asset'ini Blueprint'ten alır; gerçek collision/pivot/physics ayarları henüz bilinmiyor. Hasat çıktısı nominal mesh family selector ister. Actor transform/lifecycle SaveGame restore ile henüz entegre değil. Kısmi output spawn fail-closed'dur; otomatik retry/rollback kanıtlanmadı.
-**Sonraki bağımlı iş:** WOOD-006 — fiziksel kütük etkileşiminde taşıma/yuvarlanma/sürükleme ve kaynak miktarıyla işlem çıktısı bağlantısını netleştir; önce mevcut `LogCarryComponent` ile actor lifecycle sınırlarını denetle.
+**Sonraki bağımlı iş:** WOOD-006 — mevcut `LogCarryComponent` ve actor lifecycle sınırları denetlendi; serbest kütüğe sınırlı itme/yuvarlanma kaynak API'si eklendi. Kaynak miktarı/production stoğu aktarımı ve transform kalıcılığı WOOD-007 kapsamında açık kalıyor.
+
+---
+
+### İş kaydı: WOOD-006 — Serbest kütük için doğrulanmış itme/yuvarlanma eylemi
+
+- [x] Mevcut taşıma akışı denetlendi: pickup, held-owner transferi, snap/free placement ve drop mevcut ownership/lifecycle kapılarını kullanıyor.
+- [x] `ULogCarryComponent::TryPushOrRollAimedLog` eklendi; yalnızca hedeflenen, serbest, elde olmayan, yapıya bağlı olmayan ve `World` sahipliğindeki tekil fiziksel kütük kabul ediliyor.
+- [x] Kimlik/ownership kaydı, Quantity=1, aktif rigid-body simülasyonu ve çarpışma ön koşulları kontrol ediliyor; envanter/kargo/yığın kaydı fiziksel hedef olarak kabul edilmiyor.
+- [x] Sonlu ve ayarlanabilir impulse gücü sınırlandırılıyor; impulse hit noktasına uygulanarak doğal dönme momentine izin veriliyor.
+- [x] İsteğe bağlı doğrudan input için V bağlaması ve Blueprint/Enhanced Input üzerinden çağrılabilir API eklendi.
+- [x] Kaynak düzeyinde çağrı noktası, koruma koşulları, brace dengesi ve ilgili semboller statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT, Editor ve PIE doğrulaması.
+- [ ] Gerçek mesh kütlesi, sürtünme, çarpışma profili ve impulse değerlerini sahnede ayarlama.
+- [ ] Fizik hareketi durduğunda authoritative item WorldLocation bilgisini güvenli biçimde eşitleme; SaveGame fiziksel transform geri yüklemesiyle bağlama.
+- [ ] Yerden sürükleme için ayrı, açık bir oyuncu etkileşimi tasarlama; mevcut held carry bunu tek başına tamamlamaz.
+- [ ] Fiziksel parça sayısı/miktarı ile `WorldProductionSubsystem` stok ve tarif girdileri arasındaki gerçek aktarımı kurma.
+- [ ] İtme sonrası sahiplik, pickup tekrar denemesi, destek grafiği ve save/load negatif durumlarını Unreal içinde kabul etme.
+
+**Kaynak dosyaları:** `Source/MyProject3/LogCarryComponent.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`  
+**Branch/PR:** `fix/log-mesh-variant-sets`; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Kütüğü elde taşıma/yerleştirme akışına dokunmadan, serbest fiziksel kütük için açık bir itme/yuvarlanma eylemi eklendi. Bu, yerden sürükleme, fiziksel transform kalıcılığı veya üretim stok entegrasyonunun tamamlandığı anlamına gelmez.  
+**Kanıt seviyesi:** Kaynak değişikliği + statik kontrol; Unreal motoru doğrulanmadı.  
+**Sonraki bağımlı iş:** WOOD-007 — fiziksel kütük/tahta çıktılarını tekil sahiplikten üretim stokları, tarif girdileri ve çıktı aktörlerine kayıpsız bağlama.
 
 ---
 
 ## 15. İlk yapılacak iş
 
-WOOD-004 source-layer data-driven mesh-set selector, exact geometry tuple resolver, ownership selector persistence and SaveGame v8 wiring tamamlandı; Blueprint asset bağlaması ve UE ölçü/runtime testleri açık. WOOD-005 tree lifecycle adapter source layer added; actual tree asset/physics and tree-size-to-log-output configuration remain open. Sıradaki kaynak işi **WOOD-006 — fiziksel kütük taşıma/yuvarlanma/sürükleme ve kaynak miktarı zinciri**; 75/150/300/600 ya da Long/Short adlarından boyut varsayılmayacak. Ardından 2.1'in geri kalan ağaç-kütük miktarı, kaynak sahipliği, taşıma/inşa entegrasyonuna devam edilecek. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
+WOOD-004 data-driven mesh-set selector, geometry tuple resolver, ownership selector ve SaveGame v8 kaynak katmanı mevcut; gerçek FBX/Blueprint ataması ve UE doğrulaması açık. WOOD-005 ağaç devrilme/grounded adapter'ı mevcut; gerçek fizik/asset ve boyut→çıktı tablosu açık. WOOD-006 serbest kütüğe sınırlı push/roll kaynağı eklendi; drag, world-location kalıcılığı ve production-stock entegrasyonu tamamlanmadı.
+
+Sıradaki iş **WOOD-007 — fiziksel kaynak miktarı ve üretim köprüsü**: birim kütük/işlenmiş parça sahipliğini, üretim istasyonu stok rezervasyonunu, recipe input tüketimini ve gerçek output item creation akışını aynı işlem sözleşmesinde bağla. Sonrasında 2.1'in açık kalmış asset/config ve kesme durumu işlerine; ardından taş/çubuk ve ortak yapı sistemine geç. 75/150/300/600 veya Long/Short dosya adlarından gerçek boyut tahmin etme. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
