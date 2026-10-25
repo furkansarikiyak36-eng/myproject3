@@ -35,6 +35,9 @@ struct FWorldStorageIncomingReservation
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Storage")
     FGuid DestinationStorageId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Storage", meta=(ClampMin="1"))
+    int32 Quantity = 1;
 };
 
 /**
@@ -102,5 +105,5 @@ private:
     TSet<FGuid> LiveStorageIds;
 
     class UWorldItemOwnershipSubsystem* GetOwnership() const;
-    int32 CountReservationsForStorage(const FGuid& StorageId) const;
+    int64 CountReservationsForStorage(const FGuid& StorageId) const;
 };
