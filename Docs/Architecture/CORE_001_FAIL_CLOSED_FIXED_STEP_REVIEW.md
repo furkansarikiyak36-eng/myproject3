@@ -2,6 +2,7 @@
 
 **Branch:** `fix/world-simulation-fail-closed`  
 **Base:** `landscape-builder-plan`  
+**Pull request:** [#18 — Core correctness: fail closed after fixed-step rollback failure](https://github.com/furkansarikiyak36-eng/myproject3/pull/18)  
 **Scope:** Guard against continuing deterministic world simulation after a failed cross-subsystem rollback.  
 **Evidence level:** Static source review only. UE 5.8 UHT/UBT, Editor, PIE, and fault-injection were not run.
 
