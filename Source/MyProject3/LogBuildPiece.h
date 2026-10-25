@@ -72,6 +72,14 @@ public:
     void SetPieceStaticMesh(UStaticMesh* NewMesh);
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
+    void SetPieceTypeByName(FName TypeName);
+
+    UFUNCTION(BlueprintCallable, Category = "Log Piece|Snapping")
+    void AddCustomSnapPoint(FName PointId, FName SnapTag, FTransform LocalTransform,
+        bool bCanSource, bool bCanReceive, bool bAcceptAnyPieceType,
+        bool bFlipIncomingOrientation);
+
+    UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPlacedState(bool bNewPlaced);
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
