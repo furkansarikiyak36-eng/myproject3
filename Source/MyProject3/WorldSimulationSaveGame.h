@@ -70,6 +70,10 @@ struct FWorldPhysicalActorSnapshot
 
     UPROPERTY(SaveGame)
     TArray<FWorldPhysicalComponentSnapshot> Components;
+
+    /** Actor-level UPROPERTY(SaveGame) payload for domain lifecycle fields. */
+    UPROPERTY(SaveGame)
+    TArray<uint8> ActorSaveGameData;
 };
 
 USTRUCT()
