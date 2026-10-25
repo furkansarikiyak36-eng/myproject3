@@ -51,3 +51,17 @@ The current project also contains `MyProject3.Build.cs`, target files, `Config/D
 3. Record the authoritative 119-mechanic list; do not fabricate missing mechanics to fill the registry.
 4. Add shared C++ types only after the existing types and callers are reconciled.
 5. Keep code review, automated checks, Unreal build, and in-editor/runtime evidence as separate status fields.
+
+## Build, configuration and editor automation
+
+- `MyProject3.Build.cs` declares `Core`, `CoreUObject`, `Engine`, `InputCore` and `EnhancedInput`. The current prototype binds keys directly through `UInputComponent`; it does not yet require a new Enhanced Input mapping asset for its documented controls.
+- `MyProject3.uproject` declares engine association `5.8`; Modeling Tools Editor Mode, Python Script Plugin and Editor Scripting Utilities are editor-only plugins.
+- `UnrealEditorScripts/BuildLogSnapPrototype.ps1` builds the `MyProject3Editor Win64 Development` target and intentionally does not launch the editor or run gameplay tests. It checks for an editor process tied to this project before building.
+- `UnrealEditorScripts/CreateLogSnapTestLevel.py` creates a separate `/Game/Maps/LogSnap_Playground` map, imports selected project FBXs when absent, and uses `LOGSNAP_DEMO_` actor labels for generated scene actors. Its safety behavior and generated-map cleanup should be preserved during demo improvements.
+- `UnrealEditorScripts/ImportLogsToScene.py`, `CreateCubeTestLevel.py` and `FixSceneView.py` are additional editor utilities. Their interactions with current levels and generated actors need a separate pass before changing them.
+- `Config/DefaultInput.ini` includes Enhanced Input player/component classes, while the prototype uses direct key bindings. Keep this mixed setup intentional until a dedicated input migration phase; do not casually switch one side and strand the prototype controls.
+- `LOG_SNAP_PROTOTYPE.md` documents the setup flow and states that the native classes have not yet been compiled/run in the user's editor. The build helper's success message is not a gameplay test result.
+
+## Scope note
+
+This is a repository-tree and source-level inventory, not a complete audit of editor-generated assets, local-only content, or all Blueprint references. The authoritative mechanic list and final runtime evidence remain separate inputs.
