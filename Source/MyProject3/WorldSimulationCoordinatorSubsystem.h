@@ -39,12 +39,26 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Simulation")
     bool IsWorldSimulationReady() const;
 
+    /** True after a failed rollback; callers must stop simulation and recover/reset the world. */
+    UFUNCTION(BlueprintPure, Category="World|Simulation")
+    bool IsSimulationFaulted() const { return bSimulationFaulted; }
+
+    /** Human-readable explanation for a fail-closed simulation state. */
+    UFUNCTION(BlueprintPure, Category="World|Simulation")
+    FString GetSimulationFaultReason() const { return SimulationFaultReason; }
+
     UFUNCTION(BlueprintPure, Category="World|Simulation")
     int64 GetCompletedCoordinatorSteps() const { return CompletedCoordinatorSteps; }
 
 private:
-    UPROPERTY(VisibleAnywhere, Category="World|Simulation")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Simulation", meta=(AllowPrivateAccess="true"))
     int64 CompletedCoordinatorSteps = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Simulation", meta=(AllowPrivateAccess="true"))
+    bool bSimulationFaulted = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Simulation", meta=(AllowPrivateAccess="true"))
+    FString SimulationFaultReason;
 
     UWorldSimulationClockSubsystem* GetClock() const;
     UWorldThreatDirectorSubsystem* GetThreatDirector() const;
