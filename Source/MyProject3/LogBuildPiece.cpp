@@ -611,14 +611,18 @@ bool ALogBuildPiece::CanSnapPointAccept(
 
     // Reject a cycle: the target cannot already be inside the source piece's
     // descendant chain, otherwise attachment would create a structural loop.
+    TSet<const ALogBuildPiece*> VisitedAncestors;
     for (const ALogBuildPiece* Ancestor = this;
          Ancestor;
          Ancestor = Ancestor->SnapParent.Get())
     {
-        if (Ancestor == SourcePiece)
+        // Reject both the proposed cycle and a pre-existing corrupted cycle
+        // so validation itself cannot loop forever on malformed graph state.
+        if (Ancestor == SourcePiece || VisitedAncestors.Contains(Ancestor))
         {
             return false;
         }
+        VisitedAncestors.Add(Ancestor);
     }
 
     const FLogSnapPoint& TargetPoint = SnapPoints[TargetPointIndex];
@@ -655,9 +659,16 @@ bool ALogBuildPiece::TryReserveSnapPoints(
         return false;
     }
 
+    // Actor attachment is the only fallible commit step. Perform it before
+    // reserving either anchor so a rejected attachment leaves both endpoints
+    // untouched.
+    if (!SourcePiece->AttachToSnapParent(this, TargetPointIndex, SourcePointIndex))
+    {
+        return false;
+    }
+
     SnapPoints[TargetPointIndex].bOccupied = true;
     SourcePiece->SnapPoints[SourcePointIndex].bOccupied = true;
-    SourcePiece->AttachToSnapParent(this, TargetPointIndex, SourcePointIndex);
     return true;
 }
 
@@ -669,22 +680,36 @@ void ALogBuildPiece::ReleaseSnapPoint(int32 Index)
     }
 }
 
-void ALogBuildPiece::AttachToSnapParent(
+bool ALogBuildPiece::AttachToSnapParent(
     ALogBuildPiece* Parent,
     int32 ParentPointIndex,
     int32 MyPointIndex)
 {
+    if (!IsValid(Parent) ||
+        Parent == this ||
+        !Parent->SnapPoints.IsValidIndex(ParentPointIndex) ||
+        !SnapPoints.IsValidIndex(MyPointIndex) ||
+        SnapParent.IsValid() ||
+        ParentSnapPointIndex != INDEX_NONE ||
+        OwnSnapPointIndexUsed != INDEX_NONE)
+    {
+        return false;
+    }
+
+    // Do not publish parent/child bookkeeping until Unreal confirms the actor
+    // attachment. A failed attach must not leave stale weak-child entries or
+    // occupied anchors.
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+    {
+        return false;
+    }
+
     SnapParent = Parent;
     ParentSnapPointIndex = ParentPointIndex;
     OwnSnapPointIndexUsed = MyPointIndex;
-
-    if (Parent)
-    {
-        Parent->RegisterAttachedPiece(this);
-        AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform);
-    }
-
+    Parent->RegisterAttachedPiece(this);
     SetPlacedState(true);
+    return true;
 }
 
 void ALogBuildPiece::DetachFromSnapParent()
