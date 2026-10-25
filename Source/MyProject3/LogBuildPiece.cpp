@@ -884,6 +884,7 @@ void ALogBuildPiece::DetachFromSnapParent()
     SnapParent.Reset();
     ParentSnapPointIndex = INDEX_NONE;
     OwnSnapPointIndexUsed = INDEX_NONE;
+    SetPlacedState(false);
 }
 
 void ALogBuildPiece::RegisterAttachedPiece(ALogBuildPiece* Child)
