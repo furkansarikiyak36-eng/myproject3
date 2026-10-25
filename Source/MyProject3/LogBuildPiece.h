@@ -88,6 +88,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     bool bStartsPlaced = false;
 
+    /** Raw/base mesh for this authored log length. Captured from the default mesh when left unset. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Log Piece|Geometry")
+    TObjectPtr<UStaticMesh> BaseLogVariantMesh;
+
+    /** Exact length+cross-section mesh table. Non-full-length processed outputs require an exact entry. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    TArray<FLogGeometryVariantMesh> GeometryVariantMeshes;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> SplitHalfVariantMesh;
 
@@ -243,8 +251,15 @@ private:
 
     static ELogLengthFraction LengthFractionFromLegacyType(ELogPieceType Type);
     static ELogCrossSectionProfile CrossSectionFromLegacyType(ELogPieceType Type);
+    static ELogPieceType LegacyTypeFromCanonicalDimensions(
+        ELogLengthFraction InLength, ELogCrossSectionProfile InProfile);
+
     void SyncCanonicalGeometryFromLegacyPieceType();
     void SetCanonicalCrossSectionFromPieceType(ELogPieceType Type);
+    bool TryResolveGeometryVariant(ELogLengthFraction InLength,
+        ELogCrossSectionProfile InProfile, UStaticMesh*& OutMesh,
+        FVector* OutSecondPieceCenterOffset = nullptr,
+        FRotator* OutSecondPieceRotationOffset = nullptr) const;
 
     FWorldOperationResult TrySplitOutputPieces(ELogCutAction Action,
         const FGuid& OperationId, UStaticMesh* OutputMesh, ELogPieceType OutputType,
