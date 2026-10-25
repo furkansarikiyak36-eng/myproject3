@@ -33,7 +33,30 @@ void ULogCarryComponent::TickComponent(
         return;
     }
 
-    UpdateHeldPreview();
+    // Keep a valid snap preview locked to the target while the player is still
+    // aiming at that target. This avoids the preview jumping back and forth
+    // between the free-placement point and the snap point every frame.
+    if (bHasValidSnap && IsValid(CurrentSnapTarget))
+    {
+        FHitResult AimHit;
+        const bool bStillAimingAtSnapTarget =
+            TraceFromView(PlacementTraceDistance, AimHit) &&
+            AimHit.GetActor() == CurrentSnapTarget;
+
+        if (bStillAimingAtSnapTarget)
+        {
+            HeldPiece->SetActorTransform(CurrentSnapActorTransform);
+        }
+        else
+        {
+            ClearSnapCandidate();
+            UpdateHeldPreview();
+        }
+    }
+    else
+    {
+        UpdateHeldPreview();
+    }
 
     TimeUntilSnapRefresh -= DeltaTime;
     if (TimeUntilSnapRefresh <= 0.0f)
