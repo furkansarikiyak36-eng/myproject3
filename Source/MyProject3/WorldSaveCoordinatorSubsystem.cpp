@@ -38,7 +38,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     OutSave->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     OutSave->Clock = Clock->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
-    Items->ExportSnapshot(OutSave->Items);
+    Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts);
     // Held actor/carry-component state is not yet part of this manifest. Refuse
     // a lossy save rather than restoring an item to an orphaned Held owner.
     for (const FWorldOwnedItemRecord& Item : OutSave->Items)
@@ -96,7 +96,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
-    if (!Items->RestoreSnapshot(Snapshot->Items)) return false;
+    if (!Items->RestoreSnapshot(Snapshot->Items, Snapshot->ItemTransferReceipts)) return false;
 
     TArray<UInventoryCraftingComponent*> CurrentInventories;
     TMap<FGuid, UInventoryCraftingComponent*> ByOwnerActorId;
@@ -156,7 +156,18 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         return false;
     UWorldSimulationSaveGame* Candidate = Cast<UWorldSimulationSaveGame>(
         UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex));
-    if (!Candidate || Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
+    if (!Candidate) return false;
+
+    // Schema v5 adds the optional ownership-transfer receipt snapshot. A v4
+    // save has the complete item ledger but no receipt array; migrate it with
+    // an empty receipt list so state restore remains safe and old revisions
+    // are still rejected by the ownership revision guard.
+    if (Candidate->SchemaVersion == 4)
+    {
+        Candidate->ItemTransferReceipts.Reset();
+        Candidate->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
+    }
+    if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
     UWorldSimulationSaveGame* Before = Cast<UWorldSimulationSaveGame>(
