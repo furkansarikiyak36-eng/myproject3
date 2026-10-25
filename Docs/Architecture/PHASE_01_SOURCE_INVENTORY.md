@@ -46,10 +46,10 @@ The current project also contains `MyProject3.Build.cs`, target files, `Config/D
 
 ## Next concrete actions
 
-1. Reconcile the custom-anchor reset behavior with intended asset/editor workflow.
-2. Trace `ProcessAimedPiece`, `PlaceHeldPiece`, `TryPickupTarget`, `TryReserveSnapPoints` and detach/drop paths end-to-end.
-3. Record the authoritative 119-mechanic list; do not fabricate missing mechanics to fill the registry.
-4. Add shared C++ types only after the existing types and callers are reconciled.
+1. **Completed at source level:** trace `ProcessAimedPiece`, `PlaceHeldPiece`, `TryPickupTarget`, `TryReserveSnapPoints`, attach/detach, and drop paths; see `PHASE_01_CALL_CHAIN_REVIEW.md` and `PHASE_01_STATE_TRANSITION_CALLER_MAP.md`.
+2. **Completed at source level:** preserve custom anchors across mesh replacement, validate custom IDs, revalidate both snap endpoints, reject unsafe reparent/cycle cases, and make snap reservation conditional on successful actor attachment. Runtime/editor checks remain pending.
+3. **Blocked by missing input:** record the authoritative 119-mechanic list; do not fabricate missing mechanics to fill the registry. Prior notes confirm no complete numbered list is present in the tracked repository/context reviewed.
+4. Add shared C++ types only after the authoritative mechanics and all existing/local callers are reconciled; no duplicate state owner has been added.
 5. Keep code review, automated checks, Unreal build, and in-editor/runtime evidence as separate status fields.
 
 ## Build, configuration and editor automation
