@@ -156,7 +156,8 @@ public:
     void ReleaseSnapPoint(int32 Index);
     bool AttachToSnapParent(ALogBuildPiece* Parent, int32 ParentPointIndex,
         int32 MyPointIndex);
-    void DetachFromSnapParent();
+    /** Disconnects graph and actor state together; force-local cleanup is reserved for EndPlay. */
+    bool DetachFromSnapParent(bool bAllowGraphFailure = false);
     void RegisterAttachedPiece(ALogBuildPiece* Child);
     void UnregisterAttachedPiece(ALogBuildPiece* Child);
     int32 GetAttachedPieceCount() const;
