@@ -52,7 +52,11 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 - [ ] Prove preview transform equals committed placement transform in UE.
 - [ ] Negative cases must leave actor, geometry, ownership, anchors and inventory unchanged.
 
-**Next implementation:** define the canonical wood-processing model before changing code that could silently discard half of a resource. Do not add guessed output actors without an atomic multi-output ownership transaction and authored geometry rules.
+**Progress in WOOD-002/003:** `TrySplitItem` commits the original item plus a unique second item under a split receipt; `SplitHalf` / `Quarter` use deferred second-actor creation with ownership/graph verification and a rollback attempt. Geometry metadata now separates `ELogLengthFraction` from `ELogCrossSectionShape`; split-related eligibility uses cross-section shape so a shortened round log does not fail merely because its legacy `PieceType` label names a length fraction. The repository inventory lists 48 root FBX meshes and 10 Archive/joinery meshes, based on filenames only.
+
+**Still not verified:** actual FBX bounds/pivots/orientations, output mesh assignment, per-Blueprint offsets/rotations, the absent `SM_RawLog_75.fbx` base-round mesh, and ambiguous `Long_01..08` / `Short_01..04` dimensions. The import script stages a gallery; it does not complete production Blueprint configuration or physical actor save/load.
+
+**Next implementation:** use the exact asset inventory to prepare a staging-level measurement manifest. Do not promote filename-derived categories to verified geometry until the meshes have been imported and measured in UE.
 
 ## 2.2 — 7 Days to Die: constrained excavation, raids and structural pressure
 
