@@ -13,7 +13,9 @@ enum class ELogPieceType : uint8
     SplitHalfLog    UMETA(DisplayName = "Split Half Log"),
     Plank           UMETA(DisplayName = "Plank"),
     HewnLog         UMETA(DisplayName = "Hewn Log"),
+    SquaredBeam     UMETA(DisplayName = "Squared Beam / Kalas"),
     GutterLog       UMETA(DisplayName = "Grooved / Gutter Log"),
+    TroughLog       UMETA(DisplayName = "Hollow Trough"),
     NotchedLog      UMETA(DisplayName = "Notched Log"),
     JointPiece      UMETA(DisplayName = "Joint Piece"),
     Other           UMETA(DisplayName = "Other")
