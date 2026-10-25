@@ -33,6 +33,44 @@ void ULogCarryComponent::TickComponent(
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+    if (bIsDraggingLog)
+    {
+        ALogBuildPiece* Piece = DraggedPiece.Get();
+        UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+            ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        UWorldItemOwnershipSubsystem* Ownership = GetWorld()
+            ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        FWorldOwnedItemRecord ItemRecord;
+        FVector ViewLocation;
+        FRotator ViewRotation;
+        const bool bValidDrag = IsValid(Piece) && !Piece->IsHeld() && !Piece->IsPlaced() &&
+            Piece->GetAttachedPieceCount() == 0 && Identity && Identity->HasValidIdentity() &&
+            Ownership && Ownership->TryGetItem(Identity->GetInstanceId(), ItemRecord) &&
+            ItemRecord.OwnerKind == EWorldItemOwnerKind::World && ItemRecord.Quantity == 1 &&
+            Piece->GetLogMesh() && Piece->GetLogMesh()->IsSimulatingPhysics() &&
+            GetViewPoint(ViewLocation, ViewRotation) &&
+            FMath::IsFinite(DragForceStrength) && FMath::IsFinite(MaxDragForceMagnitude);
+        if (!bValidDrag)
+        {
+            EndDragAimedLog();
+        }
+        else
+        {
+            FVector Target = GetOwner() ? GetOwner()->GetActorLocation() +
+                GetOwner()->GetActorForwardVector() * DragTargetDistance : ViewLocation;
+            Target.Z = Piece->GetActorLocation().Z;
+            FVector Force = Target - Piece->GetActorLocation();
+            const float Distance = Force.Size();
+            if (Distance > 5.0f)
+            {
+                const float Magnitude = FMath::Clamp(
+                    DragForceStrength * FMath::Min(Distance / 200.0f, 1.0f),
+                    0.0f, FMath::Max(0.0f, MaxDragForceMagnitude));
+                Piece->GetLogMesh()->AddForce(Force.GetSafeNormal() * Magnitude);
+            }
+        }
+    }
+
     if (!IsValid(HeldPiece))
     {
         ClearSnapCandidate();
@@ -120,6 +158,8 @@ void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &ULogCarryComponent::CycleCutAction);
     InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ULogCarryComponent::ProcessAimedPieceInput);
     InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ULogCarryComponent::PushOrRollAimedLogInput);
+    InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ULogCarryComponent::BeginDragAimedLog);
+    InputComponent->BindKey(EKeys::B, IE_Released, this, &ULogCarryComponent::EndDragAimedLog);
 }
 
 bool ULogCarryComponent::GetViewPoint(
@@ -732,6 +772,40 @@ void ULogCarryComponent::CycleCutAction()
     {
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Message);
     }
+}
+
+bool ULogCarryComponent::BeginDragAimedLog()
+{
+    if (IsValid(HeldPiece) || !GetWorld())
+        return false;
+
+    FHitResult Hit;
+    if (!TraceFromView(PickupRange, Hit) || !Hit.bBlockingHit)
+        return false;
+
+    ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Hit.GetActor());
+    UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+        ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    FWorldOwnedItemRecord ItemRecord;
+    if (!IsValid(Piece) || Piece->IsHeld() || Piece->IsPlaced() ||
+        Piece->GetAttachedPieceCount() > 0 || !Identity || !Identity->HasValidIdentity() ||
+        !Ownership || !Ownership->TryGetItem(Identity->GetInstanceId(), ItemRecord) ||
+        ItemRecord.OwnerKind != EWorldItemOwnerKind::World || ItemRecord.Quantity != 1 ||
+        !Piece->GetLogMesh() || !Piece->GetLogMesh()->IsSimulatingPhysics() ||
+        !FMath::IsFinite(DragForceStrength) || !FMath::IsFinite(MaxDragForceMagnitude) ||
+        MaxDragForceMagnitude <= 0.0f)
+        return false;
+
+    DraggedPiece = Piece;
+    bIsDraggingLog = true;
+    return true;
+}
+
+void ULogCarryComponent::EndDragAimedLog()
+{
+    bIsDraggingLog = false;
+    DraggedPiece.Reset();
 }
 
 bool ULogCarryComponent::TryPushOrRollAimedLog()
