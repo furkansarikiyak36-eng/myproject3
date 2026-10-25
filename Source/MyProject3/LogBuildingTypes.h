@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "LogBuildingTypes.generated.h"
 
+class UStaticMesh;
+
 UENUM(BlueprintType)
 enum class ELogPieceType : uint8
 {
@@ -51,6 +53,35 @@ enum class ELogCrossSectionProfile : uint8
     Notched UMETA(DisplayName = "Notched"),
     Joint UMETA(DisplayName = "Joint Piece"),
     Other UMETA(DisplayName = "Other / Authored Profile")
+};
+
+
+/**
+ * Authored mesh mapping for a specific combination of length and cross-section.
+ * Non-full-length processed pieces must provide an exact entry so the system
+ * never reuses a full-length mesh for a shorter resource.
+ */
+USTRUCT(BlueprintType)
+struct FLogGeometryVariantMesh
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    ELogLengthFraction LengthFraction = ELogLengthFraction::FullLength;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    ELogCrossSectionProfile CrossSectionProfile = ELogCrossSectionProfile::Round;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    TObjectPtr<UStaticMesh> Mesh = nullptr;
+
+    /** Required for a split output profile; center-to-center separation in local space. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    FVector SecondPieceCenterOffsetLocal = FVector::ZeroVector;
+
+    /** Mesh-specific complementary orientation for the second split output. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    FRotator SecondPieceRotationOffsetLocal = FRotator::ZeroRotator;
 };
 
 UENUM(BlueprintType)
