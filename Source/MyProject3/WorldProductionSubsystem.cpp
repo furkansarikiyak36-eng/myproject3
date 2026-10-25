@@ -60,7 +60,8 @@ bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& S
     if (!Station.StationId.IsValid() || Station.StationTag.IsNone() ||
         Station.StorageCapacityUnits <= 0 || Station.Revision <= 0 ||
         Stations.Contains(Station.StationId) || MaxStations <= 0 || Stations.Num() >= MaxStations ||
-        !Station.Jobs.IsEmpty() || !Station.PhysicalIntakeReceipts.IsEmpty())
+        !Station.Jobs.IsEmpty() || !Station.PhysicalIntakeReceipts.IsEmpty() ||
+        !Station.EnqueueReceipts.IsEmpty() || !Station.CollectReceipts.IsEmpty())
         return false;
     for (const TPair<FName, int32>& Pair : Station.Stock)
         if (Pair.Key.IsNone() || Pair.Value < 0) return false;
@@ -297,50 +298,183 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
     return true;
 }
 
-bool UWorldProductionSubsystem::EnqueueJob(
-    const FGuid& StationId, FName RecipeId, FGuid& OutJobId)
+bool UWorldProductionSubsystem::TryEnqueueJob(
+    FGuid OperationId,
+    FGuid StationId,
+    FName RecipeId,
+    int64 ExpectedStationRevision,
+    FGuid& OutJobId)
 {
+    OutJobId.Invalidate();
+    if (!OperationId.IsValid() || !StationId.IsValid() || RecipeId.IsNone() ||
+        ExpectedStationRevision <= 0 || ExpectedStationRevision == MAX_int64)
+    {
+        return false;
+    }
+
+    // Operation IDs are shared across the production intake/enqueue/collect
+    // commands. Same-request retries replay the committed result.
+    for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
+    {
+        for (const FWorldProductionPhysicalIntakeReceipt& Intake : Pair.Value.PhysicalIntakeReceipts)
+        {
+            if (Intake.OperationId == OperationId)
+                return false;
+        }
+        for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
+        {
+            if (Receipt.OperationId != OperationId)
+                continue;
+            if (Pair.Key != StationId || Receipt.RecipeId != RecipeId ||
+                Receipt.ExpectedStationRevision != ExpectedStationRevision)
+            {
+                return false;
+            }
+            OutJobId = Receipt.JobId;
+            return OutJobId.IsValid();
+        }
+        for (const FWorldProductionCollectReceipt& Receipt : Pair.Value.CollectReceipts)
+        {
+            if (Receipt.OperationId == OperationId)
+                return false;
+        }
+    }
+
     FWorldProductionStation* Station = Stations.Find(StationId);
     const int32 RecipeIndex = FindRecipe(RecipeId);
-    if (!Station || !Recipes.IsValidIndex(RecipeIndex) || Station->Revision == MAX_int64 ||
+    if (!Station || Station->Revision != ExpectedStationRevision ||
+        Station->Revision == MAX_int64 || !Recipes.IsValidIndex(RecipeIndex) ||
         MaxJobsPerStation <= 0 || Station->Jobs.Num() >= MaxJobsPerStation)
+    {
         return false;
+    }
 
     const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
-    if (!Recipe.RequiredStationTag.IsNone() && Recipe.RequiredStationTag != Station->StationTag)
+    if (!Recipe.RequiredStationTag.IsNone() &&
+        Recipe.RequiredStationTag != Station->StationTag)
+    {
         return false;
+    }
 
     TMap<FName, int64> Required;
     for (const FProductionIngredient& Input : Recipe.Inputs)
-        Required.FindOrAdd(Input.ItemId) += Input.Quantity;
-    for (const TPair<FName, int64>& Need : Required)
-        if (Need.Value > MAX_int32 || Station->Stock.FindRef(Need.Key) < Need.Value) return false;
+    {
+        if (Input.ItemId.IsNone() || Input.Quantity <= 0)
+            return false;
+        int64& Total = Required.FindOrAdd(Input.ItemId);
+        if (Total > MAX_int64 - Input.Quantity)
+            return false;
+        Total += Input.Quantity;
+    }
 
-    int64 Reserved = 0;
+    TMap<FName, int32> ProposedStock = Station->Stock;
+    for (const TPair<FName, int64>& Need : Required)
+    {
+        const int32 Available = ProposedStock.FindRef(Need.Key);
+        if (Need.Value > MAX_int32 || Available < Need.Value)
+            return false;
+        ProposedStock.Add(Need.Key, Available - static_cast<int32>(Need.Value));
+    }
+
+    int64 ReservedOutputUnits = 0;
     for (const FWorldProductionJob& Job : Station->Jobs)
     {
-        if (Job.State != EProductionJobState::Queued && Job.State != EProductionJobState::Running) continue;
-        const int32 ExistingRecipe = FindRecipe(Job.RecipeId);
-        if (!Recipes.IsValidIndex(ExistingRecipe)) return false;
-        for (const FProductionIngredient& Output : Recipes[ExistingRecipe].Outputs) Reserved += Output.Quantity;
+        if (Job.State != EProductionJobState::Queued &&
+            Job.State != EProductionJobState::Running)
+        {
+            continue;
+        }
+
+        const int32 ExistingRecipeIndex = FindRecipe(Job.RecipeId);
+        if (!Recipes.IsValidIndex(ExistingRecipeIndex))
+            return false;
+
+        for (const FProductionIngredient& Output : Recipes[ExistingRecipeIndex].Outputs)
+        {
+            if (Output.ItemId.IsNone() || Output.Quantity <= 0 ||
+                ReservedOutputUnits > MAX_int64 - Output.Quantity)
+            {
+                return false;
+            }
+            ReservedOutputUnits += Output.Quantity;
+        }
     }
+
     int64 NewOutputUnits = 0;
-    for (const FProductionIngredient& Output : Recipe.Outputs) NewOutputUnits += Output.Quantity;
-    if (CountStockUnits(Station->Stock) + Reserved + NewOutputUnits > Station->StorageCapacityUnits)
+    for (const FProductionIngredient& Output : Recipe.Outputs)
+    {
+        if (Output.ItemId.IsNone() || Output.Quantity <= 0 ||
+            NewOutputUnits > MAX_int64 - Output.Quantity)
+        {
+            return false;
+        }
+        NewOutputUnits += Output.Quantity;
+    }
+
+    const int64 RemainingStockUnits = CountStockUnits(ProposedStock);
+    if (RemainingStockUnits == MAX_int64 ||
+        RemainingStockUnits > Station->StorageCapacityUnits ||
+        ReservedOutputUnits > Station->StorageCapacityUnits - RemainingStockUnits ||
+        NewOutputUnits > Station->StorageCapacityUnits -
+            RemainingStockUnits - ReservedOutputUnits)
+    {
+        return false;
+    }
+
+    FGuid NewJobId;
+    bool bUniqueJobId = false;
+    for (int32 Attempt = 0; Attempt < 8 && !bUniqueJobId; ++Attempt)
+    {
+        NewJobId = FGuid::NewGuid();
+        bUniqueJobId = NewJobId.IsValid() &&
+            !Station->Jobs.ContainsByPredicate([NewJobId](const FWorldProductionJob& Job)
+                { return Job.JobId == NewJobId; });
+        for (const FWorldProductionEnqueueReceipt& Receipt : Station->EnqueueReceipts)
+        {
+            if (Receipt.JobId == NewJobId)
+                bUniqueJobId = false;
+        }
+    }
+    if (!bUniqueJobId)
         return false;
 
-    // All input, station and output-capacity checks precede mutation.
-    for (const TPair<FName, int64>& Need : Required)
-        Station->Stock.FindOrAdd(Need.Key) -= static_cast<int32>(Need.Value);
-
+    // Every rejection check is complete before stock/job/receipt state changes.
     FWorldProductionJob Job;
-    Job.JobId = FGuid::NewGuid();
+    Job.JobId = NewJobId;
     Job.RecipeId = RecipeId;
     Job.State = EProductionJobState::Queued;
+    Job.ProgressSeconds = 0.0;
+    Job.BlockedReason = NAME_None;
+
+    Station->Stock = MoveTemp(ProposedStock);
     Station->Jobs.Add(Job);
     ++Station->Revision;
-    OutJobId = Job.JobId;
-    return OutJobId.IsValid();
+
+    FWorldProductionEnqueueReceipt& Receipt =
+        Station->EnqueueReceipts.AddDefaulted_GetRef();
+    Receipt.OperationId = OperationId;
+    Receipt.RecipeId = RecipeId;
+    Receipt.JobId = NewJobId;
+    Receipt.ExpectedStationRevision = ExpectedStationRevision;
+    Receipt.ResultingStationRevision = Station->Revision;
+    OutJobId = NewJobId;
+    return true;
+}
+
+bool UWorldProductionSubsystem::EnqueueJob(
+    const FGuid& StationId, FName RecipeId, FGuid& OutJobId)
+{
+    const FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station)
+    {
+        OutJobId.Invalidate();
+        return false;
+    }
+
+    // Compatibility wrapper for existing Blueprint callers. New transactional
+    // callers should supply a stable OperationId to TryEnqueueJob explicitly.
+    return TryEnqueueJob(FGuid::NewGuid(), StationId, RecipeId,
+        Station->Revision, OutJobId);
 }
 
 bool UWorldProductionSubsystem::CanAdvanceProductionStep(double DeltaSeconds) const
@@ -413,17 +547,70 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
     return true;
 }
 
-bool UWorldProductionSubsystem::CollectCompletedJob(const FGuid& StationId, const FGuid& JobId)
+bool UWorldProductionSubsystem::TryCollectCompletedJob(
+    FGuid OperationId,
+    FGuid StationId,
+    FGuid JobId,
+    int64 ExpectedStationRevision)
 {
+    if (!OperationId.IsValid() || !StationId.IsValid() || !JobId.IsValid() ||
+        ExpectedStationRevision <= 0 || ExpectedStationRevision == MAX_int64)
+    {
+        return false;
+    }
+
+    for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
+    {
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Pair.Value.PhysicalIntakeReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionCollectReceipt& Receipt : Pair.Value.CollectReceipts)
+        {
+            if (Receipt.OperationId != OperationId)
+                continue;
+            return Pair.Key == StationId && Receipt.JobId == JobId &&
+                Receipt.ExpectedStationRevision == ExpectedStationRevision;
+        }
+    }
+
     FWorldProductionStation* Station = Stations.Find(StationId);
-    if (!Station || Station->Revision == MAX_int64) return false;
-    const int32 Index = Station->Jobs.IndexOfByPredicate([JobId](const FWorldProductionJob& J)
-        { return J.JobId == JobId; });
+    if (!Station || Station->Revision != ExpectedStationRevision ||
+        Station->Revision == MAX_int64)
+    {
+        return false;
+    }
+
+    const int32 Index = Station->Jobs.IndexOfByPredicate([JobId](const FWorldProductionJob& Job)
+        { return Job.JobId == JobId; });
     if (!Station->Jobs.IsValidIndex(Index) ||
-        Station->Jobs[Index].State != EProductionJobState::Completed) return false;
+        Station->Jobs[Index].State != EProductionJobState::Completed)
+    {
+        return false;
+    }
+
+    // Removal and durable receipt commit together; the completed output remains
+    // in station stock and a retry won't attempt a second removal.
     Station->Jobs.RemoveAt(Index);
     ++Station->Revision;
+    FWorldProductionCollectReceipt& Receipt =
+        Station->CollectReceipts.AddDefaulted_GetRef();
+    Receipt.OperationId = OperationId;
+    Receipt.JobId = JobId;
+    Receipt.ExpectedStationRevision = ExpectedStationRevision;
+    Receipt.ResultingStationRevision = Station->Revision;
     return true;
+}
+
+bool UWorldProductionSubsystem::CollectCompletedJob(
+    const FGuid& StationId, const FGuid& JobId)
+{
+    const FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station)
+        return false;
+
+    // Compatibility wrapper; use the operation-ID API when retries may occur.
+    return TryCollectCompletedJob(FGuid::NewGuid(), StationId, JobId, Station->Revision);
 }
 
 bool UWorldProductionSubsystem::GetStation(
@@ -467,8 +654,9 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
         NewRecipes.Add(R);
     }
     TMap<FGuid, FWorldProductionStation> NewStations;
-    TSet<FGuid> IntakeOperationIds;
+    TSet<FGuid> ProductionOperationIds;
     TSet<FGuid> IntakeSourceItemIds;
+    TSet<FGuid> EnqueuedJobIds;
     for (const FWorldProductionStation& S : StationSnapshot)
     {
         if (!S.StationId.IsValid() || S.StationTag.IsNone() || S.StorageCapacityUnits <= 0 ||
@@ -485,13 +673,42 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
                 Receipt.SourceDefinitionId.IsNone() || Receipt.StockItemId.IsNone() ||
                 Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
                 Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
-                IntakeOperationIds.Contains(Receipt.OperationId) ||
+                ProductionOperationIds.Contains(Receipt.OperationId) ||
                 IntakeSourceItemIds.Contains(Receipt.SourceItemId))
             {
                 return false;
             }
-            IntakeOperationIds.Add(Receipt.OperationId);
+            ProductionOperationIds.Add(Receipt.OperationId);
             IntakeSourceItemIds.Add(Receipt.SourceItemId);
+        }
+        for (const FWorldProductionEnqueueReceipt& Receipt : S.EnqueueReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || Receipt.RecipeId.IsNone() ||
+                !RecipeIds.Contains(Receipt.RecipeId) || !Receipt.JobId.IsValid() ||
+                Receipt.ExpectedStationRevision <= 0 ||
+                Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionOperationIds.Contains(Receipt.OperationId) ||
+                EnqueuedJobIds.Contains(Receipt.JobId))
+            {
+                return false;
+            }
+            ProductionOperationIds.Add(Receipt.OperationId);
+            EnqueuedJobIds.Add(Receipt.JobId);
+        }
+        for (const FWorldProductionCollectReceipt& Receipt : S.CollectReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || !Receipt.JobId.IsValid() ||
+                Receipt.ExpectedStationRevision <= 0 ||
+                Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionOperationIds.Contains(Receipt.OperationId) ||
+                S.Jobs.ContainsByPredicate([&Receipt](const FWorldProductionJob& Job)
+                    { return Job.JobId == Receipt.JobId; }))
+            {
+                return false;
+            }
+            ProductionOperationIds.Add(Receipt.OperationId);
         }
         NewStations.Add(S.StationId, S);
     }
