@@ -45,7 +45,9 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
  TArray<FInventoryStack> Simulated = Items;
  for (const FInventoryStack& Addition : Additions)
  {
-  if (Addition.ItemId.IsNone() || Addition.Quantity <= 0 || Addition.MaxStack <= 0) return false;
+  if (Addition.ItemId.IsNone() || Addition.Quantity <= 0 || Addition.MaxStack <= 0 ||
+      (Addition.OwnedWorldItemId.IsValid() && (Addition.Quantity != 1 || Addition.MaxStack != 1 ||
+       Simulated.ContainsByPredicate([&Addition](const FInventoryStack& S) { return S.OwnedWorldItemId == Addition.OwnedWorldItemId; })))) return false;
   int32 Remaining = Addition.Quantity;
   for (FInventoryStack& Existing : Simulated)
   {
@@ -78,7 +80,10 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
 
 bool UInventoryCraftingComponent::TryAddItem(const FInventoryStack& Incoming)
 {
- if (Incoming.ItemId.IsNone() || Incoming.Quantity <= 0 || Incoming.MaxStack <= 0 || !HasCapacityFor({Incoming})) return false;
+ if (Incoming.ItemId.IsNone() || Incoming.Quantity <= 0 || Incoming.MaxStack <= 0 ||
+     (Incoming.OwnedWorldItemId.IsValid() && (Incoming.Quantity != 1 || Incoming.MaxStack != 1 ||
+      Items.ContainsByPredicate([&Incoming](const FInventoryStack& S) { return S.OwnedWorldItemId == Incoming.OwnedWorldItemId; }))) ||
+     !HasCapacityFor({Incoming})) return false;
  int32 Remaining = Incoming.Quantity;
  for (FInventoryStack& Existing : Items)
  {
