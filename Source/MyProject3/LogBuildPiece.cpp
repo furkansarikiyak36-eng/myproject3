@@ -304,7 +304,8 @@ UStaticMesh* ALogBuildPiece::GetConfiguredMeshForPieceType(ELogPieceType Type) c
     switch (Type)
     {
     case ELogPieceType::WholeLog:
-        TargetLength = ELogLengthFraction::FullLength;
+        // "WholeLog" now means full-round cross-section; the independent
+        // length fraction remains authoritative when restoring shortened pieces.
         TargetShape = ELogCrossSectionShape::FullRound;
         break;
     case ELogPieceType::ThreeQuarterLog:
@@ -1727,56 +1728,90 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
     if (!CurrentText.StartsWith(Prefix, ESearchCase::IgnoreCase))
         return false;
 
-    const FString Suffix = CurrentText.RightChop(Prefix.Len());
+    FString ShapeSuffix = CurrentText.RightChop(Prefix.Len());
+    ELogLengthFraction RequestedLengthFraction = GeometryState.LengthFraction;
+    bool bHasExplicitLengthFraction = false;
+
+    FString LengthToken;
+    FString ParsedShapeSuffix;
+    if (ShapeSuffix.Split(TEXT("."), &LengthToken, &ParsedShapeSuffix, ESearchCase::IgnoreCase))
+    {
+        if (LengthToken.Equals(TEXT("LengthFull"), ESearchCase::IgnoreCase))
+            RequestedLengthFraction = ELogLengthFraction::FullLength;
+        else if (LengthToken.Equals(TEXT("LengthThreeQuarter"), ESearchCase::IgnoreCase))
+            RequestedLengthFraction = ELogLengthFraction::ThreeQuarterLength;
+        else if (LengthToken.Equals(TEXT("LengthHalf"), ESearchCase::IgnoreCase))
+            RequestedLengthFraction = ELogLengthFraction::HalfLength;
+        else if (LengthToken.Equals(TEXT("LengthQuarter"), ESearchCase::IgnoreCase))
+            RequestedLengthFraction = ELogLengthFraction::QuarterLength;
+        else
+            return false;
+
+        ShapeSuffix = ParsedShapeSuffix;
+        bHasExplicitLengthFraction = true;
+    }
+
     UStaticMesh* VariantMesh = nullptr;
     ELogPieceType VariantType = ELogPieceType::Other;
-    if (Suffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
+    if (ShapeSuffix.Equals(TEXT("FullRound"), ESearchCase::IgnoreCase))
     {
-        
+        VariantType = ELogPieceType::WholeLog;
+    }
+    else if (ShapeSuffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
+    {
         VariantType = ELogPieceType::SplitHalfLog;
     }
-    else if (Suffix.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
-        Suffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
+    else if (ShapeSuffix.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
+        ShapeSuffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
     {
         // ".QuarterLog" is a backwards-compatibility alias emitted by earlier
-        // versions for this cross-section operation. New commits use the
+        // versions for a quarter-round cross-section. New commits use the
         // explicit ".QuarterSectionLog" suffix.
-        
         VariantType = ELogPieceType::QuarterSectionLog;
     }
-    else if (Suffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
+    else if (ShapeSuffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
     {
-        
         VariantType = ELogPieceType::HewnLog;
     }
-    else if (Suffix.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
+    else if (ShapeSuffix.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
     {
-        
         VariantType = ELogPieceType::GutterLog;
     }
-    else if (Suffix.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
+    else if (ShapeSuffix.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
     {
-        
         VariantType = ELogPieceType::TroughLog;
     }
-    else if (Suffix.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
+    else if (ShapeSuffix.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
     {
-        
         VariantType = ELogPieceType::SquaredBeam;
     }
-    else if (Suffix.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
+    else if (ShapeSuffix.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
     {
-        
         VariantType = ELogPieceType::Plank;
+    }
+    else if (ShapeSuffix.Equals(TEXT("NotchedLog"), ESearchCase::IgnoreCase))
+    {
+        VariantType = ELogPieceType::NotchedLog;
+    }
+    else if (ShapeSuffix.Equals(TEXT("JointPiece"), ESearchCase::IgnoreCase))
+    {
+        VariantType = ELogPieceType::JointPiece;
     }
     else
     {
         return false;
     }
 
+    const ELogLengthFraction PreviousLengthFraction = GeometryState.LengthFraction;
+    if (bHasExplicitLengthFraction)
+        GeometryState.LengthFraction = RequestedLengthFraction;
+
     VariantMesh = GetConfiguredMeshForPieceType(VariantType);
     if (!IsValid(VariantMesh))
+    {
+        GeometryState.LengthFraction = PreviousLengthFraction;
         return false;
+    }
 
     // Preserve the lower contact plane as geometry dimensions change.
     FVector OldOrigin;
