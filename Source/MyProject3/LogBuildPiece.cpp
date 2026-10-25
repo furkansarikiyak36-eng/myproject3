@@ -1281,7 +1281,8 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             RetryCurrent.DefinitionId == LegacyQuarterDefinition &&
             PieceType == ELogPieceType::QuarterSectionLog;
         const FName RequestedRetryDefinition =
-            bLegacyQuarterRetryMatch ? LegacyQuarterDefinition : RetryDefinition;
+            bLegacyQuarterRetryMatch ? LegacyQuarterDefinition :
+            (bLegacyActionRetryMatch ? LegacyActionDefinition : RetryDefinition);
         if (bCanonicalRetryMatch && (Action == ELogCutAction::SplitHalf ||
             Action == ELogCutAction::Quarter))
         {
@@ -1444,18 +1445,6 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     const FName EffectiveBaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.BaseDefinitionId
         : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
-    const TCHAR* VariantSuffix = TEXT("Other");
-    switch (NewType)
-    {
-    case ELogPieceType::SplitHalfLog: VariantSuffix = TEXT("SplitHalfLog"); break;
-    case ELogPieceType::QuarterSectionLog: VariantSuffix = TEXT("QuarterSectionLog"); break;
-    case ELogPieceType::HewnLog: VariantSuffix = TEXT("HewnLog"); break;
-    case ELogPieceType::GutterLog: VariantSuffix = TEXT("GutterLog"); break;
-    case ELogPieceType::TroughLog: VariantSuffix = TEXT("TroughLog"); break;
-    case ELogPieceType::SquaredBeam: VariantSuffix = TEXT("SquaredBeam"); break;
-    case ELogPieceType::Plank: VariantSuffix = TEXT("Plank"); break;
-    default: break;
-    }
     const FName NewDefinitionId = MakeCanonicalGeometryDefinitionId(
         EffectiveBaseDefinition, GetLengthFraction(), CrossSectionFromLegacyType(NewType));
 
