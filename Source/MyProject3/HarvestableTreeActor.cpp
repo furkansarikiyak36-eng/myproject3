@@ -194,6 +194,15 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         Log->PieceType = ResolvedPieceType;
         Log->FinishSpawning(FTransform(GetActorRotation(), Location));
         Spawned.Add(Log);
+        if (ResolvedPieceType != ELogPieceType::WholeLog &&
+            !Log->TrySetInitialPieceType(ResolvedPieceType, FGuid::NewGuid()))
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("Tree '%s' output %d could not resolve its configured mesh variant for piece type %d."),
+                *GetName(), Index, static_cast<int32>(ResolvedPieceType));
+            RollbackSpawnedOutputs();
+            return false;
+        }
     }
 
     // The actors' BeginPlay path owns item registration. Confirm all were actually
