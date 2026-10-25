@@ -40,7 +40,7 @@ Bir kutu yalnızca yanında yazan kabul ölçütü karşılandıktan sonra işar
 - [x] H dalındaki M001–M119 kayıtlarını kaynak inceleme/gap raporlarıyla karşılaştır; mevcut, kısmi ve eksik alanları yüksek seviyede eşleştir. (119 kayıt okundu; tam oynanış doğrulaması değil.)
 - [ ] `main`, eski faz dalları, A–H dalları ve Landscape plan dalı arasındaki atalık ilişkisini yeniden kontrol et.
 - [ ] Yığılmış A–H dallarını bağımsız özellikler gibi sırayla main'e birleştirme; her PR'ın benzersiz değişikliklerini kendi tabanına göre incele.
-- [x] PR #16 ve PR #17'nin H dalıyla örtüşmesini kontrol et: G, F'nin bir commit ilerisi; H, G'nin 171 commit ilerisi; PR #17 H'den 13 commit ileride ve beş dokümantasyon dosyasını değiştiriyor. Kod değişikliği olan yeni çalışma ayrı dalda tutuluyor.
+- [x] PR #16 ve PR #17'nin H dalıyla örtüşmesini kontrol et: G, F'nin bir commit ilerisi; H, G'nin 171 commit ilerisi; PR #17 H'den 16 commit ileride ve beş dokümantasyon dosyasını değiştiriyor. Kod değişikliği olan yeni çalışma ayrı dalda tutuluyor.
 - [x] `BRANCH_INTEGRATION_AUDIT.md` commit sayıları ve durumları canlı dal karşılaştırmasına göre güncellendi; yeni düzeltme dalı ve kod kapsamı ayrıca kaydedildi.
 - [ ] Her ana iş paketi için amaç, kaynak dosyalar, bağımlılıklar, kabul ölçütleri ve bilinen sınırlamaları kaydet.
 - [ ] Mevcut M001–M119 ID'lerini, adlarını ve sahiplik alanlarını değiştirmeden koru.
