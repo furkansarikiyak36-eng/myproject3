@@ -214,6 +214,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Older snapshots migrate with empty operation receipt arrays.
         Candidate->SchemaVersion = 10;
     }
+    if (Candidate->SchemaVersion == 10)
+    {
+        // Schema v11 adds durable materialization receipts mapping station stock
+        // units to their generated physical world item IDs.
+        Candidate->SchemaVersion = 11;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
