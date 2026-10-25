@@ -2208,6 +2208,65 @@ bool ALogBuildPiece::DetachFromSnapParent(bool bAllowGraphFailure)
     return true;
 }
 
+void ALogBuildPiece::ResetActorLocalSnapStateForGraphRestore()
+{
+    // Canonical graph state is already restored by the save coordinator. This
+    // method deliberately performs no graph operation, preventing duplicate edges.
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    SnapParent.Reset();
+    ParentSnapPointIndex = INDEX_NONE;
+    OwnSnapPointIndexUsed = INDEX_NONE;
+    AttachedPieces.Reset();
+    for (FLogSnapPoint& Point : SnapPoints)
+        Point.bOccupied = false;
+    bIsPlaced = false;
+}
+
+bool ALogBuildPiece::RestoreActorLocalSnapLinkFromGraph(
+    ALogBuildPiece* Parent, FName ParentAnchorId, FName OwnAnchorId, bool bPlaced)
+{
+    if (!IsValid(Parent) || Parent == this || ParentAnchorId.IsNone() ||
+        OwnAnchorId.IsNone() || SnapParent.IsValid() ||
+        ParentSnapPointIndex != INDEX_NONE || OwnSnapPointIndexUsed != INDEX_NONE)
+        return false;
+
+    int32 ParentIndex = INDEX_NONE;
+    int32 OwnIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Parent->SnapPoints.Num(); ++Index)
+    {
+        if (Parent->SnapPoints[Index].PointId == ParentAnchorId)
+        {
+            if (ParentIndex != INDEX_NONE)
+                return false; // Ambiguous authored anchor names fail closed.
+            ParentIndex = Index;
+        }
+    }
+    for (int32 Index = 0; Index < SnapPoints.Num(); ++Index)
+    {
+        if (SnapPoints[Index].PointId == OwnAnchorId)
+        {
+            if (OwnIndex != INDEX_NONE)
+                return false;
+            OwnIndex = Index;
+        }
+    }
+    if (ParentIndex == INDEX_NONE || OwnIndex == INDEX_NONE ||
+        Parent->SnapPoints[ParentIndex].bOccupied || SnapPoints[OwnIndex].bOccupied)
+        return false;
+
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+        return false;
+
+    SnapParent = Parent;
+    ParentSnapPointIndex = ParentIndex;
+    OwnSnapPointIndexUsed = OwnIndex;
+    Parent->SnapPoints[ParentIndex].bOccupied = true;
+    SnapPoints[OwnIndex].bOccupied = true;
+    Parent->RegisterAttachedPiece(this);
+    bIsPlaced = bPlaced;
+    return true;
+}
+
 void ALogBuildPiece::RegisterAttachedPiece(ALogBuildPiece* Child)
 {
     if (!Child)
