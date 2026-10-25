@@ -1102,6 +1102,9 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
 
     const UStaticMesh* OldMesh = Mesh->GetStaticMesh();
     const ELogPieceType OldType = PieceType;
+    const ELogLengthFraction OldLengthFraction = LengthFraction;
+    const ELogCrossSectionProfile OldCrossSectionProfile = CrossSectionProfile;
+    const bool bOldUseCanonicalGeometryDimensions = bUseCanonicalGeometryDimensions;
     const FName OldBaseDefinition = BaseDefinitionId;
     const FName OldDefinition = Identity->GetDefinitionId();
     const TArray<FLogSnapPoint> OldSnapPoints = SnapPoints;
@@ -1124,6 +1127,9 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
         SetActorTransform(OldTransform, false, nullptr, ETeleportType::TeleportPhysics);
         SetPieceStaticMesh(const_cast<UStaticMesh*>(OldMesh));
         PieceType = OldType;
+        LengthFraction = OldLengthFraction;
+        CrossSectionProfile = OldCrossSectionProfile;
+        bUseCanonicalGeometryDimensions = bOldUseCanonicalGeometryDimensions;
         BaseDefinitionId = OldBaseDefinition;
         SnapPoints = OldSnapPoints;
         Identity->SetDefinitionId(OldDefinition);
