@@ -26,9 +26,17 @@ bool UWorldOperationLedgerSubsystem::CompleteOperation(
     }
 
     FWorldOperationLedgerEntry* Entry = Entries.Find(Result.OperationId);
-    if (!Entry || Entry->State != EWorldOperationLedgerEntryState::Pending)
+    if (!Entry || Entry->State != EWorldOperationLedgerEntryState::Pending ||
+        static_cast<uint8>(Result.Code) > static_cast<uint8>(EWorldOperationResultCode::InternalError) ||
+        Result.bSucceeded != (Result.Code == EWorldOperationResultCode::Success))
     {
         return false;
+    }
+
+    for (const FGuid& AffectedId : Result.AffectedObjectIds)
+    {
+        if (!AffectedId.IsValid())
+            return false;
     }
 
     Entry->Result = Result;
@@ -60,5 +68,63 @@ bool UWorldOperationLedgerSubsystem::CancelUncommittedOperation(
     }
 
     Entries.Remove(OperationId);
+    return true;
+}
+
+
+bool UWorldOperationLedgerSubsystem::HasPendingOperations() const
+{
+    for (const TPair<FGuid, FWorldOperationLedgerEntry>& Pair : Entries)
+    {
+        if (Pair.Value.State == EWorldOperationLedgerEntryState::Pending)
+            return true;
+    }
+    return false;
+}
+
+void UWorldOperationLedgerSubsystem::ExportSnapshot(
+    TArray<FWorldOperationLedgerEntry>& OutEntries) const
+{
+    OutEntries.Reset();
+    Entries.GenerateValueArray(OutEntries);
+    OutEntries.Sort([](const FWorldOperationLedgerEntry& A, const FWorldOperationLedgerEntry& B)
+        { return A.OperationId.ToString() < B.OperationId.ToString(); });
+}
+
+bool UWorldOperationLedgerSubsystem::RestoreSnapshot(
+    const TArray<FWorldOperationLedgerEntry>& Snapshot)
+{
+    if (MaxEntries <= 0 || Snapshot.Num() > MaxEntries)
+        return false;
+
+    TMap<FGuid, FWorldOperationLedgerEntry> Proposed;
+    for (const FWorldOperationLedgerEntry& Entry : Snapshot)
+    {
+        if (!Entry.OperationId.IsValid() || Proposed.Contains(Entry.OperationId) ||
+            static_cast<uint8>(Entry.State) > static_cast<uint8>(EWorldOperationLedgerEntryState::Completed))
+        {
+            return false;
+        }
+
+        if (Entry.State == EWorldOperationLedgerEntryState::Completed)
+        {
+            if (Entry.Result.OperationId != Entry.OperationId ||
+                static_cast<uint8>(Entry.Result.Code) > static_cast<uint8>(EWorldOperationResultCode::InternalError) ||
+                Entry.Result.bSucceeded != (Entry.Result.Code == EWorldOperationResultCode::Success))
+            {
+                return false;
+            }
+
+            for (const FGuid& AffectedId : Entry.Result.AffectedObjectIds)
+            {
+                if (!AffectedId.IsValid())
+                    return false;
+            }
+        }
+
+        Proposed.Add(Entry.OperationId, Entry);
+    }
+
+    Entries = MoveTemp(Proposed);
     return true;
 }
