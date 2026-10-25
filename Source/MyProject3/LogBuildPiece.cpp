@@ -606,7 +606,7 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
         ? SplitHalfPieceCenterOffsetLocal
         : QuarterPieceCenterOffsetLocal;
     if (!World || !Ownership || !Graph || !Identity || !Mesh ||
-        !IsValid(OutputMesh) || !OutputDefinitionId.IsNone() == false ||
+        !IsValid(OutputMesh) || OutputDefinitionId.IsNone() ||
         CurrentItem.OwnerKind != EWorldItemOwnerKind::World ||
         CurrentItem.Quantity != 1 ||
         !IsValidCrossSectionCenterOffset(LocalOffset, LongitudinalAxis))
@@ -636,9 +636,6 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
 
     // Construct the child in deferred state so its stable ID and mesh are
     // configured before BeginPlay attempts ownership/graph registration.
-    FActorSpawnParameters SpawnParameters;
-    SpawnParameters.SpawnCollisionHandlingOverride =
-        ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     ALogBuildPiece* Child = World->SpawnActorDeferred<ALogBuildPiece>(
         GetClass(), ChildOutputTransform, nullptr, nullptr,
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
