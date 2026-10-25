@@ -17,6 +17,9 @@
 #include "WorldStorageSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
 #include "Logging/LogMacros.h"
 
@@ -55,6 +58,216 @@ bool ValidateProductionReceiptItemReferences(
             // but its unique identity must remain in the ownership ledger history.
             if (!ItemsById.Contains(Receipt.WorldItemId))
                 return false;
+        }
+    }
+    return true;
+}
+
+bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnapshot>& OutSnapshots)
+{
+    if (!World)
+        return false;
+
+    OutSnapshots.Reset();
+    TSet<FGuid> SeenIdentityIds;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        UWorldObjectIdentityComponent* Identity =
+            IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!IsValid(Identity) || !Identity->InstanceId.IsValid())
+            continue;
+
+        if (SeenIdentityIds.Contains(Identity->InstanceId))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Physical actor snapshot refused duplicate identity %s."),
+                *Identity->InstanceId.ToString());
+            return false;
+        }
+        SeenIdentityIds.Add(Identity->InstanceId);
+
+        FWorldPhysicalActorSnapshot& ActorState = OutSnapshots.AddDefaulted_GetRef();
+        ActorState.IdentityId = Identity->InstanceId;
+        ActorState.ActorClass = FSoftClassPath(Actor->GetClass());
+        ActorState.ActorTransform = Actor->GetActorTransform();
+        ActorState.DefinitionId = Identity->DefinitionId;
+        ActorState.LifecycleState = Identity->LifecycleState;
+        ActorState.StateRevision = Identity->StateRevision;
+
+        TArray<UPrimitiveComponent*> Primitives;
+        Actor->GetComponents<UPrimitiveComponent>(Primitives);
+        Primitives.Sort([](const UPrimitiveComponent& A, const UPrimitiveComponent& B)
+        {
+            return A.GetFName().LexicalLess(B.GetFName());
+        });
+        for (UPrimitiveComponent* Primitive : Primitives)
+        {
+            if (!IsValid(Primitive))
+                return false;
+
+            FWorldPhysicalComponentSnapshot& ComponentState = ActorState.Components.AddDefaulted_GetRef();
+            ComponentState.ComponentName = Primitive->GetFName();
+            ComponentState.bIsPrimitive = true;
+            ComponentState.bSimulatePhysics = Primitive->IsSimulatingPhysics();
+            ComponentState.CollisionEnabled = Primitive->GetCollisionEnabled();
+            ComponentState.LinearVelocity = Primitive->GetPhysicsLinearVelocity();
+            ComponentState.AngularVelocityRadians = Primitive->GetPhysicsAngularVelocityInRadians();
+
+            if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Primitive))
+            {
+                if (UStaticMesh* MeshAsset = StaticMesh->GetStaticMesh())
+                    ComponentState.StaticMeshAsset = FSoftObjectPath(MeshAsset);
+            }
+        }
+    }
+    return true;
+}
+
+bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysicalActorSnapshot>& Snapshot)
+{
+    if (!World)
+        return false;
+
+    TMap<FGuid, AActor*> CurrentActors;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        UWorldObjectIdentityComponent* Identity =
+            IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!IsValid(Identity) || !Identity->InstanceId.IsValid())
+            continue;
+        if (CurrentActors.Contains(Identity->InstanceId))
+            return false;
+        CurrentActors.Add(Identity->InstanceId, Actor);
+    }
+
+    if (CurrentActors.Num() != Snapshot.Num())
+        return false;
+
+    TSet<FGuid> Seen;
+    for (const FWorldPhysicalActorSnapshot& State : Snapshot)
+    {
+        AActor* const* Found = CurrentActors.Find(State.IdentityId);
+        if (!State.IdentityId.IsValid() || Seen.Contains(State.IdentityId) || !Found ||
+            !IsValid(*Found) || State.ActorClass.IsNull() ||
+            FSoftClassPath((*Found)->GetClass()) != State.ActorClass ||
+            !State.ActorTransform.IsValid() ||
+            static_cast<uint8>(State.LifecycleState) >
+                static_cast<uint8>(EWorldObjectLifecycleState::Destroyed) ||
+            State.StateRevision < 0)
+        {
+            return false;
+        }
+        Seen.Add(State.IdentityId);
+
+        TSet<FName> ComponentNames;
+        for (const FWorldPhysicalComponentSnapshot& Component : State.Components)
+        {
+            if (Component.ComponentName.IsNone() || ComponentNames.Contains(Component.ComponentName) ||
+                !Component.bIsPrimitive ||
+                static_cast<uint8>(Component.CollisionEnabled.GetValue()) >
+                    static_cast<uint8>(ECollisionEnabled::QueryAndPhysics) ||
+                !Component.LinearVelocity.IsFinite() || !Component.AngularVelocityRadians.IsFinite())
+            {
+                return false;
+            }
+            UActorComponent* FoundComponent = (*Found)->GetComponentByClass(UPrimitiveComponent::StaticClass());
+            bool bFoundNamedComponent = false;
+            TArray<UPrimitiveComponent*> Primitives;
+            (*Found)->GetComponents<UPrimitiveComponent>(Primitives);
+            for (UPrimitiveComponent* Primitive : Primitives)
+            {
+                if (IsValid(Primitive) && Primitive->GetFName() == Component.ComponentName)
+                {
+                    bFoundNamedComponent = true;
+                    if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Primitive))
+                    {
+                        if (!Component.StaticMeshAsset.IsNull() &&
+                            !Component.StaticMeshAsset.IsValid() &&
+                            !Component.StaticMeshAsset.TryLoad())
+                            return false;
+                    }
+                    break;
+                }
+            }
+            if (!bFoundNamedComponent)
+                return false;
+            ComponentNames.Add(Component.ComponentName);
+        }
+    }
+    return true;
+}
+
+bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActorSnapshot>& Snapshot)
+{
+    if (!ValidatePhysicalActorSnapshotSet(World, Snapshot))
+        return false;
+
+    TMap<FGuid, AActor*> CurrentActors;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        UWorldObjectIdentityComponent* Identity =
+            IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (IsValid(Identity) && Identity->InstanceId.IsValid())
+            CurrentActors.Add(Identity->InstanceId, Actor);
+    }
+
+    // Apply transforms first so the following component physics state is applied
+    // at the saved location. Actor spawning is intentionally not guessed here.
+    for (const FWorldPhysicalActorSnapshot& State : Snapshot)
+    {
+        AActor* Actor = CurrentActors.FindRef(State.IdentityId);
+        if (!Actor || !Actor->SetActorTransform(State.ActorTransform, false, nullptr, ETeleportType::TeleportPhysics))
+            return false;
+    }
+
+    for (const FWorldPhysicalActorSnapshot& State : Snapshot)
+    {
+        AActor* Actor = CurrentActors.FindRef(State.IdentityId);
+        UWorldObjectIdentityComponent* Identity =
+            Actor ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!Actor || !Identity)
+            return false;
+
+        Identity->DefinitionId = State.DefinitionId;
+        Identity->LifecycleState = State.LifecycleState;
+        Identity->StateRevision = State.StateRevision;
+
+        for (const FWorldPhysicalComponentSnapshot& ComponentState : State.Components)
+        {
+            UPrimitiveComponent* Primitive = nullptr;
+            TArray<UPrimitiveComponent*> Primitives;
+            Actor->GetComponents<UPrimitiveComponent>(Primitives);
+            for (UPrimitiveComponent* Candidate : Primitives)
+            {
+                if (IsValid(Candidate) && Candidate->GetFName() == ComponentState.ComponentName)
+                {
+                    Primitive = Candidate;
+                    break;
+                }
+            }
+            if (!Primitive)
+                return false;
+
+            if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Primitive))
+            {
+                if (!ComponentState.StaticMeshAsset.IsNull())
+                {
+                    UStaticMesh* MeshAsset = Cast<UStaticMesh>(ComponentState.StaticMeshAsset.TryLoad());
+                    if (!MeshAsset)
+                        return false;
+                    StaticMesh->SetStaticMesh(MeshAsset);
+                }
+            }
+
+            Primitive->SetCollisionEnabled(ComponentState.CollisionEnabled.GetValue());
+            Primitive->SetSimulatePhysics(ComponentState.bSimulatePhysics);
+            if (ComponentState.bSimulatePhysics)
+            {
+                Primitive->SetPhysicsLinearVelocity(ComponentState.LinearVelocity, false);
+                Primitive->SetPhysicsAngularVelocityInRadians(ComponentState.AngularVelocityRadians, false);
+            }
         }
     }
     return true;
