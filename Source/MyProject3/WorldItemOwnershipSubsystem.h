@@ -27,6 +27,10 @@ struct FWorldOwnedItemRecord
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
     FName DefinitionId = NAME_None;
 
+    /** Stable root definition retained as the item changes processing state. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
+    FName BaseDefinitionId = NAME_None;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items", meta=(ClampMin="1"))
     int32 Quantity = 1;
 
@@ -78,6 +82,12 @@ struct FWorldItemTransferReceipt
 
     UPROPERTY()
     FVector RequestedWorldLocation = FVector::ZeroVector;
+
+    UPROPERTY()
+    bool bDefinitionChange = false;
+
+    UPROPERTY()
+    FName RequestedDefinitionId = NAME_None;
 };
 
 /** Single authoritative ownership ledger for world objects and resource stacks. */
@@ -102,6 +112,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Items")
     bool TryConsumeItem(const FGuid& OperationId, const FGuid& ItemId,
         int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner);
+
+    UFUNCTION(BlueprintCallable, Category="World|Items")
+    bool TryUpdateItemDefinition(const FGuid& OperationId, const FGuid& ItemId,
+        int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner,
+        FName NewDefinitionId, FWorldOwnedItemRecord& OutRecord);
 
     UFUNCTION(BlueprintPure, Category="World|Items")
     bool TryGetItem(const FGuid& ItemId, FWorldOwnedItemRecord& OutRecord) const;
