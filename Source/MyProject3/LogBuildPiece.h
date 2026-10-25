@@ -45,7 +45,7 @@ public:
     TArray<FLogProcessingMeshSet> ProcessingMeshSets;
 
     /** Persisted selector so processed pieces keep resolving variants from the same source family. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Processing")
     FName SelectedProcessingMeshSetId = NAME_None;
 
     UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
