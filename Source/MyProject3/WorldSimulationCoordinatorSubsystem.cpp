@@ -8,6 +8,7 @@
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldStorageSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -113,7 +114,9 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorld* World = GetWorld();
     UWorldItemOwnershipSubsystem* Ownership =
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
-    if (!Ownership) return false;
+    UWorldStorageSubsystem* Storage =
+        World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    if (!Ownership || !Storage) return false;
 
     const FWorldSimulationClockSnapshot BeforeClock = Clock->ExportSnapshot();
     const FWorldThreatDirectorSnapshot BeforeThreat = Threat->ExportSnapshot();
@@ -132,6 +135,9 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     Cargo->ExportSnapshot(BeforeCargo);
     TArray<FWorldOwnedItemRecord> BeforeItems;
     Ownership->ExportSnapshot(BeforeItems);
+    TArray<FWorldStorageContainerRecord> BeforeStorages;
+    TArray<FWorldStorageIncomingReservation> BeforeReservations;
+    Storage->ExportSnapshot(BeforeStorages, BeforeReservations);
 
     auto RollbackStep = [&]() -> bool
     {
@@ -139,6 +145,9 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         // Restore ownership before cargo because cargo snapshot validation is
         // intentionally cross-domain and checks the ledger's current owner/revision.
         bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems) && bRollbackSucceeded;
+        // Cargo restore validates its incoming reservations against the storage
+        // subsystem; restore the storage manifest before attempting cargo.
+        bRollbackSucceeded = Storage->RestoreSnapshot(BeforeStorages, BeforeReservations) && bRollbackSucceeded;
         bRollbackSucceeded = Cargo->RestoreSnapshot(BeforeCargo) && bRollbackSucceeded;
         bRollbackSucceeded = Production->RestoreSnapshot(BeforeStations, BeforeRecipes) && bRollbackSucceeded;
         bRollbackSucceeded = Survival->RestoreSnapshot(BeforeProfiles, BeforeDiscoveries,
@@ -179,6 +188,11 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
     const UWorldSurvivalSubsystem* Survival = GetSurvival();
     const UWorldProductionSubsystem* Production = GetProduction();
     const UWorldCargoTransportSubsystem* Cargo = GetCargo();
+    const UWorld* World = GetWorld();
+    const UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    const UWorldStorageSubsystem* Storage =
+        World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
     return Clock && Threat && Agriculture && Survival && Production && Cargo &&
-        Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
+        Ownership && Storage && Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
 }
