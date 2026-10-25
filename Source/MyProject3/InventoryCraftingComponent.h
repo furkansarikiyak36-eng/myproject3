@@ -20,6 +20,8 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryAddItem(const FInventoryStack& Incoming);
  /** Moves one registered physical actor into this inventory and destroys its world representation after commit. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryStorePhysicalActor(AActor* WorldActor);
+ /** Transfers a unique owned item from inventory into a storage ledger owner. */
+ UFUNCTION(BlueprintCallable, Category="Inventory") bool TryMoveOwnedItemToStorage(FGuid ItemId, FGuid StorageId);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryRemoveItem(FName ItemId, int32 Quantity);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool SetQuickAccessItem(FName ItemId);
  UFUNCTION(BlueprintPure, Category="Inventory") int32 GetItemCount(FName ItemId) const;
