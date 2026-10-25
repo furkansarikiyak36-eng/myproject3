@@ -67,6 +67,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AdvanceProductionStep(double DeltaSeconds);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool CollectCompletedJob(const FGuid& StationId, const FGuid& JobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool GetStation(const FGuid& StationId, FWorldProductionStation& OutStation) const;
+    void ExportSnapshot(TArray<FWorldProductionStation>& OutStations, TArray<FWorldProductionRecipe>& OutRecipes) const;
+    bool RestoreSnapshot(const TArray<FWorldProductionStation>& StationSnapshot, const TArray<FWorldProductionRecipe>& RecipeSnapshot);
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") TMap<FGuid, FWorldProductionStation> Stations;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") TArray<FWorldProductionRecipe> Recipes;
