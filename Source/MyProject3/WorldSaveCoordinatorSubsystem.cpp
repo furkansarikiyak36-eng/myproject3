@@ -116,6 +116,7 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
 
             FWorldPhysicalComponentSnapshot& ComponentState = ActorState.Components.AddDefaulted_GetRef();
             ComponentState.ComponentName = Primitive->GetFName();
+            ComponentState.ComponentClass = FSoftClassPath(Primitive->GetClass());
             ComponentState.bIsPrimitive = true;
             ComponentState.bSimulatePhysics = Primitive->IsSimulatingPhysics();
             ComponentState.CollisionEnabled = Primitive->GetCollisionEnabled();
@@ -209,7 +210,7 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
         for (const FWorldPhysicalComponentSnapshot& Component : State.Components)
         {
             if (Component.ComponentName.IsNone() || ComponentNames.Contains(Component.ComponentName) ||
-                !Component.bIsPrimitive ||
+                !Component.bIsPrimitive || Component.ComponentClass.IsNull() ||
                 static_cast<uint8>(Component.CollisionEnabled.GetValue()) >
                     static_cast<uint8>(ECollisionEnabled::QueryAndPhysics) ||
                 !Component.LinearVelocity.IsFinite() || !Component.AngularVelocityRadians.IsFinite())
@@ -224,11 +225,12 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
                 if (IsValid(Primitive) && Primitive->GetFName() == Component.ComponentName)
                 {
                     bFoundNamedComponent = true;
-                    if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Primitive))
+                    if (FSoftClassPath(Primitive->GetClass()) != Component.ComponentClass)
+                        return false;
+                    if (!Component.StaticMeshAsset.IsNull())
                     {
-                        if (!Component.StaticMeshAsset.IsNull() &&
-                            !Component.StaticMeshAsset.IsValid() &&
-                            !Component.StaticMeshAsset.TryLoad())
+                        if (!Cast<UStaticMeshComponent>(Primitive) ||
+                            (!Component.StaticMeshAsset.IsValid() && !Component.StaticMeshAsset.TryLoad()))
                             return false;
                     }
                     break;
