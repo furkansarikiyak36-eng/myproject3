@@ -82,3 +82,33 @@ bool UWorldTerrainStateSubsystem::TryGetCell(
     OutState = *Found;
     return true;
 }
+
+void UWorldTerrainStateSubsystem::ExportSnapshot(TArray<FWorldTerrainCellState>& OutCells) const
+{
+    OutCells.Reset();
+    Cells.GenerateValueArray(OutCells);
+    OutCells.Sort([](const FWorldTerrainCellState& A, const FWorldTerrainCellState& B)
+    {
+        if (A.Cell.X != B.Cell.X) return A.Cell.X < B.Cell.X;
+        if (A.Cell.Y != B.Cell.Y) return A.Cell.Y < B.Cell.Y;
+        return A.Cell.Z < B.Cell.Z;
+    });
+}
+
+bool UWorldTerrainStateSubsystem::RestoreSnapshot(const TArray<FWorldTerrainCellState>& Snapshot)
+{
+    if (Snapshot.Num() > MaxEditedCells || MaxEditedCells <= 0) return false;
+    TMap<FIntVector, FWorldTerrainCellState> Proposed;
+    for (const FWorldTerrainCellState& Cell : Snapshot)
+    {
+        if (Cell.DepthLayer < 0 || Cell.DepthLayer >= MaxEditableDepthLayers ||
+            Cell.DepthLayer >= MaxDepthPerCell || Cell.Revision <= 0 ||
+            Proposed.Contains(Cell.Cell) ||
+            (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)))
+            return false;
+        Proposed.Add(Cell.Cell, Cell);
+    }
+    Cells = MoveTemp(Proposed);
+    Receipts.Reset();
+    return true;
+}
