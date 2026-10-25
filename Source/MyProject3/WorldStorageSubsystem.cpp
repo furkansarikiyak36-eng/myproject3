@@ -36,6 +36,7 @@ bool UWorldStorageSubsystem::RegisterStorage(const FGuid& StorageId, int32 Capac
             Existing->bAvailable = true;
             ++Existing->Revision;
         }
+        LiveStorageIds.Add(StorageId);
         return true;
     }
 
@@ -46,6 +47,7 @@ bool UWorldStorageSubsystem::RegisterStorage(const FGuid& StorageId, int32 Capac
     Record.StorageId = StorageId;
     Record.CapacityUnits = CapacityUnits;
     Storages.Add(StorageId, Record);
+    LiveStorageIds.Add(StorageId);
     return true;
 }
 
@@ -68,13 +70,21 @@ bool UWorldStorageSubsystem::IsStorageAvailable(const FGuid& StorageId) const
 bool UWorldStorageSubsystem::SetStorageAvailable(const FGuid& StorageId, bool bAvailable)
 {
     FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
-    if (!Storage || Storage->Revision == MAX_int64)
+    if (!Storage)
         return false;
+
     if (Storage->bAvailable != bAvailable)
     {
+        if (Storage->Revision == MAX_int64)
+            return false;
         Storage->bAvailable = bAvailable;
         ++Storage->Revision;
     }
+
+    if (bAvailable)
+        LiveStorageIds.Add(StorageId);
+    else
+        LiveStorageIds.Remove(StorageId);
     return true;
 }
 
@@ -245,7 +255,23 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
         if (!Storage.StorageId.IsValid() || Storage.CapacityUnits <= 0 ||
             Storage.Revision <= 0 || ProposedStorages.Contains(Storage.StorageId))
             return false;
-        ProposedStorages.Add(Storage.StorageId, Storage);
+        FWorldStorageContainerRecord RestoredStorage = Storage;
+        // Only containers materialized in the current world can accept cargo.
+        RestoredStorage.bAvailable = LiveStorageIds.Contains(Storage.StorageId);
+        ProposedStorages.Add(Storage.StorageId, RestoredStorage);
+    }
+
+    // Keep newly authored live containers that did not exist in an older save.
+    for (const FGuid& LiveId : LiveStorageIds)
+    {
+        if (ProposedStorages.Contains(LiveId))
+            continue;
+        if (const FWorldStorageContainerRecord* Current = Storages.Find(LiveId))
+        {
+            ProposedStorages.Add(LiveId, *Current);
+            if (ProposedStorages.Num() > MaxStorages)
+                return false;
+        }
     }
 
     TMap<FGuid, FWorldStorageIncomingReservation> ProposedReservations;
