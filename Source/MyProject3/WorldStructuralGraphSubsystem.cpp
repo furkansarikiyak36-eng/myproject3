@@ -32,23 +32,53 @@ bool UWorldStructuralGraphSubsystem::UnregisterNode(
 {
     FStructuralNodeRecord* Node = Nodes.Find(NodeId);
     if (!Node)
-    {
         return false;
+
+    const TArray<FGuid> Dependents = GetDirectDependents(NodeId);
+    if (bRequireNoDependents && !Dependents.IsEmpty())
+        return false;
+
+    for (const FGuid& ChildId : Dependents)
+    {
+        const FStructuralNodeRecord* Child = Nodes.Find(ChildId);
+        if (!Child || Child->Revision == MAX_int64)
+            return false;
     }
 
-    if (bRequireNoDependents && !GetDirectDependents(NodeId).IsEmpty())
+    // Preflight the ancestor chain before mutating any edge/revision.
+    TArray<FGuid> AncestorIds;
+    TSet<FGuid> Visited;
+    FGuid CurrentId = Node->ParentNodeId;
+    while (CurrentId.IsValid())
     {
-        return false;
+        if (Visited.Contains(CurrentId))
+            return false;
+        Visited.Add(CurrentId);
+        const FStructuralNodeRecord* Current = Nodes.Find(CurrentId);
+        if (!Current || Current->Revision == MAX_int64)
+            return false;
+        AncestorIds.Add(CurrentId);
+        CurrentId = Current->ParentNodeId;
     }
 
-    // Removing a parent edge leaves the child detached; it does not silently
-    // claim the child remains supported. Caller must resolve the consequence.
-    if (Node->ParentNodeId.IsValid())
+    // If a caller explicitly permits removal with dependents, detach those
+    // graph edges and mark them unsupported rather than leaving dangling IDs.
+    for (const FGuid& ChildId : Dependents)
     {
-        if (FStructuralNodeRecord* Parent = Nodes.Find(Node->ParentNodeId))
+        if (FStructuralNodeRecord* Child = Nodes.Find(ChildId))
         {
-            ++Parent->Revision;
+            Child->ParentNodeId.Invalidate();
+            Child->ParentAnchorId = NAME_None;
+            Child->OwnAnchorId = NAME_None;
+            Child->bGroundSupported = false;
+            ++Child->Revision;
         }
+    }
+
+    for (const FGuid& AncestorId : AncestorIds)
+    {
+        if (FStructuralNodeRecord* Ancestor = Nodes.Find(AncestorId))
+            ++Ancestor->Revision;
     }
 
     Nodes.Remove(NodeId);
