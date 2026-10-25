@@ -124,7 +124,10 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Önizlemede görünen yerleşim ile commit edilen fiziksel dönüşümün aynı olmasını sağla.
 - [ ] Taşıyıcı parça kaldırıldığında bağımlı parçaların güvenli sırayla çözülmesini tamamla.
 - [ ] Tamir, sökme, hurdaya ayırma ve yakma/geri kazanım çıktılarının eşya sahipliğini bağla.
-- [ ] Her kesme eylemi için durum → eylem → ön koşul → çıktı türü → mesh/çarpışma tablosunu tamamla.
+- [x] Uzunluk kesri ile kesit profili ayrı kaynak alanları olarak tanımlandı; yeni item definition `Base.Geom.<Length>.<Profile>` iki boyutu kaydediyor ve yeniden yükleme/drop sırasında okuyor.
+- [x] `GeometryVariantMeshes` exact length/profile çifti için mesh, ikinci çıktı ofseti ve child rotation tanımlıyor. Eksik/çift eşleşmeler ve yanlış tam-boy mesh fallback'i reddediliyor.
+- [ ] Gerçek Blueprint/content asset'lerinde desteklenen her uzunluk/profile çifti için `GeometryVariantMeshes` satırlarını doldur ve mesh/pivot/ofsetleri UE'de doğrula.
+- [ ] Her kesme eylemi için durum → eylem → ön koşul → çıktı sayısı/yan ürün → mesh/çarpışma → kaynak miktarı tablosunu tamamla. Uzunlamasına kesim eylemleri henüz uygulanmadı.
 - [ ] Özellikle yarım kesilen kütüğün yanlışlıkla tam/düz kütük mesh'ine dönmesi hatasını özel kabul koşulu olarak kapat.
 
 ### 3B. Taş ve duvarcılık — M029–M038
@@ -724,6 +727,31 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-003 — Kanonik kütük boyutu, kesit profili ve mesh tablosu
+
+- [x] `ELogLengthFraction` ve `ELogCrossSectionProfile` ayrı enum'ları eklendi; eski `ELogPieceType` serialized sıralaması değişmedi.
+- [x] `ALogBuildPiece` bağımsız uzunluk/profil alanlarını, açık legacy/canonical geçiş bayrağını ve Blueprint erişimli getter'ları taşıyor.
+- [x] `FLogGeometryVariantMesh` tablosu tam uzunluk/profil eşleşmesi, mesh, ikinci parçanın merkez ofseti ve dönüşünü birlikte saklıyor.
+- [x] Mesh çözümleyici duplicate eşleşmeleri reddediyor; kısalmış parçalarda tam eşleşme yoksa tam-boy mesh'i sessizce kullanmıyor.
+- [x] Yeni item definition biçimi `Base.Geom.<Length>.<Profile>`; envanterden dünyaya drop sırasında iki boyut da asset/mesh çözümlemesine bağlanıyor.
+- [x] Kesme ön koşulları cross-section profilini kullanıyor; tek aktörlü şekillendirmeler mevcut uzunluk oranını koruyor.
+- [x] Split işlemi kullanılan uzunluk/profil eşleşmesinden mesh/ofset/dönüş alıyor; rollback hatasında kanonik alanlar da geri yükleniyor.
+- [x] Statik kaynak kontrolleri, çağrı noktası bağlantıları ve brace-balance kontrolleri geçti.
+- [ ] UE 5.8 UHT/UBT derlemesi.
+- [ ] Her gerçek Blueprint/mesh için `GeometryVariantMeshes` satırlarını doldur ve duplicate/eksik eşleşmeleri kontrol et.
+- [ ] PIE: full/half/quarter length × round/half-round/quarter-round örneklerinde doğru geometri ve çarpışmayı doğrula.
+- [ ] Kayıt/yükleme ve envanterden tekrar dünyaya bırakma akışlarında canonical definition çözümünü runtime'da doğrula.
+- [ ] Uzunlamasına kesim eylemlerini ve 3/4 + 1/4 gibi yan ürün miktarlarını ayrı bir atomik çoklu-çıktı işi olarak uygula.
+
+**Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `InventoryCraftingComponent.cpp` (mevcut base-class variant restore call-site)  
+**Commit/PR:** PR #24 açıldıktan sonra bağlantı eklenecek; `feat/log-canonical-dimensions`.  
+**Sonuç:** Kod artık boy kesrini ve kesit şeklini tek bir enum'da karıştırmıyor. Mesh seçimi exact length/profile çiftine bağlandı ve item definition bu iki değeri taşıyor. Bu, gerçek Blueprint asset tablosunun doldurulduğu veya doğru mesh/pivot/çarpışmanın motor içinde kanıtlandığı anlamına gelmiyor. Kısalmış bir log için eşleşen mesh yoksa işlem güvenli biçimde reddediliyor.
+**Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi, UHT, PIE, asset doğrulaması ve runtime Save/Load testi yapılmadı.
+**Kalan sınırlamalar:** Uzunluk boyunca gerçek kesme eylemleri, 3/4 + 1/4 gibi farklı boylarda çoklu fiziksel çıktı ve bu çıktılar için konum/yan ürün miktarı sözleşmesi henüz uygulanmadı. Eski belirsiz `.QuarterLog` tanımlarındaki tarihsel uzunluk/kesit niyeti kesin olarak geri kazanılamaz; bunlar uyumluluk alias'ı olarak okunur.
+**Sonraki bağımlı iş:** WOOD-004 — uzunlamasına kesim eylemleri, farklı uzunluktaki çıktıların konumlandırılması ve yan ürün miktarlarını atomik çoklu-çıktı işlemine bağlamak.
+
+---
+
 ## 15. İlk yapılacak iş
 
-Sıradaki sıra: **WOOD-003 — mesh/asset durum tablosu ve uzunluk-kesit boyutlarının ayrılması**; sonra 2.1'in geri kalan fiziksel kaynak/taşıma/inşa kriterleri. Sonraki referans oyun ve LB0–LB4 işlerine de aynı kanıt standardıyla geçilecek; final demo tüm mekanikleri tek dünyada birlikte çalıştıran son kabul kapısı olarak en sonda kurulacak.
+Sıradaki sıra: **WOOD-004 — uzunlamasına kesim ve farklı uzunluktaki çıktı/yan ürünlerin atomik üretimi**; ardından 2.1'in kalan ağaç devrilmesi, kaynak miktarı, fiziksel snap/inşa ve malzeme geri kazanımı işleri. Sonraki referans oyun ve LB0–LB4 işlerine de aynı kanıt standardıyla geçilecek; final demo tüm mekanikleri tek dünyada birlikte çalıştıran son kabul kapısı olarak en sonda kurulacak.
