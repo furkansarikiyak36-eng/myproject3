@@ -435,52 +435,155 @@ Adaylar yalnızca inceleme konusudur, henüz kayıtlı mekanik değildir:
 - [ ] M122 adayı — Jeoloji katmanına bağlı kaynak yatağı çıkarımı.
 - [ ] M123 adayı — Yer üstünde heyelan/kaya düşmesi; M075 yeraltı çökmesinden ayrım.
 
-## 13. Final demo — yalnızca bütün uygulama işleri tamamlandıktan sonra
+## 13. Final demo — 119 mekaniğin aynı dünyada birlikte çalıştığını kanıtla
 
-**Hedef:** Küçük ama işe yarar, gezinmesi kolay, gereksiz varlıklarla dolmayan ve 119 mekaniği mantıklı yerlerde gösterebilen bir demo. Final demo, tamamlanmış mekaniklerin kanıt alanıdır; eksik sistemleri gizleyen bir vitrin değildir.
+**Temel kural:** Final demo, 119 mekanik için 119 ayrı vitrinden veya birbirinden kopuk test adalarından oluşmayacak. Tek bir küçük, kalıcı ve birbirine bağlı dünyada, mekaniklerin birbirlerinin durumunu nasıl değiştirdiğini gösterecek. Yedi bölge yalnızca okunaklı yerleşim/işlev alanlarıdır; yedi bağımsız simülasyon, yedi ayrı kaynak sistemi veya birbirinden kopuk sahneler değildir.
+
+Demo aynı anda iki şeyi kanıtlamalı:
+
+1. **Uçtan uca oynanış döngüsü:** Oyuncu dünyadan kaynak alır, işler, taşır, inşa eder, yaşar, üretim yapar, savunur, çevreyi değiştirir ve keşif yapar. Bir sistemin çıktısı sonraki sistemin gerçek girdisi olur.
+2. **119 ID'nin kabul kapsamı:** Her M-ID için ayrı ayrı tanımlı pozitif/negatif durum, ön koşul, beklenen sonuç, tekrar deneme, çapraz sistem etkisi ve kayıt beklentisi kanıtlanır. Bir özelliği bütün dünyayla bağlamak, o ID'nin özel sınır ve hata koşullarının kontrol edilmesi gereğini ortadan kaldırmaz.
+
+Bir ekran görüntüsü veya mekanik adını gösteren tabela, entegrasyon kanıtı değildir. Kanıt; aynı kimliğe ve kayda bağlı durumların gerçekten değiştiğini, sonucu sonraki sistemin tükettiğini ve başarısız işlemin tutarsızlık bırakmadığını göstermelidir.
 
 ### 13A. Demo öncesi kapı
 
-- [ ] Bölüm 2–10'daki gerekli kaynak katmanları ve bütün bağlantıları tamamlandı.
-- [ ] M001–M119 için kabul kriterleri açık; belirsiz/genel kriterler alt gereksinimlerle detaylandırıldı.
-- [ ] Her mekaniğin bir sahibi, bağımlılığı ve kabul senaryosu bulunuyor.
-- [ ] Kayıt/yükleme sırası, sahiplik, destek, arazi ve ortak saat kuralları kaynak incelemesinden geçti.
-- [ ] Demo yerleşim krokisi ve her bölgenin senaryoları hazırlandı.
-- [ ] Gerekli mesh/aktör/config/Blueprint/Editor varlık listesi çıkarıldı.
-- [ ] Doğrulama aşamasının hangi UE 5.8 ortamında ve kim tarafından yapılacağı kaydedildi.
+- [ ] Bölüm 2–10'daki gerekli kod katmanları ve birbirleriyle bağlantıları tamamlandı.
+- [ ] M001–M119 için açık ön koşullar, durum geçişleri, fiziksel/mantıksal çıktılar, hata kuralları ve kayıt beklentileri yazıldı.
+- [ ] Her mekanik birincil sahibiyle ve kullandığı ortak sistemlerle eşleştirildi; aynı gerçeği yöneten çift sahipli sistem kalmadı.
+- [ ] Ortak saat, eşya sahipliği, işlem kimliği/revizyon, yapısal grafik, arazi durumu, navigasyon ve kayıt/yükleme sözleşmeleri kaynak incelemesinden geçti.
+- [ ] Her çapraz sistem bağlantısı için kaynak sistemi → olay/işlem → tüketen sistem → beklenen gözlenebilir sonuç tanımlandı.
+- [ ] Demo dünyasının seed'i, profil sürümü, başlangıç kaynakları, başlangıç zamanı ve test reset yöntemi belirlendi.
+- [ ] Tek dünyadaki alanlar, yollar, köprüler/halat geçişleri, çiftlik, atölye, savunma ve keşif noktaları birbirine anlamlı biçimde bağlandı.
+- [ ] Hangi işlerin yalnızca kaynak incelemesi, hangilerinin Unreal motoru ve gerçek oynanış kanıtı gerektirdiği ayrıldı.
+- [ ] Kullanılacak mesh/aktör/Blueprint/config/Editor varlıkları listelendi; sırf sahnede görünsün diye gereksiz varlık eklenmedi.
 
-### 13B. Küçük demo yerleşimi
+### 13B. Ana entegre oynanış senaryosu — tek bir sebep-sonuç zinciri
 
-- [ ] Z1 — **Kaynak alanı:** birkaç ağaç/kütük, kesme-yarma istasyonu, taş/çubuk, envanter ve tarifler.
-- [ ] Z2 — **İnşaat alanı:** temel, yatay/dikey/çapraz parçalar, karma taş-ahşap yapı, köprü/halat, destek kaybı ve tamir.
-- [ ] Z3 — **Arazi cebi:** dış Landscape, izinli kazı alanı, bir çukur, kısa tünel/oda, yasak derinlik örneği ve destek kontrolü.
-- [ ] Z4 — **Küçük çiftlik:** birkaç ekim alanı, su/nem kaynağı, en az bir ürün döngüsü ve bir hayvan/ürün döngüsü.
-- [ ] Z5 — **Savunma alanı:** sınırlı düşman yaklaşımı, baskın uyarısı, savunma/tuzak, yapı hasarı ve baskın sonucu.
-- [ ] Z6 — **Lojistik/üretim köşesi:** kaynak deposu, kısa taşıma rotası, bir rota altyapısı, üretim istasyonu ve kasıtlı bloke kuyruk örneği.
-- [ ] Z7 — **Hayatta kalma/keşif rotası:** kısa açık hava geçişi, barınak, kıyafet/ısı karşılaştırması, yiyecek/dinlenme ve bir keşif noktası.
-- [ ] Yedi alan tek, küçük ve okunaklı bir seviyede veya kontrollü test odaklarında düzenlendi; 119 nesne rastgele serpiştirilmedi.
-- [ ] Bölge tabelaları/etkileşim açıklamaları/başlangıç durumu oyuncuya neyi deneyeceğini söylüyor.
-- [ ] Demo varlıkları gereken mekanikleri göstermeye yetecek kadar; gereksiz çevre dekoru ve görsel kalabalık yok.
+Aşağıdaki adımlar tek bir dünya kaydı içinde ilerlemeli. Bölge değiştirildiğinde veya oyuncu atölyeye döndüğünde, önceki yerde oluşan kaynak/yapı/arazi/zaman durumu kaybolmamalı.
 
-### 13C. Demo senaryoları ve kanıt
+#### Bölüm A — Dünya üretimi, keşif ve ilk kaynaklar
 
-- [ ] Her M-ID için hangi demo bölgesinde deneneceği ve başlangıç koşulu yazıldı.
-- [ ] Her mekanik için geçerli eylem ve beklenen sonuç kaydedildi.
-- [ ] Her mekanik için uygun geçersiz eylem ve değişiklik yapılmadan reddedilme kontrolü kaydedildi.
-- [ ] Tekrar deneme/idempotency ve sınır koşulu senaryoları tamamlandı.
-- [ ] Çapraz sistem etkileri (ör. destek–kazı, tarım–saat, kargo–sahiplik, baskın–hasar) kontrol edildi.
-- [ ] Kayıt/yükleme testinde fiziksel aktör, kimlik, dönüşüm, yapı bağlantısı, arazi, kuyruk ve keşif durumu korundu.
-- [ ] Her koşu için log/kayıt/ekran görüntüsü ve kabul sonucu saklandı.
-- [ ] Başarısız senaryolar düzeltildi ve yeniden çalıştırıldı; başarısız kalanlar açıkça listelendi.
-- [ ] M001–M119 durumu yalnızca gerçek kanıta göre güncellendi.
+- [ ] Sabit profil ve seed ile dış arazi oluşturuldu; dağ/vadi/eğim, yüzey malzemeleri, korunmuş oyun alanları ve izinli kazı alanları aynı dünya üzerinde tanımlandı.
+- [ ] Oyuncu arazi ve çevresel ipuçlarını keşfedebildi; keşif kaydı dünya bağlamıyla ilişkilendirildi.
+- [ ] Oyuncu ağaç, kütük, taş ve çubuk kaynaklarına ulaştı; her kaynak kalıcı ve tekil kimlik aldı.
+- [ ] Ağaçtan çıkan kütüklerin miktarı/boyutu tanımlı kurallara uydu; toplama/taşıma/bırakma fiziksel aktörü ile eşya sahipliği aynı durumu gösterdi.
+- [ ] Geçersiz toplama/işleme işlemleri kaynak veya envanter durumunu değiştirmeden reddedildi.
 
-### 13D. Son doğrulama ve kapatma
+#### Bölüm B — Malzeme işleme, envanter ve yapı kurma
 
-- [ ] Kaynak tutarlılık incelemesi tamamlandı.
+- [ ] Oyuncu gerçek kaynakları atölyeye taşıdı; aynı kaynak dünya, envanter, depo ve kargo içinde çoğalmadı.
+- [ ] Tam kütükten enine kesme, boyuna yarma ve gereken diğer dönüşümler doğru çıktı parçasını ve geometriyi üretti.
+- [ ] Oluk, kanal, tahta ve çentik gibi işlemler gereken giriş durumu olmadan reddedildi; başarılı işlemde parça tipi/mesh/çarpışma birlikte değişti.
+- [ ] İşlenmiş parçalar crafting/yapı tariflerinde gerçekten tüketildi ve doğru yapı bileşenlerine dönüştü.
+- [ ] Temel, ankrajlar, destekler ve karma taş-ahşap-çubuk parçaları ortak yapısal grafiğe bağlandı.
+- [ ] Yalnızca birbirine değen iki parça yapısal bağ kazanmadı; zeminden yük taşıyan parçaya geçerli destek yolu kuruldu.
+- [ ] Güvensiz destek kaldırma ya reddedildi ya da bağımlı parçalar, kaynak sahipliği ve çarpışma dâhil tanımlı sırada çözüldü.
+- [ ] Yapı onarımı/sökümü ve kaynak geri kazanımı envanter, dünya aktörü ve grafik durumuyla tutarlı kaldı.
+
+#### Bölüm C — Arazi değişimi, çiftlik ve çevre
+
+- [ ] Oyuncu yalnızca belirlenmiş bir kazı cebinde çukur veya kısa tünel/oda oluşturabildi; korunan alanda veya izin dışı derinlikte değişiklik olmadı.
+- [ ] Kazı aynı anda mantıksal arazi kaydı, görünür geometri ve çarpışmayla eşleşti.
+- [ ] Kazı mevcut temel/yapı desteğini etkilediyse yapısal sistem bilgilendirildi; güvenli olmayan değişiklik reddedildi veya tanımlı sonucu uygulandı.
+- [ ] Yüzey/eğim/altyapı değişikliği ilgili navigasyon ve rota maliyeti tüketicilerine bildirildi.
+- [ ] Oyuncu aynı dünyadaki tarla alanını hazırlayıp tohum ekti; ortak saat ilerledikçe ürün durumları değişti.
+- [ ] Su/nem/besin/mevsim koşulları ürün büyümesini etkiledi; hasat edilen ürün gerçek envanter/depo kaydına aktarıldı.
+- [ ] Hayvan yemi stoktan tüketildi; hayvan bakımı/sağlığı ve ürün çıktıları ortak zamanla ilerledi; üretilen malzeme sahiplik defterinde tek kez oluştu.
+- [ ] Yağış/nem/ateş/çürüme gibi uygulanmış çevre kuralları arazi, kaynak veya hayatta kalma tüketicileriyle gerçek bir sonuca bağlandı. Henüz uygulanmamış çevre sistemleri demo kapsamında varmış gibi gösterilmedi.
+
+#### Bölüm D — Lojistik ve üretim zinciri
+
+- [ ] Oyuncu ham ve işlenmiş kaynakları depoladı; depo kapasitesi ve kaynak sahipliği korundu.
+- [ ] Oyuncu en az bir gerçek taşıma altyapısını (ör. yol/köprü veya halat/zipline) kullanarak kaynağı kaynak noktasından atölye/depo/yerleşime taşıdı.
+- [ ] Rota kararı ve maliyeti yalnızca elle yazılmış bir düğüm yolu değil, mevcut arazi/altyapı durumuyla tutarlı oldu.
+- [ ] Taşıma sırasında eşya tek bir `InTransit` sahibi altında kaldı; başarılı teslimat doğru hedefe aktardı.
+- [ ] En az bir üretim istasyonu gerçek tarif girdilerini tüketip tanımlı çıktıyı üretti.
+- [ ] Üretim kuyruğu, girdi/istasyon/yakıt/kapasite eksikliğinde açık bir bloke nedeni gösterdi ve başarısız başlatmada kaynakları beklenmedik şekilde tüketmedi.
+- [ ] Üretilen çıktı yeniden depo/envanter/taşıma/yapı döngüsünde kullanılabildi; yalnızca görsel bir üretim efekti olarak kalmadı.
+- [ ] Yol/bağlantı kapatıldığında veya hedef dolduğunda teslimat/üretim durumu açıklanabilir kaldı ve kaynaklar kaybolmadı.
+
+#### Bölüm E — Hayatta kalma, yerleşim baskısı ve baskın
+
+- [ ] Oyuncu açık hava maruziyeti ile barınak/kıyafet koruması arasında ölçülebilir fark gördü.
+- [ ] Açlık, susuzluk, dayanıklılık, yorgunluk, uyku/dinlenme ve yaralanma gibi uygulanmış ihtiyaçlar aynı hayatta kalma durumunda ilerledi.
+- [ ] Yiyecek, yakıt, ateş ve yemek pişirme uygulanmışsa gerçek envanter/üretim/depo durumunu değiştirdi; bozulma ortak saatle ilerledi.
+- [ ] Yerleşimin yapıları, stokları, gürültüsü ve savunması tehdit sistemine açık, ayarlanabilir girdiler sağladı.
+- [ ] Baskın ortak saatte planlandı; uyarı, geçerli doğma konumu, hedef seçimi, yol bulma, saldırı ve sonuç durumları birbirine bağlandı.
+- [ ] Düşman hasarı yapısal grafik üzerinden uygulandı; savunma/tuzak, yapı bütünlüğü, çökme, tamir ve kaynak geri kazanımı aynı durumu kullandı.
+- [ ] Baskın sırasında bir yol/köprü/kapı veya destek zarar gördüğünde lojistik/erişim ve yapı sistemleri bu değişimi dikkate aldı.
+- [ ] Baskın engellendiğinde, kesildiğinde, geri püskürtüldüğünde veya başarısız olduğunda kaynak/ödül/dalga durumu tekrar denemeyle çoğalmadı.
+- [ ] Oyuncu kaynak, ekipman, hazırlık veya rota seçimini kullanarak bu baskından toparlanabildi; zorluk kaçınılmaz hasara indirgenmedi.
+
+#### Bölüm F — Kayıt/yükleme ve aynı dünyada devam
+
+- [ ] Oyuncu dünya durumunda anlamlı değişiklikler yaptıktan sonra kayıt aldı.
+- [ ] Kayıtta profil/seed/saat, arazi ve kazı farkları, fiziksel aktörler/dönüşümler, eşya sahipliği, envanter/depolar, yapısal grafik/ankrajlar, tarım/hayvan, kargo/üretim, baskın, hayatta kalma ve keşif alanlarının kapsamı açıkça doğrulandı.
+- [ ] Yükleme sonrasında aynı dünya durumu yeniden kuruldu; eşya, hasat, üretim çıktısı, düşman dalgası veya keşif çoğalmadı.
+- [ ] Türetilmiş görsel, çarpışma ve navigasyon verileri geri yüklenen yetkili duruma göre yeniden kuruldu.
+- [ ] Yükleme sonrasında oyuncu yeni bir eyleme devam edebildi ve sonraki sistemler önceki durumları tüketebildi.
+- [ ] Aynı senaryo aynı seed/başlangıç durumu ile yeniden başlatıldığında deterministik sistemlerin sonuçları karşılaştırılabilir oldu.
+
+### 13C. Zorunlu sistemler arası bağlantı matrisi
+
+Bu matrisin her satırı ayrı kabul kriteridir. Bir sistemin kaynak dosyasının bulunması, satırın tamamlandığı anlamına gelmez.
+
+| Kaynak / olay | Bağlantı kurulacak sistem | Demo ile kanıtlanacak sonuç |
+|---|---|---|
+| Ağaç kesme ve kütük işleme | Eşya sahipliği, envanter, crafting | Tekil kaynak doğru işlenir; miktar ve fiziksel çıktı tutarlıdır |
+| Ankraj/temel/bağlantı | Yapısal grafik, yük, hasar | Yerleşim geçerliliği destek yoluna bağlıdır |
+| Kazı/zemin değişimi | Çarpışma, navigasyon, destek, kayıt | Görünür kazı, fiziksel zemin ve destek durumu aynı sonucu yansıtır |
+| Ortak dünya saati | Tarım, hayvanlar, üretim, hava, baskın, hayatta kalma | Aynı zaman adımı tüm ilgili sistemleri tutarlı ilerletir |
+| Hasat/hayvan ürünü | Eşya sahipliği, depo, üretim, yemek | Çıktı bir kez oluşur ve sonraki sistem gerçek girdiyi tüketir |
+| Yol/köprü/halat değişimi | Lojistik, kargo, üretim | Rota erişimi/maliyeti ve teslimat sonucu değişir |
+| Hava/toprak koşulu | Tarım, maruziyet, ateş/malzeme | Ortak çevresel durum ilgili sistemlerde gözlenebilir etki yaratır |
+| Barınak/kıyafet/ateş | Hayatta kalma, envanter, yakıt ve yemek | Koruma, tüketim ve toparlanma aynı duruma bağlanır |
+| Stok/gürültü/savunma | Tehdit/baskın, yapısal hasar | Yerleşim durumu baskın kararını etkiler; hasar ortak yapısal yolu kullanır |
+| Yapı hasarı/çökme | Envanter/kurtarma, rota/erişim, kayıt | Yıkım sonrası kaynak ve erişim durumu tutarlıdır |
+| Keşif/kalıntı | Kalıcı dünya bağlamı, kayıt/yükleme | Keşif görünür içerik veya yeni bağlam açar ve kalıcıdır |
+| Kayıt/yükleme | Bütün yetkili sistemler | Dünya yalnızca mantıksal değerleri değil, ilgili fiziksel sonuçları da tutarlı geri kurar |
+
+- [ ] Matrisin bütün satırları için kaynak kod/kontrat referansı yazıldı.
+- [ ] Her satırda en az bir pozitif entegrasyon senaryosu var.
+- [ ] Uygun bağlantılarda en az bir negatif veya bozulma senaryosu var.
+- [ ] Başarısızlık/rollback durumunda hem kaynak hem tüketen sistemin beklenen son durumu belirtildi.
+- [ ] Tüketici sistemlerin aynı kaynağı bağımsız olarak ikinci kez değiştirmesi engellendi.
+
+### 13D. Tek dünya, yedi okunaklı alan
+
+Yedi alan **aynı küçük dünyada birbirine fiziksel ve işlevsel olarak bağlı** olmalı. Oyuncunun kaynak alanında ürettiği kütük inşaat alanında kullanılabilmeli; kazı yapı desteğini etkileyebilmeli; çiftlik ürünleri depoya ve üretime gidebilmeli; yol/halat rotası lojistikte kullanılmalı; baskın kurulan yapıya hasar verebilmeli; tüm değişiklikler aynı kayıt içinde korunmalı.
+
+- [ ] Z1 — **Kaynak alanı:** Orman/kütük/taş/çubuk; buradan çıkan kaynaklar envanter, depo ve üretim rotalarında kullanılabiliyor.
+- [ ] Z2 — **Yerleşim ve inşaat:** Temel, duvar, çatı, kapı, savunma ve karma malzeme; aynı grafik hasar, destek ve baskın tarafından kullanılıyor.
+- [ ] Z3 — **Arazi cebi:** Dış yüzeyle bağlantılı izinli kazı; çukur/kısa tünel/oda, korunan bölge ve destek etkisi gösteriliyor.
+- [ ] Z4 — **Çiftlik:** Yerleşime yakın tarla/hayvan alanı; ürünler ve hayvan çıktıları depoya/üretime gerçek girdi oluyor.
+- [ ] Z5 — **Baskın yaklaşımı:** Dünyanın dışından gelen mantıklı bir rota; spawn, hedef, navigasyon, savunma ve yapı hasarı aynı yerleşime bağlanıyor.
+- [ ] Z6 — **Atölye/lojistik/depo:** Kaynak alanı, çiftlik ve yerleşimi yollar/köprü/halat ile bağlayan gerçek bir transfer noktası.
+- [ ] Z7 — **Hayatta kalma/keşif rotası:** Barınaktan açık hava alanına ve bir kalıntı/ipucuna uzanan rota; hava, ekipman, kaynak ve kalıcı keşif durumu etkili.
+- [ ] Alanlar birbirinin çıktılarını gerçekten kullanıyor; sırf kontrol listesinde adları geçsin diye bağımsız dekor/test adaları oluşturulmadı.
+- [ ] Demo küçük kaldı: yalnızca her davranış zincirini kanıtlamak için gereken fiziksel varlıklar, istasyonlar ve yol bağlantıları yer aldı.
+- [ ] Oyuncu başlangıç noktasından ana sistemlere ulaşabiliyor; tabelalar/arayüzler eylemi açıklıyor ama mantıksal işlevin yerini almıyor.
+
+### 13E. Entegre demo kabulü ile mekanik kabulini ayır
+
+- [ ] Her M001–M119 için tekil kabul senaryosu/evidence satırı tamamlandı.
+- [ ] Her mekanik, ilgili uçtan uca senaryoda en az bir gerçek üretici/tüketici bağlantısında kullanıldı.
+- [ ] Her mekanik için uygun ön koşul ve geçersiz eylem reddi ayrıca kontrol edildi.
+- [ ] Her mekanik için gereken tekrar deneme/idempotency ve kayıt/yükleme durumları kontrol edildi.
+- [ ] Demo yalnızca mekaniklerin varlığını değil, sonuçların sonraki sistemler tarafından gerçekten tüketildiğini gösteriyor.
+- [ ] Entegre senaryolarda bir sistemdeki değişikliklerin diğer sistemlerde beklenen etkileri kaydedildi.
+- [ ] Her koşu için log/kayıt/ekran görüntüsü ve kabul sonucu saklandı; yalnızca ekran görüntüsüne dayanan gizli durum iddiaları kabul edilmedi.
+- [ ] Başarısız senaryolar düzeltildi ve yeniden çalıştırıldı; çözülmeyenler teslim raporunda açıklandı.
+- [ ] M001–M119 kayıt durumları yalnızca gerçek kanıta göre güncellendi.
+
+### 13F. Son doğrulama ve kapatma
+
+- [ ] Kaynak tutarlılık ve bağımlılık incelemesi tamamlandı.
 - [ ] Gerekli UE 5.8 UHT/UBT derlemesi çalıştırıldı ve sonucu kaydedildi.
-- [ ] Editor açılışı ve demo seviyesinin yüklenmesi doğrulandı.
+- [ ] Editor açılışı ve entegre demo seviyesinin yüklenmesi doğrulandı.
 - [ ] PIE/oynanış kabul senaryoları çalıştırıldı.
-- [ ] Demo baştan kurulup temiz bir başlangıç durumundan yeniden oynatıldı.
+- [ ] Ana uçtan uca senaryo temiz başlangıç durumundan baştan sona yeniden oynatıldı.
+- [ ] Kayıt/yükleme arası kesinti senaryosu çalıştırıldı ve oyun aynı dünyada devam etti.
 - [ ] Bilinen sınırlamalar, çözülmemiş hatalar ve erken erişim kapsamı not edildi.
 - [ ] Dal karşılaştırması/PR tabanı ve değişen dosyalar son kez kontrol edildi.
 - [ ] Kullanıcı onayıyla birleştirme/teslim kararı verildi.
