@@ -13,6 +13,104 @@
 
 namespace
 {
+    const TCHAR* LengthFractionToken(ELogLengthFraction Value)
+    {
+        switch (Value)
+        {
+        case ELogLengthFraction::ThreeQuarterLength: return TEXT("ThreeQuarter");
+        case ELogLengthFraction::HalfLength: return TEXT("Half");
+        case ELogLengthFraction::QuarterLength: return TEXT("Quarter");
+        case ELogLengthFraction::Other: return TEXT("Other");
+        case ELogLengthFraction::FullLength:
+        default: return TEXT("Full");
+        }
+    }
+
+    bool TryParseLengthFractionToken(const FString& Token, ELogLengthFraction& OutValue)
+    {
+        if (Token.Equals(TEXT("Full"), ESearchCase::IgnoreCase))
+            OutValue = ELogLengthFraction::FullLength;
+        else if (Token.Equals(TEXT("ThreeQuarter"), ESearchCase::IgnoreCase))
+            OutValue = ELogLengthFraction::ThreeQuarterLength;
+        else if (Token.Equals(TEXT("Half"), ESearchCase::IgnoreCase))
+            OutValue = ELogLengthFraction::HalfLength;
+        else if (Token.Equals(TEXT("Quarter"), ESearchCase::IgnoreCase))
+            OutValue = ELogLengthFraction::QuarterLength;
+        else if (Token.Equals(TEXT("Other"), ESearchCase::IgnoreCase))
+            OutValue = ELogLengthFraction::Other;
+        else
+            return false;
+        return true;
+    }
+
+    const TCHAR* CrossSectionToken(ELogCrossSectionProfile Value)
+    {
+        switch (Value)
+        {
+        case ELogCrossSectionProfile::HalfRound: return TEXT("HalfRound");
+        case ELogCrossSectionProfile::QuarterRound: return TEXT("QuarterRound");
+        case ELogCrossSectionProfile::Hewn: return TEXT("Hewn");
+        case ELogCrossSectionProfile::SquareBeam: return TEXT("SquareBeam");
+        case ELogCrossSectionProfile::GroovedHalfRound: return TEXT("GroovedHalfRound");
+        case ELogCrossSectionProfile::Trough: return TEXT("Trough");
+        case ELogCrossSectionProfile::Plank: return TEXT("Plank");
+        case ELogCrossSectionProfile::Notched: return TEXT("Notched");
+        case ELogCrossSectionProfile::Joint: return TEXT("Joint");
+        case ELogCrossSectionProfile::Other: return TEXT("Other");
+        case ELogCrossSectionProfile::Round:
+        default: return TEXT("Round");
+        }
+    }
+
+    bool TryParseCrossSectionToken(const FString& Token, ELogCrossSectionProfile& OutValue)
+    {
+        if (Token.Equals(TEXT("Round"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Round;
+        else if (Token.Equals(TEXT("HalfRound"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::HalfRound;
+        else if (Token.Equals(TEXT("QuarterRound"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::QuarterRound;
+        else if (Token.Equals(TEXT("Hewn"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Hewn;
+        else if (Token.Equals(TEXT("SquareBeam"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::SquareBeam;
+        else if (Token.Equals(TEXT("GroovedHalfRound"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::GroovedHalfRound;
+        else if (Token.Equals(TEXT("Trough"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Trough;
+        else if (Token.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Plank;
+        else if (Token.Equals(TEXT("Notched"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Notched;
+        else if (Token.Equals(TEXT("Joint"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Joint;
+        else if (Token.Equals(TEXT("Other"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::Other;
+        else
+            return false;
+        return true;
+    }
+
+    FName MakeCanonicalGeometryDefinitionId(
+        FName BaseDefinitionId, ELogLengthFraction Length, ELogCrossSectionProfile Profile)
+    {
+        if (BaseDefinitionId.IsNone())
+            return NAME_None;
+        return FName(*FString::Printf(TEXT("%s.Geom.%s.%s"),
+            *BaseDefinitionId.ToString(), LengthFractionToken(Length), CrossSectionToken(Profile)));
+    }
+
+    bool TryParseCanonicalGeometrySuffix(
+        const FString& Suffix, ELogLengthFraction& OutLength, ELogCrossSectionProfile& OutProfile)
+    {
+        TArray<FString> Parts;
+        Suffix.ParseIntoArray(Parts, TEXT("."), false);
+        return Parts.Num() == 3 &&
+            Parts[0].Equals(TEXT("Geom"), ESearchCase::IgnoreCase) &&
+            TryParseLengthFractionToken(Parts[1], OutLength) &&
+            TryParseCrossSectionToken(Parts[2], OutProfile);
+    }
+
     bool IsFiniteVector(const FVector& Value)
     {
         return FMath::IsFinite(Value.X) && FMath::IsFinite(Value.Y) && FMath::IsFinite(Value.Z);
@@ -62,6 +160,11 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
     Super::OnConstruction(Transform);
 
     SyncCanonicalGeometryFromLegacyPieceType();
+    if (!IsValid(BaseLogVariantMesh) && Mesh && Mesh->GetStaticMesh() &&
+        GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
+    {
+        BaseLogVariantMesh = Mesh->GetStaticMesh();
+    }
 
     // Preserve hand-authored anchors (for example, test-map top sockets) but
     // rebuild only auto-generated sockets when mesh/spacing/axis properties change.
@@ -573,34 +676,63 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
 bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
 {
     if (bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0)
-    {
         return false;
-    }
+
+    UStaticMesh* OutputMesh = nullptr;
+    FVector SplitOffset = FVector::ZeroVector;
+    FRotator ChildRotation = FRotator::ZeroRotator;
+    ELogCrossSectionProfile RequiredProfile = ELogCrossSectionProfile::Other;
+    bool bNeedsSplitConfiguration = false;
 
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::Round &&
-            IsValid(SplitHalfVariantMesh) &&
-            IsValidCrossSectionCenterOffset(SplitHalfPieceCenterOffsetLocal, LongitudinalAxis);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::HalfRound;
+        bNeedsSplitConfiguration = true;
+        break;
     case ELogCutAction::Quarter:
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound &&
-            IsValid(QuarterVariantMesh) &&
-            IsValidCrossSectionCenterOffset(QuarterPieceCenterOffsetLocal, LongitudinalAxis);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::QuarterRound;
+        bNeedsSplitConfiguration = true;
+        break;
     case ELogCutAction::Hewn:
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::Round && IsValid(HewnVariantMesh);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::Hewn;
+        break;
     case ELogCutAction::Gutter:
-        // A groove/gutter operation is valid only after the log has been split.
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound && IsValid(GutterVariantMesh);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::GroovedHalfRound;
+        break;
     case ELogCutAction::Trough:
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound && IsValid(TroughVariantMesh);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::Trough;
+        break;
     case ELogCutAction::Kalas:
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::Round && IsValid(KalasVariantMesh);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::SquareBeam;
+        break;
     case ELogCutAction::Plank:
-        return GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound && IsValid(PlankVariantMesh);
+        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
+            return false;
+        RequiredProfile = ELogCrossSectionProfile::Plank;
+        break;
     default:
         return false;
     }
+
+    if (!TryResolveGeometryVariant(GetLengthFraction(), RequiredProfile,
+        OutputMesh, &SplitOffset, &ChildRotation) || !IsValid(OutputMesh))
+        return false;
+
+    return !bNeedsSplitConfiguration ||
+        IsValidCrossSectionCenterOffset(SplitOffset, LongitudinalAxis);
 }
 
 FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
@@ -744,6 +876,8 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     }
 
     Child->PieceType = OutputType;
+    Child->BaseLogVariantMesh = BaseLogVariantMesh;
+    Child->GeometryVariantMeshes = GeometryVariantMeshes;
     Child->LengthFraction = GetLengthFraction();
     Child->CrossSectionProfile = CrossSectionFromLegacyType(OutputType);
     Child->bUseCanonicalGeometryDimensions = true;
