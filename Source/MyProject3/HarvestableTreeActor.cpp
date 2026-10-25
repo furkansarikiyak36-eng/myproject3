@@ -117,6 +117,22 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     // registers each physical item in the canonical ownership ledger.
     TArray<ALogBuildPiece*> Spawned;
     Spawned.Reserve(LogsToSpawn);
+
+    // If one output fails validation after FinishSpawning, remove every sibling
+    // created by this harvest attempt. This prevents a failed harvest from
+    // leaving a partial visible resource set that the tree will never retry.
+    auto RollbackSpawnedOutputs = [&Spawned]()
+    {
+        for (ALogBuildPiece* Created : Spawned)
+        {
+            if (!IsValid(Created))
+                continue;
+
+            Created->SetActorHiddenInGame(true);
+            Created->SetActorEnableCollision(false);
+            Created->Destroy();
+        }
+    };
     const FVector Base = GetActorLocation();
     const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
     const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal();
@@ -132,8 +148,7 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
             ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
         if (!Log)
         {
-            for (ALogBuildPiece* Created : Spawned)
-                if (IsValid(Created)) Created->Destroy();
+            RollbackSpawnedOutputs();
             return false;
         }
 
@@ -148,8 +163,10 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     {
         if (!IsValid(Log) || Log->IsActorBeingDestroyed() || Log->IsHidden())
         {
-            // A bad Blueprint/table can quarantine a spawned log. Do not retry
-            // blindly: preserve failure evidence and require authored configuration repair.
+            // A bad Blueprint/table can quarantine a spawned log. Remove every
+            // sibling from this attempt so the visible resource count is all-or-none.
+            // EndPlay uses the canonical ownership lifecycle for registered actors.
+            RollbackSpawnedOutputs();
             return false;
         }
     }
