@@ -103,8 +103,7 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     FWorldOwnedItemRecord& OutRecord)
 {
     if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
-        static_cast<uint8>(ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-        NewDefinitionId.IsNone())
+        ExpectedOwner != EWorldItemOwnerKind::World || NewDefinitionId.IsNone())
     {
         return false;
     }
