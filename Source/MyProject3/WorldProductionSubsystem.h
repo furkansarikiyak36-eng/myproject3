@@ -53,6 +53,29 @@ struct FWorldProductionPhysicalIntakeReceipt
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
 };
 
+/** Durable receipt for idempotent recipe enqueue requests. */
+USTRUCT(BlueprintType)
+struct FWorldProductionEnqueueReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName RecipeId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid JobId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedStationRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
+};
+
+/** Durable receipt for idempotent completed-job collection requests. */
+USTRUCT(BlueprintType)
+struct FWorldProductionCollectReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid JobId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedStationRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FWorldProductionStation
 {
@@ -64,6 +87,9 @@ struct FWorldProductionStation
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionJob> Jobs;
     /** Receipts prevent one physical source actor from becoming station stock more than once. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionPhysicalIntakeReceipt> PhysicalIntakeReceipts;
+    /** Durable request results; retained after a job is collected to make retries idempotent. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionEnqueueReceipt> EnqueueReceipts;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionCollectReceipt> CollectReceipts;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") int64 Revision = 1;
 };
 
@@ -84,9 +110,15 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
     /** Stable recipe key for physical resource stock; preserves the nominal mesh family when one is authored. */
     UFUNCTION(BlueprintPure, Category="World|Production") static FName MakePhysicalStockItemId(FName DefinitionId, FName MeshVariantSetId);
+    /** Retry-safe enqueue; caller must reuse OperationId when retrying the same request. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryEnqueueJob(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid& OutJobId);
+    /** Legacy convenience wrapper. Use TryEnqueueJob for retry-safe callers. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool EnqueueJob(const FGuid& StationId, FName RecipeId, FGuid& OutJobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool CanAdvanceProductionStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AdvanceProductionStep(double DeltaSeconds);
+    /** Retry-safe collection; successful retries return true from the durable receipt. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryCollectCompletedJob(FGuid OperationId, FGuid StationId, FGuid JobId, int64 ExpectedStationRevision);
+    /** Legacy convenience wrapper. Use TryCollectCompletedJob for retry-safe callers. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool CollectCompletedJob(const FGuid& StationId, const FGuid& JobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool GetStation(const FGuid& StationId, FWorldProductionStation& OutStation) const;
     void ExportSnapshot(TArray<FWorldProductionStation>& OutStations, TArray<FWorldProductionRecipe>& OutRecipes) const;
