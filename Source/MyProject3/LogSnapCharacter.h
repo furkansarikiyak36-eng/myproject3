@@ -16,6 +16,7 @@ class MYPROJECT3_API ALogSnapCharacter : public ACharacter
 public:
     ALogSnapCharacter();
 
+    virtual void BeginPlay() override;
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
