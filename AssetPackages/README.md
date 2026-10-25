@@ -4,7 +4,7 @@ This is the repository's shared asset inbox / inventory. Store incoming archives
 
 ## Current contents
 
-- `endgrainv2_height.zip` — supplied end-grain / height-map image archive. The log prototype imports image files as Texture2D assets when the local ZIP is present, but does not automatically apply them to materials.
+- `endgrainv2_height.zip` — supplied end-grain / height-map image archive. `UnrealEditorScripts/ImportLogsToScene.py` can import its images as Texture2D assets. The playable `CreateLogSnapTestLevel.py` script does not process this ZIP or automatically apply the images to materials.
 - `UnrealExport/` — FBX static meshes used by the log mechanic prototype.
 - `UnrealExport/Archive/` — special notches and joint geometry.
 
