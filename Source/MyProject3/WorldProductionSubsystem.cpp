@@ -151,6 +151,18 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
     // must replay as success, not add a second stock unit after the station advances.
     for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
     {
+        // A production operation ID may not be reused across intake, enqueue
+        // and collection command kinds.
+        for (const FWorldProductionEnqueueReceipt& Enqueue : Pair.Value.EnqueueReceipts)
+        {
+            if (Enqueue.OperationId == OperationId)
+                return false;
+        }
+        for (const FWorldProductionCollectReceipt& Collect : Pair.Value.CollectReceipts)
+        {
+            if (Collect.OperationId == OperationId)
+                return false;
+        }
         for (const FWorldProductionPhysicalIntakeReceipt& Receipt :
             Pair.Value.PhysicalIntakeReceipts)
         {
@@ -671,6 +683,8 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
                 Receipt.ExpectedItemRevision <= 0 || Receipt.ExpectedItemRevision == MAX_int64 ||
                 Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
                 Receipt.SourceDefinitionId.IsNone() || Receipt.StockItemId.IsNone() ||
+                Receipt.StockItemId != MakePhysicalStockItemId(
+                    Receipt.SourceDefinitionId, Receipt.SourceMeshVariantSetId) ||
                 Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
                 Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
                 ProductionOperationIds.Contains(Receipt.OperationId) ||
