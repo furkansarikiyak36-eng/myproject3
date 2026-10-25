@@ -19,9 +19,11 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
 
-    if (bAutoGenerateEndSnapPoints && SnapPoints.IsEmpty())
+    if (bAutoGenerateEndSnapPoints || bAutoGenerateSideSnapPoints)
     {
-        GenerateDefaultEndSnapPoints();
+        // Preserve hand-authored anchors (for example, test-map top sockets) but
+        // rebuild only the auto-generated sockets when properties are changed.
+        RegenerateAutomaticSnapPoints();
     }
 }
 
@@ -58,6 +60,140 @@ FRotator ALogBuildPiece::MakeOutwardRotation(const FVector& Direction) const
     return FRotationMatrix::MakeFromX(Direction.GetSafeNormal()).Rotator();
 }
 
+void ALogBuildPiece::GenerateDefaultSnapPoints()
+{
+    SnapPoints.Reset();
+
+    if (bAutoGenerateEndSnapPoints)
+    {
+        GenerateDefaultEndSnapPoints();
+    }
+    if (bAutoGenerateSideSnapPoints)
+    {
+        GenerateDefaultSideSnapPoints();
+    }
+}
+
+void ALogBuildPiece::RegenerateAutomaticSnapPoints()
+{
+    SnapPoints.RemoveAll([](const FLogSnapPoint& Point)
+    {
+        const FString Id = Point.PointId.ToString();
+        return Id.StartsWith(TEXT("AutoEnd_")) ||
+            Id.StartsWith(TEXT("AutoSide_"));
+    });
+
+    if (bAutoGenerateEndSnapPoints)
+    {
+        GenerateDefaultEndSnapPoints();
+    }
+    if (bAutoGenerateSideSnapPoints)
+    {
+        GenerateDefaultSideSnapPoints();
+    }
+}
+
+void ALogBuildPiece::GenerateDefaultSideSnapPoints()
+{
+    if (!Mesh || !Mesh->GetStaticMesh() || SideSnapSpacing <= KINDA_SMALL_NUMBER)
+    {
+        return;
+    }
+
+    const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+    const FVector Axis = GetLongitudinalAxisVector();
+    const float HalfLength = FVector::DotProduct(Bounds.BoxExtent, Axis.GetAbs());
+
+    if (HalfLength <= KINDA_SMALL_NUMBER)
+    {
+        return;
+    }
+
+    FVector SideAxisA;
+    FVector SideAxisB;
+    float ExtentA = 0.0f;
+    float ExtentB = 0.0f;
+
+    if (LongitudinalAxis == ELogLongitudinalAxis::X)
+    {
+        SideAxisA = FVector::YAxisVector;
+        SideAxisB = FVector::ZAxisVector;
+        ExtentA = Bounds.BoxExtent.Y;
+        ExtentB = Bounds.BoxExtent.Z;
+    }
+    else if (LongitudinalAxis == ELogLongitudinalAxis::Y)
+    {
+        SideAxisA = FVector::XAxisVector;
+        SideAxisB = FVector::ZAxisVector;
+        ExtentA = Bounds.BoxExtent.X;
+        ExtentB = Bounds.BoxExtent.Z;
+    }
+    else
+    {
+        SideAxisA = FVector::XAxisVector;
+        SideAxisB = FVector::YAxisVector;
+        ExtentA = Bounds.BoxExtent.X;
+        ExtentB = Bounds.BoxExtent.Y;
+    }
+
+    TArray<float> AlongOffsets;
+    if (HalfLength * 2.0f <= SideSnapSpacing)
+    {
+        AlongOffsets.Add(0.0f);
+    }
+    else
+    {
+        const float Inset = SideSnapSpacing * 0.5f;
+        for (float Offset = -HalfLength + Inset;
+             Offset <= HalfLength - Inset + KINDA_SMALL_NUMBER;
+             Offset += SideSnapSpacing)
+        {
+            AlongOffsets.Add(Offset);
+        }
+    }
+
+    auto AddSideAnchors = [this, &Bounds, &Axis, &AlongOffsets](
+        const FVector& SideAxis, float SideExtent, const TCHAR* AxisName)
+    {
+        if (SideExtent <= KINDA_SMALL_NUMBER)
+        {
+            return;
+        }
+
+        for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
+        {
+            const float Sign = SideIndex == 0 ? -1.0f : 1.0f;
+            const FString SignName = Sign < 0.0f ? TEXT("Minus") : TEXT("Plus");
+
+            for (int32 AlongIndex = 0; AlongIndex < AlongOffsets.Num(); ++AlongIndex)
+            {
+                FLogSnapPoint Point;
+                Point.PointId = FName(*FString::Printf(
+                    TEXT("AutoSide_%s_%s_%02d"),
+                    AxisName, *SignName, AlongIndex));
+                // A side socket receives a log end. Its outward vector controls
+                // the incoming log's orientation so the beam projects away
+                // from the post/host log instead of centering through it.
+                Point.SnapTag = SideSnapTag;
+                const FVector LocalPosition = Bounds.Origin +
+                    Axis * AlongOffsets[AlongIndex] +
+                    SideAxis * (SideExtent * Sign);
+                Point.LocalTransform = FTransform(
+                    MakeOutwardRotation(SideAxis * Sign), LocalPosition);
+                Point.bCanSource = false;
+                Point.bCanReceive = true;
+                Point.bAcceptAnyPieceType = true;
+                Point.bFlipIncomingOrientation = true;
+                Point.bOccupied = false;
+                SnapPoints.Add(Point);
+            }
+        }
+    };
+
+    AddSideAnchors(SideAxisA, ExtentA, TEXT("A"));
+    AddSideAnchors(SideAxisB, ExtentB, TEXT("B"));
+}
+
 void ALogBuildPiece::GenerateDefaultEndSnapPoints()
 {
     if (!Mesh || !Mesh->GetStaticMesh())
@@ -73,8 +209,6 @@ void ALogBuildPiece::GenerateDefaultEndSnapPoints()
     {
         return;
     }
-
-    SnapPoints.Reset();
 
     const FVector PositiveLocation = Bounds.Origin + Axis * HalfLength;
     const FVector NegativeLocation = Bounds.Origin - Axis * HalfLength;
@@ -126,11 +260,7 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
     }
 
     Mesh->SetStaticMesh(NewMesh);
-    if (bAutoGenerateEndSnapPoints)
-    {
-        SnapPoints.Reset();
-        GenerateDefaultEndSnapPoints();
-    }
+    GenerateDefaultSnapPoints();
 }
 
 bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
