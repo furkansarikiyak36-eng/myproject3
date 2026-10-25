@@ -31,11 +31,11 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 ### R1 — Custom snap-point IDs can collide with the automatic namespace
 
-**Evidence:** `RegenerateAutomaticSnapPoints` removes points whose IDs start with `AutoEnd_` or `AutoSide_`. `AddCustomSnapPoint` accepts any ID without checking that reserved prefix or duplicate IDs.
+**Evidence:** `RegenerateAutomaticSnapPoints` removes points whose IDs start with `AutoEnd_` or `AutoSide_`. The source now rejects `NAME_None`, either reserved prefix (case-insensitive), and duplicate IDs in `AddCustomSnapPoint`; rejected calls emit a `LogTemp` warning and do not append a point.
 
-**Impact:** A custom point authored with one of those prefixes can be removed on the next regeneration. Duplicate IDs can also make editor diagnostics ambiguous.
+**Impact:** The known silent-removal and duplicate-identifier paths are guarded at the source API. Because `AddCustomSnapPoint` is `void`, callers do not receive a structured success/failure result; they must use the warning/log or inspect the resulting point list. Blueprint/editor behavior remains unverified.
 
-**Follow-up:** Before changing the public `FLogSnapPoint` contract, decide whether automatic/custom origin should be explicit metadata or whether the API should reject reserved prefixes and duplicate IDs. Preserve existing Blueprint/API compatibility during that decision. Add editor-visible validation and a focused test later.
+**Follow-up:** Keep the public function signature compatible for now. Add a structured validation/result API only after caller review, and add focused checks for None, reserved prefixes, duplicates against both custom and generated IDs, and valid unique IDs. This source change is not runtime-tested.
 
 ### R2 — Snap reservation has no explicit rollback path
 
