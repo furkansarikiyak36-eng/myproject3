@@ -2,6 +2,7 @@
 
 **Branch:** `fix/durable-operation-ledger`  
 **Base:** `fix/ownership-transfer-receipt-snapshots`  
+**Pull request:** [#20 — Persist operation ledger snapshots](https://github.com/furkansarikiyak36-eng/myproject3/pull/20)  
 **Scope:** Preserve completed generic operation-ledger entries through fixed-step rollback and durable SaveGame snapshots; reject saving an in-flight operation.  
 **Evidence level:** Static source inspection and targeted structural checks only. UE 5.8 UHT/UBT, Editor, PIE and runtime save/load/fault-injection tests were not run.
 
