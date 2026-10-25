@@ -63,4 +63,4 @@ A zero, non-finite, or longitudinal offset is rejected. Configure the vectors pe
 
 ## Next item
 
-WOOD-003 — define the canonical output geometry table for every log action, separate length fraction from cross-section profile, document output counts/byproducts, and map each Blueprint asset to the table before adding additional cut modes.
+WOOD-003 completed at source level by separate length/profile dimensions, exact geometry variant lookup and canonical item definitions. WOOD-004 — implement longitudinal length-cut actions and atomic generation/placement of different-length output pieces and offcuts.
