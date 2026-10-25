@@ -8,6 +8,7 @@
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldOperationLedgerSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
 #include "WorldAgricultureSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
@@ -32,13 +33,20 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage ||
+    UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized()) return false;
+    if (OperationLedger->HasPendingOperations())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World save refused while a world operation is pending."));
+        return false;
+    }
 
     OutSave->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     OutSave->Clock = Clock->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts);
+    OperationLedger->ExportSnapshot(OutSave->OperationLedgerEntries);
     // Held actor/carry-component state is not yet part of this manifest. Refuse
     // a lossy save rather than restoring an item to an orphaned Held owner.
     for (const FWorldOwnedItemRecord& Item : OutSave->Items)
@@ -90,13 +98,23 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage)
+    UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger)
         return false;
+
+    // Durable saves must never restore a half-finished operation. Runtime rollback
+    // may restore Pending entries, but save/load only accepts Completed records.
+    for (const FWorldOperationLedgerEntry& Entry : Snapshot->OperationLedgerEntries)
+    {
+        if (Entry.State != EWorldOperationLedgerEntryState::Completed)
+            return false;
+    }
 
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
     if (!Items->RestoreSnapshot(Snapshot->Items, Snapshot->ItemTransferReceipts)) return false;
+    if (!OperationLedger->RestoreSnapshot(Snapshot->OperationLedgerEntries)) return false;
 
     TArray<UInventoryCraftingComponent*> CurrentInventories;
     TMap<FGuid, UInventoryCraftingComponent*> ByOwnerActorId;
@@ -165,6 +183,11 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     if (Candidate->SchemaVersion == 4)
     {
         Candidate->ItemTransferReceipts.Reset();
+        Candidate->SchemaVersion = 5;
+    }
+    if (Candidate->SchemaVersion == 5)
+    {
+        Candidate->OperationLedgerEntries.Reset();
         Candidate->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
