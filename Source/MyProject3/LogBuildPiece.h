@@ -138,6 +138,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceTypeByName(FName TypeName);
 
+    /** Applies a processed definition suffix using this actor's configured variant meshes. */
+    bool ApplyDefinitionVariant(FName CurrentDefinitionId);
+
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Snapping")
     void AddCustomSnapPoint(FName PointId, FName SnapTag, FTransform LocalTransform,
         bool bCanSource, bool bCanReceive, bool bAcceptAnyPieceType,
