@@ -4,7 +4,7 @@
 # It does not alter the existing Generated_Cube_Test level.
 
 import os
-import math
+import zipfile
 import unreal
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +12,8 @@ FBX_ROOT = os.path.join(PROJECT_ROOT, "AssetPackages", "UnrealExport")
 
 LOG_ASSET_DIR = "/Game/ImportedLogs/Logs"
 JOINERY_ASSET_DIR = "/Game/ImportedLogs/Joinery"
+TEXTURE_ASSET_DIR = "/Game/ImportedLogs/Textures"
+HEIGHT_ZIP = os.path.join(PROJECT_ROOT, "AssetPackages", "endgrainv2_height.zip")
 MAP_PATH = "/Game/Maps/Generated_Log_Asset_Test"
 
 CELL_X = 850.0
@@ -86,6 +88,67 @@ def collect_fbx_files():
             if name.lower().endswith(".fbx"):
                 files.append(os.path.join(root, name))
     return files
+
+
+def import_height_texture_archive():
+    # Import image files from the supplied height-map ZIP as Texture2D assets.
+    # The height map is deliberately NOT assigned as Base Color or applied to
+    # the meshes automatically; its material usage needs a separate material setup.
+    if not os.path.isfile(HEIGHT_ZIP):
+        log("Height-map ZIP not found; continuing without it: " + HEIGHT_ZIP)
+        return 0
+
+    extract_root = os.path.realpath(
+        os.path.join(PROJECT_ROOT, "Saved", "LogAssetImportTemp", "endgrainv2_height")
+    )
+    os.makedirs(extract_root, exist_ok=True)
+    image_extensions = {".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".exr"}
+    extracted = []
+
+    try:
+        with zipfile.ZipFile(HEIGHT_ZIP, "r") as archive:
+            for member in archive.infolist():
+                if member.is_dir():
+                    continue
+                normalized = os.path.normpath(member.filename.replace("\\", "/"))
+                if os.path.isabs(normalized) or normalized == ".." or normalized.startswith(".." + os.sep):
+                    log("Skipping unsafe ZIP entry: " + member.filename)
+                    continue
+                extension = os.path.splitext(normalized)[1].lower()
+                if extension not in image_extensions:
+                    continue
+                target_path = os.path.realpath(os.path.join(extract_root, normalized))
+                if os.path.commonpath([extract_root, target_path]) != extract_root:
+                    log("Skipping ZIP entry outside extraction folder: " + member.filename)
+                    continue
+                archive.extract(member, extract_root)
+                if os.path.isfile(target_path):
+                    extracted.append(target_path)
+    except Exception as exc:
+        log("Could not read height-map ZIP; continuing without it: {}".format(exc))
+        return 0
+
+    unreal.EditorAssetLibrary.make_directory(TEXTURE_ASSET_DIR)
+    tasks = []
+    for filepath in sorted(set(extracted)):
+        stem = os.path.splitext(os.path.basename(filepath))[0]
+        target_asset = TEXTURE_ASSET_DIR + "/" + stem
+        if unreal.EditorAssetLibrary.does_asset_exist(target_asset):
+            continue
+        task = unreal.AssetImportTask()
+        task.set_editor_property("filename", filepath)
+        task.set_editor_property("destination_path", TEXTURE_ASSET_DIR)
+        task.set_editor_property("automated", True)
+        task.set_editor_property("replace_existing", False)
+        task.set_editor_property("save", True)
+        tasks.append(task)
+
+    if tasks:
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks(tasks)
+    log("Height-map images discovered: {}; newly imported texture assets: {}".format(
+        len(extracted), len(tasks)
+    ))
+    return len(extracted)
 
 
 def group_for_mesh(stem, group):
@@ -288,6 +351,7 @@ def main():
 
     unreal.EditorAssetLibrary.make_directory(LOG_ASSET_DIR)
     unreal.EditorAssetLibrary.make_directory(JOINERY_ASSET_DIR)
+    unreal.EditorAssetLibrary.make_directory(TEXTURE_ASSET_DIR)
 
     tasks = []
     records = []
@@ -308,6 +372,7 @@ def main():
     else:
         log("All {} FBX assets were already imported; skipping reimport.".format(len(records)))
 
+    import_height_texture_archive()
     unreal.EditorAssetLibrary.save_directory("/Game/ImportedLogs", False, True)
 
     prepare_level()
