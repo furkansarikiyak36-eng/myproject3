@@ -487,6 +487,35 @@ void ALogBuildPiece::AddCustomSnapPoint(
     bool bAcceptAnyPieceType,
     bool bFlipIncomingOrientation)
 {
+    // Automatic anchor IDs are owned by RegenerateAutomaticSnapPoints().
+    // Reject them here so a custom anchor cannot be silently removed during a
+    // later construction/mesh refresh.
+    const FString IdString = PointId.ToString();
+    if (PointId.IsNone() ||
+        IdString.StartsWith(TEXT("AutoEnd_"), ESearchCase::IgnoreCase) ||
+        IdString.StartsWith(TEXT("AutoSide_"), ESearchCase::IgnoreCase))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("AddCustomSnapPoint rejected invalid/reserved PointId '%s' on '%s'."),
+            *IdString, *GetName());
+        return;
+    }
+
+    // Point IDs are used as stable editor-facing identifiers. Duplicates make
+    // selection/diagnostics ambiguous, so keep the first existing definition.
+    const bool bDuplicateId = SnapPoints.ContainsByPredicate(
+        [&PointId](const FLogSnapPoint& ExistingPoint)
+        {
+            return ExistingPoint.PointId == PointId;
+        });
+    if (bDuplicateId)
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("AddCustomSnapPoint rejected duplicate PointId '%s' on '%s'."),
+            *IdString, *GetName());
+        return;
+    }
+
     FLogSnapPoint Point;
     Point.PointId = PointId;
     Point.SnapTag = SnapTag;
