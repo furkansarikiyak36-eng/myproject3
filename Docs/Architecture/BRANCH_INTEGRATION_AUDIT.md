@@ -1,17 +1,18 @@
 # Branch Integration Audit — MyProject3
 
-**Snapshot date:** 2026-10-25  
+**Snapshot date:** 2026-10-25 (refreshed after first implementation commit)  
 **Comparison reference:** `main`  
 **Purpose:** Branch inventory and safe integration guidance. Counts are GitHub compare metadata at the snapshot time; they are not feature-completion scores.
 
-## Inventory (20 branches returned by GitHub at this snapshot)
+## Inventory (20 original branches plus the new implementation branch; counts refreshed against live refs)
 
 | Branch | Compare to main | Ahead | Behind | Interpretation |
 |---|---:|---:|---:|---|
 | `main` | identical | 0 | 0 | Default branch; not the only relevant source |
 | `Chatgpt` | behind | 0 | 63 | Older than main; inspect history before reusing |
 | `architecture-14-phase-skeletons` | ahead | 120 | 0 | Architecture/phase map; based on Phase 6, not an independent release branch |
-| `landscape-builder-plan` | ahead | 356 | 0 | H-integrated baseline plus documentation-only Landscape Builder and M119 gap-analysis updates |
+| `landscape-builder-plan` | ahead | 362 | 0 | H baseline plus 13 planning/documentation commits; five files in PR #17 are docs/roadmap changes |
+| `fix/world-simulation-fail-closed` | ahead | 367 | 0 | Work branch based on `landscape-builder-plan`; two commits add fail-closed handling for fixed-step rollback failure |
 | `mechanic-detailing-pass-01` | ahead | 121 | 0 | Earlier mechanic detail pass |
 | `mechanic-detailing-pass-a-core` | ahead | 131 | 0 | Core invariants/contracts pass |
 | `mechanic-detailing-pass-b-resource-lifecycle` | ahead | 134 | 0 | Resource lifecycle pass |
@@ -33,7 +34,7 @@
 
 - “Ahead” counts commits present in the branch but not in `main`; it does **not** mean the branch has that many complete mechanics.
 - A stacked branch can include its parent branch's commits. Therefore do not merge Pass A, B, C, D, E, F, G and H independently into `main` as though they were unrelated feature branches.
-- The H branch is 171 commits ahead of Pass G and includes substantial additional integration work. It is the appropriate reviewed source baseline for the Landscape Builder plan in this task.
+- Live comparisons at this refresh: H is 349 commits ahead of `main`; `landscape-builder-plan` is 362 ahead of `main` and 13 commits ahead of H; `fix/world-simulation-fail-closed` is 367 ahead of `main` and adds two commits on top of the planning branch. H is 171 commits ahead of Pass G. These are ancestry counts, not feature-completion scores.
 - The architecture roadmap branch is based on Phase 6 and is not automatically interchangeable with H.
 - `phase-01-foundation` is both behind and ahead of `main`; review its unique three commits individually before deciding whether to cherry-pick anything.
 - Branch compare results must be re-run immediately before integration because the repository can change.
@@ -56,4 +57,4 @@ PR #17 contains documentation-only changes:
 - updates to `Docs/Architecture/ARCHITECTURE_14_PHASE_ROADMAP.md`
 - updates to `Docs/Architecture/PHASE_08_TERRAIN_WORLDSTATE.md`
 
-No gameplay C++ code, registry IDs, Unreal assets or map files are changed in this PR. No Unreal build/UHT/Editor/PIE/gameplay test was run.
+PR #17 contains documentation/roadmap changes only. The separate `fix/world-simulation-fail-closed` work branch currently modifies `WorldSimulationCoordinatorSubsystem.h/.cpp` to halt future fixed steps after rollback failure. No Unreal build/UHT/Editor/PIE/gameplay test has been run for that fix.
