@@ -77,6 +77,8 @@ public:
 
     UFUNCTION(BlueprintPure, Category="World|Terrain")
     int32 GetEditedCellCount() const { return Cells.Num(); }
+    void ExportSnapshot(TArray<FWorldTerrainCellState>& OutCells) const;
+    bool RestoreSnapshot(const TArray<FWorldTerrainCellState>& Snapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Terrain")
