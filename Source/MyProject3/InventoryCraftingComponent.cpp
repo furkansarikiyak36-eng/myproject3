@@ -408,6 +408,10 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  Identity->SetDefinitionId(Item.DefinitionId);
  if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(Spawned))
   LogPiece->bStartsPlaced = false;
+ if (AStoneBuildingPiece* StonePiece = Cast<AStoneBuildingPiece>(Spawned))
+  StonePiece->DefinitionId = Item.DefinitionId;
+ if (AStickPrimitivePiece* StickPiece = Cast<AStickPrimitivePiece>(Spawned))
+  StickPiece->DefinitionId = Item.DefinitionId;
 
  UGameplayStatics::FinishSpawningActor(Spawned, SpawnTransform);
  if (!IsValid(Spawned))
