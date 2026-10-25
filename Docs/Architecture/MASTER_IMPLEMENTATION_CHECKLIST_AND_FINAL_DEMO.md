@@ -111,6 +111,7 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Yarım parçayı çeyrekleme işleminin ön koşullarını ve çıktısını tanımla.
 - [ ] Yontma/kareleme işleminde kaynak durumu ile çıktı mesh'ini birlikte değiştir.
 - [ ] Oluk işlemini yalnızca gerekli boyuna yarma ön koşulundan sonra kabul et.
+- [x] Çeyrek kesit geometrisi için açık `QuarterSectionLog` türü ve `.QuarterSectionLog` yeni tanım eki eklendi; eski `.QuarterLog` işleme ekine geriye uyumluluk alias'ı bırakıldı. Bu, adlandırma/yeniden yükleme belirsizliğini daraltır; fiziksel ikinci parça üretimini tamamlamaz.
 - [ ] Kanal/tekne biçimi çıktısı için doğru giriş durumu ve fiziksel mesh bulunduğunu doğrula.
 - [ ] Tahta üretimini doğru giriş parçası, çıktı miktarı ve geometriyle bağla.
 - [ ] Çentik ve geçmeli eklemlerin hangi parça türlerinde uygulanabildiğini tanımla.
@@ -669,6 +670,27 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi ve çalışma zamanı doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Genel ledger henüz bütün domain operasyonlarına bağlanmış değil. Altı önemli kaynak dosyasında doğrudan çağrı olmadığını kontrol ettim; sonraki adım gerçek operasyon sahiplerini haritalandırıp uygun noktalara ledger protokolünü seçici bağlamak.  
 **Sonraki bağımlı iş:** CORE-004 — domain işlem sahipliği/call-chain haritası ve ilk operasyon bağlantısı.
+
+---
+
+### İş kaydı: WOOD-001 — Çeyrek kesit ile çeyrek uzunluğu adlarını ayırma
+
+- [x] Yeni `ELogPieceType::QuarterSectionLog` türü eklendi; enum sonuna eklenerek önceki değerlerin sıralaması korundu
+- [x] `ELogCutAction::Quarter` artık bu açık türü ve `.QuarterSectionLog` tanım ekini üretir
+- [x] `SetPieceTypeByName` açık `quartersection/quarterround` adlarını ayrı çözer
+- [x] `ApplyDefinitionVariant`, yeni eki ve eski `.QuarterLog` kayıtlarını destekler
+- [x] Tekrarlanan aynı işlem için eski quarter receipt uyumluluğu korundu
+- [x] Statik kaynak kontrolü yapıldı; süslü parantez dengesi ve değişen çağrı noktaları kontrol edildi
+- [ ] UE 5.8 UHT/UBT derlemesi
+- [ ] Blueprint/content asset eşlemesi ve runtime işlem testi
+- [ ] Fiziksel bölme işleminde ikinci parçanın/atık parçanın tekil aktör ve item ledger kaydıyla atomik üretilmesi
+- [ ] Kaynak sahipliği, iki parçanın geometrisi/çarpışması ve save/load kabulü
+
+**Kaynak dosyaları:** `Source/MyProject3/LogBuildingTypes.h`, `Source/MyProject3/LogBuildPiece.cpp`  
+**Commit/PR:** [PR #22 — Distinguish quarter-round cross section from quarter-length log](https://github.com/furkansarikiyak36-eng/myproject3/pull/22); `fix/log-quarter-cross-section-semantics`.  
+**Sonuç:** Mevcut `QuarterLog` türü ve suffix hem 1/4 uzunluk hem de çeyrek kesit şeklinde yorumlanabiliyordu. Yeni kesme eylemi artık açık `QuarterSectionLog` türü ve suffix'i kullanıyor. Eski kayıtlardaki `.QuarterLog` eki, eski işleme eyleminin uyumluluk alias'ı olarak okunuyor. Bu düzeltme durumu daha açık hâle getirir; kendi başına iki fiziksel çeyrek parça üretmez.
+**Kanıt seviyesi:** Kaynak değişikliği + statik kontrol; Unreal motoru doğrulanmadı.
+**Sonraki bağımlı iş:** WOOD-002 — tek kaynaktan çoklu fiziksel çıktı oluşturmak için atomik ownership split/receipt işlemini tasarlayıp uygulamak; sonra enine kesim, boyuna yarma ve parça miktarı kurallarını bağlamak.
 
 ---
 
