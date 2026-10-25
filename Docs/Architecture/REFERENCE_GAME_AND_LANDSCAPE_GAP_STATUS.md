@@ -3,7 +3,7 @@
 **Project:** MyProject3  
 **Review branch:** `audit/reference-game-and-landscape-status`  
 **Source baseline:** H-integrated systems plus the current stacked core-fix branch  
-**Review date:** 2026-10-25  
+**Review date:** 2026-10-26  
 **Evidence level:** Repository docs and C++ source inspection only. Unreal 5.8 UHT/UBT, Editor, PIE and gameplay tests were not run.
 
 ## Executive result
@@ -38,6 +38,12 @@ A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stabl
 
 **Still open:** no Unreal compile/PIE run; tree asset collision, physics mass/center-of-mass and trace channel are not measured; log actor subclass and `LogMeshVariantSetId` must be authored; species/size → output count/length fraction is not yet data-driven; save/load, partial spawn failures and retry behavior need acceptance. A failed/partial spawn is not automatically retried to avoid duplicating resources.
 
+### WOOD-006 progress: loose-log physical push/roll
+
+`ULogCarryComponent` already handled pickup, held ownership, placement/snap reservation and drop. Source-level push/roll interaction is now added without introducing a parallel item ledger: it rejects held/placed/attached pieces, requires a stable identity and a single world-owned item record, verifies active mesh physics/collision, clamps finite impulse strength and applies the impulse at the hit point so off-centre contact can induce rolling. V is an optional direct input binding; the Blueprint-callable method may also be bound by Enhanced Input.
+
+**Still open:** this is not a drag-on-ground implementation. Physics movement does not yet synchronize the ownership record's WorldLocation after the body settles, full physical actor transforms are not restored by world SaveGame, and actor resource count/outputs are not transactionally connected to production station stock/recipe consumption. UE 5.8 build/PIE and physical parameter tuning were not run.
+
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
 - `CanApplyCutAction` maps whole/split-half states to specific configured output mesh slots for split-half, quarter, hewn, gutter, trough, squared-beam and plank operations.
@@ -66,7 +72,7 @@ A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stabl
 
 **Still not verified:** no nominal variant table has been populated from actual imported assets; mesh bounds/pivot/orientation and output collision are still unknown. `SM_RawLog_75.fbx` is absent, `Long_01..08` / `Short_01..04` dimensions remain ambiguous, and Unreal build/PIE/retry/save-load tests were not run.
 
-**Next implementation:** WOOD-005 should close tree felling/grounded lifecycle and log count/identity creation. In parallel, actual FBX import measurements remain an explicit UE acceptance task.
+**Next implementation:** WOOD-007 should connect physical wood pieces and processing outputs to production stock/recipe input/output ownership without duplicating the source actor/item. In parallel, actual FBX import measurements and tree-size output configuration remain explicit UE acceptance tasks.
 
 ## 2.2 — 7 Days to Die: constrained excavation, raids and structural pressure
 
