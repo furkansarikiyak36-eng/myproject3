@@ -121,29 +121,35 @@ bool UWorldProductionSubsystem::EnqueueJob(
     return OutJobId.IsValid();
 }
 
-bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
+bool UWorldProductionSubsystem::CanAdvanceProductionStep(double DeltaSeconds) const
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
         return false;
-
-    // Preflight all active station/job revisions and recipe references first.
     for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
     {
         const FWorldProductionStation& Station = Pair.Value;
         bool bHasWork = false;
         for (const FWorldProductionJob& Job : Station.Jobs)
         {
-            if (Job.State == EProductionJobState::Queued || Job.State == EProductionJobState::Running)
-            {
-                bHasWork = true;
-                const int32 RecipeIndex = FindRecipe(Job.RecipeId);
-                if (!Recipes.IsValidIndex(RecipeIndex) ||
-                    !FMath::IsFinite(Recipes[RecipeIndex].DurationSeconds) ||
-                    Recipes[RecipeIndex].DurationSeconds <= 0.0) return false;
-            }
+            if (Job.State != EProductionJobState::Queued && Job.State != EProductionJobState::Running)
+                continue;
+            bHasWork = true;
+            const int32 RecipeIndex = FindRecipe(Job.RecipeId);
+            if (!Recipes.IsValidIndex(RecipeIndex) ||
+                !FMath::IsFinite(Recipes[RecipeIndex].DurationSeconds) ||
+                Recipes[RecipeIndex].DurationSeconds <= 0.0 ||
+                !FMath::IsFinite(Job.ProgressSeconds) ||
+                !FMath::IsFinite(Job.ProgressSeconds + DeltaSeconds))
+                return false;
         }
         if (bHasWork && Station.Revision == MAX_int64) return false;
     }
+    return true;
+}
+
+bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
+{
+    if (!CanAdvanceProductionStep(DeltaSeconds)) return false;
 
     for (TPair<FGuid, FWorldProductionStation>& Pair : Stations)
     {
