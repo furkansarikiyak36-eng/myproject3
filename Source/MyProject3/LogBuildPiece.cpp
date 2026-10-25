@@ -128,6 +128,52 @@ bool ALogBuildPiece::TryTransferOwnership(
         ExpectedOwner, NewOwner, NewOwnerId, NewWorldLocation, OutRecord);
 }
 
+bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
+{
+    if (!StructuralIdentity || !Mesh || !GetWorld() ||
+        !StructuralIdentity->HasValidIdentity())
+        return false;
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Ownership || !Graph)
+        return false;
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::World ||
+        Item.DefinitionId.IsNone())
+        return false;
+
+    FStructuralNodeRecord ExistingNode;
+    if (Graph->GetNode(Item.ItemId, ExistingNode))
+    {
+        // A second actor with the same canonical ID must never be made visible.
+        if (ExistingNode.Actor.Get() != this)
+            return false;
+    }
+    else if (!Graph->RegisterNode(this, Item.ItemId, EStructuralNodeKind::Wood,
+        false, 1.0f, 100000.0f, 100.0f))
+    {
+        return false;
+    }
+
+    StructuralIdentity->SetDefinitionId(Item.DefinitionId);
+    bIsPlaced = false;
+    bStartsPlaced = false;
+    SetHeldState(false);
+    SetPlacedState(false);
+    Mesh->SetSimulatePhysics(true);
+    Mesh->SetCollisionProfileName(FName(TEXT("PhysicsActor")));
+    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    SetActorHiddenInGame(false);
+    SetActorEnableCollision(true);
+    SetActorTickEnabled(true);
+    return true;
+}
+
 void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     // A gameplay-destroyed physical piece must not remain as a world-owned
