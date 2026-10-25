@@ -1,6 +1,7 @@
 #include "WorldStorageComponent.h"
 
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStorageSubsystem.h"
 
