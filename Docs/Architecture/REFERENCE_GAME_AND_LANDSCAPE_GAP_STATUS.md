@@ -30,29 +30,29 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Status: PARTIAL — not complete.**
 
-**Progress in WOOD-001 / WOOD-002:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `TrySplitItem` now atomically registers the first output (retaining the source ID) and a new output (new GUID) with a durable split receipt; `SplitHalf` / `Quarter` actor paths spawn a deferred second physical actor, bind its ownership ID, validate its structural node and attempt rollback on failure. SaveGame v7/fixed-step rollback carry split receipts. **Still partial:** mesh-specific center offsets and child rotations must be configured and visually verified per mesh. UE 5.8 build/PIE, failure injection, exact physical geometry, actor transform persistence and end-to-end source counts remain unverified.
+**Progress in WOOD-001–WOOD-003:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `SplitHalf` / `Quarter` have a source-level atomic ownership split receipt, a second deferred physical actor, graph/ownership verification and rollback attempt. `ELogLengthFraction` and `ELogCrossSectionProfile` are independent; new item definitions encode both as `Base.Geom.<Length>.<Profile>`. `GeometryVariantMeshes` maps an exact length/profile pair to mesh, split offset and child rotation. Legacy mesh slots are a full-length fallback only; missing shorter-piece variants are rejected instead of applying a wrong full-length mesh. **Still partial:** the actual Blueprint asset table must be authored and verified; UE 5.8 build/PIE, failure injection, physical geometry, actor transforms, and end-to-end source quantities remain unverified.
 
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
-- `CanApplyCutAction` maps whole/split-half states to specific configured output mesh slots for split-half, quarter, hewn, gutter, trough, squared-beam and plank operations.
+- `CanApplyCutAction` checks the independent cross-section profile and resolves an authored mesh by exact length fraction + profile; legacy mesh slots are only a full-length compatibility fallback.
 - `TryApplyCutAction` checks the output mesh before changing the authoritative item definition and then applies the mesh/type change.
 - `SetPieceStaticMesh` regenerates automatically generated snap points against the replacement mesh while retaining authored points.
 - Log actors register with the item ownership ledger; the structural graph provides support/connection primitives.
 
 ### Still missing / not proven
 - [ ] Separate **cut progress** from completed piece type; there is no complete partial-cut progress state and visible progression contract.
-- [ ] Separate length fraction (whole, 3/4, 1/2 length, 1/4 length) from cross-section shape (whole round, half-round, quarter-round, hewn, squared, groove, trough). The existing `QuarterLog` / `Quarter` naming risks mixing length and cross-section meanings.
+- [x] Separate length fraction (full, 3/4, 1/2, 1/4) from cross-section profile (round, half-round, quarter-round, hewn, square, groove, trough). Canonical item definitions persist both; legacy `QuarterLog` remains an older compatibility alias and cannot disambiguate every historical record.
 - [x] Source-level output path now supports two physically separate outputs for `SplitHalf` and `Quarter`, with an ownership split receipt, stable source ID, unique child ID, deferred child spawn, graph-registration verification and rollback attempt. This is a code-layer result only, not a verified engine result.
 - [ ] Configure and verify per-mesh cross-section center offsets; default zero offsets deliberately reject splitting rather than placing overlapping pieces.
 - [ ] Add/review authoring data for any additional offcuts/multiple output counts; other cut actions still use single-actor transformation semantics.
-- [ ] Define the state → allowed action → resulting piece(s) → mesh/collision → length/quantity table for every action.
-- [ ] Confirm every required output mesh/asset is actually assigned in the intended Blueprint/content assets; C++ properties alone do not prove that.
+- [ ] Complete the state → allowed action → output count/byproduct → mesh/collision → length/profile table for every action. Exact mesh mapping exists now, but physical longitudinal length-cut actions and offcut quantities remain unimplemented.
+- [ ] Fill and validate `GeometryVariantMeshes` in the real Blueprint/content assets for every supported length/profile pair, including split offsets and child rotations; C++ properties alone do not prove that the right assets are assigned.
 - [ ] Complete tree-felling/grounding/length-to-log generation, with stable IDs and collision.
 - [ ] Complete grounded spike/tent/trap preconditions, actor adapters for stones/sticks, safe support removal, salvage and damage/repair in the shared graph.
 - [ ] Prove preview transform equals committed placement transform in UE.
 - [ ] Negative cases must leave actor, geometry, ownership, anchors and inventory unchanged.
 
-**Next implementation:** define the canonical wood-processing model before changing code that could silently discard half of a resource. Do not add guessed output actors without an atomic multi-output ownership transaction and authored geometry rules.
+**Next implementation:** WOOD-004 must add genuine length-direction cuts and different-size output pieces (e.g. 3/4 + 1/4 length) using an atomic multi-output transaction and authored placement offsets. Partial-cut visual progress, tree felling/grounding, and actual content/UE acceptance remain open.
 
 ## 2.2 — 7 Days to Die: constrained excavation, raids and structural pressure
 
