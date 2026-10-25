@@ -56,7 +56,7 @@ This iteration establishes the core interaction loop and anchor system. It is no
 
 Imported from `AssetPackages/UnrealExport`:
 - whole 600 and 300 length logs
-- half-length logs
+- split half-round log meshes (distinct from half-length logs)
 - gutter / trough log
 - hewn log
 - plank / kalas
