@@ -88,6 +88,9 @@ public:
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool TryDisconnect(FGuid ChildNodeId);
 
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool SetGroundSupported(FGuid NodeId, bool bGroundSupported);
+
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool HasValidSupportPath(FGuid NodeId) const;
 
