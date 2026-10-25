@@ -63,11 +63,11 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 ### R5 — Free-placement fallback after a stale snap candidate needs a targeted scenario
 
-**Evidence:** `PlaceHeldPiece` tries the snap reservation first; if reservation returns false, it continues into the free-placement path. The free path checks `bHasPlacementSurface`, which is updated during preview tracing.
+**Evidence:** The original `PlaceHeldPiece` path continued into free placement after `TryReserveSnapPoints` returned false. In this branch, the path now restores the pre-attempt actor transform, clears the snap candidate, and returns false after an explicit snap reservation failure.
 
-**Impact:** The current surface guard should prevent free placement while aiming directly at a build piece when the latest preview state is current. A timing/stale-state case has not been excluded by static inspection.
+**Impact:** The source-level fallback hole is guarded: a failed explicit snap attempt no longer becomes a free placement in the same call. The actual stale-candidate scenario and the preview's next-frame recovery remain unverified.
 
-**Follow-up:** Add a scenario for target anchor becoming occupied or invalid between preview and placement, then verify that the failed snap does not create an unintended free-placed piece. If needed, revalidate the aimed target/surface at commit time rather than trusting preview state.
+**Follow-up:** Keep the code change; add a runtime scenario where a target anchor becomes occupied or invalid between preview and placement. Confirm the held piece remains held, no anchors remain partially reserved, and the user can aim at a valid free surface afterward.
 
 ### R6 — Geometry changes and attachment anchors need per-variant validation
 
@@ -87,7 +87,7 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 ## Exit evidence still required
 
-- Full C++/Blueprint/editor-script call-site inventory.
+- Tracked C++ and editor-script call-site map (`PHASE_01_STATE_TRANSITION_CALLER_MAP.md`); local/untracked Blueprint and level consumers still need inspection.
 - Authoritative 119-mechanic list and ownership/dependency map.
 - Focused automated checks where available.
 - Unreal Engine 5.8 build and actual Editor/runtime scenarios at the planned final validation stage.
