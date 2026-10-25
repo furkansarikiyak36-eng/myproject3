@@ -119,11 +119,42 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         return false;
     }
 
+    // Resolve yield from the actual tree mesh bounds when rules are authored.
+    // An ambiguous or uncovered size band fails closed before any output is spawned.
+    int32 ResolvedLogCount = LogsToSpawn;
+    ELogPieceType ResolvedPieceType = ELogPieceType::WholeLog;
+    if (!YieldRules.IsEmpty())
+    {
+        const float TreeWorldHeight = TreeMesh->Bounds.BoxExtent.Z * 2.0f;
+        const FHarvestTreeYieldRule* Match = nullptr;
+        for (const FHarvestTreeYieldRule& Rule : YieldRules)
+        {
+            const bool bAboveMin = TreeWorldHeight >= Rule.MinWorldHeight;
+            const bool bBelowMax = Rule.MaxWorldHeight <= 0.0f || TreeWorldHeight < Rule.MaxWorldHeight;
+            if (bAboveMin && bBelowMax)
+            {
+                if (Match)
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Tree '%s' has overlapping yield height bands."), *GetName());
+                    return false;
+                }
+                Match = &Rule;
+            }
+        }
+        if (!Match || Match->LogCount < 1)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Tree '%s' has no valid yield rule for world height %.1f."), *GetName(), TreeWorldHeight);
+            return false;
+        }
+        ResolvedLogCount = Match->LogCount;
+        ResolvedPieceType = Match->OutputPieceType;
+    }
+
     // Preflight all required outputs before spawning any actor. The log Blueprint
     // must author its matching ProcessingMeshSets table; BeginPlay validates and
     // registers each physical item in the canonical ownership ledger.
     TArray<ALogBuildPiece*> Spawned;
-    Spawned.Reserve(LogsToSpawn);
+    Spawned.Reserve(ResolvedLogCount);
 
     // If one output fails validation after FinishSpawning, remove every sibling
     // created by this harvest attempt. This prevents a failed harvest from
@@ -144,9 +175,9 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
     const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal();
 
-    for (int32 Index = 0; Index < LogsToSpawn; ++Index)
+    for (int32 Index = 0; Index < ResolvedLogCount; ++Index)
     {
-        const float Side = (static_cast<float>(Index) - (LogsToSpawn - 1) * 0.5f) * 95.0f;
+        const float Side = (static_cast<float>(Index) - (ResolvedLogCount - 1) * 0.5f) * 95.0f;
         const FVector Location = Base + Right * Side + FVector(0.0f, 0.0f, 35.0f + Index * 8.0f);
         FActorSpawnParameters Params;
         Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
@@ -160,6 +191,7 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         }
 
         Log->SelectedProcessingMeshSetId = LogMeshVariantSetId;
+        Log->PieceType = ResolvedPieceType;
         Log->FinishSpawning(FTransform(GetActorRotation(), Location));
         Spawned.Add(Log);
     }
