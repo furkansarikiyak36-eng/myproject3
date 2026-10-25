@@ -9,6 +9,7 @@
 #include "LogBuildPiece.h"
 #include "StoneBuildingPiece.h"
 #include "StickPrimitivePiece.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -388,11 +389,30 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  const TSubclassOf<AActor>* ActorClass = PhysicalItemActorClasses.Find(Item.DefinitionId);
  if (!ActorClass || !*ActorClass) return false;
 
+ const UClass* RequestedClass = *ActorClass;
+ const bool bStructuralActor =
+  RequestedClass->IsChildOf(ALogBuildPiece::StaticClass()) ||
+  RequestedClass->IsChildOf(AStoneBuildingPiece::StaticClass()) ||
+  RequestedClass->IsChildOf(AStickPrimitivePiece::StaticClass());
+ if (bStructuralActor)
+ {
+  UWorldStructuralGraphSubsystem* Graph =
+   GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+  FStructuralNodeRecord ExistingNode;
+  // The original actor should have unregistered when it entered inventory.
+  if (!Graph || Graph->GetNode(ItemId, ExistingNode))
+   return false;
+ }
+
  const FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
  AActor* Spawned = GetWorld()->SpawnActorDeferred<AActor>(
   *ActorClass, SpawnTransform, GetOwner(), nullptr,
   ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
  if (!IsValid(Spawned)) return false;
+
+ // Hide the actor before FinishSpawning runs BeginPlay and Blueprint construction.
+ Spawned->SetActorHiddenInGame(true);
+ Spawned->SetActorEnableCollision(false);
 
  UWorldObjectIdentityComponent* Identity =
   Spawned->FindComponentByClass<UWorldObjectIdentityComponent>();
@@ -471,14 +491,44 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  if (!bActivated)
  {
   FWorldOwnedItemRecord RolledBack;
-  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, WorldItem.Revision,
-      EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
-      InventoryOwnerId, Item.WorldLocation, RolledBack))
-   UE_LOG(LogTemp, Error, TEXT("Dropped item activation and ownership rollback failed for %s."),
-    *Item.ItemId.ToString());
+  const bool bRolledBack = Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId,
+      WorldItem.Revision, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
+      InventoryOwnerId, Item.WorldLocation, RolledBack);
+
+  FWorldOwnedItemRecord ActualItem;
+  const bool bCurrentItemExists = Ownership->TryGetItem(Item.ItemId, ActualItem);
+  const bool bLedgerStillBelongsToInventory = bCurrentItemExists &&
+      ActualItem.OwnerKind == EWorldItemOwnerKind::Inventory &&
+      ActualItem.OwnerId == InventoryOwnerId;
+
   Spawned->SetActorHiddenInGame(true);
   Spawned->SetActorEnableCollision(false);
-  Spawned->Destroy();
+  if (bRolledBack || bLedgerStillBelongsToInventory)
+  {
+   Spawned->Destroy();
+  }
+  else if (!bCurrentItemExists || ActualItem.OwnerKind != EWorldItemOwnerKind::World)
+  {
+   // The ledger no longer grants World ownership; destroy this representation
+   // and remove the stale inventory row so no second owner is presented.
+   Spawned->Destroy();
+   const int32 StaleIndex = Items.IndexOfByPredicate([ItemId](const FInventoryStack& S)
+    { return S.OwnedWorldItemId == ItemId; });
+   if (Items.IsValidIndex(StaleIndex)) Items.RemoveAt(StaleIndex);
+  }
+  else
+  {
+   // Keep one quarantined representation rather than destroy a world-owned item
+   // after its actor activation failed. It remains hidden for diagnosis.
+   const int32 StaleIndex = Items.IndexOfByPredicate([ItemId](const FInventoryStack& S)
+    { return S.OwnedWorldItemId == ItemId; });
+   if (Items.IsValidIndex(StaleIndex)) Items.RemoveAt(StaleIndex);
+   UE_LOG(LogTemp, Error, TEXT("Physical item %s is world-owned but its actor activation failed; actor quarantined hidden."),
+    *Item.ItemId.ToString());
+  }
+
+  UE_LOG(LogTemp, Error, TEXT("Dropped item activation failed for %s (rollback=%d)."),
+      *Item.ItemId.ToString(), bRolledBack ? 1 : 0);
   return false;
  }
 
