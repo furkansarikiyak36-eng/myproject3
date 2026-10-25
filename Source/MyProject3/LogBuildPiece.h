@@ -88,13 +88,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     bool bStartsPlaced = false;
 
-    /** Raw/base mesh for this authored log length. Captured from the default mesh when left unset. */
+    /** Raw/base mesh for the authored length recorded immediately below. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Log Piece|Geometry")
     TObjectPtr<UStaticMesh> BaseLogVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
+    ELogLengthFraction BaseLogVariantLengthFraction = ELogLengthFraction::FullLength;
 
     /** Exact length+cross-section mesh table. Non-full-length processed outputs require an exact entry. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Geometry")
     TArray<FLogGeometryVariantMesh> GeometryVariantMeshes;
+
+    /** Explicit output positions/rotations for longitudinal length cuts; no placement is guessed. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Length Cutting")
+    TArray<FLogLengthCutVariant> LengthCutVariants;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> SplitHalfVariantMesh;
@@ -260,8 +267,23 @@ private:
         ELogCrossSectionProfile InProfile, UStaticMesh*& OutMesh,
         FVector* OutSecondPieceCenterOffset = nullptr,
         FRotator* OutSecondPieceRotationOffset = nullptr) const;
+    bool TryResolveLengthCutVariant(ELogCutAction Action,
+        FLogLengthCutVariant& OutVariant) const;
+    bool IsLengthCutAction(ELogCutAction Action) const;
+    bool IsValidLengthCutLayout(const FLogLengthCutVariant& Variant) const;
 
     FWorldOperationResult TrySplitOutputPieces(ELogCutAction Action,
         const FGuid& OperationId, UStaticMesh* OutputMesh, ELogPieceType OutputType,
         FName OutputDefinitionId, const FWorldOwnedItemRecord& CurrentItem);
+    FWorldOperationResult TrySplitLengthOutputPieces(ELogCutAction Action,
+        const FGuid& OperationId, const FWorldOwnedItemRecord& CurrentItem);
+    FWorldOperationResult TryCommitPhysicalSplitOutputs(ELogCutAction Action,
+        const FGuid& OperationId, const FWorldOwnedItemRecord& CurrentItem,
+        const TArray<FName>& OutputDefinitionIds,
+        const TArray<ELogLengthFraction>& OutputLengths,
+        const TArray<ELogCrossSectionProfile>& OutputProfiles,
+        const TArray<ELogPieceType>& OutputLegacyTypes,
+        const TArray<UStaticMesh*>& OutputMeshes,
+        const TArray<FTransform>& OutputTransforms,
+        const FText& SuccessMessage);
 };
