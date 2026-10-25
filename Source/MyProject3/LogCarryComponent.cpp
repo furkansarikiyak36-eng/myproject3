@@ -471,6 +471,7 @@ bool ULogCarryComponent::PlaceHeldPiece()
         CurrentSourceSnapPointIndex != INDEX_NONE &&
         CurrentTargetSnapPointIndex != INDEX_NONE)
     {
+        const FTransform PreviousTransform = PieceToPlace->GetActorTransform();
         PieceToPlace->SetActorTransform(CurrentSnapActorTransform);
 
         if (CurrentSnapTarget->TryReserveSnapPoints(
@@ -486,6 +487,13 @@ bool ULogCarryComponent::PlaceHeldPiece()
             ClearSnapCandidate();
             return true;
         }
+
+        // A snap candidate was explicitly attempted but its anchors failed
+        // revalidation. Do not reinterpret that failed structural operation as
+        // free placement, and do not leave the held piece at the stale snap pose.
+        PieceToPlace->SetActorTransform(PreviousTransform);
+        ClearSnapCandidate();
+        return false;
     }
 
     if (!bAllowFreePlacement ||
