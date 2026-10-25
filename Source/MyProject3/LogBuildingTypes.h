@@ -35,6 +35,19 @@ enum class ELogPlacementMode : uint8
     Diagonal   UMETA(DisplayName = "Diagonal")
 };
 
+
+UENUM(BlueprintType)
+enum class ELogCutAction : uint8
+{
+    SplitHalf UMETA(DisplayName = "Split Into Half-Rounds"),
+    Quarter   UMETA(DisplayName = "Split Into Quarters"),
+    Hewn      UMETA(DisplayName = "Hewn / Flatten"),
+    Gutter    UMETA(DisplayName = "Cut Groove / Gutter"),
+    Trough    UMETA(DisplayName = "Hollow Trough"),
+    Kalas     UMETA(DisplayName = "Kalas / Squared Beam"),
+    Plank     UMETA(DisplayName = "Plank")
+};
+
 USTRUCT(BlueprintType)
 struct FLogSnapPoint
 {
