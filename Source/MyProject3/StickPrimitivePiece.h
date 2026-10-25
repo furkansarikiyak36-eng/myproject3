@@ -24,6 +24,9 @@ public:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+    /** Registers a newly materialized actor after ledger ownership becomes World. */
+    bool ActivateAfterOwnershipTransfer();
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Primitive")
     TObjectPtr<UStaticMeshComponent> Mesh;
 
