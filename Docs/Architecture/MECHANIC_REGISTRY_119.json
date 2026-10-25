@@ -1,0 +1,3607 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Survival Game Authoritative 119-Mechanic Scope Registry",
+  "version": "1.0",
+  "scope_status": "scope_locked_unverified",
+  "provenance": [
+    "The user's detailed MyProject2 catalog and MEKANIK_DERINLIK_PLANI.md describe a broader ~480–500-item catalog; they are domain-coverage references, not an exact historical 119-item list.",
+    "A historical report says 119 checks passed, but the exact 119 names were not found in the reviewed source files. This registry defines the canonical scope from this commit onward; it does not claim to recover the old test list."
+  ],
+  "rules": [
+    "M001–M119 are stable IDs; never renumber or reuse a retired ID.",
+    "Every entry has one intended primary owner system. Dependencies are expressed as mechanic IDs.",
+    "All entries begin unreviewed. Scope inclusion is not evidence of implementation, build success, or runtime success.",
+    "A failed operation must not partially mutate authoritative state or consume resources.",
+    "Static review, automated tests, Unreal Engine 5.8 build, and editor/runtime validation are separate gates."
+  ],
+  "systems": [
+    {
+      "key": "CORE",
+      "name": "Core / World Contracts",
+      "owner": "CoreWorld",
+      "count": 8
+    },
+    {
+      "key": "LOG",
+      "name": "Log / Wood Processing",
+      "owner": "LogSystem",
+      "count": 20
+    },
+    {
+      "key": "STONE",
+      "name": "Stone / Masonry",
+      "owner": "StoneSystem",
+      "count": 10
+    },
+    {
+      "key": "STICK",
+      "name": "Stick / Primitive Tools",
+      "owner": "StickSystem",
+      "count": 10
+    },
+    {
+      "key": "INV",
+      "name": "Inventory / Crafting",
+      "owner": "InventoryCrafting",
+      "count": 10
+    },
+    {
+      "key": "STRUCT",
+      "name": "Shared Structure / Damage",
+      "owner": "StructuralGraph",
+      "count": 12
+    },
+    {
+      "key": "WORLD",
+      "name": "Terrain / World State / Digging",
+      "owner": "WorldStateTerrain",
+      "count": 10
+    },
+    {
+      "key": "FARM",
+      "name": "Farming / Animal Husbandry",
+      "owner": "FarmingSimulation",
+      "count": 10
+    },
+    {
+      "key": "RAID",
+      "name": "Raid Director / Threat AI",
+      "owner": "RaidDirector",
+      "count": 10
+    },
+    {
+      "key": "LOGISTICS",
+      "name": "Logistics / Production / Survival / Exploration",
+      "owner": "LogisticsProduction",
+      "count": 19
+    }
+  ],
+  "mechanics": [
+    {
+      "mechanic_id": "M001",
+      "name": "Stable identity for physical world objects",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, stable identity for physical world objects produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M002",
+      "name": "Exclusive object lifecycle state",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M001"
+      ],
+      "state_changes": [
+        "In a valid context, exclusive object lifecycle state produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M001"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M003",
+      "name": "Atomic world-changing operation",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M002"
+      ],
+      "state_changes": [
+        "In a valid context, atomic world-changing operation produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M002"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M004",
+      "name": "Structured operation result and failure reason",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M003"
+      ],
+      "state_changes": [
+        "In a valid context, structured operation result and failure reason produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M003"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M005",
+      "name": "Committed domain events",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M003"
+      ],
+      "state_changes": [
+        "In a valid context, committed domain events produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M003"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M006",
+      "name": "Deterministic world clock and random seed",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, deterministic world clock and random seed produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M007",
+      "name": "Versioned save/load and migration boundary",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M001",
+        "M006"
+      ],
+      "state_changes": [
+        "In a valid context, versioned save/load and migration boundary produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M001",
+        "M006"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M008",
+      "name": "Shared survival state: health, stamina, warmth and needs",
+      "phase": 1,
+      "owner_system": "CoreWorld",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M006"
+      ],
+      "state_changes": [
+        "In a valid context, shared survival state: health, stamina, warmth and needs produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M006"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
+    },
+    {
+      "mechanic_id": "M009",
+      "name": "Fell a tree with tool hits",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, fell a tree with tool hits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M010",
+      "name": "Generate logs from tree dimensions",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M009"
+      ],
+      "state_changes": [
+        "In a valid context, generate logs from tree dimensions produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M009"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M011",
+      "name": "Pick up and carry a loose log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M010"
+      ],
+      "state_changes": [
+        "Reject a groove on a whole log; accept only after the required longitudinal split, and leave state unchanged on rejection."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M010"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M012",
+      "name": "Drop or quick-release a carried log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M010"
+      ],
+      "state_changes": [
+        "Reject a trough unless the configured split-half prerequisite and output mesh exist; successful output changes piece type and geometry together."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M010"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M013",
+      "name": "Roll, drag and push a loose log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M010"
+      ],
+      "state_changes": [
+        "Reject plank production from an unprocessed whole log; success produces the configured plank output without duplicating material."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M010"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M014",
+      "name": "Log collision and impact damage",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M010"
+      ],
+      "state_changes": [
+        "In a valid context, log collision and impact damage produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M010"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M015",
+      "name": "Cross-cut log to a valid length",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M010"
+      ],
+      "state_changes": [
+        "A spike is not an operational trap until its grounding/placement prerequisites pass."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M010"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M016",
+      "name": "Split a whole log longitudinally",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M001"
+      ],
+      "state_changes": [
+        "Generated and authored anchor IDs remain unique; regeneration does not erase authored anchors."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M001"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M017",
+      "name": "Quarter a split-half log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M016"
+      ],
+      "state_changes": [
+        "Preview and committed transform agree; placement requires a valid support/surface for the selected mode."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M016"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M018",
+      "name": "Hew or square a log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M016"
+      ],
+      "state_changes": [
+        "A structural connection is an explicit graph relation; mesh overlap alone does not create a connection."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M016"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M019",
+      "name": "Cut a longitudinal groove only after splitting",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M018"
+      ],
+      "state_changes": [
+        "Removing a support resolves dependents or rejects the operation without orphaning graph links."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M018"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M020",
+      "name": "Make a trough or channel",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, make a trough or channel produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M021",
+      "name": "Produce a plank from a split log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M020"
+      ],
+      "state_changes": [
+        "In a valid context, produce a plank from a split log produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M020"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M022",
+      "name": "Cut notches and interlocking joints",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M021"
+      ],
+      "state_changes": [
+        "In a valid context, cut notches and interlocking joints produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M021"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M023",
+      "name": "Shape a grounded spike",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M022"
+      ],
+      "state_changes": [
+        "In a valid context, shape a grounded spike produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M022"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M024",
+      "name": "Generate and validate snap anchors",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M023"
+      ],
+      "state_changes": [
+        "In a valid context, generate and validate snap anchors produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M023"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M025",
+      "name": "Place logs horizontally, vertically and diagonally",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M024"
+      ],
+      "state_changes": [
+        "In a valid context, place logs horizontally, vertically and diagonally produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M024"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M026",
+      "name": "Maintain explicit parent-child construction links",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M025"
+      ],
+      "state_changes": [
+        "In a valid context, maintain explicit parent-child construction links produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M025"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M027",
+      "name": "Remove a support and resolve collapse",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M026"
+      ],
+      "state_changes": [
+        "A trap cannot arm until all components, grounding and trigger conditions are valid."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M026"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M028",
+      "name": "Repair, salvage and burn wood",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M027"
+      ],
+      "state_changes": [
+        "In a valid context, repair, salvage and burn wood produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M027"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M029",
+      "name": "Collect, hold and throw loose stone",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M028"
+      ],
+      "state_changes": [
+        "In a valid context, collect, hold and throw loose stone produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M028"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M030",
+      "name": "Shape raw stone into building pieces",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, shape raw stone into building pieces produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M031",
+      "name": "Place and align individual stones",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M030"
+      ],
+      "state_changes": [
+        "In a valid context, place and align individual stones produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M030"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M032",
+      "name": "Stack stones horizontally and vertically",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M031"
+      ],
+      "state_changes": [
+        "In a valid context, stack stones horizontally and vertically produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M031"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M033",
+      "name": "Build a stone wall and corner",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M032"
+      ],
+      "state_changes": [
+        "In a valid context, build a stone wall and corner produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M032"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M034",
+      "name": "Build stone columns, beams and openings",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M033"
+      ],
+      "state_changes": [
+        "In a valid context, build stone columns, beams and openings produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M033"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M035",
+      "name": "Resolve stone support, balance and collapse",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M034"
+      ],
+      "state_changes": [
+        "In a valid context, resolve stone support, balance and collapse produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M034"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M036",
+      "name": "Damage, repair and salvage stone structures",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M033"
+      ],
+      "state_changes": [
+        "In a valid context, damage, repair and salvage stone structures produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M033"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M037",
+      "name": "Store and haul stone in bulk",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M036"
+      ],
+      "state_changes": [
+        "In a valid context, store and haul stone in bulk produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M036"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M038",
+      "name": "Connect mixed wood-stone construction and stone defenses",
+      "phase": 1,
+      "owner_system": "StoneSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M033"
+      ],
+      "state_changes": [
+        "In a valid context, connect mixed wood-stone construction and stone defenses produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M033"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
+    },
+    {
+      "mechanic_id": "M039",
+      "name": "Gather and break sticks",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M038"
+      ],
+      "state_changes": [
+        "In a valid context, gather and break sticks produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M038"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M040",
+      "name": "Sharpen a stick or make a double-ended stake",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, sharpen a stick or make a double-ended stake produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M041",
+      "name": "Craft primitive tools and melee weapons",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M040"
+      ],
+      "state_changes": [
+        "In a valid context, craft primitive tools and melee weapons produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M040"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M042",
+      "name": "Craft spear, bow and arrows",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M041"
+      ],
+      "state_changes": [
+        "In a valid context, craft spear, bow and arrows produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M041"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M043",
+      "name": "Make torches and simple light sources",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M041"
+      ],
+      "state_changes": [
+        "In a valid context, make torches and simple light sources produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M041"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M044",
+      "name": "Build stakes, fences and simple barriers",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M042"
+      ],
+      "state_changes": [
+        "In a valid context, build stakes, fences and simple barriers produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M042"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M045",
+      "name": "Build primitive traps and trigger lines",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M044"
+      ],
+      "state_changes": [
+        "In a valid context, build primitive traps and trigger lines produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M044"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M046",
+      "name": "Build stick storage, racks and furniture",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M044"
+      ],
+      "state_changes": [
+        "In a valid context, build stick storage, racks and furniture produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M044"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M047",
+      "name": "Build simple garden and animal-support structures",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M046"
+      ],
+      "state_changes": [
+        "In a valid context, build simple garden and animal-support structures produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M046"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M048",
+      "name": "Dismantle stick structures and recover materials",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M047"
+      ],
+      "state_changes": [
+        "In a valid context, dismantle stick structures and recover materials produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M047"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M049",
+      "name": "Pick up a world item into inventory",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M048"
+      ],
+      "state_changes": [
+        "In a valid context, pick up a world item into inventory produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M048"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M050",
+      "name": "Stack items and enforce carry limits",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M049"
+      ],
+      "state_changes": [
+        "In a valid context, stack items and enforce carry limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M049"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M051",
+      "name": "Show item category, properties and quick access",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M001"
+      ],
+      "state_changes": [
+        "In a valid context, show item category, properties and quick access produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M001"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M052",
+      "name": "Place ingredients into a crafting area",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M051"
+      ],
+      "state_changes": [
+        "In a valid context, place ingredients into a crafting area produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M051"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M053",
+      "name": "Resolve recipes and alternate valid recipes",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M052"
+      ],
+      "state_changes": [
+        "Reject excavation in protected layers; permitted layer edits change geometry and collision consistently."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M052"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M054",
+      "name": "Show missing ingredients and required quantities",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M053"
+      ],
+      "state_changes": [
+        "Tunnel/room excavation stays within configured depth/volume limits and yields valid connected geometry."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M053"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M055",
+      "name": "Confirm crafting and consume materials atomically",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M054"
+      ],
+      "state_changes": [
+        "In a valid context, confirm crafting and consume materials atomically produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M054"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M056",
+      "name": "Preserve tools and return unused materials",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M051"
+      ],
+      "state_changes": [
+        "Terrain edits and affected durable objects restore consistently after save/load."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M051"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M057",
+      "name": "Cancel crafting and collect the result",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M056"
+      ],
+      "state_changes": [
+        "In a valid context, cancel crafting and collect the result produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M056"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M058",
+      "name": "Craft repair kits, protection and trap components",
+      "phase": 1,
+      "owner_system": "InventoryCrafting",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M057"
+      ],
+      "state_changes": [
+        "In a valid context, craft repair kits, protection and trap components produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M057"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
+    },
+    {
+      "mechanic_id": "M059",
+      "name": "Use one authoritative structural graph",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M057"
+      ],
+      "state_changes": [
+        "In a valid context, use one authoritative structural graph produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M057"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M060",
+      "name": "Validate support path from ground to load",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M051"
+      ],
+      "state_changes": [
+        "In a valid context, validate support path from ground to load produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M051"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M061",
+      "name": "Enforce span, overhang and load limits",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, enforce span, overhang and load limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M062",
+      "name": "Apply damage thresholds to structural links",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M061"
+      ],
+      "state_changes": [
+        "In a valid context, apply damage thresholds to structural links produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M061"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M063",
+      "name": "Collapse dependent pieces in a stable order",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M062"
+      ],
+      "state_changes": [
+        "In a valid context, collapse dependent pieces in a stable order produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M062"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M064",
+      "name": "Create and remove doors, windows and wall openings",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M063"
+      ],
+      "state_changes": [
+        "In a valid context, create and remove doors, windows and wall openings produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M063"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M065",
+      "name": "Build floors, roofs, ramps and stairs",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M063"
+      ],
+      "state_changes": [
+        "In a valid context, build floors, roofs, ramps and stairs produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M063"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M066",
+      "name": "Build bridges, rope crossings and elevated walkways",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M061"
+      ],
+      "state_changes": [
+        "In a valid context, build bridges, rope crossings and elevated walkways produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M061"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M067",
+      "name": "Build gates, fences, railings and defensive walls",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M061"
+      ],
+      "state_changes": [
+        "In a valid context, build gates, fences, railings and defensive walls produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M061"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M068",
+      "name": "Damage and repair a structure without duplicating state",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M067"
+      ],
+      "state_changes": [
+        "In a valid context, damage and repair a structure without duplicating state produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M067"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M069",
+      "name": "Dismantle structures and recover resources",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M061"
+      ],
+      "state_changes": [
+        "In a valid context, dismantle structures and recover resources produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M061"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M070",
+      "name": "Prevent unsafe pickup/removal of supporting pieces",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M061"
+      ],
+      "state_changes": [
+        "In a valid context, prevent unsafe pickup/removal of supporting pieces produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M061"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M071",
+      "name": "Divide world state into persistent chunks",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "Fixed seed and time steps reproduce identical simulation outputs."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M072",
+      "name": "Edit only configured diggable terrain layers",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M006"
+      ],
+      "state_changes": [
+        "In a valid context, edit only configured diggable terrain layers produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M006"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M073",
+      "name": "Dig a pit with valid terrain geometry and collision",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M071",
+        "M072"
+      ],
+      "state_changes": [
+        "In a valid context, dig a pit with valid terrain geometry and collision produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M071",
+        "M072"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M074",
+      "name": "Dig a horizontal tunnel and small room",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M073"
+      ],
+      "state_changes": [
+        "In a valid context, dig a horizontal tunnel and small room produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M073"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M075",
+      "name": "Prevent unsupported underground collapse",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M074"
+      ],
+      "state_changes": [
+        "In a valid context, prevent unsupported underground collapse produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M074"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M076",
+      "name": "Preserve terrain edits across save/load",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M074"
+      ],
+      "state_changes": [
+        "In a valid context, preserve terrain edits across save/load produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M074"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M077",
+      "name": "Simulate water level, flow and local flooding",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M072"
+      ],
+      "state_changes": [
+        "Failed threat spawn/queue requests do not leak population counters or create phantom enemies."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M072"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M078",
+      "name": "Simulate soil moisture, nutrients and surface runoff",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M077"
+      ],
+      "state_changes": [
+        "In a valid context, simulate soil moisture, nutrients and surface runoff produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M077"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M079",
+      "name": "Track fire spread, rot and material exposure",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M078"
+      ],
+      "state_changes": [
+        "In a valid context, track fire spread, rot and material exposure produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M078"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M080",
+      "name": "Place and discover environmental ruins and clues",
+      "phase": 1,
+      "owner_system": "WorldStateTerrain",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M077"
+      ],
+      "state_changes": [
+        "Threat damage must mutate the same authoritative structure integrity used by construction and persistence."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M077"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
+    },
+    {
+      "mechanic_id": "M081",
+      "name": "Advance world time with deterministic simulation ticks",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, advance world time with deterministic simulation ticks produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M082",
+      "name": "Plant seeds and validate soil/season requirements",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M081"
+      ],
+      "state_changes": [
+        "In a valid context, plant seeds and validate soil/season requirements produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M081"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M083",
+      "name": "Grow crops through defined stages",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M082"
+      ],
+      "state_changes": [
+        "In a valid context, grow crops through defined stages produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M082"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M084",
+      "name": "Apply watering, nutrients and plant stress",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M083"
+      ],
+      "state_changes": [
+        "In a valid context, apply watering, nutrients and plant stress produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M083"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M085",
+      "name": "Harvest crops and calculate yield",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M084"
+      ],
+      "state_changes": [
+        "In a valid context, harvest crops and calculate yield produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M084"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M086",
+      "name": "Keep and feed farm animals",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M081"
+      ],
+      "state_changes": [
+        "In a valid context, keep and feed farm animals produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M081"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M087",
+      "name": "Advance animal growth and health",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M086"
+      ],
+      "state_changes": [
+        "In a valid context, advance animal growth and health produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M086"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M088",
+      "name": "Produce milk, eggs, wool or other configured goods",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M086"
+      ],
+      "state_changes": [
+        "Feed consumption, animal outputs and manure/nutrient updates reconcile without duplicate stock."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M086"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M089",
+      "name": "Reproduce animals within habitat capacity",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M087"
+      ],
+      "state_changes": [
+        "In a valid context, reproduce animals within habitat capacity produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M087"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M090",
+      "name": "Connect feed, manure and soil nutrient cycles",
+      "phase": 1,
+      "owner_system": "FarmingSimulation",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M087"
+      ],
+      "state_changes": [
+        "In a valid context, connect feed, manure and soil nutrient cycles produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M087"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Farming / Animal Husbandry; intended primary owner=FarmingSimulation."
+    },
+    {
+      "mechanic_id": "M091",
+      "name": "Schedule and gate threat events",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, schedule and gate threat events produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M092",
+      "name": "Evaluate difficulty from player/world context",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M006"
+      ],
+      "state_changes": [
+        "In a valid context, evaluate difficulty from player/world context produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M006"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M093",
+      "name": "Plan enemy groups, waves and resource budget",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M092"
+      ],
+      "state_changes": [
+        "In a valid context, plan enemy groups, waves and resource budget produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M092"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M094",
+      "name": "Enforce spawn capacity and queue limits",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M093"
+      ],
+      "state_changes": [
+        "In a valid context, enforce spawn capacity and queue limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M093"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M095",
+      "name": "Choose valid spawn locations",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M094"
+      ],
+      "state_changes": [
+        "In a valid context, choose valid spawn locations produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M094"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M096",
+      "name": "Select targets and compute navigation paths",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M095"
+      ],
+      "state_changes": [
+        "In a valid context, select targets and compute navigation paths produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M095"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M097",
+      "name": "Resolve attack, bypass and structure damage",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M093"
+      ],
+      "state_changes": [
+        "In a valid context, resolve attack, bypass and structure damage produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M093"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M098",
+      "name": "Advance wave state machine",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M097"
+      ],
+      "state_changes": [
+        "In a valid context, advance wave state machine produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M097"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M099",
+      "name": "Cancel, interrupt and recover a failed raid",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M097"
+      ],
+      "state_changes": [
+        "In a valid context, cancel, interrupt and recover a failed raid produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M097"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M100",
+      "name": "Reassess pressure from settlement noise, stock and defenses",
+      "phase": 1,
+      "owner_system": "RaidDirector",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M098"
+      ],
+      "state_changes": [
+        "In a valid context, reassess pressure from settlement noise, stock and defenses produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M098"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Raid Director / Threat AI; intended primary owner=RaidDirector."
+    },
+    {
+      "mechanic_id": "M101",
+      "name": "Load and unload carts, sleds and storage racks",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, load and unload carts, sleds and storage racks produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M102",
+      "name": "Transport materials by rope line or zipline",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M006"
+      ],
+      "state_changes": [
+        "In a valid context, transport materials by rope line or zipline produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M006"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M103",
+      "name": "Create primitive saw/production chains",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M102"
+      ],
+      "state_changes": [
+        "In a valid context, create primitive saw/production chains produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M102"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M104",
+      "name": "Queue production and expose blocked reasons",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M103"
+      ],
+      "state_changes": [
+        "In a valid context, queue production and expose blocked reasons produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M103"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M105",
+      "name": "Manage fuel, heat and cooking stations",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M104"
+      ],
+      "state_changes": [
+        "In a valid context, manage fuel, heat and cooking stations produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M104"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M106",
+      "name": "Use roads and bridges to reduce route cost",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M105"
+      ],
+      "state_changes": [
+        "In a valid context, use roads and bridges to reduce route cost produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M105"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M107",
+      "name": "Manage shelter, temperature and daily survival choices",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M105"
+      ],
+      "state_changes": [
+        "In a valid context, manage shelter, temperature and daily survival choices produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M105"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M108",
+      "name": "Expose resource, durability and storage status to the player",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M107"
+      ],
+      "state_changes": [
+        "In a valid context, expose resource, durability and storage status to the player produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M107"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M109",
+      "name": "Demonstrate integrated save/load across world and production",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M108"
+      ],
+      "state_changes": [
+        "Only one authoritative state may own a physical object during world/inventory/storage/production transfers."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M108"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M110",
+      "name": "Simulate weather and seasonal transitions",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M108"
+      ],
+      "state_changes": [
+        "In a valid context, simulate weather and seasonal transitions produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M108"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M111",
+      "name": "Apply cold, heat and wetness exposure",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [],
+      "state_changes": [
+        "In a valid context, apply cold, heat and wetness exposure produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M112",
+      "name": "Track hunger and thirst consumption",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M111"
+      ],
+      "state_changes": [
+        "In a valid context, track hunger and thirst consumption produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M111"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M113",
+      "name": "Recover stamina through rest and activity limits",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M112"
+      ],
+      "state_changes": [
+        "In a valid context, recover stamina through rest and activity limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M112"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M114",
+      "name": "Apply sleep and fatigue effects",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M112"
+      ],
+      "state_changes": [
+        "In a valid context, apply sleep and fatigue effects produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M112"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M115",
+      "name": "Apply injury, illness and poisoning state",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M114"
+      ],
+      "state_changes": [
+        "In a valid context, apply injury, illness and poisoning state produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M114"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M116",
+      "name": "Preserve food quality and spoilage over time",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M114"
+      ],
+      "state_changes": [
+        "In a valid context, preserve food quality and spoilage over time produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M114"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M117",
+      "name": "Apply clothing insulation and protective equipment",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M112"
+      ],
+      "state_changes": [
+        "In a valid context, apply clothing insulation and protective equipment produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M112"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M118",
+      "name": "Make shelter quality affect environmental exposure",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M117"
+      ],
+      "state_changes": [
+        "In a valid context, make shelter quality affect environmental exposure produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M117"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    },
+    {
+      "mechanic_id": "M119",
+      "name": "Make exploration discoveries persist and unlock world context",
+      "phase": 1,
+      "owner_system": "LogisticsProduction",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M111"
+      ],
+      "state_changes": [
+        "One integrated save/load cycle restores terrain, structures, inventory, production, farming and threat progression consistently."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M111"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
+    }
+  ]
+}
