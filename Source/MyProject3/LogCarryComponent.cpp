@@ -114,7 +114,7 @@ void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
     InputComponent->BindKey(
         EKeys::RightMouseButton, IE_Pressed, this, &ULogCarryComponent::CyclePlacementMode);
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &ULogCarryComponent::CycleCutAction);
-    InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ULogCarryComponent::ProcessAimedPiece);
+    InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ULogCarryComponent::ProcessAimedPieceInput);
 }
 
 bool ULogCarryComponent::GetViewPoint(
@@ -604,6 +604,11 @@ void ULogCarryComponent::CycleCutAction()
     {
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Message);
     }
+}
+
+void ULogCarryComponent::ProcessAimedPieceInput()
+{
+    ProcessAimedPiece();
 }
 
 bool ULogCarryComponent::ProcessAimedPiece()
