@@ -85,7 +85,7 @@
       "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, stable identity for physical world objects produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, stable identity for physical world objects produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -113,7 +113,7 @@
         "M001"
       ],
       "state_changes": [
-        "In a valid context, exclusive object lifecycle state produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, exclusive object lifecycle state produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -143,7 +143,7 @@
         "M002"
       ],
       "state_changes": [
-        "In a valid context, atomic world-changing operation produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, atomic world-changing operation produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -173,7 +173,7 @@
         "M003"
       ],
       "state_changes": [
-        "In a valid context, structured operation result and failure reason produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, structured operation result and failure reason produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -203,7 +203,7 @@
         "M003"
       ],
       "state_changes": [
-        "In a valid context, committed domain events produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, committed domain events produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -231,7 +231,7 @@
       "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, deterministic world clock and random seed produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, deterministic world clock and random seed produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -260,7 +260,7 @@
         "M006"
       ],
       "state_changes": [
-        "In a valid context, versioned save/load and migration boundary produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, versioned save/load and migration boundary produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -291,7 +291,7 @@
         "M006"
       ],
       "state_changes": [
-        "In a valid context, shared survival state: health, stamina, warmth and needs produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, shared survival state: health, stamina, warmth and needs produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -319,7 +319,7 @@
       "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, fell a tree with tool hits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, fell a tree with tool hits produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -347,7 +347,7 @@
         "M009"
       ],
       "state_changes": [
-        "In a valid context, generate logs from tree dimensions produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, generate logs from tree dimensions produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -377,7 +377,7 @@
         "M010"
       ],
       "state_changes": [
-        "Reject a groove on a whole log; accept only after the required longitudinal split, and leave state unchanged on rejection."
+        "Only an eligible loose log can be picked up; the world actor transfers to carried state exactly once."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -404,10 +404,10 @@
       "owner_system": "LogSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M010"
+        "M011"
       ],
       "state_changes": [
-        "Reject a trough unless the configured split-half prerequisite and output mesh exist; successful output changes piece type and geometry together."
+        "In a valid context, drop or quick-release a carried log produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -415,7 +415,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M010"
+        "M011"
       ],
       "persistence": "save_required",
       "verification": {
@@ -434,10 +434,10 @@
       "owner_system": "LogSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M010"
+        "M011"
       ],
       "state_changes": [
-        "Reject plank production from an unprocessed whole log; success produces the configured plank output without duplicating material."
+        "In a valid context, roll, drag and push a loose log produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -445,7 +445,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M010"
+        "M011"
       ],
       "persistence": "save_required",
       "verification": {
@@ -464,10 +464,10 @@
       "owner_system": "LogSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M010"
+        "M013"
       ],
       "state_changes": [
-        "In a valid context, log collision and impact damage produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, log collision and impact damage produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -475,7 +475,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M010"
+        "M013"
       ],
       "persistence": "save_required",
       "verification": {
@@ -497,7 +497,7 @@
         "M010"
       ],
       "state_changes": [
-        "A spike is not an operational trap until its grounding/placement prerequisites pass."
+        "In a valid context, cross-cut log to a valid length produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -520,6 +520,246 @@
     {
       "mechanic_id": "M016",
       "name": "Split a whole log longitudinally",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M015"
+      ],
+      "state_changes": [
+        "In a valid context, split a whole log longitudinally produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M015"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M017",
+      "name": "Quarter a split-half log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M016"
+      ],
+      "state_changes": [
+        "In a valid context, quarter a split-half log produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M016"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M018",
+      "name": "Hew or square a log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M015"
+      ],
+      "state_changes": [
+        "In a valid context, hew or square a log produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M015"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M019",
+      "name": "Cut a longitudinal groove only after splitting",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M016"
+      ],
+      "state_changes": [
+        "Reject a groove on a whole log; accept only after the required longitudinal split, and leave state unchanged on rejection."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M016"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M020",
+      "name": "Make a trough or channel",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M016"
+      ],
+      "state_changes": [
+        "Reject a trough unless the configured split-half prerequisite and output mesh exist; successful output changes piece type and geometry together."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M016"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M021",
+      "name": "Produce a plank from a split log",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M016"
+      ],
+      "state_changes": [
+        "Reject plank production from an unprocessed whole log; success produces the configured plank output without duplicating material."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M016"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M022",
+      "name": "Cut notches and interlocking joints",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M018"
+      ],
+      "state_changes": [
+        "In a valid context, cut notches and interlocking joints produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M018"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M023",
+      "name": "Shape a grounded spike",
+      "phase": 1,
+      "owner_system": "LogSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M015"
+      ],
+      "state_changes": [
+        "A spike is not an operational trap until its grounding and placement prerequisites pass."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M015"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
+    },
+    {
+      "mechanic_id": "M024",
+      "name": "Generate and validate snap anchors",
       "phase": 1,
       "owner_system": "LogSystem",
       "status": "unreviewed",
@@ -548,242 +788,6 @@
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
     },
     {
-      "mechanic_id": "M017",
-      "name": "Quarter a split-half log",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M016"
-      ],
-      "state_changes": [
-        "Preview and committed transform agree; placement requires a valid support/surface for the selected mode."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M016"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M018",
-      "name": "Hew or square a log",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M016"
-      ],
-      "state_changes": [
-        "A structural connection is an explicit graph relation; mesh overlap alone does not create a connection."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M016"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M019",
-      "name": "Cut a longitudinal groove only after splitting",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M018"
-      ],
-      "state_changes": [
-        "Removing a support resolves dependents or rejects the operation without orphaning graph links."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M018"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M020",
-      "name": "Make a trough or channel",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [],
-      "state_changes": [
-        "In a valid context, make a trough or channel produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M021",
-      "name": "Produce a plank from a split log",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M020"
-      ],
-      "state_changes": [
-        "In a valid context, produce a plank from a split log produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M020"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M022",
-      "name": "Cut notches and interlocking joints",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M021"
-      ],
-      "state_changes": [
-        "In a valid context, cut notches and interlocking joints produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M021"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M023",
-      "name": "Shape a grounded spike",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M022"
-      ],
-      "state_changes": [
-        "In a valid context, shape a grounded spike produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M022"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
-      "mechanic_id": "M024",
-      "name": "Generate and validate snap anchors",
-      "phase": 1,
-      "owner_system": "LogSystem",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M023"
-      ],
-      "state_changes": [
-        "In a valid context, generate and validate snap anchors produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M023"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
-    },
-    {
       "mechanic_id": "M025",
       "name": "Place logs horizontally, vertically and diagonally",
       "phase": 1,
@@ -793,7 +797,7 @@
         "M024"
       ],
       "state_changes": [
-        "In a valid context, place logs horizontally, vertically and diagonally produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Preview and committed transform agree; placement requires a valid support/surface for the selected mode."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -820,10 +824,10 @@
       "owner_system": "LogSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M025"
+        "M024"
       ],
       "state_changes": [
-        "In a valid context, maintain explicit parent-child construction links produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "A structural connection is an explicit graph relation; mesh overlap alone does not create a connection."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -831,7 +835,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M025"
+        "M024"
       ],
       "persistence": "save_required",
       "verification": {
@@ -853,7 +857,7 @@
         "M026"
       ],
       "state_changes": [
-        "A trap cannot arm until all components, grounding and trigger conditions are valid."
+        "Removing a support resolves dependents or rejects the operation without orphaning graph links."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -883,7 +887,7 @@
         "M027"
       ],
       "state_changes": [
-        "In a valid context, repair, salvage and burn wood produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, repair, salvage and burn wood produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -909,20 +913,16 @@
       "phase": 1,
       "owner_system": "StoneSystem",
       "status": "unreviewed",
-      "prerequisites": [
-        "M028"
-      ],
+      "prerequisites": [],
       "state_changes": [
-        "In a valid context, collect, hold and throw loose stone produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, collect, hold and throw loose stone produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
         "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
         "Repeated request does not duplicate output or consume resources twice."
       ],
-      "dependencies": [
-        "M028"
-      ],
+      "dependencies": [],
       "persistence": "save_required",
       "verification": {
         "static_review": "not_run",
@@ -939,16 +939,20 @@
       "phase": 1,
       "owner_system": "StoneSystem",
       "status": "unreviewed",
-      "prerequisites": [],
+      "prerequisites": [
+        "M029"
+      ],
       "state_changes": [
-        "In a valid context, shape raw stone into building pieces produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, shape raw stone into building pieces produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
         "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
         "Repeated request does not duplicate output or consume resources twice."
       ],
-      "dependencies": [],
+      "dependencies": [
+        "M029"
+      ],
       "persistence": "save_required",
       "verification": {
         "static_review": "not_run",
@@ -969,7 +973,7 @@
         "M030"
       ],
       "state_changes": [
-        "In a valid context, place and align individual stones produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, place and align individual stones produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -999,7 +1003,7 @@
         "M031"
       ],
       "state_changes": [
-        "In a valid context, stack stones horizontally and vertically produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, stack stones horizontally and vertically produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1029,7 +1033,7 @@
         "M032"
       ],
       "state_changes": [
-        "In a valid context, build a stone wall and corner produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build a stone wall and corner produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1059,7 +1063,7 @@
         "M033"
       ],
       "state_changes": [
-        "In a valid context, build stone columns, beams and openings produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build stone columns, beams and openings produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1089,7 +1093,7 @@
         "M034"
       ],
       "state_changes": [
-        "In a valid context, resolve stone support, balance and collapse produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, resolve stone support, balance and collapse produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1116,10 +1120,10 @@
       "owner_system": "StoneSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M033"
+        "M035"
       ],
       "state_changes": [
-        "In a valid context, damage, repair and salvage stone structures produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, damage, repair and salvage stone structures produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1127,7 +1131,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M033"
+        "M035"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1146,10 +1150,10 @@
       "owner_system": "StoneSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M036"
+        "M029"
       ],
       "state_changes": [
-        "In a valid context, store and haul stone in bulk produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, store and haul stone in bulk produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1157,7 +1161,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M036"
+        "M029"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1176,10 +1180,11 @@
       "owner_system": "StoneSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M033"
+        "M033",
+        "M026"
       ],
       "state_changes": [
-        "In a valid context, connect mixed wood-stone construction and stone defenses produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, connect mixed wood-stone construction and stone defenses produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1187,7 +1192,8 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M033"
+        "M033",
+        "M026"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1205,39 +1211,9 @@
       "phase": 1,
       "owner_system": "StickSystem",
       "status": "unreviewed",
-      "prerequisites": [
-        "M038"
-      ],
-      "state_changes": [
-        "In a valid context, gather and break sticks produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M038"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
-    },
-    {
-      "mechanic_id": "M040",
-      "name": "Sharpen a stick or make a double-ended stake",
-      "phase": 1,
-      "owner_system": "StickSystem",
-      "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, sharpen a stick or make a double-ended stake produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, gather and break sticks produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1256,16 +1232,16 @@
       "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
     },
     {
-      "mechanic_id": "M041",
-      "name": "Craft primitive tools and melee weapons",
+      "mechanic_id": "M040",
+      "name": "Sharpen a stick or make a double-ended stake",
       "phase": 1,
       "owner_system": "StickSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M040"
+        "M039"
       ],
       "state_changes": [
-        "In a valid context, craft primitive tools and melee weapons produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, sharpen a stick or make a double-ended stake produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1273,7 +1249,37 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M040"
+        "M039"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Stick / Primitive Tools; intended primary owner=StickSystem."
+    },
+    {
+      "mechanic_id": "M041",
+      "name": "Craft primitive tools and melee weapons",
+      "phase": 1,
+      "owner_system": "StickSystem",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M039"
+      ],
+      "state_changes": [
+        "In a valid context, craft primitive tools and melee weapons produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M039"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1295,7 +1301,7 @@
         "M041"
       ],
       "state_changes": [
-        "In a valid context, craft spear, bow and arrows produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, craft spear, bow and arrows produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1322,10 +1328,10 @@
       "owner_system": "StickSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M041"
+        "M039"
       ],
       "state_changes": [
-        "In a valid context, make torches and simple light sources produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, make torches and simple light sources produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1333,7 +1339,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M041"
+        "M039"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1352,10 +1358,10 @@
       "owner_system": "StickSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M042"
+        "M040"
       ],
       "state_changes": [
-        "In a valid context, build stakes, fences and simple barriers produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build stakes, fences and simple barriers produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1363,7 +1369,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M042"
+        "M040"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1385,7 +1391,7 @@
         "M044"
       ],
       "state_changes": [
-        "In a valid context, build primitive traps and trigger lines produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "A trap cannot arm until all components, grounding and trigger conditions are valid."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1412,10 +1418,10 @@
       "owner_system": "StickSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M044"
+        "M039"
       ],
       "state_changes": [
-        "In a valid context, build stick storage, racks and furniture produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build stick storage, racks and furniture produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1423,7 +1429,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M044"
+        "M039"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1445,7 +1451,7 @@
         "M046"
       ],
       "state_changes": [
-        "In a valid context, build simple garden and animal-support structures produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build simple garden and animal-support structures produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1472,10 +1478,10 @@
       "owner_system": "StickSystem",
       "status": "unreviewed",
       "prerequisites": [
-        "M047"
+        "M044"
       ],
       "state_changes": [
-        "In a valid context, dismantle stick structures and recover materials produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, dismantle stick structures and recover materials produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1483,7 +1489,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M047"
+        "M044"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1501,20 +1507,16 @@
       "phase": 1,
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
-      "prerequisites": [
-        "M048"
-      ],
+      "prerequisites": [],
       "state_changes": [
-        "In a valid context, pick up a world item into inventory produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, pick up a world item into inventory produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
         "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
         "Repeated request does not duplicate output or consume resources twice."
       ],
-      "dependencies": [
-        "M048"
-      ],
+      "dependencies": [],
       "persistence": "save_required",
       "verification": {
         "static_review": "not_run",
@@ -1535,7 +1537,7 @@
         "M049"
       ],
       "state_changes": [
-        "In a valid context, stack items and enforce carry limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, stack items and enforce carry limits produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1562,10 +1564,10 @@
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
       "prerequisites": [
-        "M001"
+        "M049"
       ],
       "state_changes": [
-        "In a valid context, show item category, properties and quick access produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, show item category, properties and quick access produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1573,7 +1575,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M001"
+        "M049"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1592,10 +1594,10 @@
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
       "prerequisites": [
-        "M051"
+        "M049"
       ],
       "state_changes": [
-        "In a valid context, place ingredients into a crafting area produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, place ingredients into a crafting area produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1603,7 +1605,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M051"
+        "M049"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1625,7 +1627,7 @@
         "M052"
       ],
       "state_changes": [
-        "Reject excavation in protected layers; permitted layer edits change geometry and collision consistently."
+        "In a valid context, resolve recipes and alternate valid recipes produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1655,7 +1657,7 @@
         "M053"
       ],
       "state_changes": [
-        "Tunnel/room excavation stays within configured depth/volume limits and yields valid connected geometry."
+        "In a valid context, show missing ingredients and required quantities produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1682,10 +1684,10 @@
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
       "prerequisites": [
-        "M054"
+        "M053"
       ],
       "state_changes": [
-        "In a valid context, confirm crafting and consume materials atomically produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, confirm crafting and consume materials atomically produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1693,7 +1695,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M054"
+        "M053"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1712,10 +1714,10 @@
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
       "prerequisites": [
-        "M051"
+        "M055"
       ],
       "state_changes": [
-        "Terrain edits and affected durable objects restore consistently after save/load."
+        "In a valid context, preserve tools and return unused materials produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1723,7 +1725,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M051"
+        "M055"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1742,10 +1744,10 @@
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
       "prerequisites": [
-        "M056"
+        "M055"
       ],
       "state_changes": [
-        "In a valid context, cancel crafting and collect the result produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, cancel crafting and collect the result produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1753,7 +1755,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M056"
+        "M055"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1772,10 +1774,10 @@
       "owner_system": "InventoryCrafting",
       "status": "unreviewed",
       "prerequisites": [
-        "M057"
+        "M055"
       ],
       "state_changes": [
-        "In a valid context, craft repair kits, protection and trap components produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, craft repair kits, protection and trap components produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1783,7 +1785,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M057"
+        "M055"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1801,69 +1803,9 @@
       "phase": 1,
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
-      "prerequisites": [
-        "M057"
-      ],
-      "state_changes": [
-        "In a valid context, use one authoritative structural graph produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M057"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
-    },
-    {
-      "mechanic_id": "M060",
-      "name": "Validate support path from ground to load",
-      "phase": 1,
-      "owner_system": "StructuralGraph",
-      "status": "unreviewed",
-      "prerequisites": [
-        "M051"
-      ],
-      "state_changes": [
-        "In a valid context, validate support path from ground to load produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
-      ],
-      "failure_cases": [
-        "Invalid target or missing configuration is rejected.",
-        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
-        "Repeated request does not duplicate output or consume resources twice."
-      ],
-      "dependencies": [
-        "M051"
-      ],
-      "persistence": "save_required",
-      "verification": {
-        "static_review": "not_run",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
-        "runtime_test": "not_run",
-        "evidence": []
-      },
-      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
-    },
-    {
-      "mechanic_id": "M061",
-      "name": "Enforce span, overhang and load limits",
-      "phase": 1,
-      "owner_system": "StructuralGraph",
-      "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, enforce span, overhang and load limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, use one authoritative structural graph produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1882,16 +1824,16 @@
       "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
     },
     {
-      "mechanic_id": "M062",
-      "name": "Apply damage thresholds to structural links",
+      "mechanic_id": "M060",
+      "name": "Validate support path from ground to load",
       "phase": 1,
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M061"
+        "M059"
       ],
       "state_changes": [
-        "In a valid context, apply damage thresholds to structural links produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, validate support path from ground to load produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1899,7 +1841,67 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M061"
+        "M059"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M061",
+      "name": "Enforce span, overhang and load limits",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M060"
+      ],
+      "state_changes": [
+        "In a valid context, enforce span, overhang and load limits produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M060"
+      ],
+      "persistence": "save_required",
+      "verification": {
+        "static_review": "not_run",
+        "automated_test": "not_run",
+        "unreal_build": "not_run",
+        "runtime_test": "not_run",
+        "evidence": []
+      },
+      "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
+    },
+    {
+      "mechanic_id": "M062",
+      "name": "Apply damage thresholds to structural links",
+      "phase": 1,
+      "owner_system": "StructuralGraph",
+      "status": "unreviewed",
+      "prerequisites": [
+        "M059"
+      ],
+      "state_changes": [
+        "In a valid context, apply damage thresholds to structural links produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
+      ],
+      "failure_cases": [
+        "Invalid target or missing configuration is rejected.",
+        "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
+        "Repeated request does not duplicate output or consume resources twice."
+      ],
+      "dependencies": [
+        "M059"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1918,10 +1920,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M062"
+        "M060"
       ],
       "state_changes": [
-        "In a valid context, collapse dependent pieces in a stable order produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, collapse dependent pieces in a stable order produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1929,7 +1931,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M062"
+        "M060"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1948,10 +1950,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M063"
+        "M059"
       ],
       "state_changes": [
-        "In a valid context, create and remove doors, windows and wall openings produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, create and remove doors, windows and wall openings produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1959,7 +1961,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M063"
+        "M059"
       ],
       "persistence": "save_required",
       "verification": {
@@ -1978,10 +1980,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M063"
+        "M060"
       ],
       "state_changes": [
-        "In a valid context, build floors, roofs, ramps and stairs produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build floors, roofs, ramps and stairs produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -1989,7 +1991,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M063"
+        "M060"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2008,10 +2010,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M061"
+        "M065"
       ],
       "state_changes": [
-        "In a valid context, build bridges, rope crossings and elevated walkways produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build bridges, rope crossings and elevated walkways produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2019,7 +2021,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M061"
+        "M065"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2038,10 +2040,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M061"
+        "M059"
       ],
       "state_changes": [
-        "In a valid context, build gates, fences, railings and defensive walls produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, build gates, fences, railings and defensive walls produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2049,7 +2051,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M061"
+        "M059"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2068,10 +2070,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M067"
+        "M062"
       ],
       "state_changes": [
-        "In a valid context, damage and repair a structure without duplicating state produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, damage and repair a structure without duplicating state produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2079,7 +2081,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M067"
+        "M062"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2098,10 +2100,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M061"
+        "M059"
       ],
       "state_changes": [
-        "In a valid context, dismantle structures and recover resources produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, dismantle structures and recover resources produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2109,7 +2111,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M061"
+        "M059"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2128,10 +2130,10 @@
       "owner_system": "StructuralGraph",
       "status": "unreviewed",
       "prerequisites": [
-        "M061"
+        "M060"
       ],
       "state_changes": [
-        "In a valid context, prevent unsafe pickup/removal of supporting pieces produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, prevent unsafe pickup/removal of supporting pieces produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2139,7 +2141,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M061"
+        "M060"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2159,7 +2161,7 @@
       "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "Fixed seed and time steps reproduce identical simulation outputs."
+        "In a valid context, divide world state into persistent chunks produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2184,10 +2186,10 @@
       "owner_system": "WorldStateTerrain",
       "status": "unreviewed",
       "prerequisites": [
-        "M006"
+        "M071"
       ],
       "state_changes": [
-        "In a valid context, edit only configured diggable terrain layers produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Reject excavation in protected layers; permitted layer edits change geometry and collision consistently."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2195,7 +2197,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M006"
+        "M071"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2214,11 +2216,10 @@
       "owner_system": "WorldStateTerrain",
       "status": "unreviewed",
       "prerequisites": [
-        "M071",
         "M072"
       ],
       "state_changes": [
-        "In a valid context, dig a pit with valid terrain geometry and collision produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, dig a pit with valid terrain geometry and collision produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2226,7 +2227,6 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M071",
         "M072"
       ],
       "persistence": "save_required",
@@ -2249,7 +2249,7 @@
         "M073"
       ],
       "state_changes": [
-        "In a valid context, dig a horizontal tunnel and small room produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Tunnel/room excavation stays within configured depth/volume limits and yields valid connected geometry."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2279,7 +2279,7 @@
         "M074"
       ],
       "state_changes": [
-        "In a valid context, prevent unsupported underground collapse produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, prevent unsupported underground collapse produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2306,10 +2306,10 @@
       "owner_system": "WorldStateTerrain",
       "status": "unreviewed",
       "prerequisites": [
-        "M074"
+        "M071"
       ],
       "state_changes": [
-        "In a valid context, preserve terrain edits across save/load produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Terrain edits and affected durable objects restore consistently after save/load."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2317,7 +2317,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M074"
+        "M071"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2336,10 +2336,10 @@
       "owner_system": "WorldStateTerrain",
       "status": "unreviewed",
       "prerequisites": [
-        "M072"
+        "M071"
       ],
       "state_changes": [
-        "Failed threat spawn/queue requests do not leak population counters or create phantom enemies."
+        "Water amount and flow follow configured terrain/sources/sinks and remain consistent with world state."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2347,7 +2347,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M072"
+        "M071"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2369,7 +2369,7 @@
         "M077"
       ],
       "state_changes": [
-        "In a valid context, simulate soil moisture, nutrients and surface runoff produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, simulate soil moisture, nutrients and surface runoff produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2396,10 +2396,10 @@
       "owner_system": "WorldStateTerrain",
       "status": "unreviewed",
       "prerequisites": [
-        "M078"
+        "M071"
       ],
       "state_changes": [
-        "In a valid context, track fire spread, rot and material exposure produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, track fire spread, rot and material exposure produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2407,7 +2407,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M078"
+        "M071"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2426,10 +2426,10 @@
       "owner_system": "WorldStateTerrain",
       "status": "unreviewed",
       "prerequisites": [
-        "M077"
+        "M071"
       ],
       "state_changes": [
-        "Threat damage must mutate the same authoritative structure integrity used by construction and persistence."
+        "In a valid context, place and discover environmental ruins and clues produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2437,7 +2437,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M077"
+        "M071"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2457,7 +2457,7 @@
       "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, advance world time with deterministic simulation ticks produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Fixed seed and time steps reproduce identical simulation outputs."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2482,10 +2482,11 @@
       "owner_system": "FarmingSimulation",
       "status": "unreviewed",
       "prerequisites": [
+        "M078",
         "M081"
       ],
       "state_changes": [
-        "In a valid context, plant seeds and validate soil/season requirements produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, plant seeds and validate soil/season requirements produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2493,6 +2494,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
+        "M078",
         "M081"
       ],
       "persistence": "save_required",
@@ -2515,7 +2517,7 @@
         "M082"
       ],
       "state_changes": [
-        "In a valid context, grow crops through defined stages produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, grow crops through defined stages produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2545,7 +2547,7 @@
         "M083"
       ],
       "state_changes": [
-        "In a valid context, apply watering, nutrients and plant stress produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, apply watering, nutrients and plant stress produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2572,10 +2574,10 @@
       "owner_system": "FarmingSimulation",
       "status": "unreviewed",
       "prerequisites": [
-        "M084"
+        "M083"
       ],
       "state_changes": [
-        "In a valid context, harvest crops and calculate yield produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, harvest crops and calculate yield produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2583,7 +2585,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M084"
+        "M083"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2605,7 +2607,7 @@
         "M081"
       ],
       "state_changes": [
-        "In a valid context, keep and feed farm animals produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, keep and feed farm animals produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2635,7 +2637,7 @@
         "M086"
       ],
       "state_changes": [
-        "In a valid context, advance animal growth and health produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, advance animal growth and health produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2665,7 +2667,7 @@
         "M086"
       ],
       "state_changes": [
-        "Feed consumption, animal outputs and manure/nutrient updates reconcile without duplicate stock."
+        "In a valid context, produce milk, eggs, wool or other configured goods produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2695,7 +2697,7 @@
         "M087"
       ],
       "state_changes": [
-        "In a valid context, reproduce animals within habitat capacity produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, reproduce animals within habitat capacity produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2722,10 +2724,11 @@
       "owner_system": "FarmingSimulation",
       "status": "unreviewed",
       "prerequisites": [
-        "M087"
+        "M085",
+        "M086"
       ],
       "state_changes": [
-        "In a valid context, connect feed, manure and soil nutrient cycles produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, connect feed, manure and soil nutrient cycles produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2733,7 +2736,8 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M087"
+        "M085",
+        "M086"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2751,16 +2755,20 @@
       "phase": 1,
       "owner_system": "RaidDirector",
       "status": "unreviewed",
-      "prerequisites": [],
+      "prerequisites": [
+        "M006"
+      ],
       "state_changes": [
-        "In a valid context, schedule and gate threat events produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, schedule and gate threat events produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
         "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
         "Repeated request does not duplicate output or consume resources twice."
       ],
-      "dependencies": [],
+      "dependencies": [
+        "M006"
+      ],
       "persistence": "save_required",
       "verification": {
         "static_review": "not_run",
@@ -2778,10 +2786,10 @@
       "owner_system": "RaidDirector",
       "status": "unreviewed",
       "prerequisites": [
-        "M006"
+        "M091"
       ],
       "state_changes": [
-        "In a valid context, evaluate difficulty from player/world context produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, evaluate difficulty from player/world context produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2789,7 +2797,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M006"
+        "M091"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2811,7 +2819,7 @@
         "M092"
       ],
       "state_changes": [
-        "In a valid context, plan enemy groups, waves and resource budget produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, plan enemy groups, waves and resource budget produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2841,7 +2849,7 @@
         "M093"
       ],
       "state_changes": [
-        "In a valid context, enforce spawn capacity and queue limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Failed threat spawn/queue requests do not leak population counters or create phantom enemies."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2871,7 +2879,7 @@
         "M094"
       ],
       "state_changes": [
-        "In a valid context, choose valid spawn locations produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, choose valid spawn locations produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2901,7 +2909,7 @@
         "M095"
       ],
       "state_changes": [
-        "In a valid context, select targets and compute navigation paths produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, select targets and compute navigation paths produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2928,10 +2936,11 @@
       "owner_system": "RaidDirector",
       "status": "unreviewed",
       "prerequisites": [
-        "M093"
+        "M096",
+        "M062"
       ],
       "state_changes": [
-        "In a valid context, resolve attack, bypass and structure damage produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Threat damage mutates the same authoritative structure integrity used by construction and persistence."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2939,7 +2948,8 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M093"
+        "M096",
+        "M062"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2958,10 +2968,10 @@
       "owner_system": "RaidDirector",
       "status": "unreviewed",
       "prerequisites": [
-        "M097"
+        "M093"
       ],
       "state_changes": [
-        "In a valid context, advance wave state machine produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, advance wave state machine produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2969,7 +2979,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M097"
+        "M093"
       ],
       "persistence": "save_required",
       "verification": {
@@ -2988,10 +2998,10 @@
       "owner_system": "RaidDirector",
       "status": "unreviewed",
       "prerequisites": [
-        "M097"
+        "M098"
       ],
       "state_changes": [
-        "In a valid context, cancel, interrupt and recover a failed raid produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, cancel, interrupt and recover a failed raid produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -2999,7 +3009,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M097"
+        "M098"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3018,10 +3028,11 @@
       "owner_system": "RaidDirector",
       "status": "unreviewed",
       "prerequisites": [
-        "M098"
+        "M091",
+        "M086"
       ],
       "state_changes": [
-        "In a valid context, reassess pressure from settlement noise, stock and defenses produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, reassess pressure from settlement noise, stock and defenses produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3029,7 +3040,8 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M098"
+        "M091",
+        "M086"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3049,7 +3061,7 @@
       "status": "unreviewed",
       "prerequisites": [],
       "state_changes": [
-        "In a valid context, load and unload carts, sleds and storage racks produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, load and unload carts, sleds and storage racks produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3074,10 +3086,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M006"
+        "M101"
       ],
       "state_changes": [
-        "In a valid context, transport materials by rope line or zipline produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, transport materials by rope line or zipline produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3085,7 +3097,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M006"
+        "M101"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3104,10 +3116,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M102"
+        "M101"
       ],
       "state_changes": [
-        "In a valid context, create primitive saw/production chains produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, create primitive saw/production chains produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3115,7 +3127,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M102"
+        "M101"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3137,7 +3149,7 @@
         "M103"
       ],
       "state_changes": [
-        "In a valid context, queue production and expose blocked reasons produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, queue production and expose blocked reasons produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3164,10 +3176,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M104"
+        "M043"
       ],
       "state_changes": [
-        "In a valid context, manage fuel, heat and cooking stations produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, manage fuel, heat and cooking stations produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3175,7 +3187,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M104"
+        "M043"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3194,10 +3206,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M105"
+        "M066"
       ],
       "state_changes": [
-        "In a valid context, use roads and bridges to reduce route cost produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, use roads and bridges to reduce route cost produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3205,7 +3217,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M105"
+        "M066"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3224,10 +3236,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M105"
+        "M008"
       ],
       "state_changes": [
-        "In a valid context, manage shelter, temperature and daily survival choices produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, manage shelter, temperature and daily survival choices produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3235,7 +3247,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M105"
+        "M008"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3254,10 +3266,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M107"
+        "M051"
       ],
       "state_changes": [
-        "In a valid context, expose resource, durability and storage status to the player produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, expose resource, durability and storage status to the player produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3265,7 +3277,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M107"
+        "M051"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3284,10 +3296,13 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M108"
+        "M076",
+        "M104",
+        "M090",
+        "M098"
       ],
       "state_changes": [
-        "Only one authoritative state may own a physical object during world/inventory/storage/production transfers."
+        "One integrated save/load cycle restores terrain, structures, inventory, production, farming and threat progression consistently."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3295,7 +3310,10 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M108"
+        "M076",
+        "M104",
+        "M090",
+        "M098"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3314,10 +3332,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M108"
+        "M006"
       ],
       "state_changes": [
-        "In a valid context, simulate weather and seasonal transitions produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, simulate weather and seasonal transitions produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3325,7 +3343,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M108"
+        "M006"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3343,16 +3361,20 @@
       "phase": 1,
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
-      "prerequisites": [],
+      "prerequisites": [
+        "M110"
+      ],
       "state_changes": [
-        "In a valid context, apply cold, heat and wetness exposure produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, apply cold, heat and wetness exposure produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
         "Unmet prerequisites or insufficient capacity/resources leave authoritative state unchanged.",
         "Repeated request does not duplicate output or consume resources twice."
       ],
-      "dependencies": [],
+      "dependencies": [
+        "M110"
+      ],
       "persistence": "save_required",
       "verification": {
         "static_review": "not_run",
@@ -3370,10 +3392,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M111"
+        "M006"
       ],
       "state_changes": [
-        "In a valid context, track hunger and thirst consumption produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, track hunger and thirst consumption produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3381,7 +3403,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M111"
+        "M006"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3400,10 +3422,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M112"
+        "M008"
       ],
       "state_changes": [
-        "In a valid context, recover stamina through rest and activity limits produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, recover stamina through rest and activity limits produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3411,7 +3433,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M112"
+        "M008"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3430,10 +3452,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M112"
+        "M113"
       ],
       "state_changes": [
-        "In a valid context, apply sleep and fatigue effects produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, apply sleep and fatigue effects produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3441,7 +3463,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M112"
+        "M113"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3460,10 +3482,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M114"
+        "M008"
       ],
       "state_changes": [
-        "In a valid context, apply injury, illness and poisoning state produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, apply injury, illness and poisoning state produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3471,7 +3493,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M114"
+        "M008"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3490,10 +3512,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M114"
+        "M006"
       ],
       "state_changes": [
-        "In a valid context, preserve food quality and spoilage over time produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, preserve food quality and spoilage over time produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3501,7 +3523,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M114"
+        "M006"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3520,10 +3542,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M112"
+        "M111"
       ],
       "state_changes": [
-        "In a valid context, apply clothing insulation and protective equipment produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "In a valid context, apply clothing insulation and protective equipment produces the documented world/state result; invalid targets, missing configuration or unmet prerequisites fail without partial mutation."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3531,7 +3553,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M112"
+        "M111"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3550,10 +3572,11 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M117"
+        "M107",
+        "M111"
       ],
       "state_changes": [
-        "In a valid context, make shelter quality affect environmental exposure produces the documented world/state result; invalid target, missing configuration or unmet prerequisites fail without partial mutation."
+        "Shelter quality measurably changes exposure outcomes using the same authoritative survival state."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3561,7 +3584,8 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M117"
+        "M107",
+        "M111"
       ],
       "persistence": "save_required",
       "verification": {
@@ -3580,10 +3604,10 @@
       "owner_system": "LogisticsProduction",
       "status": "unreviewed",
       "prerequisites": [
-        "M111"
+        "M080"
       ],
       "state_changes": [
-        "One integrated save/load cycle restores terrain, structures, inventory, production, farming and threat progression consistently."
+        "Exploration discoveries persist and reveal the intended environmental context after save/load."
       ],
       "failure_cases": [
         "Invalid target or missing configuration is rejected.",
@@ -3591,7 +3615,7 @@
         "Repeated request does not duplicate output or consume resources twice."
       ],
       "dependencies": [
-        "M111"
+        "M080"
       ],
       "persistence": "save_required",
       "verification": {
