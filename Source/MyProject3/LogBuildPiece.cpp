@@ -908,6 +908,12 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
     if (bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0)
         return false;
 
+    if (IsLengthCutAction(Action))
+    {
+        FLogLengthCutVariant LengthCut;
+        return TryResolveLengthCutVariant(Action, LengthCut);
+    }
+
     UStaticMesh* OutputMesh = nullptr;
     FVector SplitOffset = FVector::ZeroVector;
     FRotator ChildRotation = FRotator::ZeroRotator;
@@ -973,6 +979,31 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
         return TEXT("Drop the log before processing it.");
     if (GetAttachedPieceCount() > 0)
         return TEXT("Remove attached pieces before processing the support log.");
+
+    if (IsLengthCutAction(Action))
+    {
+        switch (Action)
+        {
+        case ELogCutAction::SplitLengthHalf:
+        case ELogCutAction::SplitLengthThreeQuarter:
+            if (GetLengthFraction() != ELogLengthFraction::FullLength)
+                return TEXT("This length-cut action requires a full-length log.");
+            break;
+        case ELogCutAction::SplitHalfLengthIntoQuarters:
+            if (GetLengthFraction() != ELogLengthFraction::HalfLength)
+                return TEXT("Quarter-length cutting requires a half-length log first.");
+            break;
+        default:
+            break;
+        }
+
+        FLogLengthCutVariant LengthCut;
+        if (!TryResolveLengthCutVariant(Action, LengthCut))
+        {
+            return TEXT("No unique valid length-cut recipe and exact output meshes/positions are configured for this length and cross-section.");
+        }
+        return TEXT("The requested length cut is currently blocked.");
+    }
 
     ELogCrossSectionProfile RequiredProfile = ELogCrossSectionProfile::Other;
     bool bNeedsSplitConfiguration = false;
