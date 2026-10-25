@@ -1,6 +1,7 @@
 #include "InventoryCraftingComponent.h"
 
 #include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
 #include "GameFramework/Actor.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
@@ -304,6 +305,102 @@ bool UInventoryCraftingComponent::TryWithdrawStoredItem(FGuid ItemId, FGuid Stor
    UE_LOG(LogTemp, Error, TEXT("Storage withdrawal rollback failed for item %s."), *ItemId.ToString());
   return false;
  }
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryDropOwnedItem(
+ FGuid ItemId, FVector SpawnLocation, AActor*& OutActor)
+{
+ OutActor = nullptr;
+ if (!ItemId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid() ||
+     !FMath::IsFinite(SpawnLocation.X) || !FMath::IsFinite(SpawnLocation.Y) ||
+     !FMath::IsFinite(SpawnLocation.Z))
+  return false;
+
+ const int32 StackIndex = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
+  { return Stack.OwnedWorldItemId == ItemId; });
+ if (!Items.IsValidIndex(StackIndex)) return false;
+
+ UWorldItemOwnershipSubsystem* Ownership =
+  GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+ if (!Ownership) return false;
+
+ FWorldOwnedItemRecord Item;
+ if (!Ownership->TryGetItem(ItemId, Item) ||
+     Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+     Item.OwnerId != InventoryOwnerId || Item.Revision == MAX_int64)
+  return false;
+
+ const TSubclassOf<AActor>* ActorClass = PhysicalItemActorClasses.Find(Item.DefinitionId);
+ if (!ActorClass || !*ActorClass) return false;
+
+ const FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
+ AActor* Spawned = GetWorld()->SpawnActorDeferred<AActor>(
+  *ActorClass, SpawnTransform, GetOwner(), nullptr,
+  ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+ if (!IsValid(Spawned)) return false;
+
+ UWorldObjectIdentityComponent* Identity =
+  Spawned->FindComponentByClass<UWorldObjectIdentityComponent>();
+ if (!Identity)
+ {
+  Spawned->Destroy();
+  return false;
+ }
+
+ // Reuse the ledger's ID before BeginPlay so the actor cannot register as a
+ // second, unrelated item while the inventory still owns the unique item.
+ Identity->InstanceId = Item.ItemId;
+ Identity->SetDefinitionId(Item.DefinitionId);
+ if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(Spawned))
+  LogPiece->bStartsPlaced = false;
+
+ UGameplayStatics::FinishSpawningActor(Spawned, SpawnTransform);
+ if (!IsValid(Spawned))
+  return false;
+
+ Spawned->SetActorHiddenInGame(true);
+ Spawned->SetActorEnableCollision(false);
+
+ FWorldOwnedItemRecord WorldItem;
+ if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+     EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
+     FGuid(), SpawnLocation, WorldItem))
+ {
+  Spawned->Destroy();
+  return false;
+ }
+
+ bool bActivated = true;
+ if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(Spawned))
+ {
+  bActivated = LogPiece->ActivateAfterOwnershipTransfer();
+ }
+ else
+ {
+  Spawned->SetActorHiddenInGame(false);
+  Spawned->SetActorEnableCollision(true);
+ }
+
+ if (!bActivated)
+ {
+  FWorldOwnedItemRecord RolledBack;
+  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, WorldItem.Revision,
+      EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
+      InventoryOwnerId, Item.WorldLocation, RolledBack))
+   UE_LOG(LogTemp, Error, TEXT("Dropped item activation and ownership rollback failed for %s."),
+    *Item.ItemId.ToString());
+  Spawned->SetActorHiddenInGame(true);
+  Spawned->SetActorEnableCollision(false);
+  Spawned->Destroy();
+  return false;
+ }
+
+ Items.RemoveAt(StackIndex);
+ if (!QuickAccessItemId.IsNone() && GetItemCount(QuickAccessItemId) <= 0)
+  QuickAccessItemId = NAME_None;
+
+ OutActor = Spawned;
  return true;
 }
 
