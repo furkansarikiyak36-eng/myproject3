@@ -226,7 +226,10 @@ A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stabl
 
 **Still open:** only actors with UWorldObjectIdentityComponent are captured; restore requires the same actors/classes/components already present and does not recreate missing runtime actors or handle world-partition streaming. Canonical graph is restored but actor-local log/stone/stick SnapParent/AttachedPieces weak refs and snap reservations still need rebinding. Held/carry state is still refused during save. Legacy saves lack historical physical/graph state and will fail closed when the current level requires those records. Real FBX/Blueprint configuration, UE compile/PIE/failure-injection and save→physics→load acceptance were not run. Recipe stock keys and non-log physical output/storage handoff also remain open.
 
-**Next implementation:** WOOD-011 — rebuild actor-local snap/attachment references from the restored canonical graph, then connect Held/carry state and actor recreation policy without duplicating item identities.
+**WOOD-011 source progress (2026-10-26):** `ALogBuildPiece` exposes graph-restore-only helpers that clear stale local reservations and rebuild log-to-log `SnapParent`, parent/own snap indices, parent `AttachedPieces`, and both occupied anchors from canonical graph edge IDs. The coordinator calls `RebuildLogActorAttachmentsFromSnapshot` immediately after graph restore. This path does not call `TryConnect` and therefore does not create duplicate graph edges. Static source checks only; UE build/runtime is not verified.
+**Still open:** Held/carry component persistence, actor recreation, non-log structural actor local-anchor rebuild, actual FBX/Blueprint configuration, and runtime acceptance.
+
+**Next implementation:** WOOD-012 — separate cut progress from completed geometry, make tree size → log count/length data-driven, and inventory actual mesh-family measurements.
 
 ---
 
