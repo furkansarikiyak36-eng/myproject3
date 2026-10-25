@@ -658,6 +658,15 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
             FText::FromString(TEXT("Could not allocate the second physical output actor.")));
     }
 
+    if (!Child->StructuralIdentity || !Child->Mesh)
+    {
+        Child->Destroy();
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InternalError,
+            OperationId,
+            FText::FromString(TEXT("The second output actor is missing its identity or mesh component.")));
+    }
+
     Child->PieceType = OutputType;
     Child->BaseDefinitionId = CurrentItem.BaseDefinitionId.IsNone()
         ? CurrentItem.DefinitionId : CurrentItem.BaseDefinitionId;
@@ -703,15 +712,25 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     OutputLocations.Add(ChildOutputLocation);
 
     TArray<FWorldOwnedItemRecord> OutputRecords;
-    if (!Ownership->TrySplitItem(OperationId, CurrentItem.ItemId, CurrentItem.Revision,
-        EWorldItemOwnerKind::World, OutputDefinitions, OutputLocations, OutputRecords) ||
-        OutputRecords.Num() != 2)
+    const bool bSplitCommitted = Ownership->TrySplitItem(OperationId, CurrentItem.ItemId,
+        CurrentItem.Revision, EWorldItemOwnerKind::World,
+        OutputDefinitions, OutputLocations, OutputRecords);
+    if (!bSplitCommitted)
     {
         Child->Destroy();
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::Conflict,
             OperationId,
             FText::FromString(TEXT("Ownership ledger rejected the atomic split request.")));
+    }
+    if (OutputRecords.Num() != 2)
+    {
+        Ownership->RestoreSnapshot(BeforeItems, BeforeTransferReceipts, BeforeSplitReceipts);
+        Child->Destroy();
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InternalError,
+            OperationId,
+            FText::FromString(TEXT("The ownership ledger returned an invalid output count; split state was restored.")));
     }
 
     const UStaticMesh* OldMesh = Mesh->GetStaticMesh();
