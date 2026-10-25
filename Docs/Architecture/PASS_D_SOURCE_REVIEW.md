@@ -10,6 +10,7 @@
 - [x] Shared identity component is attached to each supported physical-piece actor type.
 - [x] Graph registration uses the identity component's instance GUID.
 - [x] Graph edge creation follows successful actor attachment.
+- [x] Aggregate load is checked along every ancestor, not only the immediate parent.
 - [x] Failed graph edge creation releases the attempted anchor reservations and rolls back attachment bookkeeping.
 - [x] Placement state can update graph ground support.
 - [x] Detach requests clear the graph parent edge.
