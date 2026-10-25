@@ -218,9 +218,11 @@ A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stabl
 
 **WOOD-007 source progress:** a bounded physical-log intake adapter now validates a loose, single-unit, world-owned log and station revision/capacity, converts the authoritative item to Transformed, increments one station stock key preserving DefinitionId plus optional MeshVariantSetId, and persists an idempotency receipt inside the station snapshot. Save schema v9 and v8→v9 additive migration are included.
 
-**Still open:** real recipe assets/configuration must use the same stock-key contract; station stock ingestion does not yet prove recipe input consumption, job completion, actual output item/actor materialization, physical machine presentation or full physical-world save/load. Source-level work only; no Unreal compile/PIE/failure-injection tests were run.
+**WOOD-008 source progress:** production job queue and collection now have durable operation receipts and explicit retry-safe APIs. TryEnqueueJob accepts OperationId plus ExpectedStationRevision and replays the original JobId for the same request. TryCollectCompletedJob replays collection success by receipt, rather than attempting to remove the same completed job twice. These receipts are included in station snapshots; SaveGame schema v10 and v9→v10 migration were added. Production receipt operation IDs are checked across physical intake/enqueue/collection kinds.
 
-**Next implementation:** WOOD-008 — make recipe input reservations/consumption, completion, output-capacity reservation, output creation/ownership and retry receipts one coherent transaction before expanding factory depth.
+**Still open:** legacy convenience wrappers generate a fresh operation ID per call and therefore do not provide caller-controlled retry identity. Recipe stock keys still need authoring; a complete job/recipe output is not yet materialized as an individually owned physical item/actor. Input-stock consumption, final output ownership, station/depot handoff and complete physical-world save/load still need cross-system acceptance. Source-level work only; no Unreal compile/PIE/failure-injection tests were run.
+
+**Next implementation:** WOOD-009 — bridge aggregate station stock and completed recipe outputs to real owned item records/physical actors or storage, with output-capacity checks, idempotent receipt, and rollback on actor/ledger activation failure.
 
 ---
 
