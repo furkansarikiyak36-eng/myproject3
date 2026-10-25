@@ -130,6 +130,33 @@ bool ALogBuildPiece::TryTransferOwnership(
 
 void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    // A gameplay-destroyed physical piece must not remain as a world-owned
+    // ledger item. Inventory handoff is excluded because its owner has already
+    // changed before Destroy() is requested.
+    if (EndPlayReason == EEndPlayReason::Destroyed && StructuralIdentity &&
+        StructuralIdentity->HasValidIdentity() && GetWorld())
+    {
+        if (UWorldItemOwnershipSubsystem* Ownership =
+            GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>())
+        {
+            FWorldOwnedItemRecord Item;
+            if (Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item) &&
+                (Item.OwnerKind == EWorldItemOwnerKind::World ||
+                 Item.OwnerKind == EWorldItemOwnerKind::Held) &&
+                Item.Revision < MAX_int64)
+            {
+                FWorldOwnedItemRecord Consumed;
+                if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+                    Item.OwnerKind, EWorldItemOwnerKind::Consumed, FGuid(),
+                    GetActorLocation(), Consumed))
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Destroyed log '%s' left an unconsumed ownership record."),
+                        *GetName());
+                }
+            }
+        }
+    }
+
     DetachFromSnapParent();
     for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
     {
