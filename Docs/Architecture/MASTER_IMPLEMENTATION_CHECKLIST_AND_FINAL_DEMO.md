@@ -639,7 +639,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] v4→v5 yükleme ve v5 round-trip testi
 
 **Kaynak dosyaları:** `WorldItemOwnershipSubsystem.h/.cpp`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
-**Commit/PR:** `fix/ownership-transfer-receipt-snapshots`; PR #19 açıldıktan sonra bağ eklenecek.  
+**Commit/PR:** [PR #19 — Preserve item transfer receipts across rollback and saves](https://github.com/furkansarikiyak36-eng/myproject3/pull/19); `fix/ownership-transfer-receipt-snapshots`.  
 **Sonuç:** Önceki snapshot API yalnızca item kayıtlarını içeriyordu; restore receipt haritasını sıfırlıyordu. Yeni overload item kayıtları ve transfer fişlerini birlikte dışa/içe aktarır, her iki adlandırılmış haritayı tüm veriler doğrulandıktan sonra değiştirir. Koordinatör rollback'i ve SaveGame v5 artık receipt'leri içeriyor. v4 kayıtları geçmiş fişleri içeremediğinden boş listeyle taşınır; revision guard eski transferin tekrar uygulanmasını engeller, ancak eski fişin asıl sonucu geri verilemez.  
 **Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi/runtime doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Genel `WorldOperationLedgerSubsystem` geçmişi bu kapsamda kalıcılaştırılmadı; fiziksel aktör/terrain/structural graph kayıt eksikleri ayrı iştir.  
