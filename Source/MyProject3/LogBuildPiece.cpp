@@ -881,6 +881,99 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     }
 }
 
+bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
+{
+    if (CurrentDefinitionId.IsNone() || BaseDefinitionId.IsNone() || !Mesh)
+        return false;
+
+    // The unprocessed/base definition is configured by the actor Blueprint.
+    if (CurrentDefinitionId == BaseDefinitionId)
+    {
+        if (UWorldObjectIdentityComponent* Identity =
+            FindComponentByClass<UWorldObjectIdentityComponent>())
+        {
+            Identity->SetDefinitionId(CurrentDefinitionId);
+        }
+        return true;
+    }
+
+    const FString BaseText = BaseDefinitionId.ToString();
+    const FString CurrentText = CurrentDefinitionId.ToString();
+    const FString Prefix = BaseText + TEXT(".");
+    if (!CurrentText.StartsWith(Prefix, ESearchCase::IgnoreCase))
+        return false;
+
+    const FString Suffix = CurrentText.RightChop(Prefix.Len());
+    UStaticMesh* VariantMesh = nullptr;
+    ELogPieceType VariantType = ELogPieceType::Other;
+    if (Suffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = SplitHalfVariantMesh;
+        VariantType = ELogPieceType::SplitHalfLog;
+    }
+    else if (Suffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = QuarterVariantMesh;
+        VariantType = ELogPieceType::QuarterLog;
+    }
+    else if (Suffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = HewnVariantMesh;
+        VariantType = ELogPieceType::HewnLog;
+    }
+    else if (Suffix.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = GutterVariantMesh;
+        VariantType = ELogPieceType::GutterLog;
+    }
+    else if (Suffix.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = TroughVariantMesh;
+        VariantType = ELogPieceType::TroughLog;
+    }
+    else if (Suffix.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = KalasVariantMesh;
+        VariantType = ELogPieceType::SquaredBeam;
+    }
+    else if (Suffix.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
+    {
+        VariantMesh = PlankVariantMesh;
+        VariantType = ELogPieceType::Plank;
+    }
+    else
+    {
+        return false;
+    }
+
+    if (!IsValid(VariantMesh))
+        return false;
+
+    // Preserve the lower contact plane as geometry dimensions change.
+    FVector OldOrigin;
+    FVector OldExtent;
+    GetActorBounds(false, OldOrigin, OldExtent);
+    const float OldBottomZ = OldOrigin.Z - OldExtent.Z;
+
+    SetPieceStaticMesh(VariantMesh);
+    PieceType = VariantType;
+    if (Mesh)
+        Mesh->UpdateBounds();
+
+    FVector NewOrigin;
+    FVector NewExtent;
+    GetActorBounds(false, NewOrigin, NewExtent);
+    const float NewBottomZ = NewOrigin.Z - NewExtent.Z;
+    AddActorWorldOffset(FVector(0.0f, 0.0f, OldBottomZ - NewBottomZ), false);
+
+    if (UWorldObjectIdentityComponent* Identity =
+        FindComponentByClass<UWorldObjectIdentityComponent>())
+    {
+        Identity->SetDefinitionId(CurrentDefinitionId);
+    }
+    return true;
+}
+
 void ALogBuildPiece::AddCustomSnapPoint(
     FName PointId,
     FName SnapTag,
