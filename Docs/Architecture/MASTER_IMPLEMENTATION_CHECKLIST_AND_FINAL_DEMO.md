@@ -82,6 +82,7 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Kütük, taş ve çubuk aktörlerinin sahiplik defterine bağlanmasını tamamla.
 - [ ] Envanter/depo içindeki fiziksel eşyanın dünyaya yeniden aktör olarak çıkarılması için tutarlı bir kural kur.
 - [ ] Başarısız toplama, bırakma, üretim veya teslimat işleminde eşya kaybı/çoğaltılması olmadığını kabul senaryolarıyla göster.
+- [x] Ownership transfer receipt'leri sabit-adım rollback ve v5 SaveGame snapshot'larında korunuyor; v4 kayıtları boş receipt listesiyle güvenli şekilde taşınıyor. Statik kontrol tamamlandı, motor testleri açık.
 
 ### 2C. Envanter ve crafting
 
@@ -622,6 +623,27 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Kanıt seviyesi:** Kaynak incelemesi / statik değişiklik kontrolü; Unreal motor doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Bu koruma koordinatör üzerinden ilerleyen sabit adımlar için geçerlidir. Diğer sistemler başka bir yerden bağımsız olarak ilerletilmemeli. Rollback'in tüm sistemlerde kesin atomikliği veya fiziksel aktör yan etkilerinin geri alınması henüz kanıtlanmış değildir.  
 **Sonraki bağımlı iş:** CORE-002 — ownership transfer receipts ve işlem idempotency kayıtlarının snapshot/rollback/kayıt sınırları.
+
+---
+
+### İş kaydı: CORE-002 — Eşya transfer fişlerinin snapshot/rollback/kayıtta korunması
+
+- [x] Item+receipt snapshot API eklendi; deterministik sıralama sağlandı
+- [x] Geri yükleme, item ve receipt tablolarını birlikte doğrulayıp atomik olarak değiştiriyor
+- [x] Sabit-adım rollback önceki receipt setini koruyor
+- [x] SaveGame şeması v5'e yükseltildi ve v4 için açık uyumluluk yolu eklendi
+- [x] İlgili çağrı noktaları ve değişiklikler statik kontrol edildi
+- [ ] UE 5.8 UHT/UBT derlemesi
+- [ ] Aynı operation ID ile tekrar denemede asıl sonuç döndüğünü gösteren runtime testi
+- [ ] Rollback sonrası receipt setinin korunduğunu gösteren fault-injection testi
+- [ ] v4→v5 yükleme ve v5 round-trip testi
+
+**Kaynak dosyaları:** `WorldItemOwnershipSubsystem.h/.cpp`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
+**Commit/PR:** `fix/ownership-transfer-receipt-snapshots`; PR #19 açıldıktan sonra bağ eklenecek.  
+**Sonuç:** Önceki snapshot API yalnızca item kayıtlarını içeriyordu; restore receipt haritasını sıfırlıyordu. Yeni overload item kayıtları ve transfer fişlerini birlikte dışa/içe aktarır, her iki adlandırılmış haritayı tüm veriler doğrulandıktan sonra değiştirir. Koordinatör rollback'i ve SaveGame v5 artık receipt'leri içeriyor. v4 kayıtları geçmiş fişleri içeremediğinden boş listeyle taşınır; revision guard eski transferin tekrar uygulanmasını engeller, ancak eski fişin asıl sonucu geri verilemez.  
+**Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi/runtime doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** Genel `WorldOperationLedgerSubsystem` geçmişi bu kapsamda kalıcılaştırılmadı; fiziksel aktör/terrain/structural graph kayıt eksikleri ayrı iştir.  
+**Sonraki bağımlı iş:** CORE-003 — genel Operation Ledger'ın kayıt/yükleme ve işlem idempotency sınırını incelemek; ardından kalan P0 işlem/sahiplik kusurlarını kapatmak.
 
 ---
 
