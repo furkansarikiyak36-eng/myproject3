@@ -142,15 +142,110 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
  return true;
 }
 
+bool UInventoryCraftingComponent::TryMoveOwnedItemToStorage(FGuid ItemId, FGuid StorageId)
+{
+ if (!ItemId.IsValid() || !StorageId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid())
+  return false;
+ const int32 Index = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
+  { return Stack.OwnedWorldItemId == ItemId; });
+ if (!Items.IsValidIndex(Index)) return false;
+
+ UWorldItemOwnershipSubsystem* Ownership =
+  GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+ if (!Ownership) return false;
+ FWorldOwnedItemRecord Item;
+ if (!Ownership->TryGetItem(ItemId, Item) ||
+     Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+     Item.OwnerId != InventoryOwnerId || Item.Revision == MAX_int64)
+  return false;
+
+ FWorldOwnedItemRecord Stored;
+ if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, Item.Revision,
+     EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Storage,
+     StorageId, Item.WorldLocation, Stored))
+  return false;
+
+ Items.RemoveAt(Index);
+ if (!QuickAccessItemId.IsNone() && GetItemCount(QuickAccessItemId) <= 0)
+  QuickAccessItemId = NAME_None;
+ return true;
+}
+
 bool UInventoryCraftingComponent::TryRemoveItem(FName ItemId, int32 Quantity)
 {
  if (ItemId.IsNone() || Quantity <= 0 || GetItemCount(ItemId) < Quantity) return false;
+
+ // Validate every unique physical item first; generic resource stacks remain
+ // quantity-based, while physical items must transition out of inventory ownership.
  int32 Remaining = Quantity;
+ TArray<FGuid> OwnedToConsume;
+ for (int32 Index = Items.Num() - 1; Index >= 0 && Remaining > 0; --Index)
+ {
+  const FInventoryStack& Stack = Items[Index];
+  if (Stack.ItemId != ItemId) continue;
+  const int32 Taken = FMath::Min(Remaining, Stack.Quantity);
+  if (Stack.OwnedWorldItemId.IsValid())
+  {
+   if (Taken != 1 || Stack.Quantity != 1 || !GetWorld() || !InventoryOwnerId.IsValid())
+    return false;
+   OwnedToConsume.Add(Stack.OwnedWorldItemId);
+  }
+  Remaining -= Taken;
+ }
+ if (Remaining != 0) return false;
+
+ UWorldItemOwnershipSubsystem* Ownership =
+  GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+ if (!OwnedToConsume.IsEmpty() && !Ownership) return false;
+
+ TArray<FWorldOwnedItemRecord> ConsumedRecords;
+ for (const FGuid& OwnedId : OwnedToConsume)
+ {
+  FWorldOwnedItemRecord Item;
+  if (!Ownership->TryGetItem(OwnedId, Item) ||
+      Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+      Item.OwnerId != InventoryOwnerId || Item.Revision == MAX_int64)
+  {
+   for (int32 RollbackIndex = ConsumedRecords.Num() - 1; RollbackIndex >= 0; --RollbackIndex)
+   {
+    const FWorldOwnedItemRecord& Committed = ConsumedRecords[RollbackIndex];
+    FWorldOwnedItemRecord RolledBack;
+    if (!Ownership->TryTransferItem(FGuid::NewGuid(), Committed.ItemId, Committed.Revision,
+        EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
+        InventoryOwnerId, Committed.WorldLocation, RolledBack))
+     UE_LOG(LogTemp, Error, TEXT("Inventory consume rollback failed for item %s."),
+      *Committed.ItemId.ToString());
+   }
+   return false;
+  }
+
+  FWorldOwnedItemRecord Committed;
+  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+      EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Consumed,
+      FGuid(), Item.WorldLocation, Committed))
+  {
+   for (int32 RollbackIndex = ConsumedRecords.Num() - 1; RollbackIndex >= 0; --RollbackIndex)
+   {
+    const FWorldOwnedItemRecord& Previous = ConsumedRecords[RollbackIndex];
+    FWorldOwnedItemRecord RolledBack;
+    if (!Ownership->TryTransferItem(FGuid::NewGuid(), Previous.ItemId, Previous.Revision,
+        EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
+        InventoryOwnerId, Previous.WorldLocation, RolledBack))
+     UE_LOG(LogTemp, Error, TEXT("Inventory consume rollback failed for item %s."),
+      *Previous.ItemId.ToString());
+   }
+   return false;
+  }
+  ConsumedRecords.Add(Committed);
+ }
+
+ Remaining = Quantity;
  for (int32 Index = Items.Num() - 1; Index >= 0 && Remaining > 0; --Index)
  {
   if (Items[Index].ItemId != ItemId) continue;
   const int32 Taken = FMath::Min(Remaining, Items[Index].Quantity);
-  Items[Index].Quantity -= Taken; Remaining -= Taken;
+  Items[Index].Quantity -= Taken;
+  Remaining -= Taken;
   if (Items[Index].Quantity <= 0) Items.RemoveAt(Index);
  }
  if (QuickAccessItemId == ItemId && GetItemCount(ItemId) == 0) QuickAccessItemId = NAME_None;
