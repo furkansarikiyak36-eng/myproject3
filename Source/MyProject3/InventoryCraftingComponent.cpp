@@ -443,6 +443,7 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
   LogPiece->bStartsPlaced = false;
   LogPiece->BaseDefinitionId = Item.BaseDefinitionId.IsNone()
    ? Item.DefinitionId : Item.BaseDefinitionId;
+  LogPiece->SelectedProcessingMeshSetId = Item.MeshVariantSetId;
  }
  if (AStoneBuildingPiece* StonePiece = Cast<AStoneBuildingPiece>(Spawned))
   StonePiece->DefinitionId = Item.DefinitionId;
