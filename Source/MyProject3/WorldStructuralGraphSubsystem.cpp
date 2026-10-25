@@ -74,6 +74,7 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
     Child->ParentNodeId = ParentNodeId;
     Child->ParentAnchorId = ParentAnchorId;
     Child->OwnAnchorId = OwnAnchorId;
+    Child->bGroundSupported = false;
 
     TSet<FGuid> Visiting;
     bool bLoadValid = true;
@@ -106,7 +107,23 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
     Child->ParentNodeId.Invalidate();
     Child->ParentAnchorId = NAME_None;
     Child->OwnAnchorId = NAME_None;
+    Child->bGroundSupported = false;
     ++Child->Revision;
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::SetGroundSupported(FGuid NodeId, bool bGroundSupported)
+{
+    FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+    if (!Node || (bGroundSupported && Node->ParentNodeId.IsValid()))
+    {
+        return false;
+    }
+    if (Node->bGroundSupported != bGroundSupported)
+    {
+        Node->bGroundSupported = bGroundSupported;
+        ++Node->Revision;
+    }
     return true;
 }
 
