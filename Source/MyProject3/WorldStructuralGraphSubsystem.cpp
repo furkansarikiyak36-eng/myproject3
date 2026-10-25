@@ -45,6 +45,10 @@ bool UWorldStructuralGraphSubsystem::ExportSnapshot(
 bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
     const TArray<FWorldStructuralNodeSnapshot>& Snapshot)
 {
+    // A legacy save without graph data must not erase an already registered structure.
+    if (Snapshot.IsEmpty() && !Nodes.IsEmpty())
+        return false;
+
     TMap<FGuid, AActor*> ActorsByIdentity;
     if (UWorld* World = GetWorld())
     {
