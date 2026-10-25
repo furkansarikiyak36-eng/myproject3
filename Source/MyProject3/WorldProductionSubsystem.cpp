@@ -904,6 +904,12 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
         RecipeIds.Add(R.RecipeId);
         NewRecipes.Add(R);
     }
+    auto FindSnapshotRecipe = [&NewRecipes](FName RecipeId) -> const FWorldProductionRecipe*
+    {
+        const int32 Index = NewRecipes.IndexOfByPredicate([RecipeId](const FWorldProductionRecipe& Recipe)
+            { return Recipe.RecipeId == RecipeId; });
+        return NewRecipes.IsValidIndex(Index) ? &NewRecipes[Index] : nullptr;
+    };
     TMap<FGuid, FWorldProductionStation> NewStations;
     TSet<FGuid> ProductionOperationIds;
     TSet<FGuid> IntakeSourceItemIds;
@@ -911,12 +917,41 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
     TSet<FGuid> MaterializedWorldItemIds;
     for (const FWorldProductionStation& S : StationSnapshot)
     {
+        const int64 StockUnits = CountStockUnits(S.Stock);
         if (!S.StationId.IsValid() || S.StationTag.IsNone() || S.StorageCapacityUnits <= 0 ||
             S.Revision <= 0 || NewStations.Contains(S.StationId) ||
-            CountStockUnits(S.Stock) > S.StorageCapacityUnits) return false;
+            StockUnits == MAX_int64 || StockUnits > S.StorageCapacityUnits)
+        {
+            return false;
+        }
+
+        int64 ReservedOutputUnits = 0;
+        TSet<FGuid> StationJobIds;
         for (const FWorldProductionJob& J : S.Jobs)
-            if (!J.JobId.IsValid() || !RecipeIds.Contains(J.RecipeId) ||
-                !FMath::IsFinite(J.ProgressSeconds) || J.ProgressSeconds < 0.0) return false;
+        {
+            const FWorldProductionRecipe* Recipe = FindSnapshotRecipe(J.RecipeId);
+            if (!J.JobId.IsValid() || StationJobIds.Contains(J.JobId) || !Recipe ||
+                static_cast<uint8>(J.State) > static_cast<uint8>(EProductionJobState::Blocked) ||
+                !FMath::IsFinite(J.ProgressSeconds) || J.ProgressSeconds < 0.0 ||
+                J.ProgressSeconds > Recipe->DurationSeconds)
+            {
+                return false;
+            }
+            StationJobIds.Add(J.JobId);
+
+            if (J.State == EProductionJobState::Queued || J.State == EProductionJobState::Running)
+            {
+                for (const FProductionIngredient& Output : Recipe->Outputs)
+                {
+                    if (ReservedOutputUnits > MAX_int64 - Output.Quantity)
+                        return false;
+                    ReservedOutputUnits += Output.Quantity;
+                }
+            }
+        }
+        if (ReservedOutputUnits > S.StorageCapacityUnits - StockUnits)
+            return false;
+
         for (const FWorldProductionPhysicalIntakeReceipt& Receipt : S.PhysicalIntakeReceipts)
         {
             if (!Receipt.OperationId.IsValid() || !Receipt.SourceItemId.IsValid() ||
