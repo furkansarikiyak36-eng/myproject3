@@ -41,6 +41,7 @@ public:
         const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& SourceStorageId,
         FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
         float CostPerSecond, FGuid& OutCargoId);
+    UFUNCTION(BlueprintPure, Category="World|Logistics") bool CanAdvanceCargoStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Logistics") bool AdvanceCargoStep(double DeltaSeconds);
     UFUNCTION(BlueprintCallable, Category="World|Logistics") bool RetryBlockedDelivery(const FGuid& CargoId);
     UFUNCTION(BlueprintPure, Category="World|Logistics") bool GetCargo(const FGuid& CargoId, FWorldCargoTransportRecord& OutCargo) const;
