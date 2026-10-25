@@ -121,6 +121,12 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
     {
         if (Pair.Value.ParentNodeId.IsValid() && !Proposed.Contains(Pair.Value.ParentNodeId))
             return false;
+
+        // Loose, unplaced pieces may be valid graph roots without ground support.
+        // Any node that claims a parent must, however, lead to a supported root.
+        if (!Pair.Value.ParentNodeId.IsValid())
+            continue;
+
         TSet<FGuid> Visited;
         FGuid CurrentId = Pair.Key;
         bool bReachedSupportedRoot = false;
