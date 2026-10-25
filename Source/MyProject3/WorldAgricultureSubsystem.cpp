@@ -144,3 +144,43 @@ bool UWorldAgricultureSubsystem::GetAnimal(const FGuid& AnimalId, FWorldAnimalSt
     OutAnimal = *Found;
     return true;
 }
+
+void UWorldAgricultureSubsystem::ExportSnapshot(
+    TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals) const
+{
+    Crops.GenerateValueArray(OutCrops);
+    Animals.GenerateValueArray(OutAnimals);
+    OutCrops.Sort([](const FWorldCropState& A, const FWorldCropState& B)
+        { return A.CropId.ToString() < B.CropId.ToString(); });
+    OutAnimals.Sort([](const FWorldAnimalState& A, const FWorldAnimalState& B)
+        { return A.AnimalId.ToString() < B.AnimalId.ToString(); });
+}
+
+bool UWorldAgricultureSubsystem::RestoreSnapshot(
+    const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot)
+{
+    if (CropSnapshot.Num() > MaxCrops || AnimalSnapshot.Num() > MaxAnimals ||
+        MaxCrops <= 0 || MaxAnimals <= 0) return false;
+    TMap<FGuid, FWorldCropState> NewCrops;
+    TMap<FGuid, FWorldAnimalState> NewAnimals;
+    for (const FWorldCropState& C : CropSnapshot)
+    {
+        if (!C.CropId.IsValid() || C.CropDefinitionId.IsNone() || C.Revision <= 0 ||
+            !FMath::IsFinite(C.Moisture) || C.Moisture < 0.0f || C.Moisture > 1.0f ||
+            !FMath::IsFinite(C.GrowthProgressSeconds) || C.GrowthProgressSeconds < 0.0 ||
+            !FMath::IsFinite(C.SecondsPerStage) || C.SecondsPerStage <= 0.0 ||
+            NewCrops.Contains(C.CropId)) return false;
+        NewCrops.Add(C.CropId, C);
+    }
+    for (const FWorldAnimalState& A : AnimalSnapshot)
+    {
+        if (!A.AnimalId.IsValid() || A.AnimalDefinitionId.IsNone() || A.Revision <= 0 ||
+            !FMath::IsFinite(A.Hunger) || A.Hunger < 0.0f || A.Hunger > 100.0f ||
+            !FMath::IsFinite(A.Health) || A.Health < 0.0f || A.Health > 100.0f ||
+            A.ProductUnits < 0 || NewAnimals.Contains(A.AnimalId)) return false;
+        NewAnimals.Add(A.AnimalId, A);
+    }
+    Crops = MoveTemp(NewCrops);
+    Animals = MoveTemp(NewAnimals);
+    return true;
+}
