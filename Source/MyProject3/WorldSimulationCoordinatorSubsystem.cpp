@@ -3,6 +3,9 @@
 #include "Engine/World.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "WorldProductionSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -14,6 +17,24 @@ UWorldThreatDirectorSubsystem* UWorldSimulationCoordinatorSubsystem::GetThreatDi
 {
     UWorld* World = GetWorld();
     return World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+}
+
+UWorldAgricultureSubsystem* UWorldSimulationCoordinatorSubsystem::GetAgriculture() const
+{
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+}
+
+UWorldSurvivalSubsystem* UWorldSimulationCoordinatorSubsystem::GetSurvival() const
+{
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+}
+
+UWorldProductionSubsystem* UWorldSimulationCoordinatorSubsystem::GetProduction() const
+{
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
 }
 
 bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
@@ -56,31 +77,38 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
 {
     UWorldSimulationClockSubsystem* Clock = GetClock();
     UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
-    if (!Clock || !Threat || !Clock->IsClockInitialized() ||
-        !Threat->IsDirectorInitialized() || !FMath::IsFinite(DeltaSeconds) ||
-        DeltaSeconds <= 0.0 || CompletedCoordinatorSteps == MAX_int64 ||
-        !Clock->CanAdvanceSimulation(DeltaSeconds))
+    UWorldAgricultureSubsystem* Agriculture = GetAgriculture();
+    UWorldSurvivalSubsystem* Survival = GetSurvival();
+    UWorldProductionSubsystem* Production = GetProduction();
+    if (!Clock || !Threat || !Agriculture || !Survival || !Production ||
+        !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() ||
+        !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
+        CompletedCoordinatorSteps == MAX_int64 || !Clock->CanAdvanceSimulation(DeltaSeconds))
     {
         return false;
     }
 
     const double TargetTime = Clock->GetSimulationTimeSeconds() + DeltaSeconds;
     const int64 TargetTick = Clock->GetTickIndex() + 1;
-    if (!Threat->CanAdvanceDirectorAtTime(TargetTime, TargetTick))
+    if (!Agriculture->CanAdvanceAgricultureStep(DeltaSeconds) ||
+        !Survival->CanAdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
+        !Production->CanAdvanceProductionStep(DeltaSeconds) ||
+        !Threat->CanAdvanceDirectorAtTime(TargetTime, TargetTick))
     {
         return false;
     }
 
-    // All known failure conditions are checked before mutation. The director
-    // consumes the proposed time/tick, then the clock advances through the
-    // same validated delta. No external callback is invoked between commits.
-    if (!Threat->AdvanceDirectorAtTime(TargetTime, TargetTick))
+    // Every participating subsystem has completed a non-mutating preflight.
+    // No delegate is broadcast during these commits; the fixed-step driver is
+    // the sole writer under the game's single-threaded world-simulation rule.
+    if (!Agriculture->AdvanceAgricultureStep(DeltaSeconds) ||
+        !Survival->AdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
+        !Production->AdvanceProductionStep(DeltaSeconds) ||
+        !Threat->AdvanceDirectorAtTime(TargetTime, TargetTick) ||
+        !Clock->AdvanceSimulation(DeltaSeconds))
     {
-        return false;
-    }
-    if (!Clock->AdvanceSimulation(DeltaSeconds))
-    {
-        // This indicates unexpected re-entrant mutation; halt the coordinator.
+        // A failure here is an invariant violation: stop driving simulation and
+        // capture state for diagnosis rather than silently counting the step.
         return false;
     }
 
@@ -92,5 +120,9 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
 {
     const UWorldSimulationClockSubsystem* Clock = GetClock();
     const UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
-    return Clock && Threat && Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
+    const UWorldAgricultureSubsystem* Agriculture = GetAgriculture();
+    const UWorldSurvivalSubsystem* Survival = GetSurvival();
+    const UWorldProductionSubsystem* Production = GetProduction();
+    return Clock && Threat && Agriculture && Survival && Production &&
+        Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
 }
