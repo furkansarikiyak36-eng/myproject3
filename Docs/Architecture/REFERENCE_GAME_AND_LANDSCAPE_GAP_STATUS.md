@@ -56,7 +56,11 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Still not verified:** actual FBX bounds/pivots/orientations, output mesh assignment, per-Blueprint offsets/rotations, the absent `SM_RawLog_75.fbx` base-round mesh, and ambiguous `Long_01..08` / `Short_01..04` dimensions. The import script stages a gallery; it does not complete production Blueprint configuration or physical actor save/load.
 
-**Next implementation:** use the exact asset inventory to prepare a staging-level measurement manifest. Do not promote filename-derived categories to verified geometry until the meshes have been imported and measured in UE.
+**Progress in WOOD-004:** The source now has explicit `FLogProcessingMeshSet` / `FLogPieceMeshVariant` rows keyed by `LengthFraction × CrossSectionShape`. Cut eligibility, output mesh resolution, variant restore and split offsets/rotations use the selected set; missing/ambiguous table rows fail closed. `MeshVariantSetId` follows the ownership item through split outputs and inventory drop, while the item DefinitionId can encode a non-full length fraction plus shape. SaveGame schema v8 includes that selector as part of the item record.
+
+**Still not verified:** no nominal variant table has been populated from actual imported assets; mesh bounds/pivot/orientation and output collision are still unknown. `SM_RawLog_75.fbx` is absent, `Long_01..08` / `Short_01..04` dimensions remain ambiguous, and Unreal build/PIE/retry/save-load tests were not run.
+
+**Next implementation:** WOOD-005 should close tree felling/grounded lifecycle and log count/identity creation. In parallel, actual FBX import measurements remain an explicit UE acceptance task.
 
 ## 2.2 — 7 Days to Die: constrained excavation, raids and structural pressure
 
