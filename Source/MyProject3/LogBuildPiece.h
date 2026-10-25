@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "LogBuildingTypes.h"
+#include "GameplayCoreTypes.h"
 #include "LogBuildPiece.generated.h"
 
 class UStaticMesh;
@@ -111,6 +112,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     bool ApplyCutAction(ELogCutAction Action);
+
+    /** Result-bearing processing entry point; legacy bool API remains compatible. */
+    UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
+    FWorldOperationResult TryApplyCutAction(ELogCutAction Action, FGuid OperationId);
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceTypeByName(FName TypeName);
