@@ -1,6 +1,6 @@
 # Phase 2 — Core Identity and Operation Contracts
 
-**Status:** Source implementation added; static review pending final integrated validation.  
+**Status:** Source-contract layer complete; Unreal integration/validation remains open.  
 **Branch:** `phase-02-core-contracts`  
 **Base:** Phase 1 closeout commit `2786174fb3700cb924aea20e8de9b350b4935749`  
 **Engine target:** Unreal Engine 5.8
@@ -67,7 +67,7 @@ This is only generic instance lifecycle. Wood processing (whole/split/grooved), 
 - [x] Perform source-level review of the new public types and keep existing log/carry signatures unchanged.
 - [ ] Run Unreal Engine 5.8 build/UHT and editor/runtime tests at the agreed end-of-phases gate.
 
-## Explicitly not claimed
+## Phase closeout\n\nSee `PHASE_02_CLOSEOUT.md` for the source-contract closeout decision and remaining gates.\n\n## Explicitly not claimed
 
 - No Unreal Engine build, UHT, editor session, PIE, or gameplay test was run.
 - The 119 mechanics are not implemented by adding these shared types; registry status remains unreviewed until owning implementations and evidence are attached.
