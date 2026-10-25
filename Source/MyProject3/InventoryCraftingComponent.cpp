@@ -387,6 +387,18 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
   return false;
 
  const TSubclassOf<AActor>* ActorClass = PhysicalItemActorClasses.Find(Item.DefinitionId);
+ bool bApplyLogVariantFromBaseClass = false;
+ if ((!ActorClass || !*ActorClass) &&
+     !Item.BaseDefinitionId.IsNone() && Item.BaseDefinitionId != Item.DefinitionId)
+ {
+  const TSubclassOf<AActor>* BaseActorClass = PhysicalItemActorClasses.Find(Item.BaseDefinitionId);
+  if (BaseActorClass && *BaseActorClass &&
+      (*BaseActorClass)->IsChildOf(ALogBuildPiece::StaticClass()))
+  {
+   ActorClass = BaseActorClass;
+   bApplyLogVariantFromBaseClass = true;
+  }
+ }
  if (!ActorClass || !*ActorClass) return false;
 
  const UClass* RequestedClass = *ActorClass;
@@ -455,6 +467,19 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
   StonePiece->DefinitionId = Item.DefinitionId;
  if (AStickPrimitivePiece* StickPiece = Cast<AStickPrimitivePiece>(Spawned))
   StickPiece->DefinitionId = Item.DefinitionId;
+
+ if (bApplyLogVariantFromBaseClass)
+ {
+  ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(Spawned);
+  if (!LogPiece || !LogPiece->ApplyDefinitionVariant(Item.DefinitionId))
+  {
+   UE_LOG(LogTemp, Error, TEXT("No configured physical mesh variant for item definition %s."),
+    *Item.DefinitionId.ToString());
+   Spawned->Destroy();
+   return false;
+  }
+ }
+
  Spawned->SetActorHiddenInGame(true);
  Spawned->SetActorEnableCollision(false);
 
