@@ -26,7 +26,7 @@ public:
         double FirstRaidDelaySeconds = 900.0);
 
     /**
-     * Advances the logical clock and then evaluates the threat director once.
+     * Preflights clock and threat state, then commits one fixed step.
      * DeltaSeconds must be the configured fixed step, not render-frame delta.
      */
     UFUNCTION(BlueprintCallable, Category="World|Simulation")
