@@ -17,7 +17,7 @@ Implement the smallest shared C++ contract layer needed by later domains without
   - Factory methods prevent a failure from being constructed with the `Success` code and ensure every result has a diagnostic operation ID.
 - `WorldObjectIdentityComponent.h/.cpp`
   - Optional actor component providing a GUID instance ID, authored definition key, generic lifecycle state, and monotonic state revision.
-  - Identity is generated when absent; existing valid identity is preserved.
+  - Identity is generated when absent; existing valid identity is preserved unless a duplicate is found in the same world.\n  - A world subsystem tracks active component IDs and assigns a new GUID when duplicated actor data reuses an active ID.
   - Lifecycle changes use an expected-state guard and a restricted transition table.
   - Consumed and destroyed states are terminal. Same-state and stale-state transitions are rejected.
   - The component does not currently own or implement world save/load.
@@ -41,7 +41,7 @@ This is only generic instance lifecycle. Wood processing (whole/split/grooved), 
 - Existing `ULogCarryComponent` remains the player-facing input/preview owner. It must not directly mutate the identity component to bypass a domain owner's validation.
 - Later domain phases should migrate one mechanic at a time, after checking tracked C++ callers and local Blueprint consumers.
 - `SaveGame` metadata is a serialization annotation only; no working save slot, world snapshot, migration, or load restoration is claimed by this phase.
-- GUID uniqueness across the entire world and duplicate-ID recovery must be verified before the identity component becomes mandatory for all persistent actors.
+- Active-world uniqueness is enforced by the subsystem for actors that register this component. Save/load round-trip and cross-world identity semantics are still not implemented or verified.
 
 ## Static acceptance checklist
 
@@ -52,7 +52,7 @@ This is only generic instance lifecycle. Wood processing (whole/split/grooved), 
 - [x] Add guarded lifecycle transitions and revision increment on accepted transition only.
 - [x] Keep generic lifecycle separate from domain-specific processing state.
 - [x] Avoid auto-inserting the component into existing actors or replacing their current state owners.
-- [ ] Perform focused static review of all new source and API compatibility.
+- [x] Perform source-level review of the new public types and keep existing log/carry signatures unchanged.
 - [ ] Run Unreal Engine 5.8 build/UHT and editor/runtime tests at the agreed end-of-phases gate.
 
 ## Explicitly not claimed
