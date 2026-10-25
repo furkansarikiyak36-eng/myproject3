@@ -46,7 +46,7 @@ Working branch: `phase-01-foundation-v2`
 
 ## Actionable issue
 
-`ALogBuildPiece::SetPieceStaticMesh` calls `GenerateDefaultSnapPoints`, and that helper begins with `SnapPoints.Reset()`. Since `ApplyCutAction` calls `SetPieceStaticMesh`, processing a piece appears to discard custom editor-authored anchors as well as generated anchors. The existing `RegenerateAutomaticSnapPoints` helper is safer because it removes only IDs with `AutoEnd_` and `AutoSide_` prefixes. Recommended fix: route mesh changes through a regeneration function that preserves custom points, while checking whether their transforms remain valid for the replacement mesh. Do not silently preserve stale geometry-specific anchors without an explicit policy.
+`ALogBuildPiece::SetPieceStaticMesh` originally called `GenerateDefaultSnapPoints`, whose `SnapPoints.Reset()` discarded custom anchors. In this Phase 1 branch, it now calls `RegenerateAutomaticSnapPoints`, matching `OnConstruction`: only auto-generated `AutoEnd_` / `AutoSide_` points are replaced, while custom points are retained. This is a source change only; still review whether each custom anchor is semantically valid for each replacement geometry and verify in Unreal. Preserving a custom transform does not guarantee that it fits every mesh variant.
 
 ## Phase 1 exit requirements still open
 
