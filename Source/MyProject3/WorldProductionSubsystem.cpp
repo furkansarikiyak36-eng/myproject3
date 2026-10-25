@@ -975,7 +975,8 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
                 Receipt.ExpectedStationRevision == MAX_int64 ||
                 Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
                 ProductionOperationIds.Contains(Receipt.OperationId) ||
-                MaterializedWorldItemIds.Contains(Receipt.WorldItemId))
+                MaterializedWorldItemIds.Contains(Receipt.WorldItemId) ||
+                IntakeSourceItemIds.Contains(Receipt.WorldItemId))
             {
                 return false;
             }
