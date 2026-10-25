@@ -28,6 +28,9 @@ struct FWorldPhysicalComponentSnapshot
     FName ComponentName = NAME_None;
 
     UPROPERTY(SaveGame)
+    FSoftClassPath ComponentClass;
+
+    UPROPERTY(SaveGame)
     bool bIsPrimitive = false;
 
     UPROPERTY(SaveGame)
