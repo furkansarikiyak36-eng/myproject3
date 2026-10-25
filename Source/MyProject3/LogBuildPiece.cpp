@@ -333,6 +333,7 @@ void ALogBuildPiece::AttachToSnapParent(
     if (Parent)
     {
         Parent->RegisterAttachedPiece(this);
+        AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform);
     }
 
     SetPlacedState(true);
@@ -340,6 +341,8 @@ void ALogBuildPiece::AttachToSnapParent(
 
 void ALogBuildPiece::DetachFromSnapParent()
 {
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
     if (ALogBuildPiece* Parent = SnapParent.Get())
     {
         Parent->ReleaseSnapPoint(ParentSnapPointIndex);
