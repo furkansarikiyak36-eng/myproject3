@@ -7,7 +7,10 @@ bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profi
         !FMath::IsFinite(Profile.Hunger) || Profile.Hunger < 0.0f || Profile.Hunger > 100.0f ||
         !FMath::IsFinite(Profile.Thirst) || Profile.Thirst < 0.0f || Profile.Thirst > 100.0f ||
         !FMath::IsFinite(Profile.Stamina) || Profile.Stamina < 0.0f || Profile.Stamina > 100.0f ||
-        !FMath::IsFinite(Profile.Fatigue) || Profile.Fatigue < 0.0f || Profile.Fatigue > 100.0f)
+        !FMath::IsFinite(Profile.Fatigue) || Profile.Fatigue < 0.0f || Profile.Fatigue > 100.0f ||
+        !FMath::IsFinite(Profile.ClothingInsulation) || Profile.ClothingInsulation < 0.0f || Profile.ClothingInsulation > 1.0f ||
+        !FMath::IsFinite(Profile.ShelterProtection) || Profile.ShelterProtection < 0.0f || Profile.ShelterProtection > 1.0f ||
+        !FMath::IsFinite(Profile.Wetness) || Profile.Wetness < 0.0f || Profile.Wetness > 1.0f)
     {
         return false;
     }
