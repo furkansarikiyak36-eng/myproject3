@@ -44,6 +44,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Logistics") bool AdvanceCargoStep(double DeltaSeconds);
     UFUNCTION(BlueprintCallable, Category="World|Logistics") bool RetryBlockedDelivery(const FGuid& CargoId);
     UFUNCTION(BlueprintPure, Category="World|Logistics") bool GetCargo(const FGuid& CargoId, FWorldCargoTransportRecord& OutCargo) const;
+    void ExportSnapshot(TArray<FWorldCargoTransportRecord>& OutCargo) const;
+    bool RestoreSnapshot(const TArray<FWorldCargoTransportRecord>& Snapshot);
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Logistics") TMap<FGuid, FWorldCargoTransportRecord> Cargo;
     UWorldLogisticsRouteSubsystem* GetRoutes() const;
