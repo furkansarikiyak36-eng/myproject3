@@ -177,9 +177,9 @@ bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) con
         const bool bWillArrive = FMath::Min(Record.RouteCost, ProposedProgress) >= Record.RouteCost;
         if (bWillArrive)
         {
-            if (!Storage->CanCommitIncomingReservation(
-                Record.DestinationStorageId, Record.CargoId, Record.ItemId))
-                return false;
+            // Destination availability is an explicit delivery result: cargo
+            // blocks at arrival rather than freezing the entire world step.
+            // TryDeliver performs the final reservation/availability check.
         }
         else if (Record.Revision >= MAX_int64 - 2)
         {
