@@ -1,5 +1,12 @@
 #include "WorldProductionSubsystem.h"
 
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Components/StaticMeshComponent.h"
+#include "LogBuildPiece.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+
 int32 UWorldProductionSubsystem::FindRecipe(FName RecipeId) const
 {
     return Recipes.IndexOfByPredicate([RecipeId](const FWorldProductionRecipe& R)
@@ -36,12 +43,24 @@ bool UWorldProductionSubsystem::RegisterRecipe(const FWorldProductionRecipe& Rec
     return true;
 }
 
+FName UWorldProductionSubsystem::MakePhysicalStockItemId(
+    FName DefinitionId, FName MeshVariantSetId)
+{
+    if (DefinitionId.IsNone())
+        return NAME_None;
+    if (MeshVariantSetId.IsNone())
+        return DefinitionId;
+
+    return FName(*FString::Printf(TEXT("%s::%s"),
+        *DefinitionId.ToString(), *MeshVariantSetId.ToString()));
+}
+
 bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& Station)
 {
     if (!Station.StationId.IsValid() || Station.StationTag.IsNone() ||
         Station.StorageCapacityUnits <= 0 || Station.Revision <= 0 ||
         Stations.Contains(Station.StationId) || MaxStations <= 0 || Stations.Num() >= MaxStations ||
-        !Station.Jobs.IsEmpty())
+        !Station.Jobs.IsEmpty() || !Station.PhysicalIntakeReceipts.IsEmpty())
         return false;
     for (const TPair<FName, int32>& Pair : Station.Stock)
         if (Pair.Key.IsNone() || Pair.Value < 0) return false;
@@ -72,6 +91,209 @@ bool UWorldProductionSubsystem::AddStock(
     if (CountStockUnits(Proposed) + Reserved > Station->StorageCapacityUnits) return false;
     Station->Stock = MoveTemp(Proposed);
     ++Station->Revision;
+    return true;
+}
+
+bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
+    FGuid StationId,
+    FGuid OperationId,
+    FGuid ItemId,
+    int64 ExpectedItemRevision,
+    int64 ExpectedStationRevision,
+    FName& OutStockItemId)
+{
+    OutStockItemId = NAME_None;
+    if (!GetWorld() || !StationId.IsValid() || !OperationId.IsValid() ||
+        !ItemId.IsValid() || ExpectedItemRevision <= 0 ||
+        ExpectedItemRevision == MAX_int64 || ExpectedStationRevision <= 0 ||
+        ExpectedStationRevision == MAX_int64)
+    {
+        return false;
+    }
+
+    auto FindSourceActor = [this, ItemId]() -> ALogBuildPiece*
+    {
+        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+        {
+            ALogBuildPiece* Candidate = *It;
+            if (!IsValid(Candidate) || Candidate->IsActorBeingDestroyed())
+                continue;
+            UWorldObjectIdentityComponent* Identity =
+                Candidate->FindComponentByClass<UWorldObjectIdentityComponent>();
+            if (Identity && Identity->HasValidIdentity() &&
+                Identity->GetInstanceId() == ItemId)
+            {
+                return Candidate;
+            }
+        }
+        return nullptr;
+    };
+
+    auto RetireResidualActor = [&FindSourceActor]()
+    {
+        if (ALogBuildPiece* Residual = FindSourceActor())
+        {
+            Residual->SetActorHiddenInGame(true);
+            Residual->SetActorEnableCollision(false);
+            if (UStaticMeshComponent* Mesh = Residual->GetLogMesh())
+                Mesh->SetSimulatePhysics(false);
+            if (!Residual->Destroy())
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Transformed physical log %s remains as a hidden, inert actor."),
+                    *GetNameSafe(Residual));
+            }
+        }
+    };
+
+    // Intake receipts are checked before current revisions: a completed operation
+    // must replay as success, not add a second stock unit after the station advances.
+    for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
+    {
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt :
+            Pair.Value.PhysicalIntakeReceipts)
+        {
+            if (Receipt.OperationId == OperationId)
+            {
+                if (Pair.Key != StationId || Receipt.SourceItemId != ItemId ||
+                    Receipt.ExpectedItemRevision != ExpectedItemRevision ||
+                    Receipt.ExpectedStationRevision != ExpectedStationRevision)
+                {
+                    return false;
+                }
+
+                OutStockItemId = Receipt.StockItemId;
+                RetireResidualActor();
+                return !OutStockItemId.IsNone();
+            }
+
+            // One physical ID may only be ingested once, even if a caller retries
+            // with a different operation ID or another station.
+            if (Receipt.SourceItemId == ItemId)
+                return false;
+        }
+    }
+
+    FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station || Station->Revision != ExpectedStationRevision ||
+        Station->Revision == MAX_int64)
+    {
+        return false;
+    }
+
+    ALogBuildPiece* Piece = FindSourceActor();
+    if (!IsValid(Piece) || Piece->IsHidden() || Piece->IsHeld() ||
+        Piece->IsPlaced() || Piece->GetAttachedPieceCount() > 0)
+    {
+        return false;
+    }
+
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Identity || !Identity->HasValidIdentity() ||
+        Identity->GetInstanceId() != ItemId ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::World ||
+        !Ownership)
+    {
+        return false;
+    }
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(ItemId, Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::World ||
+        Item.OwnerId.IsValid() || Item.Revision != ExpectedItemRevision ||
+        Item.Quantity != 1 || Item.DefinitionId.IsNone())
+    {
+        return false;
+    }
+
+    const FName StockItemId =
+        MakePhysicalStockItemId(Item.DefinitionId, Item.MeshVariantSetId);
+    if (StockItemId.IsNone())
+        return false;
+
+    const int32 CurrentQuantity = Station->Stock.FindRef(StockItemId);
+    if (CurrentQuantity < 0 || CurrentQuantity == MAX_int32)
+        return false;
+
+    TMap<FName, int32> ProposedStock = Station->Stock;
+    ProposedStock.Add(StockItemId, CurrentQuantity + 1);
+    const int64 ProposedUnits = CountStockUnits(ProposedStock);
+    if (ProposedUnits == MAX_int64)
+        return false;
+
+    int64 ReservedOutputUnits = 0;
+    for (const FWorldProductionJob& Job : Station->Jobs)
+    {
+        if (Job.State != EProductionJobState::Queued &&
+            Job.State != EProductionJobState::Running)
+        {
+            continue;
+        }
+
+        const int32 RecipeIndex = FindRecipe(Job.RecipeId);
+        if (!Recipes.IsValidIndex(RecipeIndex))
+            return false;
+
+        for (const FProductionIngredient& Output : Recipes[RecipeIndex].Outputs)
+        {
+            if (Output.Quantity <= 0 ||
+                ReservedOutputUnits > MAX_int64 - Output.Quantity)
+            {
+                return false;
+            }
+            ReservedOutputUnits += Output.Quantity;
+        }
+    }
+
+    if (ProposedUnits > Station->StorageCapacityUnits ||
+        ReservedOutputUnits > Station->StorageCapacityUnits - ProposedUnits)
+    {
+        return false;
+    }
+
+    // Preflight above establishes station capacity and source ownership. The
+    // ownership transition is the only remaining rejecting mutation; after it
+    // succeeds, station stock and the durable receipt are committed together.
+    FWorldOwnedItemRecord TransformedItem;
+    if (!Ownership->TryTransferItem(OperationId, ItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::World, EWorldItemOwnerKind::Transformed,
+        FGuid(), Item.WorldLocation, TransformedItem))
+    {
+        return false;
+    }
+
+    FWorldProductionPhysicalIntakeReceipt& Receipt =
+        Station->PhysicalIntakeReceipts.AddDefaulted_GetRef();
+    Receipt.OperationId = OperationId;
+    Receipt.SourceItemId = ItemId;
+    Receipt.ExpectedItemRevision = ExpectedItemRevision;
+    Receipt.ExpectedStationRevision = ExpectedStationRevision;
+    Receipt.SourceDefinitionId = Item.DefinitionId;
+    Receipt.SourceMeshVariantSetId = Item.MeshVariantSetId;
+    Receipt.StockItemId = StockItemId;
+    Receipt.ResultingItemRevision = TransformedItem.Revision;
+    Receipt.ResultingStationRevision = ExpectedStationRevision + 1;
+
+    Station->Stock = MoveTemp(ProposedStock);
+    ++Station->Revision;
+    OutStockItemId = StockItemId;
+
+    Piece->SetActorHiddenInGame(true);
+    Piece->SetActorEnableCollision(false);
+    if (UStaticMeshComponent* Mesh = Piece->GetLogMesh())
+        Mesh->SetSimulatePhysics(false);
+    if (!Piece->Destroy())
+    {
+        // The canonical record and stock already committed. Keep any surviving
+        // representation inert rather than exposing a second world-owned log.
+        UE_LOG(LogTemp, Error,
+            TEXT("Physical log %s became production stock but actor destruction failed; actor remains quarantined."),
+            *ItemId.ToString());
+    }
+
     return true;
 }
 
@@ -245,6 +467,8 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
         NewRecipes.Add(R);
     }
     TMap<FGuid, FWorldProductionStation> NewStations;
+    TSet<FGuid> IntakeOperationIds;
+    TSet<FGuid> IntakeSourceItemIds;
     for (const FWorldProductionStation& S : StationSnapshot)
     {
         if (!S.StationId.IsValid() || S.StationTag.IsNone() || S.StorageCapacityUnits <= 0 ||
@@ -253,6 +477,22 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
         for (const FWorldProductionJob& J : S.Jobs)
             if (!J.JobId.IsValid() || !RecipeIds.Contains(J.RecipeId) ||
                 !FMath::IsFinite(J.ProgressSeconds) || J.ProgressSeconds < 0.0) return false;
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt : S.PhysicalIntakeReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || !Receipt.SourceItemId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 || Receipt.ExpectedItemRevision == MAX_int64 ||
+                Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.SourceDefinitionId.IsNone() || Receipt.StockItemId.IsNone() ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                IntakeOperationIds.Contains(Receipt.OperationId) ||
+                IntakeSourceItemIds.Contains(Receipt.SourceItemId))
+            {
+                return false;
+            }
+            IntakeOperationIds.Add(Receipt.OperationId);
+            IntakeSourceItemIds.Add(Receipt.SourceItemId);
+        }
         NewStations.Add(S.StationId, S);
     }
     Recipes = MoveTemp(NewRecipes);
