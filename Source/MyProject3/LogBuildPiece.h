@@ -234,6 +234,7 @@ private:
 
     /** Selects a set only when the current mesh matches exactly one authored base-round mesh. */
     bool SelectProcessingMeshSetFromCurrentMesh();
+    void SynchronizeGeometryStateFromCurrentMeshSet();
     const FLogProcessingMeshSet* GetActiveProcessingMeshSet() const;
     UStaticMesh* GetConfiguredMeshForPieceType(ELogPieceType Type) const;
     FVector GetConfiguredSplitCenterOffset(ELogCutAction Action) const;
