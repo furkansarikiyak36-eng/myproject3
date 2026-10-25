@@ -912,8 +912,35 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-010 — Kimlik bağlı fiziksel aktör ve yapı grafiği SaveGame
+
+- [x] SaveGame şeması v13'e yükseltildi; v11→v12 fiziksel aktör durumu ve v12→v13 yapısal grafik migrasyon adımları eklendi.
+- [x] Kimlik bileşeni bulunan aktörlerin class path'i, transform'u, DefinitionId/lifecycle/revision alanları ve actor-level UPROPERTY(SaveGame) verisi snapshot'a yazılıyor.
+- [x] Primitive component başına isim, collision enabled, physics simülasyon durumu, linear/angular velocity ve static mesh asset path'i saklanıyor.
+- [x] Hasat ağacına kalıcı identity component eklendi; ChopHealth, felling/grounded/output flags ve grounded stabilite sayacı actor SaveGame payload'ına dahil edildi.
+- [x] Yapı grafiğinin node ID'si, aktör identity ID'si, parent edge, anchor adları, yük sınırları, destek durumu, hasar ve revision alanları snapshot'a eklendi.
+- [x] Restore, fiziksel aktör kimliklerinin/klasslarının/component adlarının mevcut level ile birebir eşleşmesini doğruluyor; belirsiz veya eksik eşleşmede fail-closed davranıyor.
+- [x] Restore sırası: aktör kimlik/class/component eşleşmesini doğrula → sahiplik/işlem defterini geri yükle → aktör transform/SaveGame/component fizik durumunu uygula → yapısal grafiği kimliklerle yeniden bağla.
+- [x] Grafik restore duplicate node/actor IDs, eksik parent, aynı parent anchor'ın iki kez kullanımı, cycle, geçersiz yük/hasar ve desteklenmeyen parent-chain durumlarını reddediyor; loose unsupported root parçalar geçerli kalıyor.
+- [x] Eski SaveGame'lerde bulunmayan geçmiş fiziksel durum ve grafik ilişkileri mevcut level'dan tahmin edilerek uydurulmuyor.
+- [x] İlgili C++ dosyalarında brace-balance, schema migration sırası ve capture/apply wiring statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT, Editor/PIE, gerçek save→move/physics→load round-trip ve bozuk snapshot/failure-injection kabul testleri.
+- [ ] Fiziksel actor identity snapshot'ı yalnızca UWorldObjectIdentityComponent taşıyan aktörleri kapsıyor; identity bileşeni olmayan mevcut aktör sınıfları eklenmeli.
+- [ ] Snapshot aynı level'da mevcut actor setiyle birebir eşleşme ister; yok olan runtime aktörleri spawn etmez ve farklı level/streaming durumunda otomatik actor recreation/partition restore yapmaz.
+- [ ] Graph kenarları canonical graph subsystem'e geri yükleniyor; log/stone/stick actor-local SnapParent/AttachedPieces weak-reference listelerinin graph'tan tekrar kurulması ve snap-point rezervasyonlarının eşleştirilmesi ayrı doğrulama işi.
+- [ ] Envanterde Held owner durumu hâlâ save sırasında reddediliyor; carry component/attached actor state'inin tam save/load akışı açık.
+- [ ] Terrain edit deltasının görünür Landscape/mesh/collision/nav restore'u ve fiziksel crop/animal actor re-creation bu işin kapsamına dahil değil.
+
+**Kaynak dosyaları:** WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp, WorldStructuralGraphSubsystem.h/.cpp, HarvestableTreeActor.h/.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Kimlikli ve mevcut level'da bulunan aktörlerin transform/SaveGame state/primitive physics/mesh referansları ile canonical structural graph snapshot'ı genel SaveGame akışına bağlandı. Eski kayıtlarda bulunmayan fiziksel durum tahmin edilmiyor; uyumsuz level/snapshot yüklemesi güvenli biçimde reddediliyor.  
+**Kanıt seviyesi:** Kaynak değişikliği + statik wiring/schema/brace kontrolü; Unreal motoru doğrulanmadı.
+**Sonraki bağımlı iş:** WOOD-011 — actor-local snap/attachment referanslarını canonical graph restore sonrasında yeniden bağlamak; Held/carry akışını kaydetmek ve fiziksel aktör spawn/recreation politikası eklemek.
+
+---
+
 ## 15. İlk yapılacak iş
 
 WOOD-004 data-driven mesh-set selector, geometry tuple resolver, ownership selector ve SaveGame v8 kaynak katmanı mevcut; gerçek FBX/Blueprint ataması ve UE doğrulaması açık. WOOD-005 ağaç devrilme/grounded adapter'ı mevcut; gerçek fizik/asset ve boyut→çıktı tablosu açık. WOOD-006 serbest kütüğe sınırlı push/roll kaynağı eklendi; drag, world-location kalıcılığı ve production-stock entegrasyonu tamamlanmadı.
 
-WOOD-007 fiziksel kütük → station stock girişini, WOOD-008 iş kuyruğu/toplama retry fişlerini ve WOOD-009 stock → fiziksel log materialization kaynak katmanını ekledi; SaveGame şeması v11. Sıradaki iş **WOOD-010 — fiziksel aktör transform/lifecycle save-load**. Gerçek FBX/Blueprint atamaları, üretim tariflerinin anahtarlarla eşlenmesi ve UE kabul testleri hâlâ açık. Sonrasında ahşap durum/mesh açıkları, taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
+WOOD-007 fiziksel kütük → station stock girişini, WOOD-008 iş kuyruğu/toplama retry fişlerini, WOOD-009 stock → fiziksel log materialization ve WOOD-010 kimlik bağlı fiziksel aktör/graph snapshot kaynak katmanını ekledi; SaveGame şeması v13. Sıradaki iş **WOOD-011 — graph restore sonrasında actor-local attachment/snap state'i yeniden bağlama**. Gerçek FBX/Blueprint atamaları, üretim tariflerinin anahtarlarla eşlenmesi ve UE kabul testleri hâlâ açık. Sonrasında ahşap durum/mesh açıkları, taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
