@@ -102,7 +102,11 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 
 ### 3A. Ağaç ve kütük işleme — M009–M028
 
-- [ ] Ağaç kesme ve devrilme durum makinesini tamamla.
+- [x] `AHarvestableTreeActor` kaynak katmanı eklendi: kesme hasarı → fiziksel devrilme → düşük hız + zemin temasını belirli süre doğrulama → tek seferlik log çıktısı durum zinciri var; ağaç grounded olmadan log üretmiyor.
+- [x] Ağaç çıktıları paralel envanter kaydı açmıyor; `ALogBuildPiece` aktörleri mevcut `WorldItemOwnershipSubsystem` / structural graph BeginPlay kayıt akışına giriyor ve `LogMeshVariantSetId` açıkça atanmalı.
+- [ ] Ağaç türü/ölçüsü → log sayısı, uzunluk kesri ve nominal mesh seti veri tablosunu gerçek varlıklara göre tanımla.
+- [ ] Ağaç FBX collision/physics mass/center-of-mass ve devrilme impulse değerlerini UE içinde ayarla; ground trace'in gerçek zemin kanallarında çalıştığını doğrula.
+- [ ] Kısmi spawn hatası, yanlış/eksik mesh-set, save/load, tekrar hasat ve grounded negative-case senaryolarını Unreal kabul kapısında çalıştır.
 - [ ] Ağaç boyutu/kurallarından çıkan kütük miktarı ve boyutlarını tanımla.
 - [ ] Tam kütük, taşınan kütük, bırakılan kütük ve yerde serbest kütük durumlarını ayır.
 - [ ] Kütüğün yuvarlanma, sürüklenme, itilme ve çarpışma davranışlarını tanımla.
@@ -782,6 +786,31 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-005 — Ağaç kesme, fiziksel devrilme ve grounded hasat çıktısı
+
+- [x] Yeni `AHarvestableTreeActor` sınıfı eklendi; ağaç hasarı, devrilme ve grounded/çıktı durumları tek aktör yaşam döngüsünde tutuluyor
+- [x] Kesme hasarı pozitif ve sonlu olmalı; ağaç varlığı, log actor class ve çıktı konfigürasyonu yoksa hasar/hasat işlemi reddediliyor
+- [x] Sağlık sıfırlandığında tree mesh fizik simülasyonuna geçiyor ve chop direction üzerinden impulse alıyor
+- [x] Log üretimi yalnızca fizik hızı eşik altında kalıp görünürlük kanalında zemin teması `GroundedHoldSeconds` süresince doğrulanınca açılıyor
+- [x] Log sayısı, `ALogBuildPiece` subclass'ı ve `LogMeshVariantSetId` açık konfigürasyon; log actor'ları var olan ownership + structural graph BeginPlay kayıt yolunu kullanıyor
+- [x] Aynı tree actor'da grounded/harvest transition tekrar çalıştırılmıyor; kısmi spawn başarısızlığında otomatik tekrar yapılmıyor, böylece körlemesine ikinci hasat turu açılmıyor
+- [x] Kaynak dosyalarında brace-balance kontrolü sıfır fark
+- [ ] UE 5.8 UHT/UBT derlemesi ve Blueprint oluşturma
+- [ ] Gerçek tree FBX collision, physics mass/center of mass, impulse, ground trace channel ve grounded hold süresi ayarı
+- [ ] Tür/ölçü → log count/length fraction/mesh family tablosu; filename'den ölçü tahmini yapılmayacak
+- [ ] Runtime: düşmeden önce log yok; grounded olmadan log yok; grounded sonrası doğru sayıda unique ownership ID
+- [ ] Runtime: yanlış/eksik mesh-set, invalid log class, zemin yok, eğimli yüzey, su/boşluk, bir log spawn başarısızlığı ve tekrar hasat negative cases
+- [ ] Save/load ve 119 mekanik entegre kabul senaryosu
+
+**Kaynak dosyaları:** `HarvestableTreeActor.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`, `WorldStructuralGraphSubsystem.h/.cpp`  
+**Branch:** `fix/log-mesh-variant-sets`  
+**Sonuç:** İlk ağaç yaşam döngüsü adapter'ı eklendi; grounded gate hasat çıktısından önce gelir. Bu, ağaç asset'lerinin ayarlandığı, log count'un oyuna göre doğrulandığı veya motor içinde çalıştığı anlamına gelmez.
+**Kanıt seviyesi:** Kaynak dosyası incelemesi ve statik yapı kontrolü. Unreal derlemesi/PIE yapılmadı.
+**Kalan sınırlamalar:** Actor tree mesh asset'ini Blueprint'ten alır; gerçek collision/pivot/physics ayarları henüz bilinmiyor. Hasat çıktısı nominal mesh family selector ister. Actor transform/lifecycle SaveGame restore ile henüz entegre değil. Kısmi output spawn fail-closed'dur; otomatik retry/rollback kanıtlanmadı.
+**Sonraki bağımlı iş:** WOOD-006 — fiziksel kütük etkileşiminde taşıma/yuvarlanma/sürükleme ve kaynak miktarıyla işlem çıktısı bağlantısını netleştir; önce mevcut `LogCarryComponent` ile actor lifecycle sınırlarını denetle.
+
+---
+
 ## 15. İlk yapılacak iş
 
-WOOD-004 source-layer data-driven mesh-set selector, exact geometry tuple resolver, ownership selector persistence and SaveGame v8 wiring tamamlandı; Blueprint asset bağlaması ve UE ölçü/runtime testleri açık. Sıradaki kaynak işi **WOOD-005 — ağaç kesme/devrilme/zemine oturma ve kaynak log miktarı/ID üretimi**; 75/150/300/600 ya da Long/Short adlarından boyut varsayılmayacak. Ardından 2.1'in geri kalan ağaç-kütük miktarı, kaynak sahipliği, taşıma/inşa entegrasyonuna devam edilecek. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
+WOOD-004 source-layer data-driven mesh-set selector, exact geometry tuple resolver, ownership selector persistence and SaveGame v8 wiring tamamlandı; Blueprint asset bağlaması ve UE ölçü/runtime testleri açık. WOOD-005 tree lifecycle adapter source layer added; actual tree asset/physics and tree-size-to-log-output configuration remain open. Sıradaki kaynak işi **WOOD-006 — fiziksel kütük taşıma/yuvarlanma/sürükleme ve kaynak miktarı zinciri**; 75/150/300/600 ya da Long/Short adlarından boyut varsayılmayacak. Ardından 2.1'in geri kalan ağaç-kütük miktarı, kaynak sahipliği, taşıma/inşa entegrasyonuna devam edilecek. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
