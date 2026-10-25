@@ -312,6 +312,11 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             return false;
         }
     }
+    if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor identity/state capture failed."));
+        return false;
+    }
     OutSave->Inventories.Reset();
     for (TActorIterator<AActor> It(World); It; ++It)
     {
@@ -368,6 +373,12 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
             TEXT("World load refused because production receipts do not match the snapshot item ownership ledger."));
         return false;
     }
+    if (!ValidatePhysicalActorSnapshotSet(World, Snapshot->PhysicalActors))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World load refused because physical actor identities, classes or component state do not match this level."));
+        return false;
+    }
 
     // Durable saves must never restore a half-finished operation. Runtime rollback
     // may restore Pending entries, but save/load only accepts Completed records.
@@ -382,6 +393,11 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
     if (!Items->RestoreSnapshot(Snapshot->Items, Snapshot->ItemTransferReceipts, Snapshot->ItemSplitReceipts)) return false;
     if (!OperationLedger->RestoreSnapshot(Snapshot->OperationLedgerEntries)) return false;
+    if (!ApplyPhysicalActorSnapshots(World, Snapshot->PhysicalActors))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World load failed while applying physical actor state."));
+        return false;
+    }
 
     TArray<UInventoryCraftingComponent*> CurrentInventories;
     TMap<FGuid, UInventoryCraftingComponent*> ByOwnerActorId;
@@ -486,6 +502,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Schema v11 adds durable materialization receipts mapping station stock
         // units to their generated physical world item IDs.
         Candidate->SchemaVersion = 11;
+    }
+    if (Candidate->SchemaVersion == 11)
+    {
+        // Schema v12 adds identity-bound actor transform/component physics snapshots.
+        // Historical physical state cannot be inferred from the currently loaded level.
+        // ApplySnapshot therefore fails closed when an older save lacks required actors.
+        Candidate->SchemaVersion = 12;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
