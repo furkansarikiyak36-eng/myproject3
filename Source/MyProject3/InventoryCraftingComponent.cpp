@@ -286,8 +286,14 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
   {
    // Restore the logical inventory representation if the ledger never rolled back.
    if (!Items.ContainsByPredicate([ItemId = Item.ItemId](const FInventoryStack& Stack)
-       { return Stack.OwnedWorldItemId == ItemId; }))
-    TryAddItem(Incoming);
+       { return Stack.OwnedWorldItemId == ItemId; }) && !TryAddItem(Incoming))
+   {
+    UE_LOG(LogTemp, Error, TEXT("Could not restore inventory row for physical item %s after lifecycle rollback."),
+     *Item.ItemId.ToString());
+    if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+        GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+     Coordinator->MarkSimulationFaulted(TEXT("Physical-item lifecycle rollback retained Inventory ownership but could not restore its inventory row; stop simulation and recover/reset the world."));
+   }
    WorldActor->SetActorHiddenInGame(true);
    WorldActor->SetActorEnableCollision(false);
   }
@@ -841,9 +847,15 @@ bool UInventoryCraftingComponent::TryCraft(FName RecipeId)
        EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
        InventoryOwnerId, Item.WorldLocation, Restored))
    {
-    bRollbackConsistent = false;
-    UE_LOG(LogTemp, Error, TEXT("Craft rollback could not restore physical item %s."),
-     *Item.ItemId.ToString());
+    FWorldOwnedItemRecord Actual;
+    const bool bAlreadyRestored = Ownership->TryGetItem(Item.ItemId, Actual) &&
+        Actual.OwnerKind == EWorldItemOwnerKind::Inventory && Actual.OwnerId == InventoryOwnerId;
+    if (!bAlreadyRestored)
+    {
+     bRollbackConsistent = false;
+     UE_LOG(LogTemp, Error, TEXT("Craft rollback could not restore physical item %s."),
+      *Item.ItemId.ToString());
+    }
    }
   }
 
