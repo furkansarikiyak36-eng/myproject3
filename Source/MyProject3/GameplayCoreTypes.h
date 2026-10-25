@@ -103,3 +103,154 @@ struct FWorldOperationResult
         const FGuid& InOperationId,
         const FText& InMessage);
 };
+
+
+/** Expected revision for optimistic stale-request rejection. */
+USTRUCT(BlueprintType)
+struct FWorldExpectedObjectRevision
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FGuid ObjectId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    int64 ExpectedRevision = INDEX_NONE;
+};
+
+/**
+ * Shared request envelope. Carries intent/context only; the owning domain
+ * resolves IDs, validates prerequisites, computes changes, and commits.
+ */
+USTRUCT(BlueprintType)
+struct FWorldOperationRequest
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FGuid OperationId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FName OperationType = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FGuid RequestingObjectId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    TArray<FGuid> TargetObjectIds;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FName SourceDefinitionId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FName ToolDefinitionId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FName RecipeDefinitionId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    TArray<FWorldExpectedObjectRevision> ExpectedRevisions;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FVector ContextLocation = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Operation")
+    FName ContextAnchorId = NAME_None;
+
+    bool EnsureOperationId()
+    {
+        if (!OperationId.IsValid())
+        {
+            OperationId = FGuid::NewGuid();
+        }
+        return OperationId.IsValid();
+    }
+
+    bool IsStructurallyValid() const
+    {
+        if (!OperationId.IsValid() || OperationType.IsNone())
+        {
+            return false;
+        }
+
+        for (const FGuid& TargetId : TargetObjectIds)
+        {
+            if (!TargetId.IsValid())
+            {
+                return false;
+            }
+        }
+
+        for (const FWorldExpectedObjectRevision& Expected : ExpectedRevisions)
+        {
+            if (!Expected.ObjectId.IsValid() || Expected.ExpectedRevision < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+};
+
+/** Unitized resource quantity; inventory mutation remains domain-owned. */
+USTRUCT(BlueprintType)
+struct FWorldResourceAmount
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Resources")
+    FName ResourceDefinitionId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Resources")
+    double Quantity = 0.0;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Resources")
+    FName UnitId = NAME_None;
+
+    bool IsValid() const
+    {
+        return !ResourceDefinitionId.IsNone() &&
+            !UnitId.IsNone() &&
+            FMath::IsFinite(Quantity) &&
+            Quantity >= 0.0;
+    }
+
+    bool CanConsume(double RequestedQuantity) const
+    {
+        return IsValid() &&
+            FMath::IsFinite(RequestedQuantity) &&
+            RequestedQuantity >= 0.0 &&
+            Quantity >= RequestedQuantity;
+    }
+};
+
+/** Versioned event payload for a fact that has already been committed. */
+USTRUCT(BlueprintType)
+struct FWorldCommittedEvent
+{
+    GENERATED_BODY()
+
+    static constexpr int32 CurrentSchemaVersion = 1;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    int32 SchemaVersion = CurrentSchemaVersion;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    EWorldCommittedEventType Type = EWorldCommittedEventType::None;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    FGuid EventId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    FGuid OperationId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    TArray<FGuid> AffectedObjectIds;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    double WorldTimeSeconds = 0.0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Gameplay|Events")
+    FText Message;
+};
