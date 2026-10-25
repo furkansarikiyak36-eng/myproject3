@@ -84,7 +84,27 @@ enum class ELogPlacementMode : uint8
     Diagonal   UMETA(DisplayName = "Diagonal")
 };
 
-/** Authored asset bundle for one nominal log-mesh family. Set IDs are explicit; filename length is not guessed. */
+/** One exact mesh mapping for an orthogonal length-fraction/cross-section state. */
+USTRUCT(BlueprintType)
+struct FLogPieceMeshVariant
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    ELogLengthFraction LengthFraction = ELogLengthFraction::FullLength;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    ELogCrossSectionShape CrossSectionShape = ELogCrossSectionShape::FullRound;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> Mesh = nullptr;
+};
+
+/**
+ * Authored asset bundle for one nominal log-mesh family.
+ * VariantSetId is a stable selector; NominalLengthLabel is descriptive metadata,
+ * not an assumption that filename digits are measured centimeters.
+ */
 USTRUCT(BlueprintType)
 struct FLogProcessingMeshSet
 {
@@ -93,33 +113,16 @@ struct FLogProcessingMeshSet
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
     FName VariantSetId = NAME_None;
 
-    /** Descriptive label only (e.g. an asset family name); not treated as measured centimeters. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
     FName NominalLengthLabel = NAME_None;
 
+    /** Used only to identify this set on a source actor whose current mesh is still full-round. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> FullRoundMesh = nullptr;
+    TObjectPtr<UStaticMesh> BaseRoundMesh = nullptr;
 
+    /** Include one row for every exact length-fraction + cross-section combination this family supports. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> SplitHalfMesh = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> QuarterSectionMesh = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> HewnMesh = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> GutterMesh = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> TroughMesh = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> SquaredBeamMesh = nullptr;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
-    TObjectPtr<UStaticMesh> PlankMesh = nullptr;
+    TArray<FLogPieceMeshVariant> MeshVariants;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
     FVector SplitHalfCenterOffsetLocal = FVector::ZeroVector;
@@ -132,20 +135,6 @@ struct FLogProcessingMeshSet
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
     FRotator QuarterChildRotationOffsetLocal = FRotator(0.0f, 180.0f, 0.0f);
-};
-
-
-
-UENUM(BlueprintType)
-enum class ELogCutAction : uint8
-{
-    SplitHalf UMETA(DisplayName = "Split Into Half-Rounds"),
-    Quarter   UMETA(DisplayName = "Split Into Quarters"),
-    Hewn      UMETA(DisplayName = "Hewn / Flatten"),
-    Gutter    UMETA(DisplayName = "Cut Groove / Gutter"),
-    Trough    UMETA(DisplayName = "Hollow Trough"),
-    Kalas     UMETA(DisplayName = "Kalas / Squared Beam"),
-    Plank     UMETA(DisplayName = "Plank")
 };
 
 USTRUCT(BlueprintType)
