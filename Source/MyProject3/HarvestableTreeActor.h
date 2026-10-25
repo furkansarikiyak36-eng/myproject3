@@ -71,6 +71,7 @@ public:
     bool CanBeChopped() const { return !bFellingStarted && !bGrounded && !bLogsSpawned; }
 
 private:
+    UPROPERTY(SaveGame, Category="Tree|Harvest")
     float StableGroundedSeconds = 0.0f;
 
     bool HasGroundContact() const;
