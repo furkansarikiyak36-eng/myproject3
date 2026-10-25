@@ -10,8 +10,24 @@ if (-not (Test-Path $ProjectFile)) {
     throw "Project file not found: $ProjectFile"
 }
 
-if (Get-Process -Name "UnrealEditor" -ErrorAction SilentlyContinue) {
-    throw "Close Unreal Editor before compiling new C++ classes, then rerun this script."
+$ProjectFileFull = [System.IO.Path]::GetFullPath($ProjectFile)
+
+# Only block an editor instance opened on THIS project. A different Unreal
+# project can remain open; checking Get-Process alone was too broad.
+$ProjectEditorProcesses = @(
+    Get-CimInstance Win32_Process -Filter "Name = 'UnrealEditor.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.CommandLine -and
+            $_.CommandLine.IndexOf(
+                $ProjectFileFull,
+                [System.StringComparison]::OrdinalIgnoreCase
+            ) -ge 0
+        }
+)
+
+if ($ProjectEditorProcesses.Count -gt 0) {
+    $Pids = ($ProjectEditorProcesses | ForEach-Object { $_.ProcessId }) -join ", "
+    throw "MyProject3 is still open in UnrealEditor.exe (PID: $Pids). Save your level, close that editor instance completely, then rerun this script. Other Unreal projects do not block this build."
 }
 
 function Get-BuildBatchPath([string]$Root) {
