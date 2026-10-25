@@ -10,6 +10,10 @@ if (-not (Test-Path $ProjectFile)) {
     throw "Project file not found: $ProjectFile"
 }
 
+if (Get-Process -Name "UnrealEditor" -ErrorAction SilentlyContinue) {
+    throw "Close Unreal Editor before compiling new C++ classes, then rerun this script."
+}
+
 function Get-BuildBatchPath([string]$Root) {
     if ([string]::IsNullOrWhiteSpace($Root)) { return $null }
 
