@@ -29,6 +29,83 @@ namespace
         }
     }
 
+    ELogCrossSectionShape GetCrossSectionForPieceType(
+        ELogPieceType Type, ELogCrossSectionShape Fallback = ELogCrossSectionShape::Other)
+    {
+        switch (Type)
+        {
+        case ELogPieceType::WholeLog:
+        case ELogPieceType::ThreeQuarterLog:
+        case ELogPieceType::HalfLengthLog:
+        case ELogPieceType::QuarterLog:
+            return ELogCrossSectionShape::FullRound;
+        case ELogPieceType::SplitHalfLog: return ELogCrossSectionShape::HalfRound;
+        case ELogPieceType::QuarterSectionLog: return ELogCrossSectionShape::QuarterRound;
+        case ELogPieceType::HewnLog: return ELogCrossSectionShape::HewnFlat;
+        case ELogPieceType::SquaredBeam: return ELogCrossSectionShape::SquareBeam;
+        case ELogPieceType::GutterLog: return ELogCrossSectionShape::Grooved;
+        case ELogPieceType::TroughLog: return ELogCrossSectionShape::Trough;
+        case ELogPieceType::Plank: return ELogCrossSectionShape::Plank;
+        case ELogPieceType::NotchedLog: return ELogCrossSectionShape::Notched;
+        case ELogPieceType::JointPiece: return ELogCrossSectionShape::Joint;
+        case ELogPieceType::Other:
+        default: return Fallback;
+        }
+    }
+
+    const TCHAR* GetLengthFractionToken(ELogLengthFraction Fraction)
+    {
+        switch (Fraction)
+        {
+        case ELogLengthFraction::ThreeQuarterLength: return TEXT("LengthThreeQuarter");
+        case ELogLengthFraction::HalfLength: return TEXT("LengthHalf");
+        case ELogLengthFraction::QuarterLength: return TEXT("LengthQuarter");
+        case ELogLengthFraction::FullLength:
+        default: return TEXT("");
+        }
+    }
+
+    const TCHAR* GetCrossSectionToken(ELogCrossSectionShape Shape)
+    {
+        switch (Shape)
+        {
+        case ELogCrossSectionShape::FullRound: return TEXT("FullRound");
+        case ELogCrossSectionShape::HalfRound: return TEXT("SplitHalfLog");
+        case ELogCrossSectionShape::QuarterRound: return TEXT("QuarterSectionLog");
+        case ELogCrossSectionShape::HewnFlat: return TEXT("HewnLog");
+        case ELogCrossSectionShape::SquareBeam: return TEXT("SquaredBeam");
+        case ELogCrossSectionShape::Grooved: return TEXT("GutterLog");
+        case ELogCrossSectionShape::Trough: return TEXT("TroughLog");
+        case ELogCrossSectionShape::Plank: return TEXT("Plank");
+        case ELogCrossSectionShape::Notched: return TEXT("NotchedLog");
+        case ELogCrossSectionShape::Joint: return TEXT("JointPiece");
+        case ELogCrossSectionShape::Other:
+        default: return TEXT("Other");
+        }
+    }
+
+    FName BuildGeometryDefinitionId(
+        FName BaseDefinitionId, ELogLengthFraction LengthFraction,
+        ELogCrossSectionShape CrossSectionShape)
+    {
+        if (BaseDefinitionId.IsNone())
+            return NAME_None;
+
+        if (LengthFraction == ELogLengthFraction::FullLength &&
+            CrossSectionShape == ELogCrossSectionShape::FullRound)
+        {
+            return BaseDefinitionId;
+        }
+
+        const FString LengthToken = GetLengthFractionToken(LengthFraction);
+        const FString ShapeToken = GetCrossSectionToken(CrossSectionShape);
+        const FString Suffix = LengthToken.IsEmpty()
+            ? ShapeToken
+            : LengthToken + TEXT(".") + ShapeToken;
+        return FName(*FString::Printf(TEXT("%s.%s"),
+            *BaseDefinitionId.ToString(), *Suffix));
+    }
+
     bool IsValidCrossSectionCenterOffset(
         const FVector& Offset, ELogLongitudinalAxis LongitudinalAxis)
     {
