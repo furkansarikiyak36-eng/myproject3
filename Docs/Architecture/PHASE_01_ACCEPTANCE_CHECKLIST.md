@@ -4,7 +4,7 @@ This checklist distinguishes planning from verified implementation. Do not mark 
 
 ## Repository and compatibility
 - [x] Confirm the working branch and baseline commit (`phase-01-foundation-v2`, based on `main` at `ff2fd51444463afad598b837e820dbc3df2d439b`).
-- [ ] Inventory all current source files and build dependencies.
+- [x] Inventory tracked source, build/configuration and editor-script files and dependencies in `PHASE_01_SOURCE_INVENTORY.md`; local-only assets and Blueprint consumers remain outside this repository evidence.
 - [x] Map tracked native state-transition and editor-script callers (`PHASE_01_STATE_TRANSITION_CALLER_MAP.md`); local/untracked Blueprint references remain unknown.
 - [x] Document current placed/held/startup-default semantics and compatibility gate (`PHASE_01_PLACEMENT_HELD_STATE_CONTRACT.md`); no risky API refactor made before Blueprint audit.
 - [x] Guard custom snap-point IDs against None, reserved automatic prefixes, and duplicates in source; Unreal/Blueprint behavior remains unverified.
