@@ -45,7 +45,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     OutSave->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     OutSave->Clock = Clock->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
-    Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts);
+    Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts, OutSave->ItemSplitReceipts);
     OperationLedger->ExportSnapshot(OutSave->OperationLedgerEntries);
     // Held actor/carry-component state is not yet part of this manifest. Refuse
     // a lossy save rather than restoring an item to an orphaned Held owner.
@@ -113,7 +113,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
-    if (!Items->RestoreSnapshot(Snapshot->Items, Snapshot->ItemTransferReceipts)) return false;
+    if (!Items->RestoreSnapshot(Snapshot->Items, Snapshot->ItemTransferReceipts, Snapshot->ItemSplitReceipts)) return false;
     if (!OperationLedger->RestoreSnapshot(Snapshot->OperationLedgerEntries)) return false;
 
     TArray<UInventoryCraftingComponent*> CurrentInventories;
@@ -188,6 +188,11 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     if (Candidate->SchemaVersion == 5)
     {
         Candidate->OperationLedgerEntries.Reset();
+        Candidate->SchemaVersion = 6;
+    }
+    if (Candidate->SchemaVersion == 6)
+    {
+        Candidate->ItemSplitReceipts.Reset();
         Candidate->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
