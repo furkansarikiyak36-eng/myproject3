@@ -81,6 +81,14 @@ public:
     UFUNCTION(BlueprintPure, Category="Threat")
     bool IsDirectorInitialized() const { return bInitialized; }
 
+    /** Pure preflight for a coordinator-owned fixed step. */
+    UFUNCTION(BlueprintPure, Category="Threat")
+    bool CanAdvanceDirectorAtTime(double TargetTimeSeconds, int64 TargetTickIndex) const;
+
+    /** Commit one director step against the prevalidated target time/tick. */
+    UFUNCTION(BlueprintCallable, Category="Threat")
+    bool AdvanceDirectorAtTime(double TargetTimeSeconds, int64 TargetTickIndex);
+
     /** Call from the fixed-step world simulation driver, not every render frame. */
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool AdvanceDirector();
