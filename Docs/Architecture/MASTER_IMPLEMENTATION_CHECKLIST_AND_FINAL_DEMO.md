@@ -674,4 +674,4 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ## 15. İlk yapılacak iş
 
-Sıradaki çalışma **1A — Kaynak temeli ve PR zinciri** bölümündeki ilk boş kutudan başlar. Her iş tamamlandığında bu belge güncellenecek ve commit edilecek; sonra sıradaki bağımlı kutuya geçilecek. Bu belge, sohbet bağlamından bağımsız ilerleme kaydı olarak kullanılacaktır.
+Sıradaki sıra: **1A'daki kalan dal/PR atalık ve benzersiz diff denetimini** kapat; sonra **CORE-004 — domain işlem call-chain haritası** çıkar ve ledger'ı yalnızca kendi idempotency receipt'i bulunmayan uygun operasyonlara bağla. Her iş sonunda bu belge ve kanıtları güncellenecek; final demo ise bütün mekaniklerin aynı dünyada birlikte çalıştığı kabul kapısı olarak en sonda kurulacak.
