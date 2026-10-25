@@ -861,8 +861,31 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
+### İş kaydı: WOOD-008 — Üretim işi kuyruğa alma/toplama için kalıcı retry fişleri
+
+- [x] FWorldProductionEnqueueReceipt ile OperationId → RecipeId/JobId/revizyon sonucu saklanıyor.
+- [x] TryEnqueueJob açık OperationId ve ExpectedStationRevision ister; aynı tam istek retry edildiğinde aynı JobId döner ve kaynaklar ikinci kez düşülmez.
+- [x] Üretim girdileri, iş kuyruğu limiti, istasyon etiketi ve rezerve edilmiş/gelecek çıktı kapasitesi değişiklikten önce doğrulanıyor; stok ve iş kaydı ancak tüm ön kontroller geçince güncelleniyor.
+- [x] FWorldProductionCollectReceipt ile tamamlanmış işin çıkarılması kalıcı retry fişine bağlandı; aynı OperationId retry'si ikinci kez job removal yapmadan başarı döner.
+- [x] İşe alma, fiziksel stok kabulü ve job collection fişleri arasında aynı production OperationId'nin türler arası tekrar kullanımı reddediliyor.
+- [x] Receipt dizileri station snapshot'ında saklanıyor; SaveGame schema v10 ve v9→v10 migration eklendi.
+- [x] RestoreSnapshot receipt kimlik/revizyonlarını, recipe referanslarını, duplicate operation ID'leri ve collected job tutarlılığını kontrol ediyor.
+- [x] İlgili C++ dosyalarında declaration/definition, migration ve brace-balance statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT ve enqueue/collect aynı-ID retry/failure-injection runtime testleri.
+- [ ] Tarife girdi tüketimi ile tamamlanma çıktısının item ownership kaydına aktarılması hâlâ ayrı işlem zinciri.
+- [ ] Tarif çıktısının fiziksel aktör olarak üretilmesi veya depoya/enventere aktarılması; üretim makinesi sunumu ve ilgili save/load testleri açık.
+
+**Kaynak dosyaları:** WorldProductionSubsystem.h/.cpp, WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Üretim işini kuyruklama ve tamamlanmış iş kaydını toplama için açık, kalıcı OperationId API'leri eklendi. Geriye dönük EnqueueJob/CollectCompletedJob sarmalayıcıları korunuyor; retry garantisi isteyen yeni çağıranlar TryEnqueueJob/TryCollectCompletedJob kullanmalı.
+**Kanıt seviyesi:** Kaynak değişikliği ve statik wiring/brace kontrolü; Unreal motoru doğrulanmadı.
+**Kalan sınırlamalar:** EnqueueJob/CollectCompletedJob eski sarmalayıcıları her çağrıda yeni ID ürettiğinden çağıranın tekrar isteğini ayırt edemez. Tarif tamamlanması şu anda aggregate stock ekliyor; bütün giriş/çıkışın fiziksel item/aktör ve ownership ile atomik eşleşmesi tamamlanmadı.
+**Sonraki bağımlı iş:** WOOD-009 — üretim sonucunun gerçek item kaydı/physical actor/stock/depo ile tutarlı oluşturulması ve station output materialization işleminin retry-safe yapılması.
+
+---
+
 ## 15. İlk yapılacak iş
 
 WOOD-004 data-driven mesh-set selector, geometry tuple resolver, ownership selector ve SaveGame v8 kaynak katmanı mevcut; gerçek FBX/Blueprint ataması ve UE doğrulaması açık. WOOD-005 ağaç devrilme/grounded adapter'ı mevcut; gerçek fizik/asset ve boyut→çıktı tablosu açık. WOOD-006 serbest kütüğe sınırlı push/roll kaynağı eklendi; drag, world-location kalıcılığı ve production-stock entegrasyonu tamamlanmadı.
 
-WOOD-007 artık kaynak katmanında mevcut: serbest fiziksel kütüğün üretim istasyonu stokuna tek sefer alınması ve retry receipt'leri eklendi. Sıradaki iş **WOOD-008 — üretim transaction'ı**: tarif girdilerini/rezerve stokları doğru tüketmek, job tamamlanmasını ve output item/aktör yaratımını tek sahiplik ve retry sözleşmesine bağlamak. Sonrasında 2.1'in açık asset/config ve kesme durumu işlerine; taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
+WOOD-007 artık kaynak katmanında mevcut: serbest fiziksel kütüğün üretim istasyonu stokuna tek sefer alınması ve retry receipt'leri eklendi. WOOD-008 artık kaynak katmanında mevcut: TryEnqueueJob ve TryCollectCompletedJob kalıcı OperationId fişleriyle tekrar-denemeye dayanıklı hâle getirildi; SaveGame şeması v10. Sıradaki iş **WOOD-009 — üretim çıktılarını gerçek eşya kimliği/aktör ve depo akışıyla eşleştirme**; stock, ownership ve fiziksel materialization arasında çift sahiplik oluşturmadan tamamlanmalı. Sonrasında ahşap varlık/Blueprint doğrulaması, taş/çubuk ve ortak yapı sistemine devam et. 75/150/300/600 veya Long/Short dosya adlarından ölçü tahmin etme. Diğer referans oyunlar ve LB0–LB4 sırayla ele alınacak; final demo en sonda.
