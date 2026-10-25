@@ -9,6 +9,8 @@
 class UStaticMesh;
 class UStaticMeshComponent;
 class UWorldObjectIdentityComponent;
+enum class EWorldItemOwnerKind : uint8;
+struct FWorldOwnedItemRecord;
 
 UCLASS(Blueprintable)
 class MYPROJECT3_API ALogBuildPiece : public AActor
@@ -108,6 +110,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceStaticMesh(UStaticMesh* NewMesh);
+
+    /** Transfers this physical piece through the authoritative world-item ledger. */
+    bool TryTransferOwnership(EWorldItemOwnerKind ExpectedOwner, EWorldItemOwnerKind NewOwner,
+        const FGuid& NewOwnerId, FWorldOwnedItemRecord& OutRecord);
 
     UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
     bool CanApplyCutAction(ELogCutAction Action) const;
