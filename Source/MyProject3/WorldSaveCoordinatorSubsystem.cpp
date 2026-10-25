@@ -13,6 +13,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldStorageSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "EngineUtils.h"
@@ -30,7 +31,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
     UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo ||
+    UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized()) return false;
 
     OutSave->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
@@ -66,6 +68,11 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
     Cargo->ExportSnapshot(OutSave->Cargo);
+    Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
+    // Refuse a save that would restore orphaned cargo or exceed storage capacity.
+    if (!Storage->RestoreSnapshot(OutSave->StorageContainers, OutSave->StorageReservations) ||
+        !Cargo->RestoreSnapshot(OutSave->Cargo))
+        return false;
     return true;
 }
 
@@ -82,7 +89,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
     UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo)
+    UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage)
         return false;
 
     // Restore order is deliberate: logical time/seed first, then world state,
@@ -127,6 +135,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
     if (!Production->RestoreSnapshot(Snapshot->ProductionStations, Snapshot->ProductionRecipes)) return false;
+    if (!Storage->RestoreSnapshot(Snapshot->StorageContainers, Snapshot->StorageReservations)) return false;
     if (!Cargo->RestoreSnapshot(Snapshot->Cargo)) return false;
     if (!Threat->RestoreSnapshot(Snapshot->Threat)) return false;
     return true;
