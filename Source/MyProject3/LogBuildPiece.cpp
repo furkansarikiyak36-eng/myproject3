@@ -1880,6 +1880,15 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
                 bPrerequisiteMet = GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound;
                 break;
 
+            case ELogCutAction::SplitLengthHalf:
+            case ELogCutAction::SplitLengthThreeQuarter:
+                bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::FullLength;
+                break;
+
+            case ELogCutAction::SplitHalfLengthIntoQuarters:
+                bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::HalfLength;
+                break;
+
             default:
                 bActionSupported = false;
                 break;
@@ -1896,6 +1905,26 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             FailureCode,
             OperationId,
             FText::FromString(GetCutActionBlockReason(Action)));
+    }
+
+    if (IsLengthCutAction(Action))
+    {
+        UWorldObjectIdentityComponent* LengthCutIdentity =
+            FindComponentByClass<UWorldObjectIdentityComponent>();
+        UWorldItemOwnershipSubsystem* LengthCutOwnership =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        FWorldOwnedItemRecord LengthCutSource;
+        if (!LengthCutIdentity || !LengthCutOwnership ||
+            !LengthCutOwnership->TryGetItem(LengthCutIdentity->GetInstanceId(), LengthCutSource) ||
+            LengthCutSource.OwnerKind != EWorldItemOwnerKind::World ||
+            LengthCutSource.Quantity != 1)
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::InvalidState,
+                OperationId,
+                FText::FromString(TEXT("The log does not currently have a unique world-owned item record.")));
+        }
+        return TrySplitLengthOutputPieces(Action, OperationId, LengthCutSource);
     }
 
     UStaticMesh* NewMesh = nullptr;
