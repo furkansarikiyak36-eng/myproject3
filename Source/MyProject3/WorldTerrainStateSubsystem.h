@@ -50,6 +50,18 @@ struct FWorldTerrainOperationReceipt
     // Immutable committed state returned by idempotent retries.
     UPROPERTY()
     FWorldTerrainCellState ResultState;
+
+    UPROPERTY()
+    int32 RequestedDepthLayer = 0;
+
+    UPROPERTY()
+    ETerrainCellEdit RequestedEdit = ETerrainCellEdit::Excavate;
+
+    UPROPERTY()
+    FName RequestedMaterialId = NAME_None;
+
+    UPROPERTY()
+    int64 ExpectedRevision = 0;
 };
 
 /** Bounded, layer-gated terrain state. Rendering/collision edits belong to a terrain adapter. */
