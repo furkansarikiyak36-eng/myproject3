@@ -4,6 +4,7 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
 {
     if (!Record.ItemId.IsValid() || Record.DefinitionId.IsNone() ||
         Record.Quantity <= 0 || Record.Revision <= 0 ||
+        static_cast<uint8>(Record.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
         Items.Contains(Record.ItemId) || MaxTrackedItems <= 0 ||
         Items.Num() >= MaxTrackedItems ||
         !FMath::IsFinite(Record.WorldLocation.X) ||
@@ -32,6 +33,8 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     const FGuid& NewOwnerId, FVector NewWorldLocation, FWorldOwnedItemRecord& OutRecord)
 {
     if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
+        static_cast<uint8>(ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+        static_cast<uint8>(NewOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
         !FMath::IsFinite(NewWorldLocation.X) || !FMath::IsFinite(NewWorldLocation.Y) ||
         !FMath::IsFinite(NewWorldLocation.Z))
     {
@@ -41,7 +44,14 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     // Retries return the already-committed outcome; they never apply a second transfer.
     if (const FWorldItemTransferReceipt* Receipt = Receipts.Find(OperationId))
     {
-        if (Receipt->ItemId != ItemId) return false;
+        // An operation ID is idempotent only for the same complete request.
+        if (Receipt->ItemId != ItemId || Receipt->ExpectedRevision != ExpectedRevision ||
+            Receipt->ExpectedOwner != ExpectedOwner || Receipt->RequestedOwner != NewOwner ||
+            Receipt->RequestedOwnerId != NewOwnerId ||
+            !Receipt->RequestedWorldLocation.Equals(NewWorldLocation, 0.001f))
+        {
+            return false;
+        }
         OutRecord = Receipt->ResultRecord;
         return true;
     }
@@ -73,6 +83,11 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     Receipt.ResultingRevision = Item->Revision;
     Receipt.ResultingOwner = Item->OwnerKind;
     Receipt.ResultRecord = *Item;
+    Receipt.ExpectedRevision = ExpectedRevision;
+    Receipt.ExpectedOwner = ExpectedOwner;
+    Receipt.RequestedOwner = NewOwner;
+    Receipt.RequestedOwnerId = bRequiresOwnerId ? NewOwnerId : FGuid();
+    Receipt.RequestedWorldLocation = NewWorldLocation;
     Receipts.Add(OperationId, Receipt);
     OutRecord = *Item;
     return true;
@@ -111,7 +126,7 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(const TArray<FWorldOwnedItemR
     for (const FWorldOwnedItemRecord& Item : Snapshot)
     {
         if (!Item.ItemId.IsValid() || Item.DefinitionId.IsNone() || Item.Quantity <= 0 ||
-            Item.Revision <= 0 || Proposed.Contains(Item.ItemId) ||
+            Item.Revision <= 0 || static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) || Proposed.Contains(Item.ItemId) ||
             !FMath::IsFinite(Item.WorldLocation.X) || !FMath::IsFinite(Item.WorldLocation.Y) ||
             !FMath::IsFinite(Item.WorldLocation.Z))
             return false;
