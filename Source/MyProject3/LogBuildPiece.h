@@ -113,7 +113,7 @@ public:
 
     /** Transfers this physical piece through the authoritative world-item ledger. */
     bool TryTransferOwnership(EWorldItemOwnerKind ExpectedOwner, EWorldItemOwnerKind NewOwner,
-        const FGuid& NewOwnerId, FWorldOwnedItemRecord& OutRecord);
+        const FGuid& NewOwnerId, const FVector& NewWorldLocation, FWorldOwnedItemRecord& OutRecord);
 
     UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
     bool CanApplyCutAction(ELogCutAction Action) const;
