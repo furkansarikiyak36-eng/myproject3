@@ -20,6 +20,5 @@ public:
     void UnregisterIdentity(UWorldObjectIdentityComponent* Component);
 
 private:
-    UPROPERTY(Transient)
     TMap<FGuid, TWeakObjectPtr<UWorldObjectIdentityComponent>> RegisteredIdentities;
 };
