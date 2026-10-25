@@ -13,6 +13,7 @@
 #include "WorldCargoTransportSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Engine/EngineTypes.h"
 #include "InventoryCraftingTypes.h"
@@ -121,4 +122,5 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageContainerRecord> StorageContainers;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageIncomingReservation> StorageReservations;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldPhysicalActorSnapshot> PhysicalActors;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStructuralNodeSnapshot> StructuralGraph;
 };
