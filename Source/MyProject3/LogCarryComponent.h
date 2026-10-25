@@ -28,6 +28,16 @@ public:
         meta = (ClampMin = "50.0"))
     float PickupRange = 350.0f;
 
+    /** Impulse used by the optional loose-log push/roll interaction. Tune per project physics scale. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics",
+        meta = (ClampMin = "0.0"))
+    float PushImpulseStrength = 25000.0f;
+
+    /** Hard cap prevents accidental Blueprint values from launching a log at extreme speed. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics",
+        meta = (ClampMin = "0.0"))
+    float MaxPushImpulseMagnitude = 50000.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Trace",
         meta = (ClampMin = "100.0"))
     float PlacementTraceDistance = 4500.0f;
@@ -99,6 +109,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
     bool ProcessAimedPiece();
 
+    /** Applies a bounded off-centre impulse to an aimed, loose, world-owned physics log. */
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
+    bool TryPushOrRollAimedLog();
+
     UFUNCTION(BlueprintPure, Category = "Log Carry|State")
     ELogCutAction GetSelectedCutAction() const { return SelectedCutAction; }
 
@@ -125,4 +139,5 @@ private:
         int32 TargetIndex, const FTransform& DesiredActorTransform);
     FRotator MakePlacementRotation(float ViewYaw) const;
     void ProcessAimedPieceInput();
+    void PushOrRollAimedLogInput();
 };
