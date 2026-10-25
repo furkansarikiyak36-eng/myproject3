@@ -125,7 +125,9 @@ bool ALogBuildPiece::SelectProcessingMeshSetFromCurrentMesh()
 {
     if (ProcessingMeshSets.IsEmpty())
     {
-        return true; // Legacy per-Blueprint variant properties remain supported.
+        // A persisted/authored set ID without its corresponding table is invalid;
+        // do not silently fall back to a possibly different nominal mesh family.
+        return SelectedProcessingMeshSetId.IsNone();
     }
 
     if (!SelectedProcessingMeshSetId.IsNone())
@@ -190,6 +192,29 @@ const FLogProcessingMeshSet* ALogBuildPiece::GetActiveProcessingMeshSet() const
         if (Match)
             return nullptr; // Duplicate IDs are invalid; never choose by array order.
         Match = &Candidate;
+    }
+    if (!Match || Match->VariantSetId.IsNone() || !Match->BaseRoundMesh)
+        return nullptr;
+
+    for (int32 Index = 0; Index < Match->MeshVariants.Num(); ++Index)
+    {
+        const FLogPieceMeshVariant& Variant = Match->MeshVariants[Index];
+        if (!Variant.Mesh ||
+            (Variant.LengthFraction == ELogLengthFraction::FullLength &&
+             Variant.CrossSectionShape == ELogCrossSectionShape::FullRound))
+        {
+            // The base-round slot is canonical for full-length/full-round.
+            // Null variant rows and duplicate base-round rows are configuration errors.
+            return nullptr;
+        }
+        for (int32 Other = Index + 1; Other < Match->MeshVariants.Num(); ++Other)
+        {
+            if (Match->MeshVariants[Other].LengthFraction == Variant.LengthFraction &&
+                Match->MeshVariants[Other].CrossSectionShape == Variant.CrossSectionShape)
+            {
+                return nullptr;
+            }
+        }
     }
     return Match;
 }
@@ -278,6 +303,9 @@ UStaticMesh* ALogBuildPiece::GetConfiguredMeshForPieceType(ELogPieceType Type) c
 
     // Legacy compatibility path. A per-length mesh table, when configured,
     // takes precedence and deliberately fails closed if its mapping is absent.
+    if (!SelectedProcessingMeshSetId.IsNone())
+        return nullptr;
+
     switch (TargetShape)
     {
     case ELogCrossSectionShape::FullRound:
@@ -316,6 +344,9 @@ FVector ALogBuildPiece::GetConfiguredSplitCenterOffset(ELogCutAction Action) con
             : Set->QuarterCenterOffsetLocal;
     }
 
+    if (!SelectedProcessingMeshSetId.IsNone())
+        return FVector::ZeroVector;
+
     return Action == ELogCutAction::SplitHalf
         ? SplitHalfPieceCenterOffsetLocal
         : QuarterPieceCenterOffsetLocal;
@@ -332,6 +363,9 @@ FRotator ALogBuildPiece::GetConfiguredSplitChildRotation(ELogCutAction Action) c
             ? Set->SplitHalfChildRotationOffsetLocal
             : Set->QuarterChildRotationOffsetLocal;
     }
+
+    if (!SelectedProcessingMeshSetId.IsNone())
+        return FRotator::ZeroRotator;
 
     return Action == ELogCutAction::SplitHalf
         ? SplitHalfChildRotationOffsetLocal
@@ -404,7 +438,8 @@ void ALogBuildPiece::BeginPlay()
         if (!Item.MeshVariantSetId.IsNone())
             SelectedProcessingMeshSetId = Item.MeshVariantSetId;
 
-        if (!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet())
+        if ((!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet()) ||
+            (!SelectedProcessingMeshSetId.IsNone() && ProcessingMeshSets.IsEmpty()))
         {
             UE_LOG(LogTemp, Error,
                 TEXT("Log '%s' requires missing/ambiguous mesh variant set '%s'; actor was quarantined."),
@@ -521,7 +556,8 @@ bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
 
     if (!Item.MeshVariantSetId.IsNone())
         SelectedProcessingMeshSetId = Item.MeshVariantSetId;
-    if (!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet())
+    if ((!ProcessingMeshSets.IsEmpty() && !GetActiveProcessingMeshSet()) ||
+        (!SelectedProcessingMeshSetId.IsNone() && ProcessingMeshSets.IsEmpty()))
         return false;
 
     FStructuralNodeRecord ExistingNode;
