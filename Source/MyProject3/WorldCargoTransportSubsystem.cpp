@@ -92,18 +92,24 @@ bool UWorldCargoTransportSubsystem::TryDeliver(FWorldCargoTransportRecord& Recor
     return true;
 }
 
-bool UWorldCargoTransportSubsystem::AdvanceCargoStep(double DeltaSeconds)
+bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) const
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
         return false;
-
     for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
         const FWorldCargoTransportRecord& Record = Pair.Value;
-        if ((Record.State == ECargoTransportState::InTransit ||
-             Record.State == ECargoTransportState::Blocked) && Record.Revision == MAX_int64)
+        if (Record.State == ECargoTransportState::InTransit &&
+            (Record.Revision == MAX_int64 ||
+             !FMath::IsFinite(Record.Progress + Record.CostPerSecond * static_cast<float>(DeltaSeconds))))
             return false;
     }
+    return true;
+}
+
+bool UWorldCargoTransportSubsystem::AdvanceCargoStep(double DeltaSeconds)
+{
+    if (!CanAdvanceCargoStep(DeltaSeconds)) return false;
 
     for (TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
