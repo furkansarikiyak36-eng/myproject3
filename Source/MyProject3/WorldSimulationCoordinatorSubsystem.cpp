@@ -23,7 +23,15 @@ bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
     UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
     if (!Clock || !Threat || Clock->IsClockInitialized() || Threat->IsDirectorInitialized() ||
         !FMath::IsFinite(InitialTimeSeconds) || InitialTimeSeconds < 0.0 ||
-        !FMath::IsFinite(FirstRaidDelaySeconds) || FirstRaidDelaySeconds < 0.0)
+        !FMath::IsFinite(FirstRaidDelaySeconds) || FirstRaidDelaySeconds < 0.0 ||
+        !FMath::IsFinite(InitialTimeSeconds + FirstRaidDelaySeconds) ||
+        !FMath::IsFinite(Threat->MinimumIntervalSeconds) ||
+        !FMath::IsFinite(Threat->MaximumIntervalSeconds) ||
+        Threat->MinimumIntervalSeconds < 1.0 ||
+        Threat->MaximumIntervalSeconds < Threat->MinimumIntervalSeconds ||
+        !FMath::IsFinite(Threat->WarningDurationSeconds) || Threat->WarningDurationSeconds <= 0.0 ||
+        !FMath::IsFinite(Threat->RaidDurationSeconds) || Threat->RaidDurationSeconds <= 0.0 ||
+        Threat->MaxHistoryEntries < 1)
     {
         return false;
     }
@@ -33,12 +41,11 @@ bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
         return false;
     }
 
-    // Director initialization validates its own tuning against the initialized
-    // shared clock. If it rejects configuration, the clock remains initialized;
-    // callers must surface this bootstrap failure rather than silently retry.
+    // Configuration and time arithmetic are validated before either subsystem
+    // is initialized, preventing predictable partial bootstrap failures.
     if (!Threat->InitializeDirector(FirstRaidDelaySeconds))
     {
-        return false;
+        return false; // Defensive only; the same conditions were preflighted above.
     }
 
     CompletedCoordinatorSteps = 0;
@@ -50,23 +57,30 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorldSimulationClockSubsystem* Clock = GetClock();
     UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
     if (!Clock || !Threat || !Clock->IsClockInitialized() ||
-        !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
-        CompletedCoordinatorSteps == MAX_int64)
+        !Threat->IsDirectorInitialized() || !FMath::IsFinite(DeltaSeconds) ||
+        DeltaSeconds <= 0.0 || CompletedCoordinatorSteps == MAX_int64 ||
+        !Clock->CanAdvanceSimulation(DeltaSeconds))
     {
         return false;
     }
 
-    // The threat director currently has no non-mutating preflight API. Keep
-    // this ordering explicit and report failure; callers must not treat false
-    // as proof that no subsystem state advanced. The final integration pass
-    // should replace this with a prepared/commit step contract.
+    const double TargetTime = Clock->GetSimulationTimeSeconds() + DeltaSeconds;
+    const int64 TargetTick = Clock->GetTickIndex() + 1;
+    if (!Threat->CanAdvanceDirectorAtTime(TargetTime, TargetTick))
+    {
+        return false;
+    }
+
+    // All known failure conditions are checked before mutation. The director
+    // consumes the proposed time/tick, then the clock advances through the
+    // same validated delta. No external callback is invoked between commits.
+    if (!Threat->AdvanceDirectorAtTime(TargetTime, TargetTick))
+    {
+        return false;
+    }
     if (!Clock->AdvanceSimulation(DeltaSeconds))
     {
-        return false;
-    }
-
-    if (!Threat->AdvanceDirector())
-    {
+        // This indicates unexpected re-entrant mutation; halt the coordinator.
         return false;
     }
 
