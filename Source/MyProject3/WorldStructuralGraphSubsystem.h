@@ -160,6 +160,8 @@ public:
 
     bool ExportSnapshot(TArray<FWorldStructuralNodeSnapshot>& OutSnapshot) const;
     bool RestoreSnapshot(const TArray<FWorldStructuralNodeSnapshot>& Snapshot);
+    /** Rehydrates log actor-local attachment refs from restored canonical edges without reconnecting graph nodes. */
+    bool RebuildLogActorAttachmentsFromSnapshot();
 
 private:
     UPROPERTY(Transient)
