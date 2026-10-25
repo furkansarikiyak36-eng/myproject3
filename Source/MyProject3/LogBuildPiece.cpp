@@ -133,6 +133,157 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
     }
 }
 
+bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
+{
+    if (bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0)
+    {
+        return false;
+    }
+
+    switch (Action)
+    {
+    case ELogCutAction::SplitHalf:
+        return PieceType == ELogPieceType::WholeLog && IsValid(SplitHalfVariantMesh);
+    case ELogCutAction::Quarter:
+        return PieceType == ELogPieceType::SplitHalfLog && IsValid(QuarterVariantMesh);
+    case ELogCutAction::Hewn:
+        return PieceType == ELogPieceType::WholeLog && IsValid(HewnVariantMesh);
+    case ELogCutAction::Gutter:
+        // A groove/gutter operation is valid only after the log has been split.
+        return PieceType == ELogPieceType::SplitHalfLog && IsValid(GutterVariantMesh);
+    case ELogCutAction::Trough:
+        return PieceType == ELogPieceType::SplitHalfLog && IsValid(TroughVariantMesh);
+    case ELogCutAction::Kalas:
+        return PieceType == ELogPieceType::WholeLog && IsValid(KalasVariantMesh);
+    case ELogCutAction::Plank:
+        return PieceType == ELogPieceType::SplitHalfLog && IsValid(PlankVariantMesh);
+    default:
+        return false;
+    }
+}
+
+FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
+{
+    if (bIsPlaced)
+    {
+        return TEXT("Remove the log from the structure before processing it.");
+    }
+    if (bIsHeld)
+    {
+        return TEXT("Drop the log before processing it.");
+    }
+    if (GetAttachedPieceCount() > 0)
+    {
+        return TEXT("Remove attached pieces before processing the support log.");
+    }
+
+    switch (Action)
+    {
+    case ELogCutAction::SplitHalf:
+        return PieceType != ELogPieceType::WholeLog
+            ? TEXT("Only a whole log can be split into half-rounds.")
+            : TEXT("No split-half mesh is configured for this log length.");
+    case ELogCutAction::Quarter:
+        return PieceType != ELogPieceType::SplitHalfLog
+            ? TEXT("Quartering requires a split half-round log first.")
+            : TEXT("No quarter mesh is configured for this log length.");
+    case ELogCutAction::Gutter:
+        return PieceType != ELogPieceType::SplitHalfLog
+            ? TEXT("A groove can only be cut into a split half-round log.")
+            : TEXT("No gutter mesh is configured for this log length.");
+    case ELogCutAction::Trough:
+        return PieceType != ELogPieceType::SplitHalfLog
+            ? TEXT("A trough can only be carved into a split half-round log.")
+            : TEXT("No trough mesh is configured for this log length.");
+    case ELogCutAction::Hewn:
+        return PieceType != ELogPieceType::WholeLog
+            ? TEXT("Hewing is available only on a whole log in this prototype.")
+            : TEXT("No hewn mesh is configured for this log length.");
+    case ELogCutAction::Kalas:
+        return PieceType != ELogPieceType::WholeLog
+            ? TEXT("Kalas shaping requires a whole log in this prototype.")
+            : TEXT("No kalas mesh is configured for this log length.");
+    case ELogCutAction::Plank:
+        return PieceType != ELogPieceType::SplitHalfLog
+            ? TEXT("Plank shaping requires a split half-round log first.")
+            : TEXT("No plank mesh is configured for this log length.");
+    default:
+        return TEXT("Unsupported processing action.");
+    }
+}
+
+bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
+{
+    if (!CanApplyCutAction(Action))
+    {
+        return false;
+    }
+
+    UStaticMesh* NewMesh = nullptr;
+    ELogPieceType NewType = ELogPieceType::Other;
+
+    switch (Action)
+    {
+    case ELogCutAction::SplitHalf:
+        NewMesh = SplitHalfVariantMesh;
+        NewType = ELogPieceType::SplitHalfLog;
+        break;
+    case ELogCutAction::Quarter:
+        NewMesh = QuarterVariantMesh;
+        NewType = ELogPieceType::QuarterLog;
+        break;
+    case ELogCutAction::Hewn:
+        NewMesh = HewnVariantMesh;
+        NewType = ELogPieceType::HewnLog;
+        break;
+    case ELogCutAction::Gutter:
+        NewMesh = GutterVariantMesh;
+        NewType = ELogPieceType::GutterLog;
+        break;
+    case ELogCutAction::Trough:
+        NewMesh = TroughVariantMesh;
+        NewType = ELogPieceType::TroughLog;
+        break;
+    case ELogCutAction::Kalas:
+        NewMesh = KalasVariantMesh;
+        NewType = ELogPieceType::SquaredBeam;
+        break;
+    case ELogCutAction::Plank:
+        NewMesh = PlankVariantMesh;
+        NewType = ELogPieceType::Plank;
+        break;
+    default:
+        return false;
+    }
+
+    // Preserve the mesh's bottom world height when replacing the geometry, so
+    // a half-round does not turn into a floating whole log or sink into ground.
+    FVector OldOrigin;
+    FVector OldExtent;
+    GetActorBounds(false, OldOrigin, OldExtent);
+    const float OldBottomZ = OldOrigin.Z - OldExtent.Z;
+
+    SetPieceStaticMesh(NewMesh);
+    PieceType = NewType;
+
+    FVector NewOrigin;
+    FVector NewExtent;
+    GetActorBounds(false, NewOrigin, NewExtent);
+    const float NewBottomZ = NewOrigin.Z - NewExtent.Z;
+    AddActorWorldOffset(FVector(0.0f, 0.0f, OldBottomZ - NewBottomZ), false);
+
+    if (Mesh)
+    {
+        Mesh->UpdateBounds();
+        if (Mesh->IsSimulatingPhysics())
+        {
+            Mesh->WakeAllRigidBodies();
+        }
+    }
+
+    return true;
+}
+
 void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
 {
     FString Key = TypeName.ToString().ToLower();
@@ -140,7 +291,7 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     Key.ReplaceInline(TEXT("-"), TEXT(""));
     Key.ReplaceInline(TEXT(" "), TEXT(""));
 
-    // Check cut/shape-specific variants before generic "raw log" names.
+    // Specific geometry states must be detected before the generic raw-log name.
     if (Key.Contains(TEXT("threequarter")) || Key.Contains(TEXT("3quarter")))
     {
         PieceType = ELogPieceType::ThreeQuarterLog;
@@ -149,8 +300,7 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::HalfLengthLog;
     }
-    // In this library, SM_RawLog_<length>_Half means a longitudinally split
-    // half-round piece; it does NOT mean a log whose length is halved.
+    // In this asset set "_Half" is a split half-round, not a shorter log.
     else if (Key.Contains(TEXT("rawlog")) && Key.Contains(TEXT("half")))
     {
         PieceType = ELogPieceType::SplitHalfLog;
@@ -159,8 +309,11 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::QuarterLog;
     }
-    else if (Key.Contains(TEXT("gutter")) || Key.Contains(TEXT("trough")) ||
-        Key.Contains(TEXT("groove")))
+    else if (Key.Contains(TEXT("trough")))
+    {
+        PieceType = ELogPieceType::TroughLog;
+    }
+    else if (Key.Contains(TEXT("gutter")) || Key.Contains(TEXT("groove")))
     {
         PieceType = ELogPieceType::GutterLog;
     }
@@ -168,13 +321,16 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::HewnLog;
     }
-    else if (Key.Contains(TEXT("plank")) || Key.Contains(TEXT("kalas")))
+    else if (Key.Contains(TEXT("kalas")))
+    {
+        PieceType = ELogPieceType::SquaredBeam;
+    }
+    else if (Key.Contains(TEXT("plank")))
     {
         PieceType = ELogPieceType::Plank;
     }
     else if (Key.Contains(TEXT("notch")) || Key.Contains(TEXT("crosslap")) ||
-        Key.Contains(TEXT("saddle")) || Key.Contains(TEXT("fork")) ||
-        Key.Contains(TEXT("flatnotch")))
+        Key.Contains(TEXT("saddle")) || Key.Contains(TEXT("fork")))
     {
         PieceType = ELogPieceType::NotchedLog;
     }
