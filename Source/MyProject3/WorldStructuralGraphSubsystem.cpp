@@ -1,6 +1,165 @@
 #include "WorldStructuralGraphSubsystem.h"
 
 #include "GameFramework/Actor.h"
+#include "WorldObjectIdentityComponent.h"
+#include "EngineUtils.h"
+
+bool UWorldStructuralGraphSubsystem::ExportSnapshot(
+    TArray<FWorldStructuralNodeSnapshot>& OutSnapshot) const
+{
+    OutSnapshot.Reset();
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        const FStructuralNodeRecord& Node = Pair.Value;
+        AActor* Actor = Node.Actor.Get();
+        UWorldObjectIdentityComponent* Identity =
+            IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!Node.NodeId.IsValid() || !IsValid(Actor) || !IsValid(Identity) ||
+            !Identity->InstanceId.IsValid())
+        {
+            OutSnapshot.Reset();
+            return false;
+        }
+
+        FWorldStructuralNodeSnapshot& State = OutSnapshot.AddDefaulted_GetRef();
+        State.NodeId = Node.NodeId;
+        State.ActorIdentityId = Identity->InstanceId;
+        State.Kind = Node.Kind;
+        State.ParentNodeId = Node.ParentNodeId;
+        State.ParentAnchorId = Node.ParentAnchorId;
+        State.OwnAnchorId = Node.OwnAnchorId;
+        State.LocalLoad = Node.LocalLoad;
+        State.MaxSupportedLoad = Node.MaxSupportedLoad;
+        State.bGroundSupported = Node.bGroundSupported;
+        State.Damage = Node.Damage;
+        State.DamageThreshold = Node.DamageThreshold;
+        State.Revision = Node.Revision;
+    }
+    OutSnapshot.Sort([](const FWorldStructuralNodeSnapshot& A, const FWorldStructuralNodeSnapshot& B)
+    {
+        return A.NodeId.ToString() < B.NodeId.ToString();
+    });
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
+    const TArray<FWorldStructuralNodeSnapshot>& Snapshot)
+{
+    TMap<FGuid, AActor*> ActorsByIdentity;
+    if (UWorld* World = GetWorld())
+    {
+        for (TActorIterator<AActor> It(World); It; ++It)
+        {
+            AActor* Actor = *It;
+            UWorldObjectIdentityComponent* Identity =
+                IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+            if (IsValid(Identity) && Identity->InstanceId.IsValid())
+            {
+                if (ActorsByIdentity.Contains(Identity->InstanceId))
+                    return false;
+                ActorsByIdentity.Add(Identity->InstanceId, Actor);
+            }
+        }
+    }
+    if (ActorsByIdentity.IsEmpty() && !Snapshot.IsEmpty())
+        return false;
+
+    TMap<FGuid, FStructuralNodeRecord> Proposed;
+    TSet<FGuid> UsedActorIds;
+    TSet<FString> OccupiedParentAnchors;
+    for (const FWorldStructuralNodeSnapshot& State : Snapshot)
+    {
+        AActor* const* Actor = ActorsByIdentity.Find(State.ActorIdentityId);
+        if (!State.NodeId.IsValid() || Proposed.Contains(State.NodeId) ||
+            !State.ActorIdentityId.IsValid() || UsedActorIds.Contains(State.ActorIdentityId) ||
+            !Actor || !IsValid(*Actor) ||
+            static_cast<uint8>(State.Kind) == static_cast<uint8>(EStructuralNodeKind::Unknown) ||
+            static_cast<uint8>(State.Kind) > static_cast<uint8>(EStructuralNodeKind::Other) ||
+            !FMath::IsFinite(State.LocalLoad) || State.LocalLoad < 0.0f ||
+            !FMath::IsFinite(State.MaxSupportedLoad) || State.MaxSupportedLoad <= 0.0f ||
+            !FMath::IsFinite(State.Damage) || State.Damage < 0.0f ||
+            !FMath::IsFinite(State.DamageThreshold) || State.DamageThreshold <= 0.0f ||
+            State.Revision < 0 ||
+            (State.ParentNodeId.IsValid() &&
+                (State.ParentAnchorId.IsNone() || State.OwnAnchorId.IsNone())) ||
+            (!State.ParentNodeId.IsValid() &&
+                (!State.ParentAnchorId.IsNone() || !State.OwnAnchorId.IsNone() || State.bGroundSupported)))
+        {
+            return false;
+        }
+
+        if (State.ParentNodeId.IsValid())
+        {
+            const FString AnchorKey = State.ParentNodeId.ToString() + TEXT(":") + State.ParentAnchorId.ToString();
+            if (OccupiedParentAnchors.Contains(AnchorKey))
+                return false;
+            OccupiedParentAnchors.Add(AnchorKey);
+        }
+
+        FStructuralNodeRecord Node;
+        Node.NodeId = State.NodeId;
+        Node.Actor = *Actor;
+        Node.Kind = State.Kind;
+        Node.ParentNodeId = State.ParentNodeId;
+        Node.ParentAnchorId = State.ParentAnchorId;
+        Node.OwnAnchorId = State.OwnAnchorId;
+        Node.LocalLoad = State.LocalLoad;
+        Node.MaxSupportedLoad = State.MaxSupportedLoad;
+        Node.bGroundSupported = State.bGroundSupported;
+        Node.Damage = State.Damage;
+        Node.DamageThreshold = State.DamageThreshold;
+        Node.Revision = State.Revision;
+        Proposed.Add(Node.NodeId, Node);
+        UsedActorIds.Add(State.ActorIdentityId);
+    }
+
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Proposed)
+    {
+        if (Pair.Value.ParentNodeId.IsValid() && !Proposed.Contains(Pair.Value.ParentNodeId))
+            return false;
+        TSet<FGuid> Visited;
+        FGuid CurrentId = Pair.Key;
+        bool bReachedSupportedRoot = false;
+        while (CurrentId.IsValid())
+        {
+            if (Visited.Contains(CurrentId))
+                return false;
+            Visited.Add(CurrentId);
+            const FStructuralNodeRecord* Current = Proposed.Find(CurrentId);
+            if (!Current)
+                return false;
+            if (!Current->ParentNodeId.IsValid())
+            {
+                bReachedSupportedRoot = Current->bGroundSupported;
+                break;
+            }
+            CurrentId = Current->ParentNodeId;
+        }
+        if (!bReachedSupportedRoot)
+            return false;
+    }
+
+    TMap<FGuid, FStructuralNodeRecord> Previous = MoveTemp(Nodes);
+    Nodes = MoveTemp(Proposed);
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        TSet<FGuid> Visiting;
+        bool bLoadValid = true;
+        const float AggregateLoad = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid);
+        if (!bLoadValid || !FMath::IsFinite(AggregateLoad))
+        {
+            Nodes = MoveTemp(Previous);
+            return false;
+        }
+        const FStructuralNodeRecord* Node = Nodes.Find(Pair.Key);
+        if (!Node || AggregateLoad > Node->MaxSupportedLoad)
+        {
+            Nodes = MoveTemp(Previous);
+            return false;
+        }
+    }
+    return true;
+}
 
 bool UWorldStructuralGraphSubsystem::RegisterNode(
     AActor* Actor, FGuid NodeId, EStructuralNodeKind Kind,
