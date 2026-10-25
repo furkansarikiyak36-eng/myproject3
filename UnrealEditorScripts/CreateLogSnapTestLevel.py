@@ -389,7 +389,8 @@ def main():
     log("C cycles processing: split / quarter / hewn / gutter / trough / kalas / plank.")
     log("F applies the selected operation to a loose, unplaced log in interaction range.")
     log("The cuttable full log has same-length variants; invalid cut sequences are rejected.")
-    log("Target beam has two added top snap anchors; its ends also use automatic LogEnd anchors.")
+    log("Placed log pieces also have automatic receiving side sockets; the crosshair selects the target.")
+    log("Support beams have extra top sockets; green markers and labels show active snap candidates.")
     log("Only this generated test map was rebuilt. Existing other maps were not modified.")
 
 
