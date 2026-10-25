@@ -121,9 +121,221 @@ void ALogBuildPiece::UpdateGeometryStateFromPieceType(bool bPreserveLengthFracti
     }
 }
 
+bool ALogBuildPiece::SelectProcessingMeshSetFromCurrentMesh()
+{
+    if (ProcessingMeshSets.IsEmpty())
+    {
+        return true; // Legacy per-Blueprint variant properties remain supported.
+    }
+
+    if (!SelectedProcessingMeshSetId.IsNone())
+    {
+        return GetActiveProcessingMeshSet() != nullptr;
+    }
+
+    const UStaticMesh* CurrentMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+    if (!CurrentMesh)
+        return false;
+
+    const FLogProcessingMeshSet* Match = nullptr;
+    for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
+    {
+        if (Candidate.BaseRoundMesh != CurrentMesh)
+            continue;
+
+        if (Match)
+            return false; // Ambiguous base-mesh assignment must not select arbitrarily.
+        Match = &Candidate;
+    }
+
+    if (!Match || Match->VariantSetId.IsNone())
+        return false;
+
+    int32 SameIdCount = 0;
+    for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
+    {
+        if (Candidate.VariantSetId == Match->VariantSetId)
+            ++SameIdCount;
+    }
+    if (SameIdCount != 1)
+        return false;
+
+    SelectedProcessingMeshSetId = Match->VariantSetId;
+    return true;
+}
+
+const FLogProcessingMeshSet* ALogBuildPiece::GetActiveProcessingMeshSet() const
+{
+    if (ProcessingMeshSets.IsEmpty() || SelectedProcessingMeshSetId.IsNone())
+        return nullptr;
+
+    const FLogProcessingMeshSet* Match = nullptr;
+    for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
+    {
+        if (Candidate.VariantSetId != SelectedProcessingMeshSetId)
+            continue;
+
+        if (Match)
+            return nullptr; // Duplicate IDs are invalid; never choose by array order.
+        Match = &Candidate;
+    }
+    return Match;
+}
+
+UStaticMesh* ALogBuildPiece::GetConfiguredMeshForPieceType(ELogPieceType Type) const
+{
+    ELogLengthFraction TargetLength = GeometryState.LengthFraction;
+    ELogCrossSectionShape TargetShape = GeometryState.CrossSectionShape;
+
+    switch (Type)
+    {
+    case ELogPieceType::WholeLog:
+        TargetLength = ELogLengthFraction::FullLength;
+        TargetShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::ThreeQuarterLog:
+        TargetLength = ELogLengthFraction::ThreeQuarterLength;
+        TargetShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::HalfLengthLog:
+        TargetLength = ELogLengthFraction::HalfLength;
+        TargetShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::QuarterLog:
+        TargetLength = ELogLengthFraction::QuarterLength;
+        TargetShape = ELogCrossSectionShape::FullRound;
+        break;
+    case ELogPieceType::SplitHalfLog:
+        TargetShape = ELogCrossSectionShape::HalfRound;
+        break;
+    case ELogPieceType::QuarterSectionLog:
+        TargetShape = ELogCrossSectionShape::QuarterRound;
+        break;
+    case ELogPieceType::HewnLog:
+        TargetShape = ELogCrossSectionShape::HewnFlat;
+        break;
+    case ELogPieceType::SquaredBeam:
+        TargetShape = ELogCrossSectionShape::SquareBeam;
+        break;
+    case ELogPieceType::GutterLog:
+        TargetShape = ELogCrossSectionShape::Grooved;
+        break;
+    case ELogPieceType::TroughLog:
+        TargetShape = ELogCrossSectionShape::Trough;
+        break;
+    case ELogPieceType::Plank:
+        TargetShape = ELogCrossSectionShape::Plank;
+        break;
+    case ELogPieceType::NotchedLog:
+        TargetShape = ELogCrossSectionShape::Notched;
+        break;
+    case ELogPieceType::JointPiece:
+        TargetShape = ELogCrossSectionShape::Joint;
+        break;
+    case ELogPieceType::Other:
+    default:
+        TargetShape = ELogCrossSectionShape::Other;
+        break;
+    }
+
+    if (!ProcessingMeshSets.IsEmpty())
+    {
+        const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+        if (!Set)
+            return nullptr;
+
+        if (TargetLength == ELogLengthFraction::FullLength &&
+            TargetShape == ELogCrossSectionShape::FullRound)
+        {
+            return Set->BaseRoundMesh;
+        }
+
+        const FLogPieceMeshVariant* Match = nullptr;
+        for (const FLogPieceMeshVariant& Variant : Set->MeshVariants)
+        {
+            if (Variant.LengthFraction != TargetLength ||
+                Variant.CrossSectionShape != TargetShape)
+                continue;
+
+            if (Match)
+                return nullptr; // Duplicate state mappings are ambiguous.
+            Match = &Variant;
+        }
+        return Match ? Match->Mesh.Get() : nullptr;
+    }
+
+    // Legacy compatibility path. A per-length mesh table, when configured,
+    // takes precedence and deliberately fails closed if its mapping is absent.
+    switch (TargetShape)
+    {
+    case ELogCrossSectionShape::FullRound:
+        return Mesh ? Mesh->GetStaticMesh() : nullptr;
+    case ELogCrossSectionShape::HalfRound:
+        return SplitHalfVariantMesh;
+    case ELogCrossSectionShape::QuarterRound:
+        return QuarterVariantMesh;
+    case ELogCrossSectionShape::HewnFlat:
+        return HewnVariantMesh;
+    case ELogCrossSectionShape::SquareBeam:
+        return KalasVariantMesh;
+    case ELogCrossSectionShape::Grooved:
+        return GutterVariantMesh;
+    case ELogCrossSectionShape::Trough:
+        return TroughVariantMesh;
+    case ELogCrossSectionShape::Plank:
+        return PlankVariantMesh;
+    case ELogCrossSectionShape::Notched:
+    case ELogCrossSectionShape::Joint:
+    case ELogCrossSectionShape::Other:
+    default:
+        return nullptr;
+    }
+}
+
+FVector ALogBuildPiece::GetConfiguredSplitCenterOffset(ELogCutAction Action) const
+{
+    if (!ProcessingMeshSets.IsEmpty())
+    {
+        const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+        if (!Set)
+            return FVector::ZeroVector;
+        return Action == ELogCutAction::SplitHalf
+            ? Set->SplitHalfCenterOffsetLocal
+            : Set->QuarterCenterOffsetLocal;
+    }
+
+    return Action == ELogCutAction::SplitHalf
+        ? SplitHalfPieceCenterOffsetLocal
+        : QuarterPieceCenterOffsetLocal;
+}
+
+FRotator ALogBuildPiece::GetConfiguredSplitChildRotation(ELogCutAction Action) const
+{
+    if (!ProcessingMeshSets.IsEmpty())
+    {
+        const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+        if (!Set)
+            return FRotator::ZeroRotator;
+        return Action == ELogCutAction::SplitHalf
+            ? Set->SplitHalfChildRotationOffsetLocal
+            : Set->QuarterChildRotationOffsetLocal;
+    }
+
+    return Action == ELogCutAction::SplitHalf
+        ? SplitHalfChildRotationOffsetLocal
+        : QuarterChildRotationOffsetLocal;
+}
+
 void ALogBuildPiece::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
+
+    if (!SelectProcessingMeshSetFromCurrentMesh() && !ProcessingMeshSets.IsEmpty())
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("Log '%s' has a processing-mesh table but no unique matching base-mesh set; processing actions will be blocked."),
+            *GetName());
+    }
 
     // Keep the inspector's legacy piece label and the orthogonal geometry fields aligned.
     UpdateGeometryStateFromPieceType(false);
