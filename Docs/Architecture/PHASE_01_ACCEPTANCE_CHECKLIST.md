@@ -8,6 +8,7 @@ This checklist distinguishes planning from verified implementation. Do not mark 
 - [x] Map tracked native state-transition and editor-script callers (`PHASE_01_STATE_TRANSITION_CALLER_MAP.md`); local/untracked Blueprint references remain unknown.
 - [x] Document current placed/held/startup-default semantics and compatibility gate (`PHASE_01_PLACEMENT_HELD_STATE_CONTRACT.md`); no risky API refactor made before Blueprint audit.
 - [x] Guard custom snap-point IDs against None, reserved automatic prefixes, and duplicates in source; Unreal/Blueprint behavior remains unverified.
+- [x] Make snap acceptance independently reject occupied or non-receiving target anchors; Unreal runtime coverage remains pending.
 - [x] Identify the authoritative log-processing/construction implementation (`ALogBuildPiece` plus `ULogCarryComponent`; broader Blueprint/editor dependency review remains open).
 - [ ] Identify unused/legacy classes and confirm they are not accidentally activated.
 - [ ] Record existing mechanic tests and their exact scope.
