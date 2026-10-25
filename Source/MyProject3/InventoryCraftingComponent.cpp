@@ -329,17 +329,40 @@ bool UInventoryCraftingComponent::TryCraft(FName RecipeId)
  // Preflight the entire output set before consuming any ingredient.
  TArray<FInventoryStack> Outputs; Outputs.Add(Recipe.Output); Outputs.Append(Recipe.Byproducts);
  if (!HasCapacityFor(Outputs)) return false;
- // Snapshot allows rollback if an unexpected mutation failure occurs.
+ // Snapshot allows rollback if an unexpected mutation failure occurs. Physical
+ // ingredients consumed by TryRemoveItem must be restored in the ownership ledger too.
  const TArray<FInventoryStack> BeforeItems = Items;
  const FName BeforeQuickAccess = QuickAccessItemId;
+ auto RollbackCraft = [&]()
+ {
+  Items = BeforeItems;
+  QuickAccessItemId = BeforeQuickAccess;
+  UWorldItemOwnershipSubsystem* Ownership =
+   GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+  if (!Ownership) return;
+  for (const FInventoryStack& Stack : BeforeItems)
+  {
+   if (!Stack.OwnedWorldItemId.IsValid()) continue;
+   FWorldOwnedItemRecord Item;
+   if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Item) ||
+       Item.OwnerKind != EWorldItemOwnerKind::Consumed || Item.Revision == MAX_int64)
+    continue;
+   FWorldOwnedItemRecord Restored;
+   if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+       EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
+       InventoryOwnerId, Item.WorldLocation, Restored))
+    UE_LOG(LogTemp, Error, TEXT("Craft rollback could not restore physical item %s."),
+     *Item.ItemId.ToString());
+  }
+ };
  for (const TPair<FName,int32>& P : Required)
  {
-  if (!TryRemoveItem(P.Key, P.Value)) { Items = BeforeItems; QuickAccessItemId = BeforeQuickAccess; return false; }
+  if (!TryRemoveItem(P.Key, P.Value)) { RollbackCraft(); return false; }
  }
- if (!TryAddItem(Recipe.Output)) { Items = BeforeItems; QuickAccessItemId = BeforeQuickAccess; return false; }
+ if (!TryAddItem(Recipe.Output)) { RollbackCraft(); return false; }
  for (const FInventoryStack& Byproduct : Recipe.Byproducts)
  {
-  if (!TryAddItem(Byproduct)) { Items = BeforeItems; QuickAccessItemId = BeforeQuickAccess; return false; }
+  if (!TryAddItem(Byproduct)) { RollbackCraft(); return false; }
  }
  return true;
 }
