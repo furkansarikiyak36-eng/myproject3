@@ -81,6 +81,19 @@ void ULogCarryComponent::TickComponent(
         DrawDebugLine(GetWorld(), MarkerLocation,
             MarkerLocation + FVector::UpVector * 70.0f,
             FColor::Green, false, 0.10f, 0, 2.0f);
+
+        const TArray<FLogSnapPoint>& TargetPoints = CurrentSnapTarget->GetSnapPoints();
+        if (TargetPoints.IsValidIndex(CurrentTargetSnapPointIndex))
+        {
+            DrawDebugString(
+                GetWorld(),
+                MarkerLocation + FVector::UpVector * 80.0f,
+                TargetPoints[CurrentTargetSnapPointIndex].PointId.ToString(),
+                CurrentSnapTarget,
+                FColor::Green,
+                0.10f,
+                true);
+        }
     }
 }
 
