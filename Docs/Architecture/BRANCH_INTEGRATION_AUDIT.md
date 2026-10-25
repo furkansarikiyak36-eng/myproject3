@@ -4,14 +4,14 @@
 **Comparison reference:** `main`  
 **Purpose:** Branch inventory and safe integration guidance. Counts are GitHub compare metadata at the snapshot time; they are not feature-completion scores.
 
-## Inventory (all 19 branches returned by GitHub)
+## Inventory (20 branches returned by GitHub at this snapshot)
 
 | Branch | Compare to main | Ahead | Behind | Interpretation |
 |---|---:|---:|---:|---|
 | `main` | identical | 0 | 0 | Default branch; not the only relevant source |
 | `Chatgpt` | behind | 0 | 63 | Older than main; inspect history before reusing |
 | `architecture-14-phase-skeletons` | ahead | 120 | 0 | Architecture/phase map; based on Phase 6, not an independent release branch |
-| `landscape-builder-plan` | ahead | 352 | 0 | H-integrated baseline plus 3 documentation commits for Landscape Builder |
+| `landscape-builder-plan` | ahead | 352 | 0 | H-integrated baseline plus documentation-only Landscape Builder and M119 gap-analysis updates |
 | `mechanic-detailing-pass-01` | ahead | 121 | 0 | Earlier mechanic detail pass |
 | `mechanic-detailing-pass-a-core` | ahead | 131 | 0 | Core invariants/contracts pass |
 | `mechanic-detailing-pass-b-resource-lifecycle` | ahead | 134 | 0 | Resource lifecycle pass |
@@ -47,10 +47,12 @@
 5. Before the final integration gate, compare each intended feature branch with its declared parent, review file-level diffs, resolve conflicts, preserve M001–M119 IDs, and run the authorized Unreal validation separately.
 6. Never infer feature completion from branch names, commit counts or class/file existence. Keep source implementation, static review and engine verification as separate states.
 
-## Current Landscape Builder changes
+## Current planning-branch changes
 
-PR #17 adds only:
-- `Docs/Architecture/LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md`
+PR #17 contains documentation-only changes:
+- `Docs/Architecture/LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md` (new)
+- `Docs/Architecture/M001_M119_GAP_ANALYSIS_AND_IMPLEMENTATION_PLAN.md` (new)
+- `Docs/Architecture/BRANCH_INTEGRATION_AUDIT.md` (new/update)
 - updates to `Docs/Architecture/ARCHITECTURE_14_PHASE_ROADMAP.md`
 - updates to `Docs/Architecture/PHASE_08_TERRAIN_WORLDSTATE.md`
 
