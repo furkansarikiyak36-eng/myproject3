@@ -870,6 +870,8 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [x] İşe alma, fiziksel stok kabulü ve job collection fişleri arasında aynı production OperationId'nin türler arası tekrar kullanımı reddediliyor.
 - [x] Receipt dizileri station snapshot'ında saklanıyor; SaveGame schema v10 ve v9→v10 migration eklendi.
 - [x] RestoreSnapshot receipt kimlik/revizyonlarını, recipe referanslarını, duplicate operation ID'leri ve collected job tutarlılığını kontrol ediyor.
+- [x] RestoreSnapshot istasyonlar arasında da duplicate JobId'yi reddediyor; bütün recipe referanslarını snapshot'ın yeni recipe tablosundan çözüyor.
+- [x] Restore sırasında stok toplamı + queued/running işlerin rezerve çıktıları kapasiteyi aşıyorsa snapshot fail-closed reddediliyor; job progress/state sınırları doğrulanıyor.
 - [x] İlgili C++ dosyalarında declaration/definition, migration ve brace-balance statik kontrol edildi.
 - [ ] UE 5.8 UHT/UBT ve enqueue/collect aynı-ID retry/failure-injection runtime testleri.
 - [ ] Tarife girdi tüketimi ile tamamlanma çıktısının item ownership kaydına aktarılması hâlâ ayrı işlem zinciri.
