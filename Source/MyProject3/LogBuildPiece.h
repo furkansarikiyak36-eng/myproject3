@@ -172,6 +172,9 @@ public:
     /** Result-bearing processing entry point; legacy bool API remains compatible. */
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     FWorldOperationResult TryApplyCutAction(ELogCutAction Action, FGuid OperationId);
+    /** Adds normalized cut work (0..1) before committing the geometry transaction. */
+    UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
+    FWorldOperationResult TryAdvanceCutProgress(ELogCutAction Action, float NormalizedWork, FGuid OperationId);
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceTypeByName(FName TypeName);
@@ -215,6 +218,16 @@ public:
     FTransform GetSnapPointLocalTransform(int32 Index) const;
 
 private:
+    /** Persisted in-progress cut; completion still requires a valid configured output mesh. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true", ClampMin="0.0", ClampMax="1.0"))
+    float CutProgress = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true"))
+    ELogCutAction ActiveCutAction = ELogCutAction::SplitHalf;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true"))
+    bool bHasActiveCutProgress = false;
+
     UPROPERTY(Transient)
     bool bIsPlaced = false;
 
