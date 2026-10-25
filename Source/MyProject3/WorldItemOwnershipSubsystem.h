@@ -89,6 +89,8 @@ public:
 
     UFUNCTION(BlueprintPure, Category="World|Items")
     int32 GetTrackedItemCount() const { return Items.Num(); }
+    void ExportSnapshot(TArray<FWorldOwnedItemRecord>& OutItems) const;
+    bool RestoreSnapshot(const TArray<FWorldOwnedItemRecord>& Snapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Items")
