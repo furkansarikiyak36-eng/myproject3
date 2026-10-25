@@ -71,20 +71,51 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
         return false;
     }
 
+    const bool bPreviousGroundSupported = Child->bGroundSupported;
     Child->ParentNodeId = ParentNodeId;
     Child->ParentAnchorId = ParentAnchorId;
     Child->OwnAnchorId = OwnAnchorId;
     Child->bGroundSupported = false;
 
-    TSet<FGuid> Visiting;
-    bool bLoadValid = true;
-    const float Aggregate = ComputeAggregateLoad(ParentNodeId, Visiting, bLoadValid);
-    if (!bLoadValid || Aggregate > Parent->MaxSupportedLoad)
+    // Every ancestor carries the aggregate load of the subtree below it.
+    // Checking only the immediate parent would allow a distant foundation to
+    // exceed capacity when a multi-piece branch is attached.
+    FGuid AncestorId = ParentNodeId;
+    TSet<FGuid> AncestorsVisited;
+    while (AncestorId.IsValid())
     {
-        Child->ParentNodeId.Invalidate();
-        Child->ParentAnchorId = NAME_None;
-        Child->OwnAnchorId = NAME_None;
-        return false;
+        if (AncestorsVisited.Contains(AncestorId))
+        {
+            Child->ParentNodeId.Invalidate();
+            Child->ParentAnchorId = NAME_None;
+            Child->OwnAnchorId = NAME_None;
+            Child->bGroundSupported = bPreviousGroundSupported;
+            return false;
+        }
+        AncestorsVisited.Add(AncestorId);
+
+        const FStructuralNodeRecord* Ancestor = Nodes.Find(AncestorId);
+        if (!Ancestor)
+        {
+            Child->ParentNodeId.Invalidate();
+            Child->ParentAnchorId = NAME_None;
+            Child->OwnAnchorId = NAME_None;
+            Child->bGroundSupported = bPreviousGroundSupported;
+            return false;
+        }
+
+        TSet<FGuid> Visiting;
+        bool bLoadValid = true;
+        const float Aggregate = ComputeAggregateLoad(AncestorId, Visiting, bLoadValid);
+        if (!bLoadValid || Aggregate > Ancestor->MaxSupportedLoad)
+        {
+            Child->ParentNodeId.Invalidate();
+            Child->ParentAnchorId = NAME_None;
+            Child->OwnAnchorId = NAME_None;
+            Child->bGroundSupported = bPreviousGroundSupported;
+            return false;
+        }
+        AncestorId = Ancestor->ParentNodeId;
     }
 
     ++Parent->Revision;
