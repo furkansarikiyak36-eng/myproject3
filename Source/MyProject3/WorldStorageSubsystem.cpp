@@ -256,7 +256,13 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
             Storage.Revision <= 0 || ProposedStorages.Contains(Storage.StorageId))
             return false;
         FWorldStorageContainerRecord RestoredStorage = Storage;
-        // Only containers materialized in the current world can accept cargo.
+        // Current authored container configuration wins over a stale capacity
+        // saved by an older build. Only materialized actors can accept cargo.
+        if (LiveStorageIds.Contains(Storage.StorageId))
+        {
+            if (const FWorldStorageContainerRecord* Current = Storages.Find(Storage.StorageId))
+                RestoredStorage.CapacityUnits = Current->CapacityUnits;
+        }
         RestoredStorage.bAvailable = LiveStorageIds.Contains(Storage.StorageId);
         ProposedStorages.Add(Storage.StorageId, RestoredStorage);
     }
