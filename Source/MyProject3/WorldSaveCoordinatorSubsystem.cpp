@@ -17,6 +17,7 @@
 #include "WorldStorageSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -329,6 +330,12 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor identity/state capture failed."));
         return false;
     }
+    UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!StructuralGraph || !StructuralGraph->ExportSnapshot(OutSave->StructuralGraph))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World save refused because structural graph snapshot export failed."));
+        return false;
+    }
     OutSave->Inventories.Reset();
     for (TActorIterator<AActor> It(World); It; ++It)
     {
@@ -376,7 +383,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger)
+    UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
         return false;
 
     if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
@@ -408,6 +416,11 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!ApplyPhysicalActorSnapshots(World, Snapshot->PhysicalActors))
     {
         UE_LOG(LogTemp, Warning, TEXT("World load failed while applying physical actor state."));
+        return false;
+    }
+    if (!StructuralGraph->RestoreSnapshot(Snapshot->StructuralGraph))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World load failed because the structural graph snapshot could not be restored safely."));
         return false;
     }
 
@@ -521,6 +534,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Historical physical state cannot be inferred from the currently loaded level.
         // ApplySnapshot therefore fails closed when an older save lacks required actors.
         Candidate->SchemaVersion = 12;
+    }
+    if (Candidate->SchemaVersion == 12)
+    {
+        // Schema v13 persists structural graph edges, anchors, loads, damage and revisions.
+        // Missing historical graph data is not synthesized from the currently loaded world.
+        Candidate->SchemaVersion = 13;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
