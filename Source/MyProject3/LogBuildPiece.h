@@ -47,6 +47,27 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     bool bStartsPlaced = false;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> SplitHalfVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> QuarterVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> HewnVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> GutterVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> TroughVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> KalasVariantMesh;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TObjectPtr<UStaticMesh> PlankVariantMesh;
+
     UFUNCTION(BlueprintPure, Category = "Log Piece")
     UStaticMeshComponent* GetLogMesh() const { return Mesh; }
 
@@ -70,6 +91,15 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceStaticMesh(UStaticMesh* NewMesh);
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
+    bool CanApplyCutAction(ELogCutAction Action) const;
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
+    FString GetCutActionBlockReason(ELogCutAction Action) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
+    bool ApplyCutAction(ELogCutAction Action);
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceTypeByName(FName TypeName);
