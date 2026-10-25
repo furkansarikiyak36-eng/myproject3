@@ -164,6 +164,7 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
         GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
     {
         BaseLogVariantMesh = Mesh->GetStaticMesh();
+        BaseLogVariantLengthFraction = GetLengthFraction();
     }
 
     // Preserve hand-authored anchors (for example, test-map top sockets) but
@@ -487,7 +488,7 @@ bool ALogBuildPiece::TryResolveGeometryVariant(
 
     // A raw/base mesh can only stand in for the exact authored length it represents.
     if (InProfile == ELogCrossSectionProfile::Round &&
-        InLength == GetLengthFraction() && IsValid(BaseLogVariantMesh))
+        InLength == BaseLogVariantLengthFraction && IsValid(BaseLogVariantMesh))
     {
         OutMesh = BaseLogVariantMesh;
         return true;
@@ -1031,7 +1032,9 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
 
     Child->PieceType = OutputType;
     Child->BaseLogVariantMesh = BaseLogVariantMesh;
+    Child->BaseLogVariantLengthFraction = BaseLogVariantLengthFraction;
     Child->GeometryVariantMeshes = GeometryVariantMeshes;
+    Child->LengthCutVariants = LengthCutVariants;
     Child->LengthFraction = GetLengthFraction();
     Child->CrossSectionProfile = CrossSectionFromLegacyType(OutputType);
     Child->bUseCanonicalGeometryDimensions = true;
