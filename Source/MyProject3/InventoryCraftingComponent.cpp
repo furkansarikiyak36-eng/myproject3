@@ -235,14 +235,20 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
   const bool bLedgerRollback = Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
       EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
       FGuid(), CurrentWorldLocation, RolledBack);
-  if (!bLedgerRollback)
+  FWorldOwnedItemRecord Actual;
+  const bool bWorldOwnedAgain = Ownership->TryGetItem(Item.ItemId, Actual) &&
+      Actual.OwnerKind == EWorldItemOwnerKind::World && !Actual.OwnerId.IsValid();
+  if (!bWorldOwnedAgain)
   {
    WorldActor->SetActorHiddenInGame(true);
    WorldActor->SetActorEnableCollision(false);
-   UE_LOG(LogTemp, Error, TEXT("Inventory rollback failed for physical item %s."),
+   UE_LOG(LogTemp, Error, TEXT("Inventory rollback left physical item %s outside its world owner."),
     *Item.ItemId.ToString());
+   if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+       GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+    Coordinator->MarkSimulationFaulted(TEXT("Physical-item pickup failed and ownership could not be restored to World; stop simulation and recover/reset the world."));
   }
-  else
+  if (bWorldOwnedAgain || bLedgerRollback)
   {
    if (bTemporarilyHeldStone)
     if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor)) Stone->SetHeldState(false);
@@ -261,13 +267,31 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
   const bool bLedgerRollback = Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
       EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
       FGuid(), CurrentWorldLocation, RolledBack);
-  if (!bLedgerRollback)
+  FWorldOwnedItemRecord Actual;
+  const bool bWorldOwnedAgain = Ownership->TryGetItem(Item.ItemId, Actual) &&
+      Actual.OwnerKind == EWorldItemOwnerKind::World && !Actual.OwnerId.IsValid();
+  const bool bStillInventoryOwned = Ownership->TryGetItem(Item.ItemId, Actual) &&
+      Actual.OwnerKind == EWorldItemOwnerKind::Inventory && Actual.OwnerId == InventoryOwnerId;
+  if (!bWorldOwnedAgain && !bStillInventoryOwned)
   {
    WorldActor->SetActorHiddenInGame(true);
    WorldActor->SetActorEnableCollision(false);
-   UE_LOG(LogTemp, Error, TEXT("Physical item lifecycle rollback failed for item %s."), *Item.ItemId.ToString());
+   UE_LOG(LogTemp, Error, TEXT("Lifecycle rollback left physical item %s in an unexpected owner state."),
+    *Item.ItemId.ToString());
+   if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+       GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+    Coordinator->MarkSimulationFaulted(TEXT("Physical-item lifecycle rollback could not reconcile the world and inventory owner; stop simulation and recover/reset the world."));
   }
-  else
+  if (bStillInventoryOwned)
+  {
+   // Restore the logical inventory representation if the ledger never rolled back.
+   if (!Items.ContainsByPredicate([ItemId = Item.ItemId](const FInventoryStack& Stack)
+       { return Stack.OwnedWorldItemId == ItemId; }))
+    TryAddItem(Incoming);
+   WorldActor->SetActorHiddenInGame(true);
+   WorldActor->SetActorEnableCollision(false);
+  }
+  else if (bWorldOwnedAgain || bLedgerRollback)
   {
    if (bTemporarilyHeldStone)
     if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor)) Stone->SetHeldState(false);
@@ -647,8 +671,19 @@ bool UInventoryCraftingComponent::TryRemoveItem(FName ItemId, int32 Quantity)
     if (!Ownership->TryTransferItem(FGuid::NewGuid(), Committed.ItemId, Committed.Revision,
         EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
         InventoryOwnerId, Committed.WorldLocation, RolledBack))
-     UE_LOG(LogTemp, Error, TEXT("Inventory consume rollback failed for item %s."),
-      *Committed.ItemId.ToString());
+    {
+     FWorldOwnedItemRecord Actual;
+     const bool bAlreadyRestored = Ownership->TryGetItem(Committed.ItemId, Actual) &&
+         Actual.OwnerKind == EWorldItemOwnerKind::Inventory && Actual.OwnerId == InventoryOwnerId;
+     if (!bAlreadyRestored)
+     {
+      UE_LOG(LogTemp, Error, TEXT("Inventory consume rollback left item %s outside its inventory owner."),
+       *Committed.ItemId.ToString());
+      if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+          GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+       Coordinator->MarkSimulationFaulted(TEXT("Craft ingredient rollback failed to restore inventory ownership; stop simulation and recover/reset the world."));
+     }
+    }
    }
    return false;
   }
@@ -665,8 +700,19 @@ bool UInventoryCraftingComponent::TryRemoveItem(FName ItemId, int32 Quantity)
     if (!Ownership->TryTransferItem(FGuid::NewGuid(), Previous.ItemId, Previous.Revision,
         EWorldItemOwnerKind::Consumed, EWorldItemOwnerKind::Inventory,
         InventoryOwnerId, Previous.WorldLocation, RolledBack))
-     UE_LOG(LogTemp, Error, TEXT("Inventory consume rollback failed for item %s."),
-      *Previous.ItemId.ToString());
+    {
+     FWorldOwnedItemRecord Actual;
+     const bool bAlreadyRestored = Ownership->TryGetItem(Previous.ItemId, Actual) &&
+         Actual.OwnerKind == EWorldItemOwnerKind::Inventory && Actual.OwnerId == InventoryOwnerId;
+     if (!bAlreadyRestored)
+     {
+      UE_LOG(LogTemp, Error, TEXT("Inventory consume rollback left item %s outside its inventory owner."),
+       *Previous.ItemId.ToString());
+      if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+          GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+       Coordinator->MarkSimulationFaulted(TEXT("Craft ingredient rollback failed to restore inventory ownership; stop simulation and recover/reset the world."));
+     }
+    }
    }
    return false;
   }
