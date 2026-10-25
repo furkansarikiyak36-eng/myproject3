@@ -76,7 +76,8 @@ public:
         FTransform LocalTransform, bool bCanReceive, bool bCanConnect);
 
     UFUNCTION(BlueprintCallable, Category = "Stone|Anchors")
-    bool RemoveConnection();
+    /** Keeps actor anchors and the canonical graph edge synchronized. */
+    bool RemoveConnection(bool bAllowGraphFailure = false);
 
     UFUNCTION(BlueprintPure, Category = "Stone|Anchors")
     FTransform GetAnchorWorldTransform(FName AnchorId) const;
