@@ -37,11 +37,12 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 4;
+    static constexpr int32 CurrentSchemaVersion = 5;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldOwnedItemRecord> Items;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldItemTransferReceipt> ItemTransferReceipts;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldInventorySnapshot> Inventories;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldTerrainCellState> TerrainCells;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldCropState> Crops;
