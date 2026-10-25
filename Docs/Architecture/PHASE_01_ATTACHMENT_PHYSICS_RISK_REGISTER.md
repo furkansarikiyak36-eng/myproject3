@@ -46,6 +46,14 @@ These are source-path observations only. Collision profiles, attachment transfor
 **Follow-up:** Keep validation before mutation. When attachment can fail, make the operation return a result and either perform a guaranteed commit step or roll back both occupancy flags and any partially registered relationship. Do not add a speculative global transaction framework in this phase.
 
 
+### R8 — Direct snap calls could reparent an attached piece or create a cycle
+
+**Evidence:** Before the new guard, `CanSnapPointAccept` did not reject a source piece that already had a parent, still had children, or would be attached beneath one of its own descendants. `AttachToSnapParent` overwrites the stored parent fields; reparenting without detaching can leave the former parent's anchor occupied and its child registration stale.
+
+**Impact:** A direct/future caller of `TryReserveSnapPoints` could break the parent/child graph even though the carry pickup path normally detaches pieces first. A cycle could also make the structural graph invalid.
+
+**Follow-up:** Source guard added: reject existing parent linkage/indices, reject a source with attached children, and reject targets whose parent chain contains the source piece. Add focused Unreal checks for each rejection and verify that valid detached-child placement still works. No build or runtime test has been run.
+
 ### R7 — Receiver anchor was not independently revalidated by the acceptance function
 
 **Evidence:** `CanSnapPointAccept` now explicitly requires the target anchor to have `bCanReceive=true` and `bOccupied=false`. Before this guard, the carry component's candidate search checked receiver availability, but the acceptance/reservation API itself did not independently enforce both target conditions.
