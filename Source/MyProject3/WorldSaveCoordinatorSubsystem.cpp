@@ -208,6 +208,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // inside station snapshots. Older station records start with an empty array.
         Candidate->SchemaVersion = 9;
     }
+    if (Candidate->SchemaVersion == 9)
+    {
+        // Schema v10 adds durable enqueue/collect receipts to production station snapshots.
+        // Older snapshots migrate with empty operation receipt arrays.
+        Candidate->SchemaVersion = 10;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
