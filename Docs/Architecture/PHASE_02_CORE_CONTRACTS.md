@@ -22,7 +22,7 @@ Implement the smallest shared C++ contract layer needed by later domains without
   - Consumed and destroyed states are terminal. Same-state and stale-state transitions are rejected.
   - The component does not currently own or implement world save/load.
 
-## Lifecycle transition table
+- `WorldCommittedEventSubsystem.h/.cpp` and `FWorldCommittedEvent`\n  - Versioned committed-fact payload with event ID, operation ID, affected object IDs, world time, and diagnostic text.\n  - World-scoped multicast notification; rejects missing operation IDs, `None` event types, and unsupported schema versions.\n  - Event dispatch is notification only; it is not durable, queued, replayed, or persisted. Domain owners must publish only after committing state.\n\n## Lifecycle transition table
 
 | Current state | Allowed next states |
 |---|---|
@@ -51,7 +51,7 @@ This is only generic instance lifecycle. Wood processing (whole/split/grooved), 
 - [x] Add stable instance ID and authored definition ID fields.
 - [x] Add guarded lifecycle transitions and revision increment on accepted transition only.
 - [x] Keep generic lifecycle separate from domain-specific processing state.
-- [x] Avoid auto-inserting the component into existing actors or replacing their current state owners.
+- [x] Avoid auto-inserting the component into existing actors or replacing their current state owners.\n- [x] Add a versioned committed-event payload and explicit post-commit notification entry point.\n- [x] Validate event type, schema version, and operation ID before broadcast.
 - [x] Perform source-level review of the new public types and keep existing log/carry signatures unchanged.
 - [ ] Run Unreal Engine 5.8 build/UHT and editor/runtime tests at the agreed end-of-phases gate.
 
@@ -59,4 +59,4 @@ This is only generic instance lifecycle. Wood processing (whole/split/grooved), 
 
 - No Unreal Engine build, UHT, editor session, PIE, or gameplay test was run.
 - The 119 mechanics are not implemented by adding these shared types; registry status remains unreviewed until owning implementations and evidence are attached.
-- No world clock, deterministic random subsystem, survival needs simulation, event bus, or save/load system is implemented here.
+- No world clock subsystem, deterministic random subsystem, survival needs simulation, durable event queue/replay, or save/load system is implemented here. The event subsystem only timestamps notifications with the existing UWorld time.
