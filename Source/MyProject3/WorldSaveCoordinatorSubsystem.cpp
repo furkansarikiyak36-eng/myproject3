@@ -200,7 +200,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Schema v8 adds MeshVariantSetId to authoritative item records. Older
         // saves deserialize that optional FName as NAME_None; no filename-based
         // or unverified nominal-size inference is performed during migration.
-        Candidate->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
+        Candidate->SchemaVersion = 8;
+    }
+    if (Candidate->SchemaVersion == 8)
+    {
+        // Schema v9 adds durable physical-item → production-stock intake receipts
+        // inside station snapshots. Older station records start with an empty array.
+        Candidate->SchemaVersion = 9;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
