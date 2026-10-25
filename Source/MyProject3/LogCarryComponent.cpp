@@ -269,6 +269,24 @@ void ULogCarryComponent::FindBestSnapCandidate()
         return;
     }
 
+    // Snap to the structure the player is actually aiming at, not any nearby
+    // structure behind the camera. This is essential for deliberate SOTF-style
+    // placement: the crosshair chooses the candidate; socket geometry chooses
+    // the exact final transform.
+    FHitResult AimHit;
+    if (!TraceFromView(PlacementTraceDistance, AimHit))
+    {
+        ClearSnapCandidate();
+        return;
+    }
+
+    ALogBuildPiece* AimedTarget = Cast<ALogBuildPiece>(AimHit.GetActor());
+    if (!IsValid(AimedTarget) || !AimedTarget->IsPlaced() || AimedTarget->IsHeld())
+    {
+        ClearSnapCandidate();
+        return;
+    }
+
     ALogBuildPiece* BestTarget = nullptr;
     int32 BestSourceIndex = INDEX_NONE;
     int32 BestTargetIndex = INDEX_NONE;
@@ -281,8 +299,8 @@ void ULogCarryComponent::FindBestSnapCandidate()
     for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
     {
         ALogBuildPiece* TargetPiece = *It;
-        if (!IsValid(TargetPiece) || TargetPiece == HeldPiece ||
-            !TargetPiece->IsPlaced() || TargetPiece->IsHeld())
+        if (!IsValid(TargetPiece) || TargetPiece != AimedTarget ||
+            TargetPiece == HeldPiece || !TargetPiece->IsPlaced() || TargetPiece->IsHeld())
         {
             continue;
         }
