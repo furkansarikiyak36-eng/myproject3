@@ -671,7 +671,6 @@ FWorldOperationResult ALogBuildPiece::TrySplitOutputPieces(
     Child->PlankVariantMesh = PlankVariantMesh;
     Child->SnapPoints.Reset();
     Child->SetPieceStaticMesh(OutputMesh);
-    Child->SetActorEnableCollision(false);
     if (Child->Mesh)
     {
         Child->Mesh->SetSimulatePhysics(false);
