@@ -30,8 +30,26 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Piece|Structure")
     TObjectPtr<UWorldObjectIdentityComponent> StructuralIdentity;
 
+    /**
+     * Legacy composite label retained for existing Blueprint/content compatibility.
+     * LengthFraction and CrossSectionProfile are the explicit independent dimensions.
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece")
     ELogPieceType PieceType = ELogPieceType::WholeLog;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Geometry")
+    ELogLengthFraction LengthFraction = ELogLengthFraction::FullLength;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Geometry")
+    ELogCrossSectionProfile CrossSectionProfile = ELogCrossSectionProfile::Round;
+
+    /**
+     * False maps the legacy PieceType into the independent dimensions. Set true
+     * when an authored/runtime piece needs a combination not expressible by the
+     * old enum (for example, half-length + half-round).
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Geometry")
+    bool bUseCanonicalGeometryDimensions = false;
 
     /** Stable root definition; the ledger DefinitionId may change after processing. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
@@ -116,6 +134,12 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Log Piece")
     ELogPieceType GetPieceType() const { return PieceType; }
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Geometry")
+    ELogLengthFraction GetLengthFraction() const;
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Geometry")
+    ELogCrossSectionProfile GetCrossSectionProfile() const;
 
     UFUNCTION(BlueprintPure, Category = "Log Piece")
     bool IsPlaced() const { return bIsPlaced; }
@@ -216,6 +240,11 @@ private:
     void GenerateDefaultSideSnapPoints();
     FVector GetLongitudinalAxisVector() const;
     FRotator MakeOutwardRotation(const FVector& Direction) const;
+
+    static ELogLengthFraction LengthFractionFromLegacyType(ELogPieceType Type);
+    static ELogCrossSectionProfile CrossSectionFromLegacyType(ELogPieceType Type);
+    void SyncCanonicalGeometryFromLegacyPieceType();
+    void SetCanonicalCrossSectionFromPieceType(ELogPieceType Type);
 
     FWorldOperationResult TrySplitOutputPieces(ELogCutAction Action,
         const FGuid& OperationId, UStaticMesh* OutputMesh, ELogPieceType OutputType,
