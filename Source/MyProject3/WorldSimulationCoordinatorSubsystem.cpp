@@ -194,6 +194,18 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     return true;
 }
 
+void UWorldSimulationCoordinatorSubsystem::MarkSimulationFaulted(const FString& Reason)
+{
+    bSimulationFaulted = true;
+    if (SimulationFaultReason.IsEmpty())
+    {
+        SimulationFaultReason = Reason.IsEmpty()
+            ? TEXT("An unrecoverable world-state failure occurred. Stop simulation and recover/reset the world.")
+            : Reason;
+    }
+    UE_LOG(LogTemp, Error, TEXT("World simulation entered fail-closed state: %s"), *SimulationFaultReason);
+}
+
 bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
 {
     const UWorldSimulationClockSubsystem* Clock = GetClock();
