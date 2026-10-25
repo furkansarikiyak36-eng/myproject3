@@ -240,7 +240,8 @@ bool UInventoryCraftingComponent::TryMoveOwnedItemToStorage(FGuid ItemId, FGuid 
  if (!ItemId.IsValid() || !StorageId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid())
   return false;
  UWorldStorageSubsystem* Storage = GetWorld()->GetSubsystem<UWorldStorageSubsystem>();
- if (!Storage || !Storage->CanAcceptItem(StorageId, ItemId)) return false;
+ if (!Storage || !Storage->IsStorageAvailable(StorageId) ||
+     !Storage->CanAcceptItem(StorageId, ItemId)) return false;
  const int32 Index = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
   { return Stack.OwnedWorldItemId == ItemId; });
  if (!Items.IsValidIndex(Index)) return false;
@@ -276,7 +277,8 @@ bool UInventoryCraftingComponent::TryWithdrawStoredItem(FGuid ItemId, FGuid Stor
  if (!Storage || !Ownership) return false;
 
  FWorldStorageContainerRecord StorageRecord;
- if (!Storage->GetStorage(StorageId, StorageRecord)) return false;
+ if (!Storage->GetStorage(StorageId, StorageRecord) ||
+     !Storage->IsStorageAvailable(StorageId)) return false;
 
  FWorldOwnedItemRecord Item;
  if (!Ownership->TryGetItem(ItemId, Item) ||
