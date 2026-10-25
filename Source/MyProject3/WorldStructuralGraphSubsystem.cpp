@@ -63,12 +63,38 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
     FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
     if (!Parent || !Child || ParentNodeId == ChildNodeId ||
         ParentAnchorId.IsNone() || OwnAnchorId.IsNone() ||
-        Child->ParentNodeId.IsValid() ||
+        Child->ParentNodeId.IsValid() || !GetDirectDependents(ChildNodeId).IsEmpty() ||
         !Parent->Actor.IsValid() || !Child->Actor.IsValid() ||
         WouldCreateCycle(ParentNodeId, ChildNodeId) ||
-        !HasValidSupportPath(ParentNodeId))
+        !HasValidSupportPath(ParentNodeId) ||
+        Child->Revision == MAX_int64)
     {
         return false;
+    }
+
+    // Enforce one edge per physical anchor even when a caller bypasses the
+    // actor-level snap-point reservation API.
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        if (Pair.Value.ParentNodeId == ParentNodeId &&
+            Pair.Value.ParentAnchorId == ParentAnchorId)
+        {
+            return false;
+        }
+    }
+
+    TArray<FGuid> AncestorIds;
+    TSet<FGuid> AncestorsVisited;
+    FGuid AncestorId = ParentNodeId;
+    while (AncestorId.IsValid())
+    {
+        if (AncestorsVisited.Contains(AncestorId)) return false;
+        AncestorsVisited.Add(AncestorId);
+        const FStructuralNodeRecord* Ancestor = Nodes.Find(AncestorId);
+        if (!Ancestor || !Ancestor->Actor.IsValid() || Ancestor->Revision == MAX_int64)
+            return false;
+        AncestorIds.Add(AncestorId);
+        AncestorId = Ancestor->ParentNodeId;
     }
 
     const bool bPreviousGroundSupported = Child->bGroundSupported;
@@ -77,24 +103,10 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
     Child->OwnAnchorId = OwnAnchorId;
     Child->bGroundSupported = false;
 
-    // Every ancestor carries the aggregate load of the subtree below it.
-    // Checking only the immediate parent would allow a distant foundation to
-    // exceed capacity when a multi-piece branch is attached.
-    FGuid AncestorId = ParentNodeId;
-    TSet<FGuid> AncestorsVisited;
-    while (AncestorId.IsValid())
+    // Validate the full aggregate load chain before advancing any revision.
+    for (const FGuid& Id : AncestorIds)
     {
-        if (AncestorsVisited.Contains(AncestorId))
-        {
-            Child->ParentNodeId.Invalidate();
-            Child->ParentAnchorId = NAME_None;
-            Child->OwnAnchorId = NAME_None;
-            Child->bGroundSupported = bPreviousGroundSupported;
-            return false;
-        }
-        AncestorsVisited.Add(AncestorId);
-
-        const FStructuralNodeRecord* Ancestor = Nodes.Find(AncestorId);
+        const FStructuralNodeRecord* Ancestor = Nodes.Find(Id);
         if (!Ancestor)
         {
             Child->ParentNodeId.Invalidate();
@@ -103,10 +115,9 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
             Child->bGroundSupported = bPreviousGroundSupported;
             return false;
         }
-
         TSet<FGuid> Visiting;
         bool bLoadValid = true;
-        const float Aggregate = ComputeAggregateLoad(AncestorId, Visiting, bLoadValid);
+        const float Aggregate = ComputeAggregateLoad(Id, Visiting, bLoadValid);
         if (!bLoadValid || Aggregate > Ancestor->MaxSupportedLoad)
         {
             Child->ParentNodeId.Invalidate();
@@ -115,10 +126,14 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
             Child->bGroundSupported = bPreviousGroundSupported;
             return false;
         }
-        AncestorId = Ancestor->ParentNodeId;
     }
 
-    ++Parent->Revision;
+    // Every ancestor's aggregate load changed, so its revision advances too.
+    for (const FGuid& Id : AncestorIds)
+    {
+        if (FStructuralNodeRecord* Ancestor = Nodes.Find(Id))
+            ++Ancestor->Revision;
+    }
     ++Child->Revision;
     return true;
 }
@@ -126,27 +141,40 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
 bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
 {
     FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
-    if (!Child || !Child->ParentNodeId.IsValid())
-    {
+    if (!Child || !Child->ParentNodeId.IsValid() || Child->Revision == MAX_int64)
         return false;
+
+    const FGuid OldParentId = Child->ParentNodeId;
+    TArray<FGuid> AncestorIds;
+    TSet<FGuid> Visited;
+    FGuid CurrentId = OldParentId;
+    while (CurrentId.IsValid())
+    {
+        if (Visited.Contains(CurrentId)) return false;
+        Visited.Add(CurrentId);
+        const FStructuralNodeRecord* Current = Nodes.Find(CurrentId);
+        if (!Current || Current->Revision == MAX_int64) return false;
+        AncestorIds.Add(CurrentId);
+        CurrentId = Current->ParentNodeId;
     }
 
-    if (FStructuralNodeRecord* Parent = Nodes.Find(Child->ParentNodeId))
-    {
-        ++Parent->Revision;
-    }
     Child->ParentNodeId.Invalidate();
     Child->ParentAnchorId = NAME_None;
     Child->OwnAnchorId = NAME_None;
     Child->bGroundSupported = false;
     ++Child->Revision;
+    for (const FGuid& Id : AncestorIds)
+    {
+        if (FStructuralNodeRecord* Ancestor = Nodes.Find(Id))
+            ++Ancestor->Revision;
+    }
     return true;
 }
 
 bool UWorldStructuralGraphSubsystem::SetGroundSupported(FGuid NodeId, bool bGroundSupported)
 {
     FStructuralNodeRecord* Node = Nodes.Find(NodeId);
-    if (!Node || (bGroundSupported && Node->ParentNodeId.IsValid()))
+    if (!Node || Node->Revision == MAX_int64 || (bGroundSupported && Node->ParentNodeId.IsValid()))
     {
         return false;
     }
