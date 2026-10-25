@@ -144,13 +144,13 @@ bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
 
 void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    RemoveConnection();
+    RemoveConnection(true);
 
     for (const TWeakObjectPtr<AStoneBuildingPiece>& Child : AttachedPieces)
     {
         if (Child.IsValid())
         {
-            Child->RemoveConnection();
+            Child->RemoveConnection(true);
         }
     }
     AttachedPieces.Reset();
@@ -401,22 +401,46 @@ void AStoneBuildingPiece::ReleaseAnchorReservation(FName AnchorId)
     }
 }
 
-bool AStoneBuildingPiece::RemoveConnection()
+bool AStoneBuildingPiece::RemoveConnection(bool bAllowGraphFailure)
 {
-    if (StructuralIdentity)
+    AStoneBuildingPiece* Parent = ParentPiece.Get();
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    bool bGraphDisconnected = false;
+
+    if (Parent)
     {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        bool bGraphEdgeMatches = false;
+        if (Graph && StructuralIdentity && Parent->StructuralIdentity)
         {
-            Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+            FStructuralNodeRecord Node;
+            bGraphEdgeMatches = Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) &&
+                Node.ParentNodeId == Parent->StructuralIdentity->GetInstanceId();
+            if (bGraphEdgeMatches)
+                bGraphDisconnected = Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+        }
+
+        if ((!bGraphEdgeMatches || !bGraphDisconnected) && !bAllowGraphFailure)
+            return false;
+    }
+    else if (Graph && StructuralIdentity)
+    {
+        FStructuralNodeRecord Node;
+        if (Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) &&
+            Node.ParentNodeId.IsValid())
+        {
+            bGraphDisconnected = Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+            if (!bGraphDisconnected && !bAllowGraphFailure)
+                return false;
         }
     }
-    AStoneBuildingPiece* Parent = ParentPiece.Get();
+
     if (!Parent)
     {
         ParentPiece.Reset();
         ParentAnchorId = NAME_None;
         OwnAnchorIdUsed = NAME_None;
-        return false;
+        return bGraphDisconnected;
     }
 
     Parent->ReleaseAnchorReservation(ParentAnchorId);
