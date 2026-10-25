@@ -124,8 +124,7 @@ bool AStoneBuildingPiece::TryCommitGroundPlacement(
     const FRotator& SurfaceRotation)
 {
     if (bIsPlaced || !bIsHeld || ParentPiece.IsValid() ||
-        !SurfaceLocation.IsFinite() || !SurfaceRotation.IsNearlyZero() &&
-        !SurfaceRotation.IsNormalized())
+        !SurfaceLocation.IsFinite() || SurfaceRotation.ContainsNaN())
     {
         return false;
     }
