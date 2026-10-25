@@ -73,12 +73,31 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
         return false;
     }
 
+    // Preflight all mutations before touching any crop or animal.
+    for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
+    {
+        const FWorldCropState& Crop = Pair.Value;
+        if (Crop.Revision == MAX_int64 ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds) ||
+            !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds + DeltaSeconds))
+            return false;
+    }
+    for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
+    {
+        const FWorldAnimalState& Animal = Pair.Value;
+        if (Animal.Revision == MAX_int64 ||
+            (DeltaSeconds >= 3600.0 && Animal.Health > 0.0f &&
+             Animal.Hunger <= ProductHungerLimit && !Animal.ProductDefinitionId.IsNone() &&
+             Animal.ProductUnits == MAX_int32))
+            return false;
+    }
+
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         FWorldCropState& Crop = Pair.Value;
         if (Crop.Stage == ECropGrowthStage::Mature || Crop.Stage == ECropGrowthStage::Withered)
             continue;
-        if (Crop.Revision == MAX_int64) return false;
         if (Crop.Moisture < MinimumGrowthMoisture)
         {
             Crop.Stage = ECropGrowthStage::Withered;
@@ -98,7 +117,6 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
     for (TPair<FGuid, FWorldAnimalState>& Pair : Animals)
     {
         FWorldAnimalState& Animal = Pair.Value;
-        if (Animal.Revision == MAX_int64) return false;
         Animal.Hunger = FMath::Clamp(Animal.Hunger + HungerPerHour *
             static_cast<float>(DeltaSeconds / 3600.0), 0.0f, 100.0f);
         if (Animal.Hunger >= 80.0f)
