@@ -677,6 +677,70 @@ bool ALogBuildPiece::TryTransferOwnership(
         ExpectedOwner, NewOwner, NewOwnerId, NewWorldLocation, OutRecord);
 }
 
+bool ALogBuildPiece::TrySetInitialPieceType(ELogPieceType DesiredType, FGuid OperationId)
+{
+    if (!OperationId.IsValid())
+        OperationId = FGuid::NewGuid();
+
+    UWorldObjectIdentityComponent* ItemIdentity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord CurrentItem;
+    if (!ItemIdentity || !Ownership || bIsHeld || bIsPlaced ||
+        !Ownership->TryGetItem(ItemIdentity->GetInstanceId(), CurrentItem) ||
+        CurrentItem.OwnerKind != EWorldItemOwnerKind::World || CurrentItem.Quantity != 1)
+        return false;
+
+    const ELogPieceType PreviousType = PieceType;
+    const FLogPieceGeometryState PreviousGeometry = GeometryState;
+    PieceType = DesiredType;
+    UpdateGeometryStateFromPieceType(false);
+    UStaticMesh* OutputMesh = GetConfiguredMeshForPieceType(DesiredType);
+    if (!IsValid(OutputMesh))
+    {
+        PieceType = PreviousType;
+        GeometryState = PreviousGeometry;
+        return false;
+    }
+
+    const FName EffectiveBaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.BaseDefinitionId
+        : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
+    const FName OutputDefinition = BuildGeometryDefinitionId(
+        EffectiveBaseDefinition, GeometryState.LengthFraction,
+        GetCrossSectionForPieceType(DesiredType));
+    if (OutputDefinition.IsNone())
+    {
+        PieceType = PreviousType;
+        GeometryState = PreviousGeometry;
+        return false;
+    }
+
+    FWorldOwnedItemRecord UpdatedItem;
+    if (!Ownership->TryUpdateItemDefinition(OperationId, CurrentItem.ItemId,
+        CurrentItem.Revision, EWorldItemOwnerKind::World, OutputDefinition, UpdatedItem))
+    {
+        PieceType = PreviousType;
+        GeometryState = PreviousGeometry;
+        return false;
+    }
+
+    BaseDefinitionId = EffectiveBaseDefinition;
+    ItemIdentity->SetDefinitionId(OutputDefinition);
+    FVector OldOrigin, OldExtent;
+    GetActorBounds(false, OldOrigin, OldExtent);
+    const float OldBottomZ = OldOrigin.Z - OldExtent.Z;
+    SetPieceStaticMesh(OutputMesh);
+    PieceType = DesiredType;
+    UpdateGeometryStateFromPieceType(false);
+    FVector NewOrigin, NewExtent;
+    GetActorBounds(false, NewOrigin, NewExtent);
+    AddActorWorldOffset(FVector(0.0f, 0.0f,
+        (OldOrigin.Z - OldExtent.Z) - (NewOrigin.Z - NewExtent.Z)), false);
+    return true;
+}
+
 bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
 {
     if (!StructuralIdentity || !Mesh || !GetWorld() ||
