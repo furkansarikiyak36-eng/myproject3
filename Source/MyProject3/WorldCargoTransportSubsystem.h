@@ -25,6 +25,7 @@ struct FWorldCargoTransportRecord
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") float CostPerSecond = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") int64 ItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") ECargoTransportState State = ECargoTransportState::InTransit;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") FName BlockedReason = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") FGuid DeliveryOperationId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") int64 Revision = 1;
 };
