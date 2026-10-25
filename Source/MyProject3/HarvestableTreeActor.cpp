@@ -8,6 +8,12 @@
 void AHarvestableTreeActor::BeginPlay()
 {
     Super::BeginPlay();
+    if (Identity)
+    {
+        Identity->EnsureIdentity();
+        if (Identity->DefinitionId.IsNone())
+            Identity->SetDefinitionId(FName(TEXT("Tree.Harvestable")));
+    }
     if (!bFellingStarted && !bGrounded && !bLogsSpawned)
         ChopHealth = FMath::Max(1.0f, MaxChopHealth);
 }
@@ -18,6 +24,7 @@ AHarvestableTreeActor::AHarvestableTreeActor()
 
     TreeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TreeMesh"));
     SetRootComponent(TreeMesh);
+    Identity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
     TreeMesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     TreeMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     TreeMesh->SetSimulatePhysics(false);
