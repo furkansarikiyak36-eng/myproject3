@@ -209,13 +209,16 @@ bool ULogCarryComponent::TryPickupTarget()
         return false;
     }
 
-    if (UWorldObjectIdentityComponent* Identity =
-        Piece->FindComponentByClass<UWorldObjectIdentityComponent>())
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    EWorldObjectLifecycleState PreviousLifecycle = EWorldObjectLifecycleState::World;
+    if (Identity)
     {
-        const EWorldObjectLifecycleState Current = Identity->GetLifecycleState();
-        if ((Current != EWorldObjectLifecycleState::World &&
-             Current != EWorldObjectLifecycleState::Placed) ||
-            !Identity->TryTransitionLifecycle(Current, EWorldObjectLifecycleState::Held))
+        PreviousLifecycle = Identity->GetLifecycleState();
+        if ((PreviousLifecycle != EWorldObjectLifecycleState::World &&
+             PreviousLifecycle != EWorldObjectLifecycleState::Placed) ||
+            !Identity->TryTransitionLifecycle(
+                PreviousLifecycle, EWorldObjectLifecycleState::Held))
         {
             FWorldOwnedItemRecord RolledBack;
             Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World,
@@ -224,9 +227,26 @@ bool ULogCarryComponent::TryPickupTarget()
         }
     }
 
-    // A supporting log with dependent pieces cannot be removed yet. Remove
-    // dependent pieces from the top down, then this support becomes removable.
-    Piece->DetachFromSnapParent();
+    // The ledger and lifecycle state are reserved first; if the canonical
+    // graph refuses detachment, roll those reservations back and keep the
+    // physical piece attached.
+    if (!Piece->DetachFromSnapParent())
+    {
+        if (Identity)
+            Identity->TryTransitionLifecycle(
+                EWorldObjectLifecycleState::Held, PreviousLifecycle);
+        FWorldOwnedItemRecord RolledBack;
+        if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::Held,
+            EWorldItemOwnerKind::World, FGuid(), Piece->GetActorLocation(), RolledBack))
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error, TEXT("Log pickup rollback failed for %s."),
+                *GetNameSafe(Piece));
+        }
+        return false;
+    }
+
     Piece->SetHeldState(true);
     Piece->SetPlacedState(false);
 
