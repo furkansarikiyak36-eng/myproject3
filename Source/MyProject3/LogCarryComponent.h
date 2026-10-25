@@ -34,7 +34,7 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement",
         meta = (ClampMin = "20.0"))
-    float SnapSearchRadius = 150.0f;
+    float SnapSearchRadius = 250.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement",
         meta = (ClampMin = "50.0"))
