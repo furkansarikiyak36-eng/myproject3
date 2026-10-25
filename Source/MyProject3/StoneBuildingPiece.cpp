@@ -5,6 +5,7 @@
 #include "Engine/StaticMesh.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
 
 AStoneBuildingPiece::AStoneBuildingPiece()
 {
@@ -22,15 +23,72 @@ void AStoneBuildingPiece::BeginPlay()
     Super::BeginPlay();
 
     bIsPlaced = bStartsPlaced;
-    if (StructuralIdentity)
+    if (!StructuralIdentity || !GetWorld())
+        return;
+
+    StructuralIdentity->EnsureIdentity();
+    if (DefinitionId.IsNone())
+        DefinitionId = FName(TEXT("Stone.BuildingPiece"));
+    StructuralIdentity->SetDefinitionId(DefinitionId);
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Ownership)
     {
-        StructuralIdentity->EnsureIdentity();
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        SetActorHiddenInGame(true);
+        SetActorEnableCollision(false);
+        return;
+    }
+
+    FWorldOwnedItemRecord Item;
+    if (Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item))
+    {
+        if (Item.OwnerKind != EWorldItemOwnerKind::World)
         {
-            Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(), EStructuralNodeKind::Stone,
-                bIsPlaced, 1.0f, 100000.0f, 100.0f);
+            if (Mesh) Mesh->SetSimulatePhysics(false);
+            SetActorHiddenInGame(true);
+            SetActorEnableCollision(false);
+            SetActorTickEnabled(false);
+            return;
+        }
+        if (!Item.DefinitionId.IsNone())
+        {
+            DefinitionId = Item.DefinitionId;
+            StructuralIdentity->SetDefinitionId(Item.DefinitionId);
         }
     }
+    else
+    {
+        Item.ItemId = StructuralIdentity->GetInstanceId();
+        Item.DefinitionId = DefinitionId;
+        Item.Quantity = 1;
+        Item.OwnerKind = EWorldItemOwnerKind::World;
+        Item.WorldLocation = GetActorLocation();
+        if (!Ownership->RegisterItem(Item))
+        {
+            SetActorHiddenInGame(true);
+            SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error, TEXT("Stone piece '%s' could not register item ownership."), *GetName());
+            return;
+        }
+    }
+
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Graph || !Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(),
+        EStructuralNodeKind::Stone, bIsPlaced, 1.0f, 100000.0f, 100.0f))
+    {
+        FStructuralNodeRecord ExistingNode;
+        if (!Graph || !Graph->GetNode(StructuralIdentity->GetInstanceId(), ExistingNode) ||
+            ExistingNode.Actor.Get() != this)
+        {
+            SetActorHiddenInGame(true);
+            SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error, TEXT("Stone piece '%s' could not register structural graph node."), *GetName());
+            return;
+        }
+    }
+
     if (Mesh)
     {
         Mesh->SetSimulatePhysics(!bIsPlaced && !bIsHeld);
@@ -38,6 +96,50 @@ void AStoneBuildingPiece::BeginPlay()
             bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
         Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     }
+}
+
+bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
+{
+    if (!StructuralIdentity || !Mesh || !GetWorld() ||
+        !StructuralIdentity->HasValidIdentity())
+        return false;
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Ownership || !Graph)
+        return false;
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::World || Item.DefinitionId.IsNone())
+        return false;
+
+    FStructuralNodeRecord ExistingNode;
+    if (Graph->GetNode(Item.ItemId, ExistingNode))
+    {
+        if (ExistingNode.Actor.Get() != this)
+            return false;
+    }
+    else if (!Graph->RegisterNode(this, Item.ItemId, EStructuralNodeKind::Stone,
+        false, 1.0f, 100000.0f, 100.0f))
+    {
+        return false;
+    }
+
+    DefinitionId = Item.DefinitionId;
+    StructuralIdentity->SetDefinitionId(Item.DefinitionId);
+    bIsPlaced = false;
+    bStartsPlaced = false;
+    bIsHeld = false;
+    Mesh->SetSimulatePhysics(true);
+    Mesh->SetCollisionProfileName(FName(TEXT("PhysicsActor")));
+    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    SetActorHiddenInGame(false);
+    SetActorEnableCollision(true);
+    SetActorTickEnabled(true);
+    return true;
 }
 
 void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
