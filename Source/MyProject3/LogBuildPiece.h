@@ -263,6 +263,8 @@ private:
     FVector GetLongitudinalAxisVector() const;
     FRotator MakeOutwardRotation(const FVector& Direction) const;
 
+    FWorldOperationResult CommitCutAction(ELogCutAction Action, FGuid OperationId);
+
     FWorldOperationResult TrySplitOutputPieces(ELogCutAction Action,
         const FGuid& OperationId, UStaticMesh* OutputMesh, ELogPieceType OutputType,
         FName OutputDefinitionId, const FWorldOwnedItemRecord& CurrentItem);
