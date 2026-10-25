@@ -7,6 +7,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -107,9 +108,52 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         return false;
     }
 
-    // Every participating subsystem has completed a non-mutating preflight.
-    // No delegate is broadcast during these commits; the fixed-step driver is
-    // the sole writer under the game's single-threaded world-simulation rule.
+    // Capture every mutable participant before the first commit. Cargo delivery
+    // also mutates item ownership, so the ledger must be part of the same rollback.
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!Ownership) return false;
+
+    const FWorldSimulationClockSnapshot BeforeClock = Clock->ExportSnapshot();
+    const FWorldThreatDirectorSnapshot BeforeThreat = Threat->ExportSnapshot();
+    TArray<FWorldCropState> BeforeCrops;
+    TArray<FWorldAnimalState> BeforeAnimals;
+    Agriculture->ExportSnapshot(BeforeCrops, BeforeAnimals);
+    TArray<FWorldSurvivalProfile> BeforeProfiles;
+    TArray<FWorldDiscoveryRecord> BeforeDiscoveries;
+    EWorldWeatherState BeforeWeather = EWorldWeatherState::Clear;
+    float BeforeWeatherSeverity = 0.0f;
+    Survival->ExportSnapshot(BeforeProfiles, BeforeDiscoveries, BeforeWeather, BeforeWeatherSeverity);
+    TArray<FWorldProductionStation> BeforeStations;
+    TArray<FWorldProductionRecipe> BeforeRecipes;
+    Production->ExportSnapshot(BeforeStations, BeforeRecipes);
+    TArray<FWorldCargoTransportRecord> BeforeCargo;
+    Cargo->ExportSnapshot(BeforeCargo);
+    TArray<FWorldOwnedItemRecord> BeforeItems;
+    Ownership->ExportSnapshot(BeforeItems);
+
+    auto RollbackStep = [&]() -> bool
+    {
+        bool bRollbackSucceeded = true;
+        bRollbackSucceeded = Cargo->RestoreSnapshot(BeforeCargo) && bRollbackSucceeded;
+        bRollbackSucceeded = Production->RestoreSnapshot(BeforeStations, BeforeRecipes) && bRollbackSucceeded;
+        bRollbackSucceeded = Survival->RestoreSnapshot(BeforeProfiles, BeforeDiscoveries,
+            BeforeWeather, BeforeWeatherSeverity) && bRollbackSucceeded;
+        bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
+        bRollbackSucceeded = Ownership->RestoreSnapshot(BeforeItems) && bRollbackSucceeded;
+        bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
+        bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
+        if (!bRollbackSucceeded)
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("World fixed-step rollback failed. Stop simulation and capture diagnostics immediately."));
+        }
+        return bRollbackSucceeded;
+    };
+
+    // Every participant completed preflight above. If a commit still rejects,
+    // restore all participating logical state instead of leaving a mixed tick.
     if (!Agriculture->AdvanceAgricultureStep(DeltaSeconds) ||
         !Survival->AdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->AdvanceProductionStep(DeltaSeconds) ||
@@ -117,8 +161,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         !Threat->AdvanceDirectorAtTime(TargetTime, TargetTick) ||
         !Clock->AdvanceSimulation(DeltaSeconds))
     {
-        // A failure here is an invariant violation: stop driving simulation and
-        // capture state for diagnosis rather than silently counting the step.
+        RollbackStep();
         return false;
     }
 
