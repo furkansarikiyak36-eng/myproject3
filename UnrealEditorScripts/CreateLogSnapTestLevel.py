@@ -21,12 +21,17 @@ PREFIX = "LOGSNAP_DEMO_"
 ASSET_SPECS = [
     ("SM_RawLog_600.fbx", ASSET_LOGS + "/SM_RawLog_600", "SupportBeam"),
     ("SM_RawLog_300.fbx", ASSET_LOGS + "/SM_RawLog_300", "LooseWhole"),
-    ("SM_RawLog_150_Half.fbx", ASSET_LOGS + "/SM_RawLog_150_Half", "LooseHalf"),
-    ("SM_RawLog_300_Half.fbx", ASSET_LOGS + "/SM_RawLog_300_Half", "LooseHalf"),
-    ("SM_RawLog_300_Gutter.fbx", ASSET_LOGS + "/SM_RawLog_300_Gutter", "LooseGutter"),
-    ("SM_RawLog_300_Hewn1.fbx", ASSET_LOGS + "/SM_RawLog_300_Hewn1", "LooseHewn"),
-    ("SM_RawLog_300_Kalas.fbx", ASSET_LOGS + "/SM_RawLog_300_Kalas", "LooseKalas"),
-    ("SM_RawLog_300_Plank.fbx", ASSET_LOGS + "/SM_RawLog_300_Plank", "LoosePlank"),
+    ("SM_RawLog_150_Half.fbx", ASSET_LOGS + "/SM_RawLog_150_Half", "SplitHalf150"),
+    ("SM_RawLog_300_Half.fbx", ASSET_LOGS + "/SM_RawLog_300_Half", "SplitHalf300"),
+    ("SM_RawLog_300_Quarter_04.fbx", ASSET_LOGS + "/SM_RawLog_300_Quarter_04", "Quarter300"),
+    ("SM_RawLog_300_Gutter.fbx", ASSET_LOGS + "/SM_RawLog_300_Gutter", "Gutter300"),
+    ("SM_RawLog_300_Trough.fbx", ASSET_LOGS + "/SM_RawLog_300_Trough", "Trough300"),
+    ("SM_RawLog_300_Hewn1.fbx", ASSET_LOGS + "/SM_RawLog_300_Hewn1", "Hewn1300"),
+    ("SM_RawLog_300_Hewn2.fbx", ASSET_LOGS + "/SM_RawLog_300_Hewn2", "Hewn2300"),
+    ("SM_RawLog_300_Kalas.fbx", ASSET_LOGS + "/SM_RawLog_300_Kalas", "Kalas300"),
+    ("SM_RawLog_300_Plank.fbx", ASSET_LOGS + "/SM_RawLog_300_Plank", "Plank300"),
+    ("SM_RawLog_75_FlatNotch_TopBottom.fbx",
+     ASSET_LOGS + "/SM_RawLog_75_FlatNotch_TopBottom", "FlatNotch75"),
     ("Archive/SM_RawLog_75_Notch_Saddle.fbx",
      ASSET_JOINERY + "/SM_RawLog_75_Notch_Saddle", "LooseNotch"),
 ]
@@ -127,7 +132,7 @@ def bounds_and_floor_actor(actor, x, y):
     return origin, extent
 
 
-def spawn_native_piece(piece_class, mesh, role, location, placed=False):
+def spawn_native_piece(piece_class, mesh, role, location, placed=False, variants=None):
     actor = unreal.EditorLevelLibrary.spawn_actor_from_class(
         piece_class, location, unreal.Rotator(0.0, 0.0, 0.0)
     )
@@ -139,6 +144,14 @@ def spawn_native_piece(piece_class, mesh, role, location, placed=False):
     actor.set_editor_property("starts_placed", bool(placed))
     actor.set_piece_static_mesh(mesh)
     actor.set_piece_type_by_name(mesh.get_name())
+
+    # Attach length-matched cut variants to the untouched whole log. The native
+    # actor only permits a transition if the current piece state makes sense.
+    if variants:
+        for property_name, asset_role in variants.items():
+            variant_mesh = assets_for_variants.get(asset_role)
+            if variant_mesh is not None:
+                actor.set_editor_property(property_name, variant_mesh)
 
     if placed:
         actor.set_placed_state(True)
@@ -303,25 +316,62 @@ def main():
         placed=True
     )
     bounds_and_floor_actor(beam2, 600.0, 180.0)
+    add_support_top_snap_points(beam2)
 
-    # Loose pieces are left unplaced. BeginPlay enables physics so the player
-    # can pick them up naturally rather than treating them as static props.
+    # A second parallel support row creates more than one meaningful construction
+    # target. All rows are separate stable actors with reserved socket capacity.
+    rear_beam = spawn_native_piece(
+        piece_class,
+        assets["SupportBeam"],
+        "RearSupportBeam",
+        unreal.Vector(0.0, 780.0, 0.0),
+        placed=True
+    )
+    bounds_and_floor_actor(rear_beam, 0.0, 780.0)
+    add_support_top_snap_points(rear_beam)
+
+    rear_beam2 = spawn_native_piece(
+        piece_class,
+        assets["SupportBeam"],
+        "RearEndSnapBeam",
+        unreal.Vector(600.0, 780.0, 0.0),
+        placed=True
+    )
+    bounds_and_floor_actor(rear_beam2, 600.0, 780.0)
+    add_support_top_snap_points(rear_beam2)
+
+    # Only the full 300-length log receives a complete same-length processing
+    # set. A player can split it, then quarter it or make a groove/trough/plank.
+    assets_for_variants = assets
+    cut_variants_300 = {
+        "split_half_variant_mesh": "SplitHalf300",
+        "quarter_variant_mesh": "Quarter300",
+        "hewn_variant_mesh": "Hewn1300",
+        "gutter_variant_mesh": "Gutter300",
+        "trough_variant_mesh": "Trough300",
+        "kalas_variant_mesh": "Kalas300",
+        "plank_variant_mesh": "Plank300",
+    }
+
     loose_specs = [
-        ("LooseWhole", "LooseWhole", 0.0, -260.0),
-        ("LooseHalf", "LooseHalf", 260.0, -260.0),
-        ("LooseGutter", "LooseGutter", -260.0, -260.0),
-        ("LooseHewn", "LooseHewn", 520.0, -520.0),
-        ("LooseKalas", "LooseKalas", 0.0, -560.0),
-        ("LoosePlank", "LoosePlank", -520.0, -520.0),
-        ("LooseNotch", "LooseNotch", 260.0, -650.0),
+        ("LooseWhole_Cuttable", "LooseWhole", 0.0, -260.0, True),
+        ("LooseWhole_ReserveA", "LooseWhole", 420.0, -260.0, False),
+        ("LooseWhole_ReserveB", "LooseWhole", -420.0, -260.0, False),
+        ("LooseHalf", "SplitHalf300", 260.0, -520.0, False),
+        ("LooseGutter", "Gutter300", -260.0, -520.0, False),
+        ("LooseHewn", "Hewn1300", 520.0, -520.0, False),
+        ("LooseKalas", "Kalas300", 0.0, -820.0, False),
+        ("LoosePlank", "Plank300", -520.0, -820.0, False),
+        ("LooseNotch", "LooseNotch", 260.0, -900.0, False),
     ]
-    for label, role, x, y in loose_specs:
+    for label, role, x, y, attach_variants in loose_specs:
         actor = spawn_native_piece(
             piece_class,
             assets[role],
             label,
             unreal.Vector(x, y, 0.0),
-            placed=False
+            placed=False,
+            variants=cut_variants_300 if attach_variants else None
         )
         bounds_and_floor_actor(actor, x, y)
 
@@ -336,6 +386,9 @@ def main():
     log("PLAYGROUND READY: " + MAP_PATH)
     log("Controls: WASD move, mouse look, E pick up/place, G drop, R rotate 90 degrees.")
     log("Right mouse cycles Horizontal / Vertical / Diagonal placement mode.")
+    log("C cycles processing: split / quarter / hewn / gutter / trough / kalas / plank.")
+    log("F applies the selected operation to a loose, unplaced log in interaction range.")
+    log("The cuttable full log has same-length variants; invalid cut sequences are rejected.")
     log("Target beam has two added top snap anchors; its ends also use automatic LogEnd anchors.")
     log("Only this generated test map was rebuilt. Existing other maps were not modified.")
 
