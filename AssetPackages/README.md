@@ -20,7 +20,7 @@ The current `UnrealExport/` directory contains **48 root FBX meshes and 10 Archi
 - `SM_RawLog_Long_01..08` and `SM_RawLog_Short_01..04` have ambiguous names and need dimensions/shape metadata from the imported meshes.
 - `Archive/` contains ten joinery pieces: CrossLap lower/upper, Notch Fork/HalfLap/Saddle/V, and SaddleA/SaddleB mating parts.
 
-This is a **filename inventory**, not a geometric audit. The importer script groups/imports FBXs into `/Game/ImportedLogs` and creates a staging gallery, but it does not configure `ALogBuildPiece` Blueprint variant fields, collision equivalence, center offsets or output rotations. `AssetPackages/` is not the Unreal `Content/` folder; the repository does not currently include a configured production Blueprint/material setup for each variant.
+This is a **filename inventory**, not a geometric audit. The C++ `FLogProcessingMeshSet` now provides an explicit length-fraction × cross-section mesh map, but the actual imported mesh references and transform offsets still must be assigned in Blueprint. The importer script groups/imports FBXs into `/Game/ImportedLogs` and creates a staging gallery, but it does not configure `ALogBuildPiece` Blueprint variant fields, collision equivalence, center offsets or output rotations. `AssetPackages/` is not the Unreal `Content/` folder; the repository does not currently include a configured production Blueprint/material setup for each variant.
 
 Names remain metadata hints, not a substitute for checking actual mesh dimensions, pivot, local axes and orientation. The prototype assumes the long axis is local X by default; correct this per asset if a mesh was exported on another axis.
 
