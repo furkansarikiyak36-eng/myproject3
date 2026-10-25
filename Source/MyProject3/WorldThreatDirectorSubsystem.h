@@ -54,6 +54,19 @@ struct FThreatRaidRecord
  * Deterministic, bounded raid schedule. This subsystem owns planning/state only;
  * an AI/spawn adapter must materialize the raid in the world.
  */
+
+USTRUCT(BlueprintType)
+struct FWorldThreatDirectorSnapshot
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int32 SchemaVersion = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") FThreatRaidRecord CurrentRaid;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") TArray<FThreatRaidRecord> RaidHistory;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") double NextRaidTimeSeconds = 0.0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int64 RaidSerial = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") bool bInitialized = false;
+};
+
 UCLASS()
 class MYPROJECT3_API UWorldThreatDirectorSubsystem : public UWorldSubsystem
 {
@@ -107,6 +120,9 @@ public:
 
     UFUNCTION(BlueprintPure, Category="Threat")
     double GetNextRaidTimeSeconds() const { return NextRaidTimeSeconds; }
+
+    FWorldThreatDirectorSnapshot ExportSnapshot() const;
+    bool RestoreSnapshot(const FWorldThreatDirectorSnapshot& Snapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="Threat")
