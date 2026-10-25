@@ -57,20 +57,6 @@ FRotator ALogBuildPiece::MakeOutwardRotation(const FVector& Direction) const
     return FRotationMatrix::MakeFromX(Direction.GetSafeNormal()).Rotator();
 }
 
-void ALogBuildPiece::GenerateDefaultSnapPoints()
-{
-    SnapPoints.Reset();
-
-    if (bAutoGenerateEndSnapPoints)
-    {
-        GenerateDefaultEndSnapPoints();
-    }
-    if (bAutoGenerateSideSnapPoints)
-    {
-        GenerateDefaultSideSnapPoints();
-    }
-}
-
 void ALogBuildPiece::RegenerateAutomaticSnapPoints()
 {
     SnapPoints.RemoveAll([](const FLogSnapPoint& Point)
