@@ -7,6 +7,8 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStorageSubsystem.h"
 #include "LogBuildPiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -192,20 +194,58 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
  Incoming.OwnedWorldItemId = Item.ItemId;
  if (!HasCapacityFor({Incoming})) return false;
 
+ // Stone/stick domains own their placement constraints. Their held-state
+ // preflight rejects placed pieces, connected supports and pieces with children.
+ bool bTemporarilyHeldStone = false;
+ bool bTemporarilyHeldStick = false;
+ if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor))
+ {
+  if (!Stone->SetHeldState(true)) return false;
+  bTemporarilyHeldStone = true;
+ }
+ if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(WorldActor))
+ {
+  if (!Stick->SetHeldState(true))
+  {
+   if (bTemporarilyHeldStone)
+    if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor)) Stone->SetHeldState(false);
+   return false;
+  }
+  bTemporarilyHeldStick = true;
+ }
+
+ const FVector CurrentWorldLocation = WorldActor->GetActorLocation();
  FWorldOwnedItemRecord Stored;
  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
      EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
-     InventoryOwnerId, Item.WorldLocation, Stored)) return false;
+     InventoryOwnerId, CurrentWorldLocation, Stored))
+ {
+  if (bTemporarilyHeldStone)
+   if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor)) Stone->SetHeldState(false);
+  if (bTemporarilyHeldStick)
+   if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(WorldActor)) Stick->SetHeldState(false);
+  return false;
+ }
 
  if (!TryAddItem(Incoming))
  {
   FWorldOwnedItemRecord RolledBack;
-  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
+  const bool bLedgerRollback = Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
       EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
-      FGuid(), WorldActor->GetActorLocation(), RolledBack))
+      FGuid(), CurrentWorldLocation, RolledBack);
+  if (!bLedgerRollback)
   {
+   WorldActor->SetActorHiddenInGame(true);
+   WorldActor->SetActorEnableCollision(false);
    UE_LOG(LogTemp, Error, TEXT("Inventory rollback failed for physical item %s."),
     *Item.ItemId.ToString());
+  }
+  else
+  {
+   if (bTemporarilyHeldStone)
+    if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor)) Stone->SetHeldState(false);
+   if (bTemporarilyHeldStick)
+    if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(WorldActor)) Stick->SetHeldState(false);
   }
   return false;
  }
@@ -216,10 +256,22 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
    { return Stack.OwnedWorldItemId == ItemId; });
   if (Items.IsValidIndex(StoredIndex)) Items.RemoveAt(StoredIndex);
   FWorldOwnedItemRecord RolledBack;
-  if (!Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
+  const bool bLedgerRollback = Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
       EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
-      FGuid(), WorldActor->GetActorLocation(), RolledBack))
+      FGuid(), CurrentWorldLocation, RolledBack);
+  if (!bLedgerRollback)
+  {
+   WorldActor->SetActorHiddenInGame(true);
+   WorldActor->SetActorEnableCollision(false);
    UE_LOG(LogTemp, Error, TEXT("Physical item lifecycle rollback failed for item %s."), *Item.ItemId.ToString());
+  }
+  else
+  {
+   if (bTemporarilyHeldStone)
+    if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(WorldActor)) Stone->SetHeldState(false);
+   if (bTemporarilyHeldStick)
+    if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(WorldActor)) Stick->SetHeldState(false);
+  }
   return false;
  }
 
