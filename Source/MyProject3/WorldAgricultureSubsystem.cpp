@@ -20,7 +20,8 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
     if (!Animal.AnimalId.IsValid() || Animal.AnimalDefinitionId.IsNone() ||
         !FMath::IsFinite(Animal.Hunger) || Animal.Hunger < 0.0f || Animal.Hunger > 100.0f ||
         !FMath::IsFinite(Animal.Health) || Animal.Health < 0.0f || Animal.Health > 100.0f ||
-        Animal.ProductUnits < 0 || Animal.Revision <= 0 || Animals.Contains(Animal.AnimalId) ||
+        Animal.ProductUnits < 0 || !FMath::IsFinite(Animal.ProductProgressSeconds) ||
+        Animal.ProductProgressSeconds < 0.0 || Animal.Revision <= 0 || Animals.Contains(Animal.AnimalId) ||
         MaxAnimals <= 0 || Animals.Num() >= MaxAnimals)
     {
         return false;
@@ -79,8 +80,12 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
     {
         const FWorldAnimalState& Animal = Pair.Value;
         if (Animal.Revision == MAX_int64 ||
-            (DeltaSeconds >= 3600.0 && Animal.Health > 0.0f &&
-             Animal.Hunger <= ProductHungerLimit && !Animal.ProductDefinitionId.IsNone() &&
+            !FMath::IsFinite(Animal.ProductProgressSeconds) ||
+            Animal.ProductProgressSeconds < 0.0 ||
+            !FMath::IsFinite(Animal.ProductProgressSeconds + DeltaSeconds) ||
+            (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
+             !Animal.ProductDefinitionId.IsNone() &&
+             Animal.ProductProgressSeconds + DeltaSeconds >= 3600.0 &&
              Animal.ProductUnits == MAX_int32))
             return false;
     }
@@ -120,9 +125,14 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
         if (Animal.Hunger >= 80.0f)
             Animal.Health = FMath::Max(0.0f, Animal.Health - static_cast<float>(DeltaSeconds / 3600.0) * 2.0f);
         if (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
-            !Animal.ProductDefinitionId.IsNone() && Animal.ProductUnits < MAX_int32)
+            !Animal.ProductDefinitionId.IsNone())
         {
-            if (DeltaSeconds >= 3600.0) ++Animal.ProductUnits;
+            Animal.ProductProgressSeconds += DeltaSeconds;
+            while (Animal.ProductProgressSeconds >= 3600.0 && Animal.ProductUnits < MAX_int32)
+            {
+                Animal.ProductProgressSeconds -= 3600.0;
+                ++Animal.ProductUnits;
+            }
         }
         ++Animal.Revision;
     }
@@ -177,7 +187,7 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
         if (!A.AnimalId.IsValid() || A.AnimalDefinitionId.IsNone() || A.Revision <= 0 ||
             !FMath::IsFinite(A.Hunger) || A.Hunger < 0.0f || A.Hunger > 100.0f ||
             !FMath::IsFinite(A.Health) || A.Health < 0.0f || A.Health > 100.0f ||
-            A.ProductUnits < 0 || NewAnimals.Contains(A.AnimalId)) return false;
+            A.ProductUnits < 0 || !FMath::IsFinite(A.ProductProgressSeconds) || A.ProductProgressSeconds < 0.0 || NewAnimals.Contains(A.AnimalId)) return false;
         NewAnimals.Add(A.AnimalId, A);
     }
     Crops = MoveTemp(NewCrops);
