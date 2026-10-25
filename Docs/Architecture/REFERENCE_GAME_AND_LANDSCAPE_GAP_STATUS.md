@@ -226,10 +226,11 @@ A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stabl
 
 **Still open:** only actors with UWorldObjectIdentityComponent are captured; restore requires the same actors/classes/components already present and does not recreate missing runtime actors or handle world-partition streaming. Canonical graph is restored but actor-local log/stone/stick SnapParent/AttachedPieces weak refs and snap reservations still need rebinding. Held/carry state is still refused during save. Legacy saves lack historical physical/graph state and will fail closed when the current level requires those records. Real FBX/Blueprint configuration, UE compile/PIE/failure-injection and save→physics→load acceptance were not run. Recipe stock keys and non-log physical output/storage handoff also remain open.
 
+**WOOD-012 source progress (2026-10-26):** `TryAdvanceCutProgress` stores cut progress independently from completed geometry and only delegates to the existing ownership/geometry transaction at full progress. `AHarvestableTreeActor::YieldRules` can resolve log count and output piece type from non-overlapping tree-mesh world-height bands; an uncovered/overlapping authored table fails closed. Empty tables preserve the legacy fixed-count path. This is not an asset-side completion: real bounds, pivot, collision, output length/shape variants and UE runtime acceptance remain open.
 **WOOD-011 source progress (2026-10-26):** `ALogBuildPiece` exposes graph-restore-only helpers that clear stale local reservations and rebuild log-to-log `SnapParent`, parent/own snap indices, parent `AttachedPieces`, and both occupied anchors from canonical graph edge IDs. The coordinator calls `RebuildLogActorAttachmentsFromSnapshot` immediately after graph restore. This path does not call `TryConnect` and therefore does not create duplicate graph edges. Static source checks only; UE build/runtime is not verified.
 **Still open:** Held/carry component persistence, actor recreation, non-log structural actor local-anchor rebuild, actual FBX/Blueprint configuration, and runtime acceptance.
 
-**Next implementation:** WOOD-012 — separate cut progress from completed geometry, make tree size → log count/length data-driven, and inventory actual mesh-family measurements.
+**Next implementation:** WOOD-013 — persist held/carry component state and reconcile dropped/settled transforms with world item ownership; actual FBX/Blueprint measurements and UE acceptance remain a separate gate.
 
 ---
 
