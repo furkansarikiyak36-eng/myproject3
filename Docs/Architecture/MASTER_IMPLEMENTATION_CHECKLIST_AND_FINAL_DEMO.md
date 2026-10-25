@@ -125,6 +125,11 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Taşıyıcı parça kaldırıldığında bağımlı parçaların güvenli sırayla çözülmesini tamamla.
 - [ ] Tamir, sökme, hurdaya ayırma ve yakma/geri kazanım çıktılarının eşya sahipliğini bağla.
 - [ ] Her kesme eylemi için durum → eylem → ön koşul → çıktı türü → mesh/çarpışma tablosunu tamamla.
+- [x] Nominal mesh aileleri için `FLogProcessingMeshSet` eklendi: açık SetId, base-round mesh ve `LengthFraction × CrossSectionShape → mesh` tablosu; çift ID/çift state mapping belirsizliği fail-closed reddediliyor.
+- [x] Mesh-set seçimi item ownership kaydında `MeshVariantSetId` olarak saklanıyor; split çıktıları ve envanterden tekrar dünyaya çıkış aynı selector'ı taşıyor.
+- [x] Kısaltılmış parçanın geometri durumu item `DefinitionId` içinde de korunuyor (ör. `LengthHalf.SplitHalfLog`); variant restore bu iki ekseni yeniden çözümlüyor; SaveGame şeması v8.
+- [ ] Her nominal family için gerçek FBX'leri `ProcessingMeshSets` içine doldur; ölçülmeyen dosya adlarından ölçü varsayma.
+- [ ] Hatalı/eksik table, duplicate SetId, duplicate geometry tuple, inventory round-trip, split retry ve legacy-save senaryolarını Unreal kabul kapısında çalıştır.
 - [x] Legacy PieceType etiketinin yanında bağımsız LengthFraction ve CrossSectionShape metadata sözleşmesi eklendi; işlem ön koşulları kesit şekline göre kontrol ediliyor.
 - [x] SM_RawLog_150_Quarter_04 gibi RawLog + Quarter adları çeyrek kesit şekli olarak çözümleniyor; standalone QuarterLog uzunluk kesriyle karıştırılmıyor.
 - [ ] Gerçek FBX ölçü/pivot/yönlerini Unreal staging level'da doğrula ve her Blueprint'in mesh/offset/rotasyon ayarlarını kaydet.
@@ -747,10 +752,36 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Sonuç:** LengthFraction ile CrossSectionShape artık aynı birleşik etiketten ayrı tutuluyor. Fiziksel işlem eylemleri, örneğin 1/2 uzunluğundaki bir round log üzerinde de kesit-shape ön koşullarını kullanabilir; split işlemi length fraction metadata'sını korur. FBX listesi isimlerden çıkarılmıştır, gerçek geometri ölçümü olarak sunulmuyor.  
 **Kanıt seviyesi:** Kaynak değişikliği, API/koşul kontrolü ve GitHub asset-inventory incelemesi. Unreal geometri doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Asset pivot/ölçü/ekseni, import edilmiş Content varlıkları ve Blueprint alan atamaları motor içinde kontrol edilmedi. `SM_RawLog_75.fbx` base mesh yok; Long/Short varlıklarının gerçek boyları belirsiz.  
-**Sonraki bağımlı iş:** WOOD-004 — 75/150/300/600 ve Long/Short mesh'leri UE içinde ölçüp durum/çıktı eşleme manifestini doğrula; ardından tree-felling/grounding ve kaynak miktarı zincirine geç.
+**Sonraki bağımlı iş:** WOOD-005 — tree-felling/grounding ve kaynak miktarı/çıktı oluşturma zincirini açık duruma bağla. Gerçek FBX ölçümü, ProcessingMeshSets değerlerini doldurma ve runtime doğrulama ayrı açık kabul maddeleridir.
+
+---
+
+### İş kaydı: WOOD-004 — Data-driven nominal mesh aileleri ve sahiplikte geometri kimliği
+
+- [x] `FLogProcessingMeshSet` ve `FLogPieceMeshVariant` eklendi; bir mesh seti tabanı ve exact `LengthFraction × CrossSectionShape → UStaticMesh` eşlemesini tutuyor
+- [x] Kaynak aktörün set'i seçmesi, yalnızca explicit selector veya current mesh için tekil bir eşleşme olduğunda kabul ediliyor; duplicate SetId/base-mesh/geometry tuple belirsizse fail-closed
+- [x] Kesme eligibility, action çıktısı ve definition-variant restore tek resolver'ı kullanıyor; legacy mesh property fallback yalnızca tablo boş ve selector None iken kalıyor
+- [x] Split center offset/child rotasyon ayarları seçilmiş mesh setinden okunuyor; child aynı set'i miras alıyor
+- [x] `MeshVariantSetId` item ownership record'una eklendi; split çıktıları ve inventory drop spawn'ı bu ID'yi koruyor
+- [x] Geometry DefinitionId artık length fraction + shape birleşimini koruyabiliyor (ör. `LengthHalf.SplitHalfLog`); restore parser length fraction'ı resolver'dan önce uyguluyor
+- [x] SaveGame schema v8'e çıktı; v7→v8 geçişi eski FName alanını none bırakıp dosya adından tahmin üretmiyor
+- [x] Statik wiring kontrolleri ve C++ brace-balance kontrolleri geçti
+- [ ] UE 5.8 UHT/UBT derlemesi
+- [ ] Per-Blueprint gerçek FBX mesh setleri, center offset ve child rotations dolduruldu
+- [ ] Import edilmiş FBX ölçü/pivot/local-axis doğrulaması
+- [ ] Runtime: length fraction split sonrası korunuyor, iki parça farklı ID ile tek tek inventory/storage/cargo akışından geçiyor
+- [ ] Runtime: SaveGame v8 round-trip ile MeshVariantSetId + geometry DefinitionId korunuyor
+- [ ] Runtime: yanlış/eksik tuple, duplicate state mapping ve eksik variant asset eylemi reddediyor; kaynak state değişmiyor
+
+**Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`, `InventoryCraftingComponent.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
+**Commit/PR:** PR #25 açıldıktan sonra eklenecek; `fix/log-mesh-variant-sets`.  
+**Sonuç:** Tek bir nominal kaynak mesh ailesine ait işlenmiş şekiller için sabit tek mesh pointer'ları yerine açık state tuple tablosu kullanılabiliyor. Doğru set seçimi ownership record ve definition ID boyunca korunuyor. Bu, gerçek FBX'ler tabloya atanmış veya geometri UE içinde doğrulanmış demek değildir.  
+**Kanıt seviyesi:** Statik kaynak incelemesi ve targeted structural checks; Unreal motor doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** `SM_RawLog_75.fbx` base-round mesh yok; Long/Short dosyalarının gerçek ölçüleri belirsiz. Yeni data-driven tablolar için mevcut Blueprint/content asset atamaları henüz yapılmadı.  
+**Sonraki bağımlı iş:** WOOD-005 — ağaç kesme/devrilme/zemine oturma ve kaynak log miktarı/ID üretimini ownership + mesh family akışına bağla.
 
 ---
 
 ## 15. İlk yapılacak iş
 
-WOOD-003 kod ve dosya-adı kataloğu tamamlandı; gerçek mesh geometri ölçümü ve Blueprint bağlaması UE erişimi olduğunda kalacak. Sıradaki kaynak işi **WOOD-004 — kaynak kütüğün nominal varyant setini açıkça seçtiren data-driven mesh eşlemesi**; 75/150/300/600 ya da Long/Short adlarından boyutu varsaymayacak. Ardından 2.1'in geri kalan ağaç-kütük miktarı, kaynak sahipliği, taşıma/inşa entegrasyonuna devam edilecek. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
+WOOD-004 source-layer data-driven mesh-set selector, exact geometry tuple resolver, ownership selector persistence and SaveGame v8 wiring tamamlandı; Blueprint asset bağlaması ve UE ölçü/runtime testleri açık. Sıradaki kaynak işi **WOOD-005 — ağaç kesme/devrilme/zemine oturma ve kaynak log miktarı/ID üretimi**; 75/150/300/600 ya da Long/Short adlarından boyut varsayılmayacak. Ardından 2.1'in geri kalan ağaç-kütük miktarı, kaynak sahipliği, taşıma/inşa entegrasyonuna devam edilecek. Diğer referans oyunlar ve LB0–LB4 aynı kanıt standardıyla sırayla ele alınacak; final demo en sonda.
