@@ -51,6 +51,13 @@ void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
         }
     }
     AttachedPieces.Reset();
+    if (StructuralIdentity)
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            Graph->UnregisterNode(StructuralIdentity->GetInstanceId(), false);
+        }
+    }
 
     Super::EndPlay(EndPlayReason);
 }
