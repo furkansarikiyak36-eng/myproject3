@@ -730,7 +730,6 @@ bool ALogBuildPiece::TrySetInitialPieceType(ELogPieceType DesiredType, FGuid Ope
     ItemIdentity->SetDefinitionId(OutputDefinition);
     FVector OldOrigin, OldExtent;
     GetActorBounds(false, OldOrigin, OldExtent);
-    const float OldBottomZ = OldOrigin.Z - OldExtent.Z;
     SetPieceStaticMesh(OutputMesh);
     PieceType = DesiredType;
     UpdateGeometryStateFromPieceType(false);
