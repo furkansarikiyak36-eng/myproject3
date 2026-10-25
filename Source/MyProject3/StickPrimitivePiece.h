@@ -88,7 +88,8 @@ public:
     bool TryConnectToAnchor(AStickPrimitivePiece* TargetPiece, FName TargetAnchorId, FName OwnAnchorId);
 
     UFUNCTION(BlueprintCallable, Category="Primitive|Anchors")
-    bool RemoveConnection();
+    /** Keeps actor anchors and the canonical graph edge synchronized. */
+    bool RemoveConnection(bool bAllowGraphFailure = false);
 
     UFUNCTION(BlueprintPure, Category="Primitive|Anchors")
     FTransform GetAnchorWorldTransform(FName AnchorId) const;
