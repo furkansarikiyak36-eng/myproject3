@@ -715,7 +715,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] Save/load sonrası iki aktör ve split receipt/ownership ilişkisi geri kurulur
 
 **Kaynak dosyaları:** `WorldItemOwnershipSubsystem.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
-**Commit/PR:** PR #23 oluşturulduktan sonra bağlantı eklenecek; `fix/atomic-log-piece-splitting`.  
+**Commit/PR:** [PR #23 — Atomically split logs into uniquely owned physical pieces](https://github.com/furkansarikiyak36-eng/myproject3/pull/23); `fix/atomic-log-piece-splitting`.  
 **Sonuç:** Split işlemi artık yalnızca bir mesh/type değişikliği değildir. İstenen iki çıktı önce sahiplik sisteminde atomik olarak tanımlanır; kaynak ID ilk çıktıyı korur, ikinci çıktı yeni GUID alır. Child actor deferred spawn ile ledger ID'si verildikten sonra BeginPlay/graph kaydı tamamlanır. Başarısız doğrulamada rollback denenir. Offset ve mesh geometrisi Blueprint'te yazar tarafından doğrulanmalıdır.
 **Kanıt seviyesi:** Statik kaynak kontrolleri; Unreal motoru/PIE doğrulaması yapılmadı.
 **Kalan sınırlamalar:** Genel world save physical actor transforms/graph links'leri tamamen geri kurmadığından split receipt kalıcılığı tek başına tam actor persistence sağlamaz. Bu genel persistence açığı ayrı iş olarak kalır.
