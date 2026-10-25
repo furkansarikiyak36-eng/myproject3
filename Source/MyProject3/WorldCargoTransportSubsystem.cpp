@@ -43,7 +43,9 @@ bool UWorldCargoTransportSubsystem::StartTransport(
     FWorldStorageContainerRecord SourceStorage;
     FWorldStorageContainerRecord DestinationStorage;
     if (!Storage->GetStorage(SourceStorageId, SourceStorage) ||
-        !Storage->GetStorage(DestinationStorageId, DestinationStorage))
+        !Storage->GetStorage(DestinationStorageId, DestinationStorage) ||
+        !Storage->IsStorageAvailable(SourceStorageId) ||
+        !Storage->IsStorageAvailable(DestinationStorageId))
         return false;
 
     TArray<FName> Path;
@@ -175,13 +177,7 @@ bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) con
             return false;
 
         const bool bWillArrive = FMath::Min(Record.RouteCost, ProposedProgress) >= Record.RouteCost;
-        if (bWillArrive)
-        {
-            // Destination availability is an explicit delivery result: cargo
-            // blocks at arrival rather than freezing the entire world step.
-            // TryDeliver performs the final reservation/availability check.
-        }
-        else if (Record.Revision >= MAX_int64 - 2)
+        if (!bWillArrive && Record.Revision >= MAX_int64 - 2)
         {
             // A non-final progress update must not consume the last revision
             // and strand cargo permanently one step short of delivery.
