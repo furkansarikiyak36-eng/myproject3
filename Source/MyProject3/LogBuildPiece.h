@@ -164,7 +164,6 @@ private:
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
 
-    void GenerateDefaultSnapPoints();
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
     void GenerateDefaultSideSnapPoints();
