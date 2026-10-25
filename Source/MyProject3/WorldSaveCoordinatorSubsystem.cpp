@@ -12,6 +12,9 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "InventoryCraftingComponent.h"
+#include "WorldObjectIdentityComponent.h"
+#include "EngineUtils.h"
 #include "Logging/LogMacros.h"
 
 bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGame* OutSave) const
@@ -33,6 +36,16 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     OutSave->Clock = Clock->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items);
+    OutSave->Inventories.Reset();
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        if (UInventoryCraftingComponent* Inventory = It->FindComponentByClass<UInventoryCraftingComponent>())
+        {
+            FWorldInventorySnapshot& Record = OutSave->Inventories.AddDefaulted_GetRef();
+            Inventory->ExportSnapshot(Record.OwnerActorId, Record.InventoryOwnerId,
+                Record.Items, Record.QuickAccessItemId);
+        }
+    }
     Terrain->ExportSnapshot(OutSave->TerrainCells);
     Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
@@ -62,6 +75,35 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     // ownership, simulation domains, and cargo references last.
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
     if (!Items->RestoreSnapshot(Snapshot->Items)) return false;
+
+    TArray<UInventoryCraftingComponent*> CurrentInventories;
+    TMap<FGuid, UInventoryCraftingComponent*> ByOwnerActorId;
+    TMap<FGuid, UInventoryCraftingComponent*> ByInventoryOwnerId;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        if (UInventoryCraftingComponent* Inventory = It->FindComponentByClass<UInventoryCraftingComponent>())
+        {
+            CurrentInventories.Add(Inventory);
+            if (UWorldObjectIdentityComponent* Identity = It->FindComponentByClass<UWorldObjectIdentityComponent>())
+                if (Identity->HasValidIdentity()) ByOwnerActorId.Add(Identity->GetInstanceId(), Inventory);
+            if (Inventory->GetInventoryOwnerId().IsValid())
+                ByInventoryOwnerId.Add(Inventory->GetInventoryOwnerId(), Inventory);
+        }
+    }
+    if (CurrentInventories.Num() != Snapshot->Inventories.Num()) return false;
+    TSet<UInventoryCraftingComponent*> RestoredInventories;
+    for (const FWorldInventorySnapshot& Record : Snapshot->Inventories)
+    {
+        UInventoryCraftingComponent* Inventory = nullptr;
+        if (Record.OwnerActorId.IsValid()) ByOwnerActorId.RemoveAndCopyValue(Record.OwnerActorId, Inventory);
+        if (!Inventory && Record.InventoryOwnerId.IsValid()) ByInventoryOwnerId.RemoveAndCopyValue(Record.InventoryOwnerId, Inventory);
+        if (!Inventory || RestoredInventories.Contains(Inventory) ||
+            !Inventory->RestoreSnapshot(Record.InventoryOwnerId, Record.Items, Record.QuickAccessItemId))
+            return false;
+        RestoredInventories.Add(Inventory);
+    }
+    if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
+
     if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells)) return false;
     if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
