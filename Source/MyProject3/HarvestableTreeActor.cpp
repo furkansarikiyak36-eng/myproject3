@@ -5,6 +5,13 @@
 #include "Engine/StaticMesh.h"
 #include "LogBuildPiece.h"
 
+void AHarvestableTreeActor::BeginPlay()
+{
+    Super::BeginPlay();
+    if (!bFellingStarted && !bGrounded && !bLogsSpawned)
+        ChopHealth = FMath::Max(1.0f, MaxChopHealth);
+}
+
 AHarvestableTreeActor::AHarvestableTreeActor()
 {
     PrimaryActorTick.bCanEverTick = true;
