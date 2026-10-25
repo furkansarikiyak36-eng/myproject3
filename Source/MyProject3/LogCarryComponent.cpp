@@ -4,6 +4,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Controller.h"
@@ -99,6 +100,8 @@ void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
     InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ULogCarryComponent::RotateHeldPiece);
     InputComponent->BindKey(
         EKeys::RightMouseButton, IE_Pressed, this, &ULogCarryComponent::CyclePlacementMode);
+    InputComponent->BindKey(EKeys::C, IE_Pressed, this, &ULogCarryComponent::CycleCutAction);
+    InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ULogCarryComponent::ProcessAimedPiece);
 }
 
 bool ULogCarryComponent::GetViewPoint(
@@ -540,4 +543,107 @@ void ULogCarryComponent::CyclePlacementMode()
         UpdateHeldPreview();
         TimeUntilSnapRefresh = 0.0f;
     }
+}
+
+void ULogCarryComponent::CycleCutAction()
+{
+    switch (SelectedCutAction)
+    {
+    case ELogCutAction::SplitHalf:
+        SelectedCutAction = ELogCutAction::Quarter;
+        break;
+    case ELogCutAction::Quarter:
+        SelectedCutAction = ELogCutAction::Hewn;
+        break;
+    case ELogCutAction::Hewn:
+        SelectedCutAction = ELogCutAction::Gutter;
+        break;
+    case ELogCutAction::Gutter:
+        SelectedCutAction = ELogCutAction::Trough;
+        break;
+    case ELogCutAction::Trough:
+        SelectedCutAction = ELogCutAction::Kalas;
+        break;
+    case ELogCutAction::Kalas:
+        SelectedCutAction = ELogCutAction::Plank;
+        break;
+    case ELogCutAction::Plank:
+    default:
+        SelectedCutAction = ELogCutAction::SplitHalf;
+        break;
+    }
+
+    const UEnum* Enum = StaticEnum<ELogCutAction>();
+    const FString ActionName = Enum
+        ? Enum->GetDisplayNameTextByValue(static_cast<int64>(SelectedCutAction)).ToString()
+        : TEXT("Unknown");
+    const FString Message = FString::Printf(
+        TEXT("Selected log operation: %s (F to apply to a loose log)"), *ActionName);
+
+    UE_LOG(LogTemp, Log, TEXT("%s"), *Message);
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Message);
+    }
+}
+
+bool ULogCarryComponent::ProcessAimedPiece()
+{
+    if (IsValid(HeldPiece))
+    {
+        const FString Message = TEXT("Drop the carried log before processing it.");
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Message);
+        }
+        return false;
+    }
+
+    FHitResult Hit;
+    if (!TraceFromView(PickupRange, Hit))
+    {
+        const FString Message = TEXT("Aim at a loose log within interaction range.");
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Message);
+        }
+        return false;
+    }
+
+    ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Hit.GetActor());
+    if (!IsValid(Piece))
+    {
+        const FString Message = TEXT("The aimed object is not a log piece.");
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Yellow, Message);
+        }
+        return false;
+    }
+
+    if (Piece->ApplyCutAction(SelectedCutAction))
+    {
+        const UEnum* Enum = StaticEnum<ELogCutAction>();
+        const FString ActionName = Enum
+            ? Enum->GetDisplayNameTextByValue(static_cast<int64>(SelectedCutAction)).ToString()
+            : TEXT("Processing");
+        const FString Message = FString::Printf(TEXT("Log processed: %s"), *ActionName);
+        UE_LOG(LogTemp, Log, TEXT("%s"), *Message);
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, Message);
+        }
+        return true;
+    }
+
+    const FString Reason = Piece->GetCutActionBlockReason(SelectedCutAction);
+    const FString Message = Reason.IsEmpty()
+        ? TEXT("This cut operation is not available on the aimed log.")
+        : Reason;
+    UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, Message);
+    }
+    return false;
 }
