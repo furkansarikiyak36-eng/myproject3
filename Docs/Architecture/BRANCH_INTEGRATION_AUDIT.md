@@ -12,7 +12,7 @@
 | `Chatgpt` | behind | 0 | 63 | Older than main; inspect history before reusing |
 | `architecture-14-phase-skeletons` | ahead | 120 | 0 | Architecture/phase map; based on Phase 6, not an independent release branch |
 | `landscape-builder-plan` | ahead | 362 | 0 | H baseline plus 13 planning/documentation commits; five files in PR #17 are docs/roadmap changes |
-| `fix/world-simulation-fail-closed` | ahead | 367 | 0 | Work branch based on `landscape-builder-plan`; two commits add fail-closed handling for fixed-step rollback failure |
+| `fix/world-simulation-fail-closed` | ahead | 367 | 0 | Work branch based on `landscape-builder-plan`; five commits add fail-closed handling, review evidence and tracker updates; proposed in draft PR #18 |
 | `mechanic-detailing-pass-01` | ahead | 121 | 0 | Earlier mechanic detail pass |
 | `mechanic-detailing-pass-a-core` | ahead | 131 | 0 | Core invariants/contracts pass |
 | `mechanic-detailing-pass-b-resource-lifecycle` | ahead | 134 | 0 | Resource lifecycle pass |
