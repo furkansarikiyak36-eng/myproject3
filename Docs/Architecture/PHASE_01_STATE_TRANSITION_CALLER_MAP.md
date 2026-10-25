@@ -49,6 +49,10 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 
 `ALogBuildPiece::AddCustomSnapPoint` now rejects `NAME_None`, IDs beginning with `AutoEnd_` or `AutoSide_` (case-insensitive), and any ID already present in `SnapPoints`. Rejected calls emit a `LogTemp` warning and leave the array unchanged. The Blueprint-callable signature remains `void` for compatibility; this means callers do not receive a structured failure result. This is a source-level change only, pending Unreal build and focused runtime/editor checks.
 
+## Structural reparenting/cycle guard
+
+`CanSnapPointAccept` now rejects a source piece that already has a parent link or parent-anchor indices, and rejects a source piece that still has attached children. It also walks the target's parent chain and rejects a connection that would make the source an ancestor of its own target, preventing a structural cycle through the low-level reservation API. This guards source-level state integrity; no Unreal build or runtime test has been run.
+
 ## Receiver-anchor revalidation safeguard
 
 `CanSnapPointAccept` now rejects a target point when `bCanReceive` is false or `bOccupied` is true. This makes the acceptance check self-contained instead of relying solely on the carry component's candidate search to filter target anchors. Source-level change only; focused Unreal tests remain pending.
