@@ -94,6 +94,9 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
         ActorState.IdentityId = Identity->InstanceId;
         ActorState.ActorClass = FSoftClassPath(Actor->GetClass());
         ActorState.ActorTransform = Actor->GetActorTransform();
+        ActorState.bActorHiddenInGame = Actor->IsHidden();
+        ActorState.bActorCollisionEnabled = Actor->GetActorEnableCollision();
+        ActorState.bActorTickEnabled = Actor->IsActorTickEnabled();
         ActorState.DefinitionId = Identity->DefinitionId;
         ActorState.LifecycleState = Identity->LifecycleState;
         ActorState.StateRevision = Identity->StateRevision;
@@ -261,6 +264,9 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
         AActor* Actor = CurrentActors.FindRef(State.IdentityId);
         if (!Actor || !Actor->SetActorTransform(State.ActorTransform, false, nullptr, ETeleportType::TeleportPhysics))
             return false;
+        Actor->SetActorHiddenInGame(State.bActorHiddenInGame);
+        Actor->SetActorEnableCollision(State.bActorCollisionEnabled);
+        Actor->SetActorTickEnabled(State.bActorTickEnabled);
     }
 
     for (const FWorldPhysicalActorSnapshot& State : Snapshot)
