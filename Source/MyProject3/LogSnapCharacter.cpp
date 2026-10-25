@@ -3,6 +3,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
+#include "Engine/Engine.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "InputCoreTypes.h"
@@ -32,6 +33,19 @@ ALogSnapCharacter::ALogSnapCharacter()
     FirstPersonCamera->bUsePawnControlRotation = true;
 
     LogCarry = CreateDefaultSubobject<ULogCarryComponent>(TEXT("LogCarry"));
+}
+
+void ALogSnapCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+
+    const FString Controls =
+        TEXT("LOG TEST | WASD move | Mouse look | E pick/place | G drop | R rotate | RMB placement mode | C cut mode | F process");
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(
+            -1, 8.0f, FColor::White, Controls);
+    }
 }
 
 void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
