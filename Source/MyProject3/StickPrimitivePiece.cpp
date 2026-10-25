@@ -1,6 +1,7 @@
 #include "StickPrimitivePiece.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Engine/World.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 
