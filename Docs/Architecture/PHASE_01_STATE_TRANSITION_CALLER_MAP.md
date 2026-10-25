@@ -21,7 +21,7 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 | `ULogCarryComponent::DropHeldPiece` | `SetHeldState(false)` → `SetPlacedState(false)` | Re-enables collision and then enables physics for a loose piece. |
 | `ALogBuildPiece::AttachToSnapParent` | Sets parent/anchor indices; registers child; attaches actor; calls `SetPlacedState(true)` | Structural relation is explicit. No separate structural-load validation is present in this path. |
 | `ALogBuildPiece::DetachFromSnapParent` | Detaches actor; releases parent anchor; unregisters child; releases own anchor; clears parent indices | Source-level cleanup path for a child being picked up. |
-| `ALogBuildPiece::TryReserveSnapPoints` | Validates; marks both anchors occupied; calls `AttachToSnapParent` | Validation occurs before mutation. There is no explicit rollback if the attachment helper later becomes fallible. |
+| `ALogBuildPiece::TryReserveSnapPoints` | Calls `CanSnapPointAccept`; then marks both anchors occupied and calls `AttachToSnapParent` | Acceptance now independently checks target receiver capability and occupancy, as well as source capability/occupancy. There is still no explicit rollback if attachment later becomes fallible. |
 
 ## Editor-script call sites
 
@@ -48,3 +48,7 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 ## Custom snap-point ID safeguard
 
 `ALogBuildPiece::AddCustomSnapPoint` now rejects `NAME_None`, IDs beginning with `AutoEnd_` or `AutoSide_` (case-insensitive), and any ID already present in `SnapPoints`. Rejected calls emit a `LogTemp` warning and leave the array unchanged. The Blueprint-callable signature remains `void` for compatibility; this means callers do not receive a structured failure result. This is a source-level change only, pending Unreal build and focused runtime/editor checks.
+
+## Receiver-anchor revalidation safeguard
+
+`CanSnapPointAccept` now rejects a target point when `bCanReceive` is false or `bOccupied` is true. This makes the acceptance check self-contained instead of relying solely on the carry component's candidate search to filter target anchors. Source-level change only; focused Unreal tests remain pending.
