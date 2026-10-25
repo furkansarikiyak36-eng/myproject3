@@ -32,4 +32,6 @@ protected:
     void MoveLeft(float Value);
     void Turn(float Value);
     void LookUp(float Value);
+    void HandleJumpPressed();
+    void HandleJumpReleased();
 };
