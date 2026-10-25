@@ -63,6 +63,21 @@ struct FWorldItemTransferReceipt
     // Immutable result snapshot returned by idempotent retries.
     UPROPERTY()
     FWorldOwnedItemRecord ResultRecord;
+
+    UPROPERTY()
+    int64 ExpectedRevision = 0;
+
+    UPROPERTY()
+    EWorldItemOwnerKind ExpectedOwner = EWorldItemOwnerKind::World;
+
+    UPROPERTY()
+    EWorldItemOwnerKind RequestedOwner = EWorldItemOwnerKind::World;
+
+    UPROPERTY()
+    FGuid RequestedOwnerId;
+
+    UPROPERTY()
+    FVector RequestedWorldLocation = FVector::ZeroVector;
 };
 
 /** Single authoritative ownership ledger for world objects and resource stacks. */
