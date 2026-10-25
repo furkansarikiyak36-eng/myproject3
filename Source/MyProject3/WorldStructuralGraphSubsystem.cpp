@@ -2,6 +2,7 @@
 
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
+#include "LogBuildPiece.h"
 #include "EngineUtils.h"
 
 bool UWorldStructuralGraphSubsystem::ExportSnapshot(
@@ -166,6 +167,63 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
         {
             Nodes = MoveTemp(Previous);
             return false;
+        }
+    }
+    return true;
+}
+
+
+bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
+{
+    // First clear stale actor-local pointers/reservations. The canonical graph
+    // remains untouched and is the only authority for parent/anchor relations.
+    for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Pair.Value.Actor.Get()))
+            Log->ResetActorLocalSnapStateForGraphRestore();
+    }
+
+    TArray<FGuid> OrderedIds;
+    Nodes.GetKeys(OrderedIds);
+    OrderedIds.Sort([](const FGuid& A, const FGuid& B)
+    {
+        return A.ToString() < B.ToString();
+    });
+
+    for (const FGuid& NodeId : OrderedIds)
+    {
+        const FStructuralNodeRecord* ChildNode = Nodes.Find(NodeId);
+        if (!ChildNode || !ChildNode->ParentNodeId.IsValid())
+            continue;
+
+        ALogBuildPiece* Child = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
+        const FStructuralNodeRecord* ParentNode = Nodes.Find(ChildNode->ParentNodeId);
+        ALogBuildPiece* Parent = ParentNode
+            ? Cast<ALogBuildPiece>(ParentNode->Actor.Get()) : nullptr;
+
+        // Non-log structural adapters own their own local anchor bookkeeping.
+        // Do not fabricate a log-only link for a cross-domain edge.
+        if (!Child || !Parent)
+            continue;
+
+        if (!Child->RestoreActorLocalSnapLinkFromGraph(
+            Parent, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId, true))
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("Structural graph restored but log-local anchor reconstruction failed for node %s."),
+                *NodeId.ToString());
+            return false;
+        }
+    }
+
+    // A root log is considered placed only if the canonical graph says it is
+    // ground-supported; loose logs remain available for physics/carry actions.
+    for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Pair.Value.Actor.Get()))
+        {
+            if (!Pair.Value.ParentNodeId.IsValid())
+                Log->SetPlacedState(Pair.Value.bGroundSupported);
         }
     }
     return true;
