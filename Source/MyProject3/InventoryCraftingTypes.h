@@ -11,9 +11,9 @@ struct FInventoryStack
  GENERATED_BODY()
  UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Inventory") FName ItemId = NAME_None;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Inventory", meta=(ClampMin="1")) int32 Quantity = 1;
- UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory") EInventoryItemCategory Category = EInventoryItemCategory::Resource;
- UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory", meta=(ClampMin="1")) int32 MaxStack = 99;
- UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory") bool bIsTool = false;
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Inventory") EInventoryItemCategory Category = EInventoryItemCategory::Resource;
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Inventory", meta=(ClampMin="1")) int32 MaxStack = 99;
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Inventory") bool bIsTool = false;
  /** Valid only when this stack represents one unique physical world item. */
  UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Inventory") FGuid OwnedWorldItemId;
 };
