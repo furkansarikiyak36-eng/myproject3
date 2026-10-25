@@ -16,9 +16,7 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     if (const FWorldTerrainOperationReceipt* Receipt = Receipts.Find(OperationId))
     {
         if (Receipt->Cell != Cell) return false;
-        const FWorldTerrainCellState* Existing = Cells.Find(Cell);
-        if (!Existing || Existing->Revision != Receipt->ResultingRevision) return false;
-        OutState = *Existing;
+        OutState = Receipt->ResultState;
         return true;
     }
 
@@ -70,6 +68,7 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     Receipt.OperationId = OperationId;
     Receipt.Cell = Cell;
     Receipt.ResultingRevision = Updated.Revision;
+    Receipt.ResultState = Updated;
     Receipts.Add(OperationId, Receipt);
     OutState = Updated;
     return true;
