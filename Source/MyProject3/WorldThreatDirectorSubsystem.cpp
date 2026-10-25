@@ -32,19 +32,64 @@ bool UWorldThreatDirectorSubsystem::InitializeDirector(double FirstRaidDelaySeco
     return bInitialized;
 }
 
-bool UWorldThreatDirectorSubsystem::AdvanceDirector()
+bool UWorldThreatDirectorSubsystem::CanAdvanceDirectorAtTime(
+    double TargetTimeSeconds, int64 TargetTickIndex) const
 {
-    UWorldSimulationClockSubsystem* Clock = GetClock();
-    if (!bInitialized || !Clock || !Clock->IsClockInitialized())
+    const UWorldSimulationClockSubsystem* Clock = GetClock();
+    if (!bInitialized || !Clock || !Clock->IsClockInitialized() ||
+        !FMath::IsFinite(TargetTimeSeconds) ||
+        TargetTimeSeconds < Clock->GetSimulationTimeSeconds() ||
+        TargetTickIndex < Clock->GetTickIndex())
     {
         return false;
     }
 
-    const double Now = Clock->GetSimulationTimeSeconds();
-    if (!FMath::IsFinite(Now))
+    if ((CurrentRaid.State == EThreatRaidState::Warning &&
+         TargetTimeSeconds >= CurrentRaid.ActiveStartTime &&
+         CurrentRaid.Revision == MAX_int64) ||
+        (CurrentRaid.State == EThreatRaidState::Active &&
+         TargetTimeSeconds >= CurrentRaid.PlannedEndTime &&
+         CurrentRaid.Revision >= MAX_int64 - 1))
     {
         return false;
     }
+
+    const bool bWillNeedRaid =
+        (CurrentRaid.State == EThreatRaidState::None || IsTerminal(CurrentRaid.State) ||
+         (CurrentRaid.State == EThreatRaidState::Active &&
+          TargetTimeSeconds >= CurrentRaid.PlannedEndTime)) &&
+        TargetTimeSeconds >= NextRaidTimeSeconds;
+    if (!bWillNeedRaid)
+    {
+        return true;
+    }
+
+    if (RaidSerial == MAX_int64)
+    {
+        return false;
+    }
+
+    const int64 ProposedSerial = RaidSerial + 1;
+    const int32 Seed = Clock->GetRandomSeed() ^ static_cast<int32>(ProposedSerial * 196613);
+    const FGuid ProposedId(Clock->GetRandomSeed(), static_cast<int32>(ProposedSerial),
+        static_cast<int32>(TargetTickIndex), Seed);
+    const double ActiveStart = TargetTimeSeconds + WarningDurationSeconds;
+    const double PlannedEnd = ActiveStart + RaidDurationSeconds;
+    const double NextTime = PlannedEnd + MakeNextInterval(ProposedSerial);
+    return ProposedId.IsValid() && FMath::IsFinite(ActiveStart) &&
+        FMath::IsFinite(PlannedEnd) && FMath::IsFinite(NextTime);
+}
+
+bool UWorldThreatDirectorSubsystem::AdvanceDirectorAtTime(
+    double TargetTimeSeconds, int64 TargetTickIndex)
+{
+    if (!CanAdvanceDirectorAtTime(TargetTimeSeconds, TargetTickIndex))
+    {
+        return false;
+    }
+
+    UWorldSimulationClockSubsystem* Clock = GetClock();
+    const double Now = TargetTimeSeconds;
 
     if (CurrentRaid.State == EThreatRaidState::Warning && Now >= CurrentRaid.ActiveStartTime)
     {
@@ -69,7 +114,7 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirector()
         const int32 Seed = Clock->GetRandomSeed() ^ static_cast<int32>(RaidSerial * 196613);
         FRandomStream Stream(Seed);
         const FGuid RaidId = FGuid(Clock->GetRandomSeed(), static_cast<int32>(RaidSerial),
-            static_cast<int32>(Clock->GetTickIndex()), Seed);
+            static_cast<int32>(TargetTickIndex), Seed);
         if (!RaidId.IsValid())
         {
             return false;
@@ -96,6 +141,16 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirector()
     }
 
     return true;
+}
+
+bool UWorldThreatDirectorSubsystem::AdvanceDirector()
+{
+    const UWorldSimulationClockSubsystem* Clock = GetClock();
+    if (!Clock || !Clock->IsClockInitialized() || Clock->GetTickIndex() == MAX_int64)
+    {
+        return false;
+    }
+    return AdvanceDirectorAtTime(Clock->GetSimulationTimeSeconds(), Clock->GetTickIndex());
 }
 
 bool UWorldThreatDirectorSubsystem::ResolveCurrentRaid(bool bRepelled)
