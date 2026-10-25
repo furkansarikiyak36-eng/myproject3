@@ -47,6 +47,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "World|Clock")
     bool InitializeClock(int32 InRandomSeed, double InitialSimulationTimeSeconds = 0.0);
 
+    /** Pure preflight used by the fixed-step coordinator. */
+    UFUNCTION(BlueprintPure, Category = "World|Clock")
+    bool CanAdvanceSimulation(double DeltaSeconds) const;
+
     /** Advances logical simulation time; rejects negative, NaN and infinite deltas. */
     UFUNCTION(BlueprintCallable, Category = "World|Clock")
     bool AdvanceSimulation(double DeltaSeconds);
