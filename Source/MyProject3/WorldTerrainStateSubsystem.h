@@ -46,6 +46,10 @@ struct FWorldTerrainOperationReceipt
 
     UPROPERTY()
     int64 ResultingRevision = 0;
+
+    // Immutable committed state returned by idempotent retries.
+    UPROPERTY()
+    FWorldTerrainCellState ResultState;
 };
 
 /** Bounded, layer-gated terrain state. Rendering/collision edits belong to a terrain adapter. */
