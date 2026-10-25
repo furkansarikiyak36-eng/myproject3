@@ -334,10 +334,16 @@ bool AStoneBuildingPiece::TryConnectToAnchor(
     FName TargetAnchorId,
     FName OwnAnchorId)
 {
-    if (!CanConnectToAnchor(TargetPiece, TargetAnchorId, OwnAnchorId))
+    if (!CanConnectToAnchor(TargetPiece, TargetAnchorId, OwnAnchorId) ||
+        !GetWorld() || !StructuralIdentity || !TargetPiece->StructuralIdentity)
     {
         return false;
     }
+
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Graph)
+        return false;
 
     const int32 TargetIndex = TargetPiece->FindAnchorIndex(TargetAnchorId);
     const int32 OwnIndex = FindAnchorIndex(OwnAnchorId);
@@ -363,22 +369,16 @@ bool AStoneBuildingPiece::TryConnectToAnchor(
     ParentAnchorId = TargetAnchorId;
     OwnAnchorIdUsed = OwnAnchorId;
     TargetPiece->AttachedPieces.AddUnique(this);
-    if (StructuralIdentity && TargetPiece->StructuralIdentity)
+    if (!Graph->TryConnect(TargetPiece->StructuralIdentity->GetInstanceId(), TargetAnchorId,
+        StructuralIdentity->GetInstanceId(), OwnAnchorId))
     {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
-        {
-            if (!Graph->TryConnect(TargetPiece->StructuralIdentity->GetInstanceId(), TargetAnchorId,
-                StructuralIdentity->GetInstanceId(), OwnAnchorId))
-            {
-                TargetPiece->ReleaseAnchorReservation(TargetAnchorId);
-                TargetPiece->AttachedPieces.Remove(this);
-                ReleaseAnchorReservation(OwnAnchorId);
-                ParentPiece.Reset(); ParentAnchorId = NAME_None; OwnAnchorIdUsed = NAME_None;
-                DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-                SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
-                return false;
-            }
-        }
+        TargetPiece->ReleaseAnchorReservation(TargetAnchorId);
+        TargetPiece->AttachedPieces.Remove(this);
+        ReleaseAnchorReservation(OwnAnchorId);
+        ParentPiece.Reset(); ParentAnchorId = NAME_None; OwnAnchorIdUsed = NAME_None;
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        return false;
     }
 
     bIsHeld = false;
