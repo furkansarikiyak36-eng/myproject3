@@ -227,8 +227,8 @@ def add_support_top_snap_points(support_actor):
 def add_player_start(game_mode_class):
     start = unreal.EditorLevelLibrary.spawn_actor_from_class(
         unreal.PlayerStart,
-        unreal.Vector(0.0, -1250.0, 110.0),
-        unreal.Rotator(0.0, 90.0, 0.0)
+        unreal.Vector(0.0, -500.0, 110.0),
+        unreal.Rotator(-10.0, 90.0, 0.0)
     )
     start.set_actor_label(PREFIX + "PlayerStart")
 
