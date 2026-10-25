@@ -30,7 +30,7 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Status: PARTIAL — not complete.**
 
-**Progress in WOOD-001:** `ELogPieceType::QuarterSectionLog` and the new `.QuarterSectionLog` definition suffix now distinguish the quarter-round cross-section output from the legacy `QuarterLog` name. The old suffix remains a compatibility alias for older processed definitions. This is only a naming/state-definition fix; it does not create the missing extra physical outputs, partial-cut progress, or prove the configured mesh assets are correct.
+**Progress in WOOD-001 / WOOD-002:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `TrySplitItem` now atomically registers the first output (retaining the source ID) and a new output (new GUID) with a durable split receipt; `SplitHalf` / `Quarter` actor paths spawn a deferred second physical actor, bind its ownership ID, validate its structural node and attempt rollback on failure. SaveGame v7/fixed-step rollback carry split receipts. **Still partial:** mesh-specific cross-section offsets must be configured, and UE 5.8 build/PIE, failure injection, full physical geometry, actor transform persistence and end-to-end source counts remain unverified.
 
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
@@ -42,7 +42,9 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 ### Still missing / not proven
 - [ ] Separate **cut progress** from completed piece type; there is no complete partial-cut progress state and visible progression contract.
 - [ ] Separate length fraction (whole, 3/4, 1/2 length, 1/4 length) from cross-section shape (whole round, half-round, quarter-round, hewn, squared, groove, trough). The existing `QuarterLog` / `Quarter` naming risks mixing length and cross-section meanings.
-- [ ] A processing operation must produce the correct number of physical outputs. Current `TryApplyCutAction` changes the existing actor's mesh/type and its single ledger record; it does not prove that a whole log's split halves or offcuts are spawned and registered as separate physical resources.
+- [x] Source-level output path now supports two physically separate outputs for `SplitHalf` and `Quarter`, with an ownership split receipt, stable source ID, unique child ID, deferred child spawn, graph-registration verification and rollback attempt. This is a code-layer result only, not a verified engine result.
+- [ ] Configure and verify per-mesh cross-section center offsets; default zero offsets deliberately reject splitting rather than placing overlapping pieces.
+- [ ] Add/review authoring data for any additional offcuts/multiple output counts; other cut actions still use single-actor transformation semantics.
 - [ ] Define the state → allowed action → resulting piece(s) → mesh/collision → length/quantity table for every action.
 - [ ] Confirm every required output mesh/asset is actually assigned in the intended Blueprint/content assets; C++ properties alone do not prove that.
 - [ ] Complete tree-felling/grounding/length-to-log generation, with stable IDs and collision.
