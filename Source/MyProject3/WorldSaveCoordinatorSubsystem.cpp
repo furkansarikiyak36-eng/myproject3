@@ -193,6 +193,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     if (Candidate->SchemaVersion == 6)
     {
         Candidate->ItemSplitReceipts.Reset();
+        Candidate->SchemaVersion = 7;
+    }
+    if (Candidate->SchemaVersion == 7)
+    {
+        // Schema v8 adds MeshVariantSetId to authoritative item records. Older
+        // saves deserialize that optional FName as NAME_None; no filename-based
+        // or unverified nominal-size inference is performed during migration.
         Candidate->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
