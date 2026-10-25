@@ -140,12 +140,12 @@ bool AStickPrimitivePiece::ActivateAfterOwnershipTransfer()
 
 void AStickPrimitivePiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    RemoveConnection();
+    RemoveConnection(true);
     for (const TWeakObjectPtr<AStickPrimitivePiece>& Child : AttachedPieces)
     {
         if (Child.IsValid())
         {
-            Child->RemoveConnection();
+            Child->RemoveConnection(true);
         }
     }
     AttachedPieces.Reset();
@@ -437,20 +437,42 @@ void AStickPrimitivePiece::ReleaseAnchor(FName AnchorId)
     }
 }
 
-bool AStickPrimitivePiece::RemoveConnection()
+bool AStickPrimitivePiece::RemoveConnection(bool bAllowGraphFailure)
 {
-    if (StructuralIdentity)
+    AStickPrimitivePiece* Parent = ParentPiece.Get();
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    bool bGraphDisconnected = false;
+
+    if (Parent)
     {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        bool bGraphEdgeMatches = false;
+        if (Graph && StructuralIdentity && Parent->StructuralIdentity)
         {
-            Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+            FStructuralNodeRecord Node;
+            bGraphEdgeMatches = Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) &&
+                Node.ParentNodeId == Parent->StructuralIdentity->GetInstanceId();
+            if (bGraphEdgeMatches)
+                bGraphDisconnected = Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+        }
+
+        if ((!bGraphEdgeMatches || !bGraphDisconnected) && !bAllowGraphFailure)
+            return false;
+    }
+    else if (Graph && StructuralIdentity)
+    {
+        FStructuralNodeRecord Node;
+        if (Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) &&
+            Node.ParentNodeId.IsValid())
+        {
+            bGraphDisconnected = Graph->TryDisconnect(StructuralIdentity->GetInstanceId());
+            if (!bGraphDisconnected && !bAllowGraphFailure)
+                return false;
         }
     }
-    AStickPrimitivePiece* Parent = ParentPiece.Get();
+
     if (!Parent)
-    {
-        return false;
-    }
+        return bGraphDisconnected;
 
     Parent->ReleaseAnchor(ParentAnchorId);
     Parent->AttachedPieces.Remove(this);
