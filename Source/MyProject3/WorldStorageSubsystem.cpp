@@ -96,12 +96,8 @@ bool UWorldStorageSubsystem::CanAcceptItem(const FGuid& StorageId, const FGuid& 
         return false;
 
     FWorldOwnedItemRecord Item;
-    // Only a unique item presently held by a different source storage may
-    // reserve destination capacity for cargo. Inventory/world items must use
-    // their own explicit transfer path instead of bypassing storage ownership.
     if (!Ownership->TryGetItem(ItemId, Item) ||
-        Item.OwnerKind != EWorldItemOwnerKind::Storage ||
-        Item.OwnerId == StorageId)
+        (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == StorageId))
         return false;
 
     int32 StoredCount = 0;
@@ -140,8 +136,11 @@ bool UWorldStorageSubsystem::TryReserveIncoming(
     }
 
     FWorldOwnedItemRecord Item;
+    // Cargo may only reserve capacity for a unique item that is currently
+    // stored at a different registered source; prevent inventory/world bypass.
     if (!Ownership->TryGetItem(ItemId, Item) ||
-        (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == StorageId))
+        Item.OwnerKind != EWorldItemOwnerKind::Storage ||
+        Item.OwnerId == StorageId)
         return false;
 
     int32 StoredCount = 0;
