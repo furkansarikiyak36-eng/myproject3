@@ -601,7 +601,12 @@ bool ALogBuildPiece::CanSnapPointAccept(
     const FLogSnapPoint& TargetPoint = SnapPoints[TargetPointIndex];
     const FLogSnapPoint& SourcePoint = SourcePiece->SnapPoints[SourcePointIndex];
 
-    if (!TargetPoint.AcceptsPieceType(SourcePiece->PieceType) ||
+    // Revalidate both ends here, not only in the carry component's candidate
+    // search. TryReserveSnapPoints is callable independently and must not
+    // reserve an occupied or source-only target anchor.
+    if (!TargetPoint.bCanReceive ||
+        TargetPoint.bOccupied ||
+        !TargetPoint.AcceptsPieceType(SourcePiece->PieceType) ||
         !SourcePoint.bCanSource ||
         SourcePoint.bOccupied)
     {
