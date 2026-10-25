@@ -24,6 +24,8 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryStorePhysicalActor(AActor* WorldActor);
  /** Transfers a unique owned item from inventory into a storage ledger owner. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryMoveOwnedItemToStorage(FGuid ItemId, FGuid StorageId);
+ /** Moves a stored unique item to this inventory without duplicating the ledger record. */
+ UFUNCTION(BlueprintCallable, Category="Inventory") bool TryWithdrawStoredItem(FGuid ItemId, FGuid StorageId);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryRemoveItem(FName ItemId, int32 Quantity);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool SetQuickAccessItem(FName ItemId);
  UFUNCTION(BlueprintPure, Category="Inventory") int32 GetItemCount(FName ItemId) const;
