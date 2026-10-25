@@ -598,6 +598,29 @@ bool ALogBuildPiece::CanSnapPointAccept(
         return false;
     }
 
+    // A piece may have only one structural parent. Reparenting without first
+    // detaching would strand the old parent's occupied anchor/child entry.
+    // Also reject moving a support with children through this low-level API.
+    if (SourcePiece->SnapParent.IsValid() ||
+        SourcePiece->ParentSnapPointIndex != INDEX_NONE ||
+        SourcePiece->OwnSnapPointIndexUsed != INDEX_NONE ||
+        SourcePiece->GetAttachedPieceCount() > 0)
+    {
+        return false;
+    }
+
+    // Reject a cycle: the target cannot already be inside the source piece's
+    // descendant chain, otherwise attachment would create a structural loop.
+    for (const ALogBuildPiece* Ancestor = this;
+         Ancestor;
+         Ancestor = Ancestor->SnapParent.Get())
+    {
+        if (Ancestor == SourcePiece)
+        {
+            return false;
+        }
+    }
+
     const FLogSnapPoint& TargetPoint = SnapPoints[TargetPointIndex];
     const FLogSnapPoint& SourcePoint = SourcePiece->SnapPoints[SourcePointIndex];
 
