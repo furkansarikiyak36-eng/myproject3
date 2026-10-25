@@ -111,6 +111,7 @@ protected:
 
 private:
     float TimeUntilSnapRefresh = 0.0f;
+    FGuid CarryOwnerId;
     float HeldYawOffset = 0.0f;
     ELogCutAction SelectedCutAction = ELogCutAction::SplitHalf;
     FTransform CurrentSnapActorTransform = FTransform::Identity;
