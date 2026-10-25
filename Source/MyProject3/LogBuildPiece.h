@@ -159,6 +159,8 @@ public:
 
     // Completes the actor-side registration after a unique inventory item becomes world-owned.
     bool ActivateAfterOwnershipTransfer();
+    /** Applies a configured initial geometry state to a newly spawned, world-owned output. */
+    bool TrySetInitialPieceType(ELogPieceType DesiredType, FGuid OperationId);
 
     UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
     bool CanApplyCutAction(ELogCutAction Action) const;
