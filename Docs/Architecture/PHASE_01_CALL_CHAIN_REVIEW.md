@@ -34,7 +34,7 @@ Working branch: `phase-01-foundation-v2`
 - `FindBestSnapCandidate` requires the crosshair trace to hit an already placed, non-held `ALogBuildPiece`. It evaluates compatible/free source and receiving anchors and computes the held actor transform from the anchor transforms.
 - `PlaceHeldPiece` first attempts `TryReserveSnapPoints` when a snap candidate exists. On success, both anchors become occupied and the child is attached to the target. Otherwise free placement is allowed only when enabled and, if configured, a valid non-build-piece surface is present. If a valid snap candidate was explicitly attempted but reservation fails, the current branch restores the prior transform, clears the candidate and returns false instead of falling through to free placement.
 - `CanSnapPointAccept` checks source/target validity, source capability/occupancy, tag/type compatibility, and that the receiving host is already placed and not held.
-- `TryReserveSnapPoints` performs the occupancy mutation and calls `AttachToSnapParent`. `DetachFromSnapParent` releases the parent anchor and removes the child from the parent's attached-piece list.
+- `TryReserveSnapPoints` revalidates both anchors, calls the result-returning `AttachToSnapParent`, and marks both anchors occupied only after `AttachToActor` succeeds. `AttachToSnapParent` writes parent/index state and registers the child only after the engine attachment succeeds; failure returns false before occupancy is committed. `DetachFromSnapParent` releases the parent anchor and removes the child from the parent's attached-piece list.
 
 ## Confirmed compatibility constraints
 
