@@ -5,10 +5,17 @@
 - [x] Result envelope distinguishes machine-readable code from human-readable message.
 - [x] Each result receives a valid operation GUID when caller supplies none.
 - [x] Failure factory rejects `Success` as a failure code and clears affected-object IDs.
-- [x] Existing log/carry public signatures remain unchanged.\n- [x] Request envelope includes operation ID/type, target IDs, optional definition keys/context and expected revisions.\n- [x] Structural validation rejects missing operation identity/type and invalid target/revision records.
+- [x] Existing log/carry public signatures remain unchanged.
+- [x] Request envelope includes operation ID/type, target IDs, optional definition keys/context and expected revisions.
+- [x] Structural validation rejects missing operation identity/type and invalid target/revision records.
 - [ ] Compile/UHT verification pending final integrated Unreal Engine 5.8 gate.
 
-## Unitized resource contract\n- [x] Resource amount requires definition ID and unit ID.\n- [x] Negative and non-finite quantities are rejected.\n- [x] Sufficiency check is read-only; inventory ownership/consumption remains in resource-domain implementation.\n\n## World-object identity
+## Unitized resource contract
+- [x] Resource amount requires definition ID and unit ID.
+- [x] Negative and non-finite quantities are rejected.
+- [x] Sufficiency check is read-only; inventory ownership/consumption remains in resource-domain implementation.
+
+## World-object identity
 - [x] Instance GUID field added.
 - [x] Definition key is a stable `FName`, separate from display text.
 - [x] Missing instance GUID is generated at BeginPlay.
@@ -18,7 +25,13 @@
 - [x] Add world-scoped active-ID registry; duplicate active IDs are reassigned before normal gameplay use.
 - [ ] Persistence round-trip is not implemented or verified.
 
-## Committed events\n- [x] Event payload contains schema version, event ID, operation ID, event type, affected stable IDs and world time.\n- [x] Dispatcher rejects invalid event type, unsupported schema and missing operation ID.\n- [x] Dispatcher is notification-only and does not mutate domain state or claim durable delivery.\n- [ ] Domain integration must call it only after authoritative state commit; no existing gameplay operation has been migrated to emit events yet.\n\n## Compatibility and ownership
+## Committed events
+- [x] Event payload contains schema version, event ID, operation ID, event type, affected stable IDs and world time.
+- [x] Dispatcher rejects invalid event type, unsupported schema and missing operation ID.
+- [x] Dispatcher is notification-only and does not mutate domain state or claim durable delivery.
+- [ ] Domain integration must call it only after authoritative state commit; no existing gameplay operation has been migrated to emit events yet.
+
+## Compatibility and ownership
 - [x] Existing `ALogBuildPiece` remains the current log-processing/construction authority.
 - [x] `ULogCarryComponent` remains the input/preview owner.
 - [x] No global dispatcher, event bus, or duplicate world-state store introduced.
