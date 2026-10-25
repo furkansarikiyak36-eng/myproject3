@@ -175,6 +175,28 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
 
 bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
 {
+    // Preflight all edges before mutating any local attachment. Cross-domain
+    // edges need their own actor adapter; do not detach a log from a stone or
+    // foundation and then silently leave the canonical edge without a local link.
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        const FStructuralNodeRecord& ChildNode = Pair.Value;
+        if (!ChildNode.ParentNodeId.IsValid())
+            continue;
+        const FStructuralNodeRecord* ParentNode = Nodes.Find(ChildNode.ParentNodeId);
+        if (!ParentNode)
+            return false;
+        const bool bChildIsLog = Cast<ALogBuildPiece>(ChildNode.Actor.Get()) != nullptr;
+        const bool bParentIsLog = Cast<ALogBuildPiece>(ParentNode->Actor.Get()) != nullptr;
+        if (bChildIsLog != bParentIsLog)
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("Cannot restore mixed log/non-log structural edge until both actor adapters support local anchor rehydration (child %s)."),
+                *Pair.Key.ToString());
+            return false;
+        }
+    }
+
     // First clear stale actor-local pointers/reservations. The canonical graph
     // remains untouched and is the only authority for parent/anchor relations.
     for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
