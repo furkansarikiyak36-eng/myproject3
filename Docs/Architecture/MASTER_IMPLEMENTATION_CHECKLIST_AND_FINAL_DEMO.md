@@ -617,7 +617,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] Entegre oynanış senaryosu tamamlandı
 
 **Kaynak dosyaları:** `Source/MyProject3/WorldSimulationCoordinatorSubsystem.h`, `Source/MyProject3/WorldSimulationCoordinatorSubsystem.cpp`  
-**Commit/PR:** `fix/world-simulation-fail-closed`; PR oluşturulduktan sonra numara bu kayda eklenecek.  
+**Commit/PR:** [PR #18 — Core correctness: fail closed after fixed-step rollback failure](https://github.com/furkansarikiyak36-eng/myproject3/pull/18); `fix/world-simulation-fail-closed`.  
 **Sonuç:** Daha önce rollback başarısızlığı yalnızca loglanıyordu; koordinatör sonraki sabit adımı engellemiyordu. Artık rollback başarısızlığı `bSimulationFaulted` durumunu ve bir açıklama metnini ayarlıyor. Koordinatör sonraki `AdvanceFixedStep` çağrılarını reddediyor ve `IsWorldSimulationReady` false döndürüyor. Amaç tutarsız dünyayı otomatik olarak devam ettirmek yerine güvenli şekilde durdurmak.  
 **Kanıt seviyesi:** Kaynak incelemesi / statik değişiklik kontrolü; Unreal motor doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Bu koruma koordinatör üzerinden ilerleyen sabit adımlar için geçerlidir. Diğer sistemler başka bir yerden bağımsız olarak ilerletilmemeli. Rollback'in tüm sistemlerde kesin atomikliği veya fiziksel aktör yan etkilerinin geri alınması henüz kanıtlanmış değildir.  
