@@ -8,7 +8,7 @@
 
 Maintain one dependency-aware map for all 14 phases. Phase/pass branches are stacked work, not independent proof of completion. Compare each branch against its intended base before integration; do not merge work branches directly to `main` before the final integration gate.
 
-Canonical IDs M001–M119 are immutable. Landscape Builder is a cross-cutting terrain-authoring workstream supporting existing IDs, not a new mechanic-ID set. The detailed missing-behavior analysis and dependency plan is in `M001_M119_GAP_ANALYSIS_AND_IMPLEMENTATION_PLAN.md`; use it alongside the registry rather than treating names as complete specifications.
+Existing IDs M001–M119 are immutable; they are the current baseline, not necessarily the lifetime ceiling. Landscape Builder is a cross-cutting terrain-authoring toolchain and does not automatically create gameplay mechanics. If distinct player-facing behaviors are approved after overlap review, append M120+ without renumbering existing IDs. Detailed rules are in `M001_M119_GAP_ANALYSIS_AND_IMPLEMENTATION_PLAN.md` and `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md`.
 
 ## Phase map
 
@@ -49,6 +49,13 @@ Detailed plans: `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md` (terrain authoring) a
 Use UE 5.8's native Landscape system and Edit Layers for the outdoor heightfield. Add a project-owned, deterministic profile-driven editor workflow to generate/import base terrain, define macroforms and protected gameplay masks, and record a seed/version/checksum manifest. Use splines, patches/brushes and PCG only where supported by the installed UE 5.8 version and useful for the project.
 
 Do not duplicate the full native Landscape editor. Do not treat a heightfield as an arbitrary cave/tunnel volume. M071–M076 digging remains a separate bounded 3D pocket adapter driven by the authoritative terrain-state subsystem. No new M-IDs.
+
+## Scope extension policy
+
+- Keep every existing canonical ID and its meaning unchanged.
+- Refine already-covered behavior as child requirements (for example `M072-R01`) rather than adding duplicate IDs.
+- Register truly new gameplay behaviors only as M120+ after overlap review; update registry/schema/CSV/JSON/Markdown, dependencies, phase mapping and demo coverage together.
+- Track Landscape authoring operations such as heightmap generation/import, macroform profiles, erosion settings, biome/slope masks, spline authoring, PCG dressing and seed/checksum manifests as LB tooling deliverables, unless they create an explicit player-facing gameplay rule.
 
 ## Required mechanic record
 
