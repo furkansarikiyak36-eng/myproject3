@@ -129,6 +129,42 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
     return true;
 }
 
+bool ReconcilePhysicalActorSnapshotsWithItems(
+    const TArray<FWorldPhysicalActorSnapshot>& PhysicalActors,
+    TArray<FWorldOwnedItemRecord>& Items)
+{
+    TMap<FGuid, int32> ItemIndices;
+    for (int32 Index = 0; Index < Items.Num(); ++Index)
+    {
+        const FWorldOwnedItemRecord& Item = Items[Index];
+        if (!Item.ItemId.IsValid() || ItemIndices.Contains(Item.ItemId))
+            return false;
+        ItemIndices.Add(Item.ItemId, Index);
+    }
+
+    for (const FWorldPhysicalActorSnapshot& ActorState : PhysicalActors)
+    {
+        const int32* ItemIndex = ItemIndices.Find(ActorState.IdentityId);
+        if (!ItemIndex)
+            continue; // Non-item world actors, such as harvestable trees.
+
+        FWorldOwnedItemRecord& Item = Items[*ItemIndex];
+        if (Item.OwnerKind != EWorldItemOwnerKind::World ||
+            Item.Quantity != 1 ||
+            Item.DefinitionId != ActorState.DefinitionId)
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("Physical actor %s conflicts with item ownership/definition state."),
+                *ActorState.IdentityId.ToString());
+            return false;
+        }
+        // Save the authoritative item record at the same world location as its
+        // physics actor; otherwise a load would restore a stale ledger position.
+        Item.WorldLocation = ActorState.ActorTransform.GetLocation();
+    }
+    return true;
+}
+
 bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysicalActorSnapshot>& Snapshot)
 {
     if (!World)
@@ -325,9 +361,10 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             return false;
         }
     }
-    if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors))
+    if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors) ||
+        !ReconcilePhysicalActorSnapshotsWithItems(OutSave->PhysicalActors, OutSave->Items))
     {
-        UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor identity/state capture failed."));
+        UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor state could not be reconciled with item ownership."));
         return false;
     }
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
@@ -399,6 +436,9 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
             TEXT("World load refused because physical actor identities, classes or component state do not match this level."));
         return false;
     }
+    TArray<FWorldOwnedItemRecord> ValidatedPhysicalItems = Snapshot->Items;
+    if (!ReconcilePhysicalActorSnapshotsWithItems(Snapshot->PhysicalActors, ValidatedPhysicalItems))
+        return false;
 
     // Durable saves must never restore a half-finished operation. Runtime rollback
     // may restore Pending entries, but save/load only accepts Completed records.
