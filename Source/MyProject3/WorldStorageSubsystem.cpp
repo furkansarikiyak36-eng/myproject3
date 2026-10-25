@@ -25,8 +25,19 @@ bool UWorldStorageSubsystem::RegisterStorage(const FGuid& StorageId, int32 Capac
     if (!StorageId.IsValid() || CapacityUnits <= 0 || MaxStorages <= 0)
         return false;
 
-    if (const FWorldStorageContainerRecord* Existing = Storages.Find(StorageId))
-        return Existing->CapacityUnits == CapacityUnits;
+    if (FWorldStorageContainerRecord* Existing = Storages.Find(StorageId))
+    {
+        if (Existing->CapacityUnits != CapacityUnits)
+            return false;
+        if (!Existing->bAvailable)
+        {
+            if (Existing->Revision == MAX_int64)
+                return false;
+            Existing->bAvailable = true;
+            ++Existing->Revision;
+        }
+        return true;
+    }
 
     if (Storages.Num() >= MaxStorages)
         return false;
@@ -48,11 +59,30 @@ bool UWorldStorageSubsystem::GetStorage(
     return true;
 }
 
+bool UWorldStorageSubsystem::IsStorageAvailable(const FGuid& StorageId) const
+{
+    const FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
+    return Storage && Storage->bAvailable;
+}
+
+bool UWorldStorageSubsystem::SetStorageAvailable(const FGuid& StorageId, bool bAvailable)
+{
+    FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
+    if (!Storage || Storage->Revision == MAX_int64)
+        return false;
+    if (Storage->bAvailable != bAvailable)
+    {
+        Storage->bAvailable = bAvailable;
+        ++Storage->Revision;
+    }
+    return true;
+}
+
 bool UWorldStorageSubsystem::CanAcceptItem(const FGuid& StorageId, const FGuid& ItemId) const
 {
     const FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Storage || !Ownership || !StorageId.IsValid() || !ItemId.IsValid())
+    if (!Storage || !Storage->bAvailable || !Ownership || !StorageId.IsValid() || !ItemId.IsValid())
         return false;
 
     FWorldOwnedItemRecord Item;
@@ -81,7 +111,7 @@ bool UWorldStorageSubsystem::TryReserveIncoming(
 
     FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
-    if (!Storage || !Ownership || Storage->Revision == MAX_int64)
+    if (!Storage || !Storage->bAvailable || !Ownership || Storage->Revision == MAX_int64)
         return false;
 
     if (const FWorldStorageIncomingReservation* Existing = IncomingReservations.Find(CargoId))
@@ -134,7 +164,7 @@ bool UWorldStorageSubsystem::CanCommitIncomingReservation(
     const FGuid& StorageId, const FGuid& CargoId, const FGuid& ItemId) const
 {
     const FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
-    return Storage && Storage->Revision != MAX_int64 &&
+    return Storage && Storage->bAvailable && Storage->Revision != MAX_int64 &&
         HasIncomingReservation(StorageId, CargoId, ItemId);
 }
 
