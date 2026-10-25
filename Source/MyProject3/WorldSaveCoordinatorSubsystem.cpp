@@ -1,6 +1,7 @@
 #include "WorldSaveCoordinatorSubsystem.h"
 
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 #include "Kismet/GameplayStatics.h"
 #include "WorldSimulationSaveGame.h"
 #include "WorldSimulationClockSubsystem.h"
@@ -36,6 +37,17 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     OutSave->Clock = Clock->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items);
+    // Held actor/carry-component state is not yet part of this manifest. Refuse
+    // a lossy save rather than restoring an item to an orphaned Held owner.
+    for (const FWorldOwnedItemRecord& Item : OutSave->Items)
+    {
+        if (Item.OwnerKind == EWorldItemOwnerKind::Held)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("World save refused while item %s is held; drop or store it first."),
+                *Item.ItemId.ToString());
+            return false;
+        }
+    }
     OutSave->Inventories.Reset();
     for (TActorIterator<AActor> It(World); It; ++It)
     {
