@@ -52,41 +52,41 @@ struct FWorldItemTransferReceipt
 {
     GENERATED_BODY()
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FGuid OperationId;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FGuid ItemId;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     int64 ResultingRevision = 0;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     EWorldItemOwnerKind ResultingOwner = EWorldItemOwnerKind::World;
 
     // Immutable result snapshot returned by idempotent retries.
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FWorldOwnedItemRecord ResultRecord;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     int64 ExpectedRevision = 0;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     EWorldItemOwnerKind ExpectedOwner = EWorldItemOwnerKind::World;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     EWorldItemOwnerKind RequestedOwner = EWorldItemOwnerKind::World;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FGuid RequestedOwnerId;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FVector RequestedWorldLocation = FVector::ZeroVector;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     bool bDefinitionChange = false;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FName RequestedDefinitionId = NAME_None;
 };
 
@@ -123,8 +123,20 @@ public:
 
     UFUNCTION(BlueprintPure, Category="World|Items")
     int32 GetTrackedItemCount() const { return Items.Num(); }
+
+    /** Exports authoritative item records only (legacy callers intentionally omit retry receipts). */
     void ExportSnapshot(TArray<FWorldOwnedItemRecord>& OutItems) const;
+
+    /** Exports item records and idempotency receipts for rollback/save checkpoints. */
+    void ExportSnapshot(TArray<FWorldOwnedItemRecord>& OutItems,
+        TArray<FWorldItemTransferReceipt>& OutReceipts) const;
+
+    /** Restores item records and clears in-memory retry receipts. */
     bool RestoreSnapshot(const TArray<FWorldOwnedItemRecord>& Snapshot);
+
+    /** Atomically restores item records and their associated transfer idempotency receipts. */
+    bool RestoreSnapshot(const TArray<FWorldOwnedItemRecord>& Snapshot,
+        const TArray<FWorldItemTransferReceipt>& ReceiptSnapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Items")
