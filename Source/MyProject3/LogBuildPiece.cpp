@@ -37,70 +37,88 @@ void ALogBuildPiece::BeginPlay()
     Super::BeginPlay();
 
     bIsPlaced = bStartsPlaced;
-    if (StructuralIdentity)
+    if (!StructuralIdentity || !GetWorld())
     {
-        StructuralIdentity->EnsureIdentity();
+        SetActorHiddenInGame(true);
+        SetActorEnableCollision(false);
+        return;
+    }
 
-        // The physical actor and the ownership ledger share one stable item ID.
-        // A restored non-world owner must not leave a duplicate visible actor.
-        if (UWorldItemOwnershipSubsystem* Ownership =
-            GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>())
+    StructuralIdentity->EnsureIdentity();
+    if (BaseDefinitionId.IsNone())
+    {
+        BaseDefinitionId = StructuralIdentity->GetDefinitionId();
+        if (BaseDefinitionId.IsNone())
+            BaseDefinitionId = FName(TEXT("Wood.LogPiece"));
+    }
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Ownership)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Log piece '%s' has no world-item ownership subsystem."), *GetName());
+        if (Mesh) Mesh->SetSimulatePhysics(false);
+        SetActorHiddenInGame(true);
+        SetActorEnableCollision(false);
+        return;
+    }
+
+    FWorldOwnedItemRecord Item;
+    if (Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item))
+    {
+        // One stable ID must never produce a second visible world representation.
+        if (Item.OwnerKind != EWorldItemOwnerKind::World)
         {
-            FWorldOwnedItemRecord Existing;
-            if (Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Existing))
-            {
-                if (Existing.OwnerKind != EWorldItemOwnerKind::World)
-                {
-                    SetActorHiddenInGame(true);
-                    SetActorEnableCollision(false);
-                    SetActorTickEnabled(false);
-                    return;
-                }
-            }
-            else
-            {
-                FWorldOwnedItemRecord Record;
-                Record.ItemId = StructuralIdentity->GetInstanceId();
-                Record.DefinitionId = StructuralIdentity->GetDefinitionId().IsNone()
-                    ? FName(TEXT("Wood.LogPiece")) : StructuralIdentity->GetDefinitionId();
-                Record.Quantity = 1;
-                Record.OwnerKind = EWorldItemOwnerKind::World;
-                Record.WorldLocation = GetActorLocation();
-                if (!Ownership->RegisterItem(Record))
-                {
-                    UE_LOG(LogTemp, Error, TEXT("Log piece '%s' could not register item ownership."), *GetName());
-                    SetActorHiddenInGame(true);
-                    SetActorEnableCollision(false);
-                    return;
-                }
-            }
-        }
-        else
-        {
-            UE_LOG(LogTemp, Error, TEXT("Log piece '%s' has no world-item ownership subsystem."), *GetName());
+            if (Mesh) Mesh->SetSimulatePhysics(false);
             SetActorHiddenInGame(true);
             SetActorEnableCollision(false);
+            SetActorTickEnabled(false);
             return;
         }
 
-        UWorldStructuralGraphSubsystem* Graph =
-            GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-        FStructuralNodeRecord ExistingNode;
-        const FGuid NodeId = StructuralIdentity->GetInstanceId();
-        const bool bRegistered = Graph &&
-            (Graph->GetNode(NodeId, ExistingNode)
-                ? ExistingNode.Actor.Get() == this
-                : Graph->RegisterNode(this, NodeId, EStructuralNodeKind::Wood,
-                    bIsPlaced, 1.0f, 100000.0f, 100.0f));
-        if (!bRegistered)
+        if (Item.BaseDefinitionId.IsNone())
+            Item.BaseDefinitionId = Item.DefinitionId;
+        BaseDefinitionId = Item.BaseDefinitionId;
+        StructuralIdentity->SetDefinitionId(Item.DefinitionId);
+    }
+    else
+    {
+        Item.ItemId = StructuralIdentity->GetInstanceId();
+        Item.DefinitionId = StructuralIdentity->GetDefinitionId().IsNone()
+            ? BaseDefinitionId : StructuralIdentity->GetDefinitionId();
+        Item.BaseDefinitionId = BaseDefinitionId;
+        Item.Quantity = 1;
+        Item.OwnerKind = EWorldItemOwnerKind::World;
+        Item.WorldLocation = GetActorLocation();
+        if (!Ownership->RegisterItem(Item))
         {
-            UE_LOG(LogTemp, Error, TEXT("Log piece '%s' could not register structural graph node."), *GetName());
+            UE_LOG(LogTemp, Error, TEXT("Log piece '%s' could not register item ownership."), *GetName());
             if (Mesh) Mesh->SetSimulatePhysics(false);
             SetActorHiddenInGame(true);
             SetActorEnableCollision(false);
             return;
         }
+        StructuralIdentity->SetDefinitionId(Item.DefinitionId);
     }
+
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    FStructuralNodeRecord ExistingNode;
+    const FGuid NodeId = StructuralIdentity->GetInstanceId();
+    const bool bRegistered = Graph &&
+        (Graph->GetNode(NodeId, ExistingNode)
+            ? ExistingNode.Actor.Get() == this
+            : Graph->RegisterNode(this, NodeId, EStructuralNodeKind::Wood,
+                bIsPlaced, 1.0f, 100000.0f, 100.0f));
+    if (!bRegistered)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Log piece '%s' could not register structural graph node."), *GetName());
+        if (Mesh) Mesh->SetSimulatePhysics(false);
+        SetActorHiddenInGame(true);
+        SetActorEnableCollision(false);
+        return;
+    }
+
     if (Mesh)
     {
         Mesh->SetSimulatePhysics(!bIsPlaced);
