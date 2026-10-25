@@ -27,7 +27,7 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 
 | Script | State/configuration interaction |
 |---|---|
-| `UnrealEditorScripts/CreateLogSnapTestLevel.py` | Sets `starts_placed` on spawned native pieces; calls `set_placed_state(True)` for initially placed support pieces; calls `add_custom_snap_point` for support-top anchors. |
+| `UnrealEditorScripts/CreateLogSnapTestLevel.py` | Sets `starts_placed` on spawned native pieces; calls `set_placed_state(True)` for initially placed support pieces; calls `add_custom_snap_point` for support-top anchors. The C++ API now rejects None/reserved-prefix/duplicate IDs with a log warning, but the script's runtime result has not been verified. |
 | `UnrealEditorScripts/BuildLogSnapPrototype.ps1` | Builds `MyProject3Editor Win64 Development`; checks for an editor process using this project path. It does not run gameplay tests. |
 | `UnrealEditorScripts/ImportLogsToScene.py` | Creates/repairs a separate mesh-gallery level and imports assets; no direct calls to the native held/placed state API found in the tracked script. |
 | `UnrealEditorScripts/CreateCubeTestLevel.py` | Creates/repairs a separate cube test level; no direct calls to the native held/placed state API found in the tracked script. |
@@ -44,3 +44,7 @@ No Unreal Engine build, Editor session, physics simulation, or gameplay test was
 ## Recent source safeguard
 
 `ULogCarryComponent::PlaceHeldPiece` now restores the pre-attempt transform, clears the stale snap candidate, and returns failure when a valid snap candidate's anchor reservation fails. This prevents that explicit failed snap attempt from falling through into the free-placement path. This is a source-level safeguard; the race/stale-candidate scenario still needs the planned Unreal runtime test.
+
+## Custom snap-point ID safeguard
+
+`ALogBuildPiece::AddCustomSnapPoint` now rejects `NAME_None`, IDs beginning with `AutoEnd_` or `AutoSide_` (case-insensitive), and any ID already present in `SnapPoints`. Rejected calls emit a `LogTemp` warning and leave the array unchanged. The Blueprint-callable signature remains `void` for compatibility; this means callers do not receive a structured failure result. This is a source-level change only, pending Unreal build and focused runtime/editor checks.
