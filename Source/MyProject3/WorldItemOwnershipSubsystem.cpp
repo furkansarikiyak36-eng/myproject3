@@ -42,10 +42,7 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     if (const FWorldItemTransferReceipt* Receipt = Receipts.Find(OperationId))
     {
         if (Receipt->ItemId != ItemId) return false;
-        const FWorldOwnedItemRecord* Existing = Items.Find(ItemId);
-        if (!Existing || Existing->Revision != Receipt->ResultingRevision ||
-            Existing->OwnerKind != Receipt->ResultingOwner) return false;
-        OutRecord = *Existing;
+        OutRecord = Receipt->ResultRecord;
         return true;
     }
 
@@ -75,6 +72,7 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     Receipt.ItemId = ItemId;
     Receipt.ResultingRevision = Item->Revision;
     Receipt.ResultingOwner = Item->OwnerKind;
+    Receipt.ResultRecord = *Item;
     Receipts.Add(OperationId, Receipt);
     OutRecord = *Item;
     return true;
