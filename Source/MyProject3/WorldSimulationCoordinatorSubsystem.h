@@ -6,6 +6,9 @@
 
 class UWorldSimulationClockSubsystem;
 class UWorldThreatDirectorSubsystem;
+class UWorldAgricultureSubsystem;
+class UWorldSurvivalSubsystem;
+class UWorldProductionSubsystem;
 
 /**
  * Explicit orchestration boundary for deterministic world simulation.
@@ -44,4 +47,7 @@ private:
 
     UWorldSimulationClockSubsystem* GetClock() const;
     UWorldThreatDirectorSubsystem* GetThreatDirector() const;
+    UWorldAgricultureSubsystem* GetAgriculture() const;
+    UWorldSurvivalSubsystem* GetSurvival() const;
+    UWorldProductionSubsystem* GetProduction() const;
 };
