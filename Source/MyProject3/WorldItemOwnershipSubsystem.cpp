@@ -172,33 +172,119 @@ bool UWorldItemOwnershipSubsystem::TryGetItem(
 
 void UWorldItemOwnershipSubsystem::ExportSnapshot(TArray<FWorldOwnedItemRecord>& OutItems) const
 {
+    TArray<FWorldItemTransferReceipt> IgnoredReceipts;
+    ExportSnapshot(OutItems, IgnoredReceipts);
+}
+
+void UWorldItemOwnershipSubsystem::ExportSnapshot(
+    TArray<FWorldOwnedItemRecord>& OutItems,
+    TArray<FWorldItemTransferReceipt>& OutReceipts) const
+{
     OutItems.Reset();
     Items.GenerateValueArray(OutItems);
     OutItems.Sort([](const FWorldOwnedItemRecord& A, const FWorldOwnedItemRecord& B)
         { return A.ItemId.ToString() < B.ItemId.ToString(); });
+
+    OutReceipts.Reset();
+    Receipts.GenerateValueArray(OutReceipts);
+    OutReceipts.Sort([](const FWorldItemTransferReceipt& A, const FWorldItemTransferReceipt& B)
+        { return A.OperationId.ToString() < B.OperationId.ToString(); });
 }
 
 bool UWorldItemOwnershipSubsystem::RestoreSnapshot(const TArray<FWorldOwnedItemRecord>& Snapshot)
 {
-    if (Snapshot.Num() > MaxTrackedItems || MaxTrackedItems <= 0) return false;
-    TMap<FGuid, FWorldOwnedItemRecord> Proposed;
-    for (const FWorldOwnedItemRecord& Item : Snapshot)
+    TArray<FWorldItemTransferReceipt> EmptyReceipts;
+    return RestoreSnapshot(Snapshot, EmptyReceipts);
+}
+
+bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
+    const TArray<FWorldOwnedItemRecord>& Snapshot,
+    const TArray<FWorldItemTransferReceipt>& ReceiptSnapshot)
+{
+    if (Snapshot.Num() > MaxTrackedItems || MaxTrackedItems <= 0)
+        return false;
+
+    const auto IsValidItem = [](const FWorldOwnedItemRecord& Item) -> bool
     {
         if (!Item.ItemId.IsValid() || Item.DefinitionId.IsNone() || Item.Quantity <= 0 ||
-            Item.Revision <= 0 || static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) || Proposed.Contains(Item.ItemId) ||
-            !FMath::IsFinite(Item.WorldLocation.X) || !FMath::IsFinite(Item.WorldLocation.Y) ||
+            Item.Revision <= 0 ||
+            static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            !FMath::IsFinite(Item.WorldLocation.X) ||
+            !FMath::IsFinite(Item.WorldLocation.Y) ||
             !FMath::IsFinite(Item.WorldLocation.Z))
+        {
             return false;
+        }
+
         const bool bNeedsOwner = Item.OwnerKind == EWorldItemOwnerKind::Held ||
-            Item.OwnerKind == EWorldItemOwnerKind::Inventory || Item.OwnerKind == EWorldItemOwnerKind::Storage ||
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory ||
+            Item.OwnerKind == EWorldItemOwnerKind::Storage ||
             Item.OwnerKind == EWorldItemOwnerKind::InTransit;
-        if (bNeedsOwner && !Item.OwnerId.IsValid()) return false;
+        return !bNeedsOwner || Item.OwnerId.IsValid();
+    };
+
+    TMap<FGuid, FWorldOwnedItemRecord> ProposedItems;
+    for (const FWorldOwnedItemRecord& Item : Snapshot)
+    {
+        if (!IsValidItem(Item) || ProposedItems.Contains(Item.ItemId))
+            return false;
+
         FWorldOwnedItemRecord Normalized = Item;
         if (Normalized.BaseDefinitionId.IsNone())
             Normalized.BaseDefinitionId = Normalized.DefinitionId;
-        Proposed.Add(Normalized.ItemId, Normalized);
+        ProposedItems.Add(Normalized.ItemId, Normalized);
     }
-    Items = MoveTemp(Proposed);
-    Receipts.Reset();
+
+    TMap<FGuid, FWorldItemTransferReceipt> ProposedReceipts;
+    for (const FWorldItemTransferReceipt& Receipt : ReceiptSnapshot)
+    {
+        if (!Receipt.OperationId.IsValid() || !Receipt.ItemId.IsValid() ||
+            !ProposedItems.Contains(Receipt.ItemId) || ProposedReceipts.Contains(Receipt.OperationId) ||
+            Receipt.ExpectedRevision <= 0 || Receipt.ExpectedRevision >= MAX_int64 ||
+            Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+            static_cast<uint8>(Receipt.ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            static_cast<uint8>(Receipt.RequestedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            static_cast<uint8>(Receipt.ResultingOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            !IsValidItem(Receipt.ResultRecord) || Receipt.ResultRecord.ItemId != Receipt.ItemId ||
+            Receipt.ResultRecord.Revision != Receipt.ResultingRevision ||
+            Receipt.ResultRecord.OwnerKind != Receipt.ResultingOwner ||
+            !FMath::IsFinite(Receipt.RequestedWorldLocation.X) ||
+            !FMath::IsFinite(Receipt.RequestedWorldLocation.Y) ||
+            !FMath::IsFinite(Receipt.RequestedWorldLocation.Z))
+        {
+            return false;
+        }
+
+        const bool bRequestedOwnerNeedsId = Receipt.RequestedOwner == EWorldItemOwnerKind::Held ||
+            Receipt.RequestedOwner == EWorldItemOwnerKind::Inventory ||
+            Receipt.RequestedOwner == EWorldItemOwnerKind::Storage ||
+            Receipt.RequestedOwner == EWorldItemOwnerKind::InTransit;
+        if (bRequestedOwnerNeedsId && !Receipt.RequestedOwnerId.IsValid())
+            return false;
+
+        if (Receipt.bDefinitionChange)
+        {
+            if (Receipt.ExpectedOwner != EWorldItemOwnerKind::World ||
+                Receipt.RequestedDefinitionId.IsNone() ||
+                Receipt.ResultRecord.DefinitionId != Receipt.RequestedDefinitionId)
+            {
+                return false;
+            }
+        }
+        else if (!Receipt.RequestedDefinitionId.IsNone() ||
+            Receipt.ResultRecord.OwnerKind != Receipt.RequestedOwner)
+        {
+            return false;
+        }
+
+        FWorldItemTransferReceipt NormalizedReceipt = Receipt;
+        if (NormalizedReceipt.ResultRecord.BaseDefinitionId.IsNone())
+            NormalizedReceipt.ResultRecord.BaseDefinitionId = NormalizedReceipt.ResultRecord.DefinitionId;
+        ProposedReceipts.Add(NormalizedReceipt.OperationId, NormalizedReceipt);
+    }
+
+    // Commit both maps only after every item and receipt has passed validation.
+    Items = MoveTemp(ProposedItems);
+    Receipts = MoveTemp(ProposedReceipts);
     return true;
 }
