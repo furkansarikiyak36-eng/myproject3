@@ -283,6 +283,24 @@ bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTran
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
     UWorldStorageSubsystem* Storage = GetStorage();
     if (!Ownership || !Storage) return false;
+
+    // The relationship is bidirectional: each active cargo needs one inbound
+    // reservation, and each reservation must refer to exactly one active cargo
+    // record. Reject orphan reservations instead of silently consuming capacity.
+    TArray<FWorldStorageContainerRecord> StorageRecords;
+    TArray<FWorldStorageIncomingReservation> Reservations;
+    Storage->ExportSnapshot(StorageRecords, Reservations);
+    for (const FWorldStorageIncomingReservation& Reservation : Reservations)
+    {
+        const FWorldCargoTransportRecord* RelatedCargo = Proposed.Find(Reservation.CargoId);
+        if (!RelatedCargo ||
+            (RelatedCargo->State != ECargoTransportState::InTransit &&
+             RelatedCargo->State != ECargoTransportState::Blocked) ||
+            RelatedCargo->ItemId != Reservation.ItemId ||
+            RelatedCargo->DestinationStorageId != Reservation.DestinationStorageId)
+            return false;
+    }
+
     for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : Proposed)
     {
         const FWorldCargoTransportRecord& R = Pair.Value;
