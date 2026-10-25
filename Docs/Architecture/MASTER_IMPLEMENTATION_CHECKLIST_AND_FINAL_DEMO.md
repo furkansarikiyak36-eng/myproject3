@@ -664,7 +664,7 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 - [ ] Rollback/fault-injection testi
 
 **Kaynak dosyaları:** `WorldOperationLedgerSubsystem.h/.cpp`, `GameplayCoreTypes.h`, `WorldSimulationCoordinatorSubsystem.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
-**Commit/PR:** `fix/durable-operation-ledger`; PR #20 açıldıktan sonra bağlantı eklenecek.  
+**Commit/PR:** [PR #20 — Persist operation ledger snapshots](https://github.com/furkansarikiyak36-eng/myproject3/pull/20); `fix/durable-operation-ledger`.  
 **Sonuç:** Genel Operation Ledger artık snapshot/restore edilebilir ve tamamlanmış operation sonuçlarını SaveGame v6 kapsamında koruyabilir. Kayıt esnasında Pending operation varsa kaydetme reddedilir; ledger'da işlem günlüğü olmadığı için yarım kalmış işlemi güvenli şekilde devam ettirecekmiş gibi gösterilmez.  
 **Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi ve çalışma zamanı doğrulaması yapılmadı.  
 **Kalan sınırlamalar:** Genel ledger henüz bütün domain operasyonlarına bağlanmış değil. Altı önemli kaynak dosyasında doğrudan çağrı olmadığını kontrol ettim; sonraki adım gerçek operasyon sahiplerini haritalandırıp uygun noktalara ledger protokolünü seçici bağlamak.  
