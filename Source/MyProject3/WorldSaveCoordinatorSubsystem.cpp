@@ -44,6 +44,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             FWorldInventorySnapshot& Record = OutSave->Inventories.AddDefaulted_GetRef();
             Inventory->ExportSnapshot(Record.OwnerActorId, Record.InventoryOwnerId,
                 Record.Items, Record.QuickAccessItemId);
+            if (!Inventory->RestoreSnapshot(Record.InventoryOwnerId, Record.Items, Record.QuickAccessItemId))
+                return false;
         }
     }
     Terrain->ExportSnapshot(OutSave->TerrainCells);
@@ -97,8 +99,12 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         UInventoryCraftingComponent* Inventory = nullptr;
         if (Record.OwnerActorId.IsValid()) ByOwnerActorId.RemoveAndCopyValue(Record.OwnerActorId, Inventory);
         if (!Inventory && Record.InventoryOwnerId.IsValid()) ByInventoryOwnerId.RemoveAndCopyValue(Record.InventoryOwnerId, Inventory);
-        if (!Inventory || RestoredInventories.Contains(Inventory) ||
-            !Inventory->RestoreSnapshot(Record.InventoryOwnerId, Record.Items, Record.QuickAccessItemId))
+        if (!Inventory || RestoredInventories.Contains(Inventory)) return false;
+        const FGuid PreviousInventoryOwnerId = Inventory->GetInventoryOwnerId();
+        if (Record.OwnerActorId.IsValid()) ByOwnerActorId.Remove(Record.OwnerActorId);
+        ByInventoryOwnerId.Remove(PreviousInventoryOwnerId);
+        ByInventoryOwnerId.Remove(Record.InventoryOwnerId);
+        if (!Inventory->RestoreSnapshot(Record.InventoryOwnerId, Record.Items, Record.QuickAccessItemId))
             return false;
         RestoredInventories.Add(Inventory);
     }
