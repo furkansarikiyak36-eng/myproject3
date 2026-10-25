@@ -407,7 +407,11 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  Identity->InstanceId = Item.ItemId;
  Identity->SetDefinitionId(Item.DefinitionId);
  if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(Spawned))
+ {
   LogPiece->bStartsPlaced = false;
+  LogPiece->BaseDefinitionId = Item.BaseDefinitionId.IsNone()
+   ? Item.DefinitionId : Item.BaseDefinitionId;
+ }
  if (AStoneBuildingPiece* StonePiece = Cast<AStoneBuildingPiece>(Spawned))
   StonePiece->DefinitionId = Item.DefinitionId;
  if (AStickPrimitivePiece* StickPiece = Cast<AStickPrimitivePiece>(Spawned))
