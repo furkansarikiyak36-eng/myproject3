@@ -2,12 +2,34 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "LogBuildingTypes.h"
 #include "HarvestableTreeActor.generated.h"
 
 class UStaticMesh;
 class UStaticMeshComponent;
 class UWorldObjectIdentityComponent;
 class ALogBuildPiece;
+
+/** A size-banded yield contract. Height is measured from the tree mesh's world bounds. */
+USTRUCT(BlueprintType)
+struct FHarvestTreeYieldRule
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield", meta=(ClampMin="0.0"))
+    float MinWorldHeight = 0.0f;
+
+    /** Zero means no upper bound; otherwise the bound is exclusive. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield", meta=(ClampMin="0.0"))
+    float MaxWorldHeight = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield", meta=(ClampMin="1"))
+    int32 LogCount = 3;
+
+    /** The selected log Blueprint must have the matching length/shape mesh variant. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield")
+    ELogPieceType OutputPieceType = ELogPieceType::WholeLog;
+};
 
 /**
  * Minimal physical tree lifecycle adapter.
@@ -48,6 +70,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest")
     FName LogMeshVariantSetId = NAME_None;
+    
+    /** If configured, exactly one height band must match; no filename-based size guesses. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield")
+    TArray<FHarvestTreeYieldRule> YieldRules;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.1"))
     float GroundedSpeedThreshold = 12.0f;
