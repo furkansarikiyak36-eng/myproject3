@@ -23,7 +23,10 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
         return false;
     }
 
-    Items.Add(Record.ItemId, Record);
+    FWorldOwnedItemRecord Normalized = Record;
+    if (Normalized.BaseDefinitionId.IsNone())
+        Normalized.BaseDefinitionId = Normalized.DefinitionId;
+    Items.Add(Normalized.ItemId, Normalized);
     return true;
 }
 
@@ -45,7 +48,8 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     if (const FWorldItemTransferReceipt* Receipt = Receipts.Find(OperationId))
     {
         // An operation ID is idempotent only for the same complete request.
-        if (Receipt->ItemId != ItemId || Receipt->ExpectedRevision != ExpectedRevision ||
+        if (Receipt->bDefinitionChange || !Receipt->RequestedDefinitionId.IsNone() ||
+            Receipt->ItemId != ItemId || Receipt->ExpectedRevision != ExpectedRevision ||
             Receipt->ExpectedOwner != ExpectedOwner || Receipt->RequestedOwner != NewOwner ||
             Receipt->RequestedOwnerId != NewOwnerId ||
             !Receipt->RequestedWorldLocation.Equals(NewWorldLocation, 0.001f))
@@ -93,6 +97,62 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     return true;
 }
 
+bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
+    const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedRevision,
+    EWorldItemOwnerKind ExpectedOwner, FName NewDefinitionId,
+    FWorldOwnedItemRecord& OutRecord)
+{
+    if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
+        static_cast<uint8>(ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+        NewDefinitionId.IsNone())
+    {
+        return false;
+    }
+
+    if (const FWorldItemTransferReceipt* Receipt = Receipts.Find(OperationId))
+    {
+        if (!Receipt->bDefinitionChange || Receipt->ItemId != ItemId ||
+            Receipt->ExpectedRevision != ExpectedRevision ||
+            Receipt->ExpectedOwner != ExpectedOwner ||
+            Receipt->RequestedDefinitionId != NewDefinitionId)
+        {
+            return false;
+        }
+        OutRecord = Receipt->ResultRecord;
+        return true;
+    }
+
+    FWorldOwnedItemRecord* Item = Items.Find(ItemId);
+    if (!Item || Item->Revision != ExpectedRevision || Item->OwnerKind != ExpectedOwner ||
+        Item->Revision == MAX_int64 || Item->DefinitionId == NewDefinitionId)
+    {
+        return false;
+    }
+
+    if (Item->BaseDefinitionId.IsNone())
+        Item->BaseDefinitionId = Item->DefinitionId;
+
+    Item->DefinitionId = NewDefinitionId;
+    ++Item->Revision;
+
+    FWorldItemTransferReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.ItemId = ItemId;
+    Receipt.ResultingRevision = Item->Revision;
+    Receipt.ResultingOwner = Item->OwnerKind;
+    Receipt.ResultRecord = *Item;
+    Receipt.ExpectedRevision = ExpectedRevision;
+    Receipt.ExpectedOwner = ExpectedOwner;
+    Receipt.RequestedOwner = Item->OwnerKind;
+    Receipt.RequestedOwnerId = Item->OwnerId;
+    Receipt.RequestedWorldLocation = Item->WorldLocation;
+    Receipt.bDefinitionChange = true;
+    Receipt.RequestedDefinitionId = NewDefinitionId;
+    Receipts.Add(OperationId, Receipt);
+    OutRecord = *Item;
+    return true;
+}
+
 bool UWorldItemOwnershipSubsystem::TryConsumeItem(
     const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedRevision,
     EWorldItemOwnerKind ExpectedOwner)
@@ -134,7 +194,10 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(const TArray<FWorldOwnedItemR
             Item.OwnerKind == EWorldItemOwnerKind::Inventory || Item.OwnerKind == EWorldItemOwnerKind::Storage ||
             Item.OwnerKind == EWorldItemOwnerKind::InTransit;
         if (bNeedsOwner && !Item.OwnerId.IsValid()) return false;
-        Proposed.Add(Item.ItemId, Item);
+        FWorldOwnedItemRecord Normalized = Item;
+        if (Normalized.BaseDefinitionId.IsNone())
+            Normalized.BaseDefinitionId = Normalized.DefinitionId;
+        Proposed.Add(Normalized.ItemId, Normalized);
     }
     Items = MoveTemp(Proposed);
     Receipts.Reset();
