@@ -51,7 +51,7 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 **Impact:** The property named as a startup default is also changed by gameplay placement. This may be intentional for the prototype, but conflates authored initialization with runtime state and could surprise construction/editor workflows or future save/load code.
 
-**Follow-up:** Check all declarations, Blueprint reads/writes, and level-authored defaults before splitting this into an immutable startup setting and runtime placement state. Do not change it until those consumers are inventoried.
+**Follow-up:** Recorded the source-derived semantics and compatibility gate in `PHASE_01_PLACEMENT_HELD_STATE_CONTRACT.md`. The tracked test-map script sets both `starts_placed` and `set_placed_state(True)` for supports. Do not remove the runtime write until local/untracked Blueprint and level consumers are inventoried.
 
 ### R4 — Physics/collision state depends on call order
 
@@ -59,7 +59,7 @@ These are source-path observations only. Collision profiles, attachment transfor
 
 **Impact:** A future caller that invokes only one setter can leave the piece in a mixed state (for example, loose but not simulating, or placed with unexpected collision settings).
 
-**Follow-up:** Map all call sites and Blueprint-callable usage. Consider a single state-transition owner that applies flags, physics, and collision together, but preserve the current API until callers are reconciled. Runtime verify pickup, drop, free placement, snap placement, and child detachment.
+**Follow-up:** The source-derived expected states and current setter semantics are recorded in `PHASE_01_PLACEMENT_HELD_STATE_CONTRACT.md`. If compatibility permits after Blueprint review, introduce one internal state-application helper while retaining public Blueprint-callable methods as wrappers. Runtime verify pickup, drop, free placement, snap placement, child detachment, and BeginPlay initialization.
 
 ### R5 — Free-placement fallback after a stale snap candidate needs a targeted scenario
 
