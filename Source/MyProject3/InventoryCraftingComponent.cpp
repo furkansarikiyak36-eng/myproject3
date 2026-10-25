@@ -19,9 +19,12 @@ int32 UInventoryCraftingComponent::GetCurrentWeightGrams() const
  for (const FInventoryStack& Stack : Items)
  {
   const int32* Weight = ItemWeightGrams.Find(Stack.ItemId);
-  if (Weight && *Weight > 0) Total += static_cast<int64>(*Weight) * FMath::Max(0, Stack.Quantity);
+  // Unknown/invalid weight must never make an item silently weightless.
+  if (!Weight || *Weight <= 0 || Stack.Quantity < 0) return MAX_int32;
+  Total += static_cast<int64>(*Weight) * Stack.Quantity;
+  if (Total > MAX_int32) return MAX_int32;
  }
- return static_cast<int32>(FMath::Clamp<int64>(Total, 0, MAX_int32));
+ return static_cast<int32>(Total);
 }
 
 bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& Additions) const
@@ -52,9 +55,12 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
  for (const FInventoryStack& Stack : Simulated)
  {
   const int32* ItemWeight = ItemWeightGrams.Find(Stack.ItemId);
-  if (ItemWeight && *ItemWeight > 0) Weight += static_cast<int64>(*ItemWeight) * Stack.Quantity;
+  // Fail closed until every item has a positive, configured weight.
+  if (!ItemWeight || *ItemWeight <= 0 || Stack.Quantity <= 0) return false;
+  Weight += static_cast<int64>(*ItemWeight) * Stack.Quantity;
+  if (Weight > MaxCarryWeightGrams) return false;
  }
- return Weight <= MaxCarryWeightGrams;
+ return true;
 }
 
 bool UInventoryCraftingComponent::TryAddItem(const FInventoryStack& Incoming)
