@@ -30,6 +30,8 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Status: PARTIAL — not complete.**
 
+**Progress in WOOD-001:** `ELogPieceType::QuarterSectionLog` and the new `.QuarterSectionLog` definition suffix now distinguish the quarter-round cross-section output from the legacy `QuarterLog` name. The old suffix remains a compatibility alias for older processed definitions. This is only a naming/state-definition fix; it does not create the missing extra physical outputs, partial-cut progress, or prove the configured mesh assets are correct.
+
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
 - `CanApplyCutAction` maps whole/split-half states to specific configured output mesh slots for split-half, quarter, hewn, gutter, trough, squared-beam and plank operations.
