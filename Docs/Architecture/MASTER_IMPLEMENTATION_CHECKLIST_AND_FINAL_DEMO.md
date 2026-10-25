@@ -37,11 +37,11 @@ Bir kutu yalnızca yanında yazan kabul ölçütü karşılandıktan sonra işar
 ### 1A. Kaynak temeli ve PR zinciri
 
 - [x] H dalını (mechanic-detailing-pass-h-integrated-world-systems) mevcut entegre kaynakların inceleme temeli olarak sabitle.
-- [ ] H dalındaki dosyaları M001–M119 ve sistem sahipleriyle eşleştir; mevcut, kısmi ve eksik alanları ayır.
+- [x] H dalındaki M001–M119 kayıtlarını kaynak inceleme/gap raporlarıyla karşılaştır; mevcut, kısmi ve eksik alanları yüksek seviyede eşleştir. (119 kayıt okundu; tam oynanış doğrulaması değil.)
 - [ ] `main`, eski faz dalları, A–H dalları ve Landscape plan dalı arasındaki atalık ilişkisini yeniden kontrol et.
 - [ ] Yığılmış A–H dallarını bağımsız özellikler gibi sırayla main'e birleştirme; her PR'ın benzersiz değişikliklerini kendi tabanına göre incele.
-- [ ] PR #16 ve PR #17'nin H dalıyla örtüşen içeriğini kontrol et; aynı planı iki kez veya eski bir tabanı yanlışlıkla içeri alma.
-- [ ] `BRANCH_INTEGRATION_AUDIT.md` içindeki commit sayıları ve durumlarını güncel karşılaştırmayla eşleştir.
+- [x] PR #16 ve PR #17'nin H dalıyla örtüşmesini kontrol et: G, F'nin bir commit ilerisi; H, G'nin 171 commit ilerisi; PR #17 H'den 13 commit ileride ve beş dokümantasyon dosyasını değiştiriyor. Kod değişikliği olan yeni çalışma ayrı dalda tutuluyor.
+- [x] `BRANCH_INTEGRATION_AUDIT.md` commit sayıları ve durumları canlı dal karşılaştırmasına göre güncellendi; yeni düzeltme dalı ve kod kapsamı ayrıca kaydedildi.
 - [ ] Her ana iş paketi için amaç, kaynak dosyalar, bağımlılıklar, kabul ölçütleri ve bilinen sınırlamaları kaydet.
 - [ ] Mevcut M001–M119 ID'lerini, adlarını ve sahiplik alanlarını değiştirmeden koru.
 
@@ -69,7 +69,7 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Bir işlem birden çok sistemi değiştiriyorsa ön kontrol/commit/rollback sınırlarını belirle.
 - [ ] Mantıksal saati tek yetkili dünya saati olarak kullan; tarım, baskın, üretim, hava ve hayatta kalma için ayrı saatler oluşturma.
 - [ ] Sabit zaman adımı sırasını tanımla ve her sistemin bir adımı iki kez çalıştırmasını engelle.
-- [ ] Kısmi zaman ilerlemesi veya rollback başarısızlığı için açık hata politikası ve tanılama ekle.
+- [x] Rollback başarısızlığı için fail-closed politika eklendi: simülasyon arızalı duruma geçer, yeni sabit adımlar reddedilir, readiness false döner ve açıklama Blueprint üzerinden okunabilir. Kaynak değişikliği; UE derleme/fault-injection henüz yapılmadı.
 - [ ] Olayları yalnızca ilgili durum değişikliği commit edildikten sonra yayınla.
 - [ ] Bilinmeyen veya geçersiz eşya tanımının ağırlık, kapasite ve sahiplik kontrollerini atlamasını engelle.
 
@@ -605,6 +605,23 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 **Kanıt seviyesi:** Planlandı / Kaynakta mevcut-kısmi / Kaynak incelemesi tamamlandı / Motor doğrulandı / Demo kabul edildi  
 **Kalan sınırlamalar:**  
 **Sonraki bağımlı iş:**  
+
+---
+
+### İş kaydı: CORE-001 — Sabit adım rollback başarısızlığında fail-closed
+
+- [x] Kabul ölçütleri tamamlandı (kaynak düzeyindeki kapsam için)
+- [x] Kaynak incelemesi tamamlandı
+- [ ] Unreal derleme/UHT tamamlandı
+- [ ] Kontrollü rollback-failure/fault-injection senaryosu çalıştırıldı
+- [ ] Entegre oynanış senaryosu tamamlandı
+
+**Kaynak dosyaları:** `Source/MyProject3/WorldSimulationCoordinatorSubsystem.h`, `Source/MyProject3/WorldSimulationCoordinatorSubsystem.cpp`  
+**Commit/PR:** `fix/world-simulation-fail-closed`; PR oluşturulduktan sonra numara bu kayda eklenecek.  
+**Sonuç:** Daha önce rollback başarısızlığı yalnızca loglanıyordu; koordinatör sonraki sabit adımı engellemiyordu. Artık rollback başarısızlığı `bSimulationFaulted` durumunu ve bir açıklama metnini ayarlıyor. Koordinatör sonraki `AdvanceFixedStep` çağrılarını reddediyor ve `IsWorldSimulationReady` false döndürüyor. Amaç tutarsız dünyayı otomatik olarak devam ettirmek yerine güvenli şekilde durdurmak.  
+**Kanıt seviyesi:** Kaynak incelemesi / statik değişiklik kontrolü; Unreal motor doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** Bu koruma koordinatör üzerinden ilerleyen sabit adımlar için geçerlidir. Diğer sistemler başka bir yerden bağımsız olarak ilerletilmemeli. Rollback'in tüm sistemlerde kesin atomikliği veya fiziksel aktör yan etkilerinin geri alınması henüz kanıtlanmış değildir.  
+**Sonraki bağımlı iş:** CORE-002 — ownership transfer receipts ve işlem idempotency kayıtlarının snapshot/rollback/kayıt sınırları.
 
 ---
 
