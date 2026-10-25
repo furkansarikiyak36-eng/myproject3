@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "LogBuildPiece.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -105,6 +106,13 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
  UWorldItemOwnershipSubsystem* Ownership =
   GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
  if (!Identity || !Identity->HasValidIdentity() || !Ownership) return false;
+ const EWorldObjectLifecycleState PreviousLifecycle = Identity->GetLifecycleState();
+ if (PreviousLifecycle != EWorldObjectLifecycleState::World &&
+     PreviousLifecycle != EWorldObjectLifecycleState::Placed) return false;
+ if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(WorldActor))
+ {
+  if (!LogPiece->CanBePickedUp()) return false;
+ }
 
  FWorldOwnedItemRecord Item;
  if (!Ownership->TryGetItem(Identity->GetInstanceId(), Item) ||
@@ -136,9 +144,7 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
   return false;
  }
 
- WorldActor->SetActorHiddenInGame(true);
- WorldActor->SetActorEnableCollision(false);
- if (!WorldActor->Destroy())
+ if (!Identity->TryTransitionLifecycle(PreviousLifecycle, EWorldObjectLifecycleState::Destroyed))
  {
   const int32 StoredIndex = Items.IndexOfByPredicate([ItemId = Item.ItemId](const FInventoryStack& Stack)
    { return Stack.OwnedWorldItemId == ItemId; });
@@ -147,10 +153,18 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
   if (!Ownership->TryTransferItem(FGuid::NewGuid(), Stored.ItemId, Stored.Revision,
       EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::World,
       FGuid(), WorldActor->GetActorLocation(), RolledBack))
-   UE_LOG(LogTemp, Error, TEXT("Physical actor destroy rollback failed for item %s."), *Item.ItemId.ToString());
-  WorldActor->SetActorHiddenInGame(false);
-  WorldActor->SetActorEnableCollision(true);
+   UE_LOG(LogTemp, Error, TEXT("Physical item lifecycle rollback failed for item %s."), *Item.ItemId.ToString());
   return false;
+ }
+
+ WorldActor->SetActorHiddenInGame(true);
+ WorldActor->SetActorEnableCollision(false);
+ if (!WorldActor->Destroy())
+ {
+  // The item is already committed to inventory; keep its world representation
+  // inert rather than creating a duplicate world-owned copy.
+  UE_LOG(LogTemp, Warning, TEXT("Stored item %s is owned by inventory but its actor did not destroy."),
+   *Item.ItemId.ToString());
  }
  return true;
 }
