@@ -48,6 +48,7 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool RegisterProfile(const FWorldSurvivalProfile& Profile);
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateProtection(const FGuid& EntityId, float ClothingInsulation, float ShelterProtection, int64 ExpectedRevision);
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool SetWeather(EWorldWeatherState NewWeather, float Severity);
+    UFUNCTION(BlueprintPure, Category="World|Survival") bool CanAdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool AdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds);
     UFUNCTION(BlueprintCallable, Category="World|Exploration") bool RecordDiscovery(FName DiscoveryId, FVector Location, double LogicalTimeSeconds);
     UFUNCTION(BlueprintPure, Category="World|Survival") bool GetProfile(const FGuid& EntityId, FWorldSurvivalProfile& OutProfile) const;
