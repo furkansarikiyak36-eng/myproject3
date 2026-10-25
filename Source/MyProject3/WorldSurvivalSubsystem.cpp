@@ -42,7 +42,8 @@ bool UWorldSurvivalSubsystem::SetWeather(EWorldWeatherState NewWeather, float Se
     return true;
 }
 
-bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds)
+bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
+    double DeltaSeconds, double LogicalTimeSeconds) const
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
         !FMath::IsFinite(LogicalTimeSeconds) || LogicalTimeSeconds < 0.0 ||
@@ -51,13 +52,15 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         !FMath::IsFinite(ThirstPerHour) || ThirstPerHour < 0.0f ||
         !FMath::IsFinite(FatiguePerHour) || FatiguePerHour < 0.0f ||
         !FMath::IsFinite(ColdDamagePerHour) || ColdDamagePerHour < 0.0f)
-    {
         return false;
-    }
-
-    // Preflight every profile so revision exhaustion cannot leave a partial step.
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
         if (Pair.Value.Revision == MAX_int64) return false;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds)
+{
+    if (!CanAdvanceSurvivalStep(DeltaSeconds, LogicalTimeSeconds)) return false;
 
     const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
     for (TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
