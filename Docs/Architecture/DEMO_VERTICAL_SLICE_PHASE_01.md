@@ -79,7 +79,7 @@ A shared location may exercise multiple IDs, but each ID keeps its own acceptanc
 - Identify the actual GameMode/player controller/character/interaction entry points and available level/asset content.
 - Confirm which systems are callable from gameplay and which are only subsystem APIs.
 - Identify exact configured mesh variant sets and valid wood processing profiles.
-- Confirm bootstrap/fixed-step driver, interaction UI/feedback, and SaveGame entry points.
+- A level-placed bootstrap/fixed-step driver is now provided by `AWorldDemoBootstrapActor`; confirm it compiles, place exactly one instance in the demo level, and verify readiness in UE 5.8. Also confirm interaction UI/feedback and SaveGame entry points.
 - Publish a source-backed blocker list before assembling props.
 
 ### D2 — Build the first route, not the full world
@@ -108,4 +108,4 @@ A shared location may exercise multiple IDs, but each ID keeps its own acceptanc
 - [ ] All 119 IDs have traceability rows; unimplemented IDs remain explicitly blocked.
 - [ ] UE 5.8 compile and runtime evidence is recorded by the user/Claude Code.
 
-**Current truth:** this document defines the build contract. It does not claim that the map or any new gameplay code has already been created.
+**Current truth:** the build contract is documented and `AWorldDemoBootstrapActor` now provides an explicit, level-placed fixed-step bootstrap/driver. The map has not been created, and the actor has not been compiled or runtime-tested in UE 5.8.
