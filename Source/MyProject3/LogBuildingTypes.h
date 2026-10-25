@@ -1,6 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+class UStaticMesh;
 #include "LogBuildingTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -81,6 +83,57 @@ enum class ELogPlacementMode : uint8
     Vertical   UMETA(DisplayName = "Vertical"),
     Diagonal   UMETA(DisplayName = "Diagonal")
 };
+
+/** Authored asset bundle for one nominal log-mesh family. Set IDs are explicit; filename length is not guessed. */
+USTRUCT(BlueprintType)
+struct FLogProcessingMeshSet
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FName VariantSetId = NAME_None;
+
+    /** Descriptive label only (e.g. an asset family name); not treated as measured centimeters. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FName NominalLengthLabel = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> FullRoundMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> SplitHalfMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> QuarterSectionMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> HewnMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> GutterMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> TroughMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> SquaredBeamMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> PlankMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FVector SplitHalfCenterOffsetLocal = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FRotator SplitHalfChildRotationOffsetLocal = FRotator(0.0f, 0.0f, 180.0f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FVector QuarterCenterOffsetLocal = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FRotator QuarterChildRotationOffsetLocal = FRotator(0.0f, 180.0f, 0.0f);
+};
+
 
 
 UENUM(BlueprintType)
