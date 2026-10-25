@@ -44,20 +44,24 @@ bool UWorldThreatDirectorSubsystem::CanAdvanceDirectorAtTime(
         return false;
     }
 
-    if ((CurrentRaid.State == EThreatRaidState::Warning &&
-         TargetTimeSeconds >= CurrentRaid.ActiveStartTime &&
-         CurrentRaid.Revision == MAX_int64) ||
-        (CurrentRaid.State == EThreatRaidState::Active &&
-         TargetTimeSeconds >= CurrentRaid.PlannedEndTime &&
-         CurrentRaid.Revision >= MAX_int64 - 1))
+    const bool bWarningWillActivate =
+        CurrentRaid.State == EThreatRaidState::Warning &&
+        TargetTimeSeconds >= CurrentRaid.ActiveStartTime;
+    const bool bWillFinishCurrent =
+        (CurrentRaid.State == EThreatRaidState::Active ||
+         (bWarningWillActivate && TargetTimeSeconds >= CurrentRaid.PlannedEndTime)) &&
+        TargetTimeSeconds >= CurrentRaid.PlannedEndTime;
+
+    if ((bWarningWillActivate && CurrentRaid.Revision == MAX_int64) ||
+        (bWillFinishCurrent && CurrentRaid.Revision >=
+            (bWarningWillActivate ? MAX_int64 - 1 : MAX_int64)))
     {
         return false;
     }
 
     const bool bWillNeedRaid =
         (CurrentRaid.State == EThreatRaidState::None || IsTerminal(CurrentRaid.State) ||
-         (CurrentRaid.State == EThreatRaidState::Active &&
-          TargetTimeSeconds >= CurrentRaid.PlannedEndTime)) &&
+         bWillFinishCurrent) &&
         TargetTimeSeconds >= NextRaidTimeSeconds;
     if (!bWillNeedRaid)
     {
