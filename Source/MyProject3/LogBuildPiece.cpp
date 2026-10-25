@@ -257,7 +257,9 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
     }
 
     Mesh->SetStaticMesh(NewMesh);
-    GenerateDefaultSnapPoints();
+    // Preserve hand-authored anchors. Rebuild only the automatic anchors against
+    // the replacement mesh bounds so custom sockets are not silently discarded.
+    RegenerateAutomaticSnapPoints();
 }
 
 bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
