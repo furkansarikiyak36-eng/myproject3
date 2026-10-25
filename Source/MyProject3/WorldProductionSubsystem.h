@@ -63,6 +63,7 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterStation(const FWorldProductionStation& Station);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool EnqueueJob(const FGuid& StationId, FName RecipeId, FGuid& OutJobId);
+    UFUNCTION(BlueprintPure, Category="World|Production") bool CanAdvanceProductionStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AdvanceProductionStep(double DeltaSeconds);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool CollectCompletedJob(const FGuid& StationId, const FGuid& JobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool GetStation(const FGuid& StationId, FWorldProductionStation& OutStation) const;
