@@ -64,19 +64,34 @@ private:
     UPROPERTY(VisibleAnywhere, Category="Demo B|Terrain")
     TObjectPtr<UProceduralMeshComponent> TrailMesh;
 
-    UPROPERTY(Transient)
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Runtime Actors")
     TArray<TObjectPtr<ALogBuildPiece>> SpawnedLogs;
 
-    UPROPERTY(Transient)
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Runtime Actors")
     TArray<TObjectPtr<AHarvestableTreeActor>> HarvestableTrees;
 
-    UPROPERTY(Transient)
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Runtime Actors")
     TObjectPtr<UHeatSourceComponent> Fire;
 
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Terrain")
     TArray<float> TerrainHeights;
+
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Terrain")
     int32 TerrainPointCount = 0;
+
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Terrain")
     float TerrainSpacingCm = 250.0f;
+
+    UPROPERTY(VisibleAnywhere, Category="Demo B")
     bool bWorldBuilt = false;
+
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Construction")
+    TObjectPtr<AStoneBuildingPiece> DemoFooting;
+
+    UPROPERTY(VisibleAnywhere, Category="Demo B|Construction")
+    TObjectPtr<ALogBuildPiece> DemoFootingLog;
+
+    bool bFootingConnectionReady = false;
     bool bInputBound = false;
     FGuid PlayerSurvivalId;
     FString LastActionMessage = TEXT("Explore the settlement. V: chop tree.");
@@ -110,6 +125,7 @@ private:
     void BuildConstructionYard(const FLogProcessingMeshSet& Family);
     void BuildFutureZones();
     void BuildFire();
+    void TryConnectFooting();
 
     void AddZoneSign(const FString& Label, const FVector2D& Centre,
         const FLinearColor& Tint, bool bActive);
