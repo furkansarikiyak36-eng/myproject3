@@ -104,6 +104,9 @@ public:
     float GroundedSpeedThreshold = 35.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.1"))
+    float GroundedAngularSpeedThreshold = 12.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.1"))
     float GroundedHoldSeconds = 0.8f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Harvest")
