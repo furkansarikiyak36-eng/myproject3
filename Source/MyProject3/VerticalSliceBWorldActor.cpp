@@ -104,6 +104,11 @@ void AVerticalSliceBWorldActor::BeginPlay()
 {
     Super::BeginPlay();
     BuildWorld();
+
+    // The saved .umap may already contain the generated world. Per-play state
+    // is still initialized here rather than being baked into the editor map.
+    if (UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
+        Survival->SetWeather(EWorldWeatherState::Wind, 0.55f);
 }
 
 void AVerticalSliceBWorldActor::Tick(float DeltaSeconds)
@@ -112,6 +117,9 @@ void AVerticalSliceBWorldActor::Tick(float DeltaSeconds)
 
     if (!PlayerSurvivalId.IsValid())
         SetupPlayer();
+
+    if (!bFootingConnectionReady)
+        TryConnectFooting();
 
     UpdatePlayerSurvival(DeltaSeconds);
     DrawStatus();
@@ -153,9 +161,6 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     BuildStoneYard();
     BuildConstructionYard(Family);
     BuildFutureZones();
-
-    if (UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
-        Survival->SetWeather(EWorldWeatherState::Wind, 0.55f);
 
     LastActionMessage = TEXT("VerticalSlice_B ready. Follow the marked trail: camp -> timber -> wood yard -> build yard.");
     return true;
@@ -625,15 +630,14 @@ AStoneBuildingPiece* AVerticalSliceBWorldActor::SpawnLooseStone(
         return nullptr;
 
     AStoneBuildingPiece* Stone = GetWorld()->SpawnActorDeferred<AStoneBuildingPiece>(
-        AStoneBuildingPiece::StaticClass(), FTransform(FRotator::ZeroRotator, Location),
+        AStoneBuildingPiece::StaticClass(), FTransform(FRotator::ZeroRotator, Location, Scale),
         this, nullptr, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
     if (!Stone)
         return nullptr;
 
     Stone->Mesh->SetStaticMesh(Cube);
-    Stone->SetActorScale3D(Scale);
     Stone->DefinitionId = TEXT("Stone.Raw.VerticalSliceB");
-    Stone->FinishSpawning(FTransform(FRotator::ZeroRotator, Location));
+    Stone->FinishSpawning(FTransform(FRotator::ZeroRotator, Location, Scale));
     if (IsValid(Stone) && !Stone->IsHidden())
     {
         Stone->Mesh->SetMaterial(0, MakeTintedMaterial(FLinearColor(0.38f, 0.40f, 0.40f)));
@@ -798,37 +802,65 @@ void AVerticalSliceBWorldActor::BuildConstructionYard(const FLogProcessingMeshSe
     const FVector2D Centre = Zones[4].Centre;
     const float H = GetTerrainHeightAt(Centre.X, Centre.Y);
     UStaticMesh* Cube = LoadBasicMesh(TEXT("Cube"));
-    UMaterialConnectionSubsystem* Connections = GetWorld()
-        ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
-    if (!Family.BaseRoundMesh || !Cube || !Connections)
+    if (!Family.BaseRoundMesh || !Cube || !GetWorld())
         return;
 
     const FVector FootingLocation(Centre.X + 250.0f, Centre.Y + 250.0f, H + 20.0f);
+    const FVector FootingScale(1.2f, 1.2f, 0.4f);
+    const FTransform FootingTransform(FRotator::ZeroRotator, FootingLocation, FootingScale);
     AStoneBuildingPiece* Footing = GetWorld()->SpawnActorDeferred<AStoneBuildingPiece>(
-        AStoneBuildingPiece::StaticClass(), FTransform(FRotator::ZeroRotator, FootingLocation),
-        this, nullptr, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+        AStoneBuildingPiece::StaticClass(), FootingTransform, this, nullptr,
+        ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
     if (!Footing)
         return;
 
     Footing->Mesh->SetStaticMesh(Cube);
-    Footing->SetActorScale3D(FVector(1.2f, 1.2f, 0.4f));
     Footing->DefinitionId = TEXT("Stone.Foundation.VerticalSliceB");
+    Footing->bStartsPlaced = true;
     Footing->AddCustomAnchor(TEXT("Top"), TEXT("Stone"),
         FTransform(FVector(0.0f, 0.0f, 50.0f)), true, false);
-    Footing->FinishSpawning(FTransform(FRotator::ZeroRotator, FootingLocation));
+    Footing->FinishSpawning(FootingTransform);
+    DemoFooting = Footing;
 
     ALogBuildPiece* Log = SpawnLog(Family,
         FVector(FootingLocation.X, FootingLocation.Y, H + 120.0f), FRotator::ZeroRotator);
     if (!Log)
         return;
 
+    // This beam is authored as placed so physics cannot drop it off the footing
+    // before the world graph has completed actor registration during PIE.
+    Log->SetPlacedState(true);
     Log->AddCustomSnapPoint(TEXT("Bottom"), TEXT("LogEnd"),
         FTransform(FVector(0.0f, 0.0f, -17.5f)), true, false, true, false);
+    DemoFootingLog = Log;
+}
+
+void AVerticalSliceBWorldActor::TryConnectFooting()
+{
+    if (bFootingConnectionReady || !GetWorld() || !GetWorld()->IsGameWorld()
+        || !IsValid(DemoFooting) || !IsValid(DemoFootingLog))
+        return;
+
+    UMaterialConnectionSubsystem* Connections =
+        GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>();
+    if (!Connections)
+        return;
+
     FString Reason;
-    if (!Connections->TryConnect(Footing, TEXT("Top"), Log, TEXT("Bottom"), Reason))
+    bFootingConnectionReady = Connections->TryConnect(
+        DemoFooting, TEXT("Top"), DemoFootingLog, TEXT("Bottom"), Reason);
+    if (bFootingConnectionReady)
     {
-        LastActionMessage = FString::Printf(TEXT("Foundation test joint blocked: %s"), *Reason);
-        UE_LOG(LogTemp, Warning, TEXT("VerticalSlice_B foundation/log joint failed: %s"), *Reason);
+        LastActionMessage = TEXT("Construction check passed: the log is connected to the stone footing.");
+        return;
+    }
+
+    // Actor BeginPlay order is not guaranteed. Retry on the next tick until the
+    // pieces have registered their ownership/graph nodes; log one concise reason.
+    if (!Reason.IsEmpty() && LastActionMessage != FString::Printf(
+        TEXT("Foundation joint pending: %s"), *Reason))
+    {
+        LastActionMessage = FString::Printf(TEXT("Foundation joint pending: %s"), *Reason);
     }
 }
 
