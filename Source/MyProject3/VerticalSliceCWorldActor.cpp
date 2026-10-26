@@ -4,6 +4,7 @@
 #include "HarvestableTreeActor.h"
 #include "HeatSourceComponent.h"
 #include "LogAttachmentComponents.h"
+#include "LogSnapCharacter.h"
 #include "LogBuildPiece.h"
 #include "LogContainerActor.h"
 #include "RopeLineActor.h"
@@ -24,6 +25,7 @@
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -889,15 +891,62 @@ void AVerticalSliceCWorldActor::ChopInput()
     APlayerController* Controller = GetWorld()->GetFirstPlayerController();
     if (!Controller)
         return;
+
+    ++ChopSwingCount;
+    if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
+        Character->PlayAxeSwing();
+
     FVector Location;
     FRotator Rotation;
     Controller->GetPlayerViewPoint(Location, Rotation);
     FHitResult Hit;
     FCollisionQueryParams Params(SCENE_QUERY_STAT(VerticalSliceCChop), false, Controller->GetPawn());
-    if (!GetWorld()->LineTraceSingleByChannel(Hit, Location, Location + Rotation.Vector() * 260.0f, ECC_Visibility, Params))
+    const bool bHitSomething = GetWorld()->LineTraceSingleByChannel(
+        Hit, Location, Location + Rotation.Vector() * 260.0f, ECC_Visibility, Params);
+
+    if (!bHitSomething)
+    {
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 1.2f, FColor::Silver,
+                FString::Printf(TEXT("AXE SWING #%d | MISS - no target in range"), ChopSwingCount));
+        }
         return;
-    if (AHarvestableTreeActor* Tree = Cast<AHarvestableTreeActor>(Hit.GetActor()))
-        Tree->ApplyChopDamage(1.0f, Rotation.Vector());
+    }
+
+    AHarvestableTreeActor* Tree = Cast<AHarvestableTreeActor>(Hit.GetActor());
+    if (!Tree)
+    {
+        DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 12.0f, 8, FColor::Silver,
+            false, 0.8f, 0, 1.8f);
+        if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 1.2f, FColor::Silver,
+                FString::Printf(TEXT("AXE SWING #%d | Hit %s - not a chopable tree"),
+                    ChopSwingCount, Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("world")));
+        }
+        return;
+    }
+
+    const bool bAccepted = Tree->ApplyChopDamage(1.0f, Rotation.Vector());
+    if (bAccepted)
+        ++SuccessfulChopCount;
+
+    const bool bFelled = Tree->bFellingStarted;
+    const FColor FeedbackColor = !bAccepted ? FColor::Red : (bFelled ? FColor::Green : FColor::Orange);
+    const FString Feedback = FString::Printf(
+        TEXT("AXE SWING #%d | TREE HIT #%d | %s | Damage: %.1f | Tree HP: %.1f / %.1f%s"),
+        ChopSwingCount, SuccessfulChopCount, *Tree->GetName(), bAccepted ? 1.0f : 0.0f,
+        Tree->ChopHealth, Tree->MaxChopHealth, !bAccepted ? TEXT(" | BLOCKED") : (bFelled ? TEXT(" | FELLED") : TEXT("")));
+
+    DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 15.0f, 10, FeedbackColor,
+        false, 1.1f, 0, 2.5f);
+    DrawDebugString(GetWorld(), Hit.ImpactPoint + FVector(0.0f, 0.0f, 30.0f),
+        FString::Printf(TEXT("HIT #%d  HP %.1f"), SuccessfulChopCount, Tree->ChopHealth),
+        nullptr, FeedbackColor, 1.1f, true, 1.1f);
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FeedbackColor, Feedback);
 }
 
 void AVerticalSliceCWorldActor::UpdateSun()
