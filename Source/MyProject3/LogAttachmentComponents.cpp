@@ -23,13 +23,25 @@ USharpenedTipComponent::USharpenedTipComponent()
 bool USharpenedTipComponent::InitializeTip()
 {
     ALogBuildPiece* Log = Cast<ALogBuildPiece>(GetOwner());
+    const UStaticMeshComponent* LogMesh = Log ? Log->GetLogMesh() : nullptr;
     FLogGeometry Geometry;
-    if (!GetLogGeometry(Log, Geometry))
+    if (!LogMesh || !LogMesh->GetStaticMesh() || !GetLogGeometry(Log, Geometry))
         return false;
     const FVector Up = Geometry.Axis.Z >= 0.0f ? Geometry.Axis : -Geometry.Axis;
     const FVector Top = Geometry.Centre + Up * Geometry.HalfLength;
-    TipRadius = Geometry.Radius;
-    const float TipHeight = FMath::Max(25.0f, Geometry.Radius * 2.2f);
+
+    // The point follows the piece's own section: round for a log, a narrow
+    // wedge for a quarter, flat for a plank.
+    const FVector AxisLocal = AxisVector(Log->LongitudinalAxis);
+    const FVector Side1 = FMath::Abs(AxisLocal.X) < 0.9f ? FVector::XAxisVector : FVector::YAxisVector;
+    const FVector Side2 = FVector::CrossProduct(AxisLocal, Side1);
+    const FTransform MeshTransform = LogMesh->GetComponentTransform();
+    const FVector Extent = LogMesh->GetStaticMesh()->GetBounds().BoxExtent * MeshTransform.GetScale3D().GetAbs();
+    const float Half1 = FVector::DotProduct(Extent, Side1.GetAbs());
+    const float Half2 = FVector::DotProduct(Extent, Side2.GetAbs());
+    const FVector World1 = MeshTransform.TransformVectorNoScale(Side1);
+    TipRadius = FMath::Max(Half1, Half2);
+    const float TipHeight = FMath::Max(25.0f, 2.2f * TipRadius);
     TipLocation = Top + Up * TipHeight;
 
     TipMesh = NewObject<UStaticMeshComponent>(Log);
@@ -37,12 +49,12 @@ bool USharpenedTipComponent::InitializeTip()
     TipMesh->SetUsingAbsoluteScale(true);
     TipMesh->RegisterComponent();
     TipMesh->SetStaticMesh(LoadEngineShape(TEXT("Cone")));
-    if (UMaterialInterface* Material = Log->GetLogMesh()->GetMaterial(0))
+    if (UMaterialInterface* Material = LogMesh->GetMaterial(0))
         TipMesh->SetMaterial(0, Material);
     TipMesh->SetCollisionProfileName(TEXT("BlockAll"));
-    // The engine cone is 100 cm tall with its base at -50.
-    TipMesh->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZ(Up).ToQuat(), Top + Up * (0.5f * TipHeight),
-        FVector(2.0f * Geometry.Radius / 100.0f, 2.0f * Geometry.Radius / 100.0f, TipHeight / 100.0f)));
+    // The engine cone is 100 cm tall and 100 cm wide, centred on its middle.
+    TipMesh->SetWorldTransform(FTransform(FRotationMatrix::MakeFromZX(Up, World1).ToQuat(),
+        Top + Up * (0.5f * TipHeight), FVector(2.0f * Half1 / 100.0f, 2.0f * Half2 / 100.0f, TipHeight / 100.0f)));
     Log->Tags.AddUnique(TEXT("SharpenedTip"));
     return true;
 }

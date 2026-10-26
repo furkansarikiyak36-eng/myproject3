@@ -849,9 +849,18 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         const bool bLeft = OverlapFrom - A >= 25.0f;
         const bool bRight = B - OverlapTo >= 25.0f;
 
-        // The cut-out piece drops loose: useful as firewood or a board.
+        // The cut-out piece drops loose in front of the wall, where it can be
+        // picked up: useful as firewood or a board.
         if (ALogBuildPiece* Offcut = SpawnLogCopy(Entry.Log, Entry.Log->GetActorTransform()))
+        {
             TrimLogToRange(Offcut, ToLog(OverlapFrom), ToLog(OverlapTo));
+            const float Side = FVector::DotProduct(GetOwner()->GetActorLocation() - Origin, Normal) >= 0.0f ? 1.0f : -1.0f;
+            const float Out = 2.5f * Entry.Shape.Radius + 40.0f + 2.2f * Entry.Shape.Radius * Cut;
+            Offcut->SetActorLocation(Offcut->GetActorLocation() + Normal * Side * Out + FVector::UpVector * 5.0f,
+                false, nullptr, ETeleportType::TeleportPhysics);
+            if (UStaticMeshComponent* OffcutMesh = Offcut->GetLogMesh())
+                OffcutMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+        }
         if (bLeft && bRight)
         {
             if (ALogBuildPiece* RightPart = SpawnLogCopy(Entry.Log, Entry.Log->GetActorTransform()))

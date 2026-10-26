@@ -1464,4 +1464,50 @@ bool FCutMatrixDiagnosticTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+// Grid stacking: a log laid on a placed log sits down into it, starts on a
+// 75 cm grid point, lies along or across by the carry direction, and a post
+// stands on a grid point.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogGridStackTest,
+    "MyProject3.Carry.Logs.GridStackingAlongAcrossAndPosts", TestFlags)
+bool FLogGridStackTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Lower = SpawnBeam(World, FVector(0, 0, 20), FRotator::ZeroRotator, 600.0f, 36.0f, true);
+    ALogBuildPiece* Upper = SpawnBeam(World, FVector(0, -400, 20), FRotator::ZeroRotator, 300.0f, 36.0f, false);
+    FPlayerTools Player(World);
+    if (!TestNotNull(TEXT("Logs"), Upper))
+        return false;
+    using namespace MyProject3Construction;
+    FLogGeometry Shape;
+    FTransform Transform;
+
+    Player.Carry->PlacementMode = ELogPlacementMode::Horizontal;
+    TestTrue(TEXT("Lies along"), Player.Carry->ComputeStackPlacement(Upper, Lower, FVector(100, 0, 38), 0.0f, Transform));
+    Upper->SetActorTransform(Transform);
+    GetLogGeometry(Upper, Shape);
+    TestTrue(TEXT("Along the lower log"), FMath::Abs(Shape.Axis.X) > 0.99f);
+    TestTrue(FString::Printf(TEXT("Starts on a 75 cm grid point (%.1f)"), Shape.EndA().X),
+        FMath::IsNearlyZero(FMath::Fmod(Shape.EndA().X + 300.0f, 75.0f), 1.0f) ||
+        FMath::IsNearlyEqual(FMath::Fmod(Shape.EndA().X + 300.0f, 75.0f), 75.0f, 1.0f));
+    TestTrue(FString::Printf(TEXT("Sits down into the lower log (z %.1f)"), Shape.Centre.Z),
+        Shape.Centre.Z > 20.0f + 18.0f && Shape.Centre.Z < 20.0f + 36.0f);
+
+    TestTrue(TEXT("Lies across"), Player.Carry->ComputeStackPlacement(Upper, Lower, FVector(150, 0, 38), 90.0f, Transform));
+    Upper->SetActorTransform(Transform);
+    GetLogGeometry(Upper, Shape);
+    TestTrue(TEXT("Across the lower log"), FMath::Abs(Shape.Axis.Y) > 0.99f);
+    TestTrue(FString::Printf(TEXT("Crossing on the grid (x %.1f)"), Shape.Centre.X), FMath::IsNearlyEqual(Shape.Centre.X, 150.0f, 1.0f));
+
+    Player.Carry->PlacementMode = ELogPlacementMode::Vertical;
+    TestTrue(TEXT("Post on the log"), Player.Carry->ComputeStackPlacement(Upper, Lower, FVector(-80, 0, 38), 0.0f, Transform));
+    Upper->SetActorTransform(Transform);
+    GetLogGeometry(Upper, Shape);
+    TestTrue(TEXT("The post stands"), FMath::Abs(Shape.Axis.Z) > 0.99f);
+    TestTrue(FString::Printf(TEXT("On a grid point (x %.1f)"), Shape.Centre.X), FMath::IsNearlyEqual(Shape.Centre.X, -75.0f, 1.0f));
+    TestTrue(TEXT("Its foot rests on the log top"), FMath::Abs((Shape.Centre.Z - Shape.HalfLength) - (20.0f + 18.0f * 0.6f)) < 2.0f);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

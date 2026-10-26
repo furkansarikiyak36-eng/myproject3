@@ -229,6 +229,22 @@ public:
 
     void SetPlacementStatus(const FString& NewStatus) { PlacementStatus = NewStatus; }
 
+    /** Logs stack on placed logs on a grid of this step along the lower log (600 cm = 8 steps). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "10.0"))
+    float StackGridCm = 75.0f;
+
+    /** How far a stacked log sits down into the one below, as a share of the two radii. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.5", ClampMax = "1.0"))
+    float StackInterlock = 0.82f;
+
+    /**
+     * Where Held would lie on the placed horizontal log Target: lying along it or
+     * across it (by the carry direction), or standing on it as a post, with its
+     * ends or its crossing on Target's grid.
+     */
+    bool ComputeStackPlacement(ALogBuildPiece* Held, ALogBuildPiece* Target, const FVector& AimPoint,
+        float CarryYaw, FTransform& OutTransform) const;
+
 protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement")
     float SnapRefreshInterval = 0.06f;
@@ -256,6 +272,15 @@ private:
     void ReleaseHeldFromLoad();
 
     FString PlacementStatus;
+
+    bool bHasStackPlacement = false;
+    FTransform StackTransform = FTransform::Identity;
+    TWeakObjectPtr<ALogBuildPiece> StackTarget;
+    void UpdateStackPlacement();
+
+    /** Tilt for a carried stick from the placement mode: upright, 45 degrees or lying. */
+    float GetStickTiltDegrees() const;
+    FQuat MakeTiltAroundView(float Degrees) const;
 
     /** What the free-placement trace hit, so a post on a floor joins that floor. */
     TWeakObjectPtr<AActor> PlacementSurfaceActor;

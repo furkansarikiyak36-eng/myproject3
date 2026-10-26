@@ -102,6 +102,17 @@ void ULogCarryComponent::TickComponent(
         return;
     }
 
+    // Stacking on a placed log takes over from end snaps and free placement.
+    UpdateStackPlacement();
+    if (bHasStackPlacement)
+    {
+        PlacementStatus = PlacementMode == ELogPlacementMode::Vertical
+            ? TEXT("Post on the log (75 cm grid): E to place.")
+            : TEXT("Stack on the log (75 cm grid, R turns it across): E to place.");
+        UpdateHeldLifts();
+        return;
+    }
+
     // Keep a valid snap preview locked to the target while the player is still
     // aiming at that target. This avoids the preview jumping back and forth
     // between the free-placement point and the snap point every frame.
@@ -678,6 +689,13 @@ void ULogCarryComponent::ClearSnapCandidate()
 
 bool ULogCarryComponent::PlaceHeldPiece()
 {
+    if (bHasStackPlacement && StackTarget.IsValid() && IsValid(HeldPiece))
+    {
+        ALogBuildPiece* Target = StackTarget.Get();
+        bHasStackPlacement = false;
+        StackTarget.Reset();
+        return CommitHeldLogAt(StackTransform, Target, nullptr);
+    }
     if (!IsValid(HeldPiece))
     {
         return false;
@@ -1323,7 +1341,16 @@ FTransform ULogCarryComponent::MakeUprightTransform(AActor* Piece, const FVector
     FVector ViewLocation;
     FRotator ViewRotation;
     const float Yaw = GetViewPoint(ViewLocation, ViewRotation) ? ViewRotation.Yaw : 0.0f;
-    const FQuat Rotation = FRotator(0.0f, Yaw + HeldYawOffset, 0.0f).Quaternion();
+    FQuat Rotation = FRotator(0.0f, Yaw + HeldYawOffset, 0.0f).Quaternion();
+    // Sticks lean forward by the placement mode (upright, 45 degrees, lying).
+    const float Tilt = Cast<AStickPrimitivePiece>(Piece) ? GetStickTiltDegrees() : 0.0f;
+    float Lift = 0.0f;
+    if (Tilt > 0.0f)
+    {
+        Rotation = Rotation * FQuat(FVector::YAxisVector, FMath::DegreesToRadians(Tilt));
+        if (const UStaticMeshComponent* Mesh = Piece->FindComponentByClass<UStaticMeshComponent>(); Mesh && Mesh->GetStaticMesh())
+            Lift = Mesh->GetStaticMesh()->GetBounds().BoxExtent.X * Piece->GetActorScale3D().X * FMath::Sin(FMath::DegreesToRadians(Tilt));
+    }
 
     FVector BottomLocal = FVector::ZeroVector;
     FStructuralAnchorView Bottom;
@@ -1333,7 +1360,7 @@ FTransform ULogCarryComponent::MakeUprightTransform(AActor* Piece, const FVector
             BottomLocal = Bottom.LocalTransform.GetLocation();
     }
     const FVector Scale = Piece ? Piece->GetActorScale3D() : FVector::OneVector;
-    return FTransform(Rotation, BottomWorldPoint - Rotation.RotateVector(BottomLocal * Scale), Scale);
+    return FTransform(Rotation, BottomWorldPoint + FVector::UpVector * Lift - Rotation.RotateVector(BottomLocal * Scale), Scale);
 }
 
 void ULogCarryComponent::UpdateHeldMaterialPreview()
@@ -1386,7 +1413,12 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
             MaterialSnapTarget = Target;
             MaterialSnapAnchor = AnchorId;
             MaterialPreviewTransform = MakeUprightTransform(Piece, AnchorWorld);
-            if (bSameKind)
+            if (bSameKind && Cast<AStickPrimitivePiece>(Piece) && GetStickTiltDegrees() > 0.0f)
+            {
+                // Stick on stick: the preview leans like the placed stick will.
+                MaterialPreviewTransform = MakeUprightTransform(Piece, AnchorWorld);
+            }
+            else if (bSameKind)
             {
                 // Same-material stacks keep the lower piece's orientation.
                 FStructuralAnchorView Bottom;
@@ -1467,7 +1499,19 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
             Mesh->SetSimulatePhysics(false);
         bConnected = Stick->TryConnectToAnchor(Cast<AStickPrimitivePiece>(Target), TargetAnchorId, TEXT("AutoBottom"));
         if (!bConnected)
+        {
             Stick->SetHeldState(true);
+        }
+        else if (const float Tilt = GetStickTiltDegrees(); Tilt > 0.0f)
+        {
+            // Lean the new stick about its joint (45 degrees or lying across).
+            FStructuralAnchorView Bottom;
+            Stick->GetStructuralAnchor(TEXT("AutoBottom"), Bottom);
+            const FVector Pivot = (Bottom.LocalTransform * Stick->GetActorTransform()).GetLocation();
+            const FQuat Lean = MakeTiltAroundView(Tilt);
+            Stick->SetActorLocationAndRotation(Pivot + Lean.RotateVector(Stick->GetActorLocation() - Pivot),
+                Lean * Stick->GetActorQuat(), false, nullptr, ETeleportType::TeleportPhysics);
+        }
         Reason = TEXT("The stick anchor is taken or does not match.");
     }
 
@@ -2111,4 +2155,122 @@ void ULogCarryComponent::ApplyEndContactSupports(ALogBuildPiece* Piece)
             }
         }
     }
+}
+
+float ULogCarryComponent::GetStickTiltDegrees() const
+{
+    switch (PlacementMode)
+    {
+    case ELogPlacementMode::Diagonal: return 45.0f;
+    case ELogPlacementMode::Horizontal: return 90.0f;
+    default: return 0.0f;
+    }
+}
+
+FQuat ULogCarryComponent::MakeTiltAroundView(float Degrees) const
+{
+    FVector ViewLocation;
+    FRotator ViewRotation;
+    const float Yaw = GetViewPoint(ViewLocation, ViewRotation) ? ViewRotation.Yaw : 0.0f;
+    const FVector Right = FRotator(0.0f, Yaw + HeldYawOffset + 90.0f, 0.0f).Vector();
+    return FQuat(Right, FMath::DegreesToRadians(Degrees));
+}
+
+void ULogCarryComponent::UpdateStackPlacement()
+{
+    bHasStackPlacement = false;
+    StackTarget.Reset();
+    if (!IsValid(HeldPiece) ||
+        (PlacementMode != ELogPlacementMode::Horizontal && PlacementMode != ELogPlacementMode::Vertical))
+        return;
+    FHitResult Hit;
+    if (!TraceFromView(PlacementTraceDistance, Hit))
+        return;
+    ALogBuildPiece* Target = Cast<ALogBuildPiece>(Hit.GetActor());
+    if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced() || !MyProject3Construction::IsHorizontalLog(Target))
+        return;
+    FVector ViewLocation;
+    FRotator ViewRotation;
+    GetViewPoint(ViewLocation, ViewRotation);
+    FTransform Transform;
+    if (!ComputeStackPlacement(HeldPiece, Target, Hit.ImpactPoint, ViewRotation.Yaw + HeldYawOffset, Transform))
+        return;
+    bHasStackPlacement = true;
+    StackTarget = Target;
+    StackTransform = Transform;
+    ClearSnapCandidate();
+    HeldPiece->SetActorTransform(Transform);
+}
+
+bool ULogCarryComponent::ComputeStackPlacement(ALogBuildPiece* Held, ALogBuildPiece* Target, const FVector& AimPoint,
+    float CarryYaw, FTransform& OutTransform) const
+{
+    using namespace MyProject3Construction;
+    FLogGeometry Lower, Upper;
+    if (!GetLogGeometry(Target, Lower) || !GetLogGeometry(Held, Upper) || StackGridCm <= 1.0f)
+        return false;
+    FVector Along = FVector(Lower.Axis.X, Lower.Axis.Y, 0.0f);
+    if (!Along.Normalize())
+        return false;
+    const float EndA = -Lower.HalfLength;
+    const float AimAlong = FVector::DotProduct(AimPoint - Lower.Centre, Along);
+    auto OnGrid = [&](float S) { return EndA + FMath::RoundToFloat((S - EndA) / StackGridCm) * StackGridCm; };
+    const FVector Up = FVector::UpVector;
+
+    FVector Centre;
+    FQuat Rotation;
+    if (PlacementMode == ELogPlacementMode::Vertical)
+    {
+        // A post standing on the log at a grid point, seated in a shallow notch.
+        const float S = FMath::Clamp(OnGrid(AimAlong), EndA, -EndA);
+        Centre = Lower.Centre + Along * S + Up * (Lower.Radius * 0.6f + Upper.HalfLength);
+        Rotation = MakeLogRotation(Held, Up, Along);
+    }
+    else
+    {
+        const FVector Want = FRotator(0.0f, CarryYaw, 0.0f).Vector();
+        const float Alignment = FVector::DotProduct(Want, Along);
+        const float StackZ = Lower.Centre.Z + (Lower.Radius + Upper.Radius) * StackInterlock;
+        if (FMath::Abs(Alignment) >= 0.7071f)
+        {
+            // Lying along the lower log, like the next course of a wall: its
+            // start sits on a grid point; it may run past the lower log's end.
+            const float Start = OnGrid(AimAlong - Upper.HalfLength);
+            Centre = Lower.Centre + Along * (Start + Upper.HalfLength);
+            Rotation = MakeLogRotation(Held, Along * FMath::Sign(Alignment), Up);
+        }
+        else
+        {
+            // Crossing it, as at a corner: one of the upper log's own grid
+            // points sits on the lower log's grid point under the crosshair.
+            FVector Across = FVector::CrossProduct(Up, Along);
+            if (FVector::DotProduct(Across, Want) < 0.0f)
+                Across = -Across;
+            const FVector Crossing = Lower.Centre + Along * FMath::Clamp(OnGrid(AimAlong), EndA, -EndA);
+            const float AimAcross = FVector::DotProduct(AimPoint - Crossing, Across);
+            const int32 Steps = FMath::Max(0, FMath::RoundToInt(Upper.Length() / StackGridCm));
+            const int32 Step = FMath::Clamp(FMath::RoundToInt((Upper.HalfLength - AimAcross) / StackGridCm), 0, Steps);
+            Centre = Crossing + Across * (Upper.HalfLength - Step * StackGridCm);
+            Rotation = MakeLogRotation(Held, Across, Up);
+        }
+        Centre.Z = StackZ;
+    }
+    OutTransform = MakeLogTransform(Held, Centre, Rotation);
+
+    // Do not stack into a log that is already there.
+    TArray<FOverlapResult> Overlaps;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(LogStackSlot), false, Held);
+    Params.AddIgnoredActor(Target);
+    if (GetOwner())
+        Params.AddIgnoredActor(GetOwner());
+    GetWorld()->OverlapMultiByObjectType(Overlaps, Centre, FQuat::Identity,
+        FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects),
+        FCollisionShape::MakeSphere(Upper.Radius * 0.5f), Params);
+    for (const FOverlapResult& Overlap : Overlaps)
+    {
+        const ALogBuildPiece* Other = Cast<ALogBuildPiece>(Overlap.GetActor());
+        if (Other && Other->IsPlaced())
+            return false;
+    }
+    return true;
 }

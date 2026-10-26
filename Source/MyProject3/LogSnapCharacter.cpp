@@ -39,10 +39,13 @@ ALogSnapCharacter::ALogSnapCharacter()
         Movement->bImpartBaseVelocityY = false;
         Movement->bImpartBaseVelocityZ = false;
         Movement->bEnablePhysicsInteraction = true;
-        Movement->PushForceFactor = 30000.0f;
-        Movement->bPushForceScaledToMass = true;
+        // Loose sticks and logs feel the body, but are nudged, not shoved.
+        Movement->PushForceFactor = 6000.0f;
+        Movement->bPushForceScaledToMass = false;
+        Movement->RepulsionForce = 0.0f;
+        Movement->TouchForceFactor = 0.0f;
         Movement->StandingDownwardForceScale = 0.1f;
-        Movement->InitialPushForceFactor = 50.0f;
+        Movement->InitialPushForceFactor = 5.0f;
         Movement->MaxStepHeight = 40.0f;
         // Do not balance on the very edge of a round log.
         Movement->PerchRadiusThreshold = 12.0f;
