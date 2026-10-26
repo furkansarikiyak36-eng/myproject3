@@ -105,7 +105,10 @@ enum class ELogPlacementMode : uint8
 {
     Horizontal UMETA(DisplayName = "Horizontal"),
     Vertical   UMETA(DisplayName = "Vertical"),
-    Diagonal   UMETA(DisplayName = "Diagonal")
+    Diagonal   UMETA(DisplayName = "Diagonal"),
+    // Appended so saved values stay valid.
+    Floor      UMETA(DisplayName = "Floor / Roof / Bridge / Ramp"),
+    Stairs     UMETA(DisplayName = "Stairs")
 };
 
 

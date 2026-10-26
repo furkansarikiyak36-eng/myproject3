@@ -1,5 +1,9 @@
 #include "LogSnapCharacter.h"
 
+#include "LogBuildToolsComponent.h"
+#include "PhysicalHealthComponent.h"
+#include "ShelterSensorComponent.h"
+
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -36,6 +40,9 @@ ALogSnapCharacter::ALogSnapCharacter()
 
     LogCarry = CreateDefaultSubobject<ULogCarryComponent>(TEXT("LogCarry"));
     CarryLoad = CreateDefaultSubobject<UCarryLoadComponent>(TEXT("CarryLoad"));
+    BuildTools = CreateDefaultSubobject<ULogBuildToolsComponent>(TEXT("BuildTools"));
+    PhysicalHealth = CreateDefaultSubobject<UPhysicalHealthComponent>(TEXT("PhysicalHealth"));
+    ShelterSensor = CreateDefaultSubobject<UShelterSensorComponent>(TEXT("ShelterSensor"));
 }
 
 void ALogSnapCharacter::BeginPlay()
@@ -43,7 +50,7 @@ void ALogSnapCharacter::BeginPlay()
     Super::BeginPlay();
 
     const FString Controls =
-        TEXT("LOG TEST | WASD move | Mouse look | E pick/place | G drop | R rotate | RMB placement mode | C cut mode | F process");
+        TEXT("WASD move | Mouse look | E pick/place/use | Q throw | RMB placement mode | F1 all building keys");
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(
@@ -72,6 +79,10 @@ void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
     if (LogCarry)
     {
         LogCarry->BindDefaultInput(PlayerInputComponent);
+    }
+    if (BuildTools)
+    {
+        BuildTools->BindDefaultInput(PlayerInputComponent);
     }
 }
 

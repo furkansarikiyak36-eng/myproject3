@@ -7,6 +7,9 @@
 class UCameraComponent;
 class ULogCarryComponent;
 class UCarryLoadComponent;
+class ULogBuildToolsComponent;
+class UPhysicalHealthComponent;
+class UShelterSensorComponent;
 class UInputComponent;
 
 UCLASS(Blueprintable)
@@ -30,6 +33,15 @@ public:
     /** Shared carry budget for logs, stones and sticks; mass slows walking. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Building")
     TObjectPtr<UCarryLoadComponent> CarryLoad;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Building")
+    TObjectPtr<ULogBuildToolsComponent> BuildTools;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
+    TObjectPtr<UPhysicalHealthComponent> PhysicalHealth;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
+    TObjectPtr<UShelterSensorComponent> ShelterSensor;
 
 protected:
     void MoveForward(float Value);

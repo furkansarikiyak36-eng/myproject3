@@ -54,6 +54,10 @@ public:
     bool TryConnect(AActor* Parent, FName ParentAnchorId, AActor* Child, FName ChildAnchorId,
         FString& OutReason);
 
+    /** Same as TryConnect, but places the child at a caller-chosen world transform (for example upright). */
+    bool TryConnectAt(AActor* Parent, FName ParentAnchorId, AActor* Child, FName ChildAnchorId,
+        const FTransform& ChildWorldTransform, FString& OutReason);
+
     /** Removes a cross-material child from its parent and makes it loose again. */
     UFUNCTION(BlueprintCallable, Category="Structure|Materials")
     bool TryDisconnect(AActor* Child);

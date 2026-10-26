@@ -3051,3 +3051,10 @@ int32 ALogBuildPiece::GetAttachedPieceCount() const
     }
     return Count;
 }
+
+void ALogBuildPiece::GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const
+{
+    OutAnchorIds.Reset();
+    for (const FLogSnapPoint& Point : SnapPoints)
+        OutAnchorIds.Add(Point.PointId);
+}

@@ -35,6 +35,7 @@ public:
     virtual EStructuralNodeKind GetStructuralKind() const = 0;
     virtual FGuid GetStructuralNodeId() const = 0;
     virtual bool GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const = 0;
+    virtual void GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const = 0;
     virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) = 0;
     virtual bool IsStructurallyPlaced() const = 0;
 

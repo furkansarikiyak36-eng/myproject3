@@ -3,6 +3,7 @@
 #include "MaterialConnectionSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
@@ -148,7 +149,9 @@ void AStickPrimitivePiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
     {
         Connections->ReleaseCrossMaterialChildren(this);
     }
-    for (const TWeakObjectPtr<AStickPrimitivePiece>& Child : AttachedPieces)
+    // Children remove themselves from AttachedPieces, so walk a copy.
+    const TArray<TWeakObjectPtr<AStickPrimitivePiece>> AttachedCopy = AttachedPieces;
+    for (const TWeakObjectPtr<AStickPrimitivePiece>& Child : AttachedCopy)
     {
         if (Child.IsValid())
         {
@@ -577,4 +580,22 @@ void AStickPrimitivePiece::ClearCrossMaterialAttachment()
         Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         Mesh->SetSimulatePhysics(true);
     }
+}
+
+void AStickPrimitivePiece::GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const
+{
+    OutAnchorIds.Reset();
+    for (const FPrimitiveAnchor& Anchor : Anchors)
+        OutAnchorIds.Add(Anchor.AnchorId);
+}
+
+void AStickPrimitivePiece::EnsureAutomaticAnchors()
+{
+    if (!Mesh || !Mesh->GetStaticMesh() || FindAnchorIndex(TEXT("AutoTop")) != INDEX_NONE)
+        return;
+    const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+    const FVector Top = Bounds.Origin + FVector(0.0, 0.0, Bounds.BoxExtent.Z);
+    const FVector Bottom = Bounds.Origin - FVector(0.0, 0.0, Bounds.BoxExtent.Z);
+    AddAnchor(TEXT("AutoTop"), TEXT("Stick"), FTransform(Top));
+    AddAnchor(TEXT("AutoBottom"), TEXT("Stick"), FTransform(Bottom));
 }

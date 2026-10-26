@@ -99,6 +99,13 @@ public:
     virtual EStructuralNodeKind GetStructuralKind() const override { return EStructuralNodeKind::Stick; }
     virtual FGuid GetStructuralNodeId() const override;
     virtual bool GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const override;
+    virtual void GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const override;
+
+    /**
+     * Adds "AutoTop" (receives) and "AutoBottom" (connects) anchors from the mesh
+     * bounds when they are missing, so loose pieces can be stacked and placed.
+     */
+    void EnsureAutomaticAnchors();
     virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) override;
     virtual bool IsStructurallyPlaced() const override { return bIsPlaced; }
     virtual bool CanAttachAsCrossMaterialChild() const override;

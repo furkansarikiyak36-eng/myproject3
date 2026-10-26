@@ -6,6 +6,7 @@
 #include "LogCarryComponent.generated.h"
 
 class ALogBuildPiece;
+enum class EWorldItemOwnerKind : uint8;
 class UInputComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
@@ -136,6 +137,98 @@ public:
     UFUNCTION(BlueprintPure, Category = "Log Carry|State")
     bool IsCarryingLog() const { return HeldPiece.Get() != nullptr; }
 
+    /** Stone or stick currently held in the hands (logs use HeldPiece). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Carry|State")
+    TObjectPtr<AActor> HeldMaterialPiece;
+
+    /** How far below a log's free end to look for something it can rest on. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "5.0"))
+    float FarEndSupportProbeCm = 30.0f;
+
+    /**
+     * How far the joined end of a log is pushed into the log it meets, along its own
+     * length. 1 = the end reaches the target's centre line, so the end grain is hidden.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.0", ClampMax = "1.8"))
+    float EndInsetFraction = 1.0f;
+
+    /** How deep a log resting across another sinks into it, as a share of the target radius. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.0", ClampMax = "0.9"))
+    float SnapInsetFraction = 0.5f;
+
+    /** Number of logs currently swinging down around their joint. */
+    int32 GetSwingingLogCount() const { return SwingingLogs.Num(); }
+
+    /** Remembers a log hanging from one joint whose free end rests low or on the ground. */
+    void RegisterDroopingLog(ALogBuildPiece* Piece, int32 OwnSnapIndex);
+
+    int32 GetDroopingLogCount() const { return DroopingLogs.Num(); }
+
+    /**
+     * Turns every drooping log whose free end lies over NewSupport back up around its
+     * joint so that end rests on top of NewSupport. Returns true when one was lifted.
+     */
+    bool LiftDroopingEndsOnto(AActor* NewSupport);
+
+    /** World position of a log's end opposite the joint, the joint itself and the log radius. */
+    bool GetLogFreeEnd(const ALogBuildPiece* Piece, int32 OwnSnapIndex,
+        FVector& OutFreeEnd, FVector& OutPivot, float& OutRadius) const;
+
+    UFUNCTION(BlueprintPure, Category = "Log Carry|State")
+    bool IsHoldingMaterialPiece() const { return HeldMaterialPiece.Get() != nullptr; }
+
+    /** Short player-facing status of the current placement or the last action. */
+    UFUNCTION(BlueprintPure, Category = "Log Carry|State")
+    FString GetPlacementStatus() const { return PlacementStatus; }
+
+    /** Picks a loose stone or stick into the hands through the ownership ledger. */
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Materials")
+    bool TryPickupMaterialPiece(AActor* Piece);
+
+    /** Places the held stone/stick on a receiving anchor of a placed piece. */
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Materials")
+    bool TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnchorId);
+
+    /** Places the held stone/stick upright on the ground at a world point. */
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Materials")
+    bool TryPlaceHeldMaterialOnGround(FVector GroundPoint);
+
+    /**
+     * True when a horizontal log joined at one end has something under its
+     * other end, or when the check does not apply (posts, middle joints).
+     */
+    bool EvaluateFarEndSupport(const ALogBuildPiece* Piece, int32 OwnSnapPointIndex,
+        AActor*& OutSupport, bool& bOutGround) const;
+
+    /** World-space dashed segments (pairs of points) showing where a cut would go. */
+    bool BuildCutPreviewSegments(const ALogBuildPiece* Log, ELogCutAction Action,
+        TArray<FVector>& OutSegmentPoints) const;
+
+    /** The loose log under the crosshair, if any. */
+    ALogBuildPiece* GetAimedLooseLog() const;
+
+    /** Throw speed (cm/s) for a 20 kg piece; heavier pieces fly slower. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics", meta = (ClampMin = "100.0"))
+    float ThrowSpeed = 1400.0f;
+
+    /** Throws the carried log, stone or stick along the view; fast hits deal damage. */
+    UFUNCTION(BlueprintCallable, Category = "Log Carry|Actions")
+    bool ThrowHeldPiece();
+
+    /** Picks up a specific loose piece without aiming at it. */
+    bool TryPickupPiece(AActor* Target);
+
+    /** Places the carried log at an exact transform resting on PrimarySupport (and SecondarySupport). */
+    bool CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport);
+
+    /** Hands the carried piece to a tool (storage, fire, zipline); it stays held in the ledger. */
+    AActor* ReleaseHeldToTool();
+
+    /** Links supports found at both ends: beams on posts, braces under beams, logs on trees. */
+    void ApplyEndContactSupports(ALogBuildPiece* Piece);
+
+    void SetPlacementStatus(const FString& NewStatus) { PlacementStatus = NewStatus; }
+
 protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement")
     float SnapRefreshInterval = 0.06f;
@@ -161,4 +254,63 @@ private:
     void PushOrRollAimedLogInput();
     void BeginDragAimedLogInput();
     void ReleaseHeldFromLoad();
+
+    FString PlacementStatus;
+
+    /** What the free-placement trace hit, so a post on a floor joins that floor. */
+    TWeakObjectPtr<AActor> PlacementSurfaceActor;
+
+    UPROPERTY(Transient)
+    TObjectPtr<AActor> MaterialSnapTarget;
+
+    FName MaterialSnapAnchor = NAME_None;
+    FTransform MaterialPreviewTransform = FTransform::Identity;
+    bool bMaterialGroundPreview = false;
+
+    /** A log joined at one end that swings down around the joint until it settles. */
+    struct FSwingingLog
+    {
+        TWeakObjectPtr<ALogBuildPiece> Piece;
+        TWeakObjectPtr<AActor> Parent;
+        TWeakObjectPtr<class UPhysicsConstraintComponent> Hinge;
+        int32 OwnSnapIndex = INDEX_NONE;
+        float Elapsed = 0.0f;
+        float StillTime = 0.0f;
+    };
+    TArray<FSwingingLog> SwingingLogs;
+
+    struct FDroopingLog
+    {
+        TWeakObjectPtr<ALogBuildPiece> Piece;
+        int32 OwnSnapIndex = INDEX_NONE;
+    };
+    TArray<FDroopingLog> DroopingLogs;
+
+    /** Drooping logs currently resting on the log in the hands, with their pose before. */
+    struct FHeldLift
+    {
+        TWeakObjectPtr<ALogBuildPiece> Piece;
+        FTransform Original = FTransform::Identity;
+    };
+    TArray<FHeldLift> HeldLifts;
+
+    void UpdateHeldLifts();
+    void RestoreHeldLifts();
+    void CommitHeldLifts(AActor* NewSupport);
+
+    /** Rotation about the joint that brings the free end onto Support, if it lies over it. */
+    bool ComputeDroopLift(const ALogBuildPiece* Piece, int32 OwnSnapIndex, const AActor* Support,
+        FQuat& OutRotation, FVector& OutPivot) const;
+
+    bool StartHingeSwing(ALogBuildPiece* Piece, int32 OwnSnapIndex);
+    void UpdateHingeSwings(float DeltaTime);
+    void SettleHingeSwing(FSwingingLog& Swing);
+
+    void UpdateHeldMaterialPreview();
+    bool PlaceHeldMaterialPiece();
+    void DropHeldMaterialPiece();
+    bool TransferMaterialOwnership(AActor* Piece, EWorldItemOwnerKind From, EWorldItemOwnerKind To,
+        const FVector& Location) const;
+    FTransform MakeUprightTransform(AActor* Piece, const FVector& BottomWorldPoint) const;
+    void FinishMaterialPlacement(AActor* Piece);
 };

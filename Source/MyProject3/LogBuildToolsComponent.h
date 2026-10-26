@@ -1,0 +1,120 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Components/ActorComponent.h"
+#include "BuildPlanActor.h"
+#include "ConstructionOpeningActor.h"
+#include "LogBuildToolsComponent.generated.h"
+
+class ALogBuildPiece;
+class ALogContainerActor;
+class ARopeLineActor;
+class ULogCarryComponent;
+class UInputComponent;
+
+/**
+ * Player building tools on top of log carrying: floors, roofs, bridges,
+ * stairs and ramps; door, window and gate openings; sharpened stakes;
+ * removing supports; ropes and ziplines; building plans; storage, sleds,
+ * firewood and throwing.
+ */
+UCLASS(ClassGroup = (Gameplay), meta = (BlueprintSpawnableComponent))
+class MYPROJECT3_API ULogBuildToolsComponent : public UActorComponent
+{
+    GENERATED_BODY()
+
+public:
+    ULogBuildToolsComponent();
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools")
+    float InteractRange = 400.0f;
+
+    /** Distance between stair steps along the stringers (cm). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools")
+    float StairStepSpacing = 40.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
+    float DoorWidth = 100.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
+    float DoorHeight = 200.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
+    float WindowWidth = 80.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
+    float WindowHeight = 70.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
+    float WindowSill = 90.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
+    float GateWidth = 120.0f;
+
+    /** Burn time added to a fire per kilogram of wood. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Fire")
+    float FuelSecondsPerKg = 600.0f;
+
+    virtual void BeginPlay() override;
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+        FActorComponentTickFunction* ThisTickFunction) override;
+
+    void BindDefaultInput(UInputComponent* InputComponent);
+
+    /** Called first by E; returns true when a building tool used the press. */
+    bool TryHandleInteract();
+
+    bool SharpenLog(ALogBuildPiece* Log);
+    bool CutOpening(ALogBuildPiece* WallLog, const FVector& AimPoint, EConstructionOpeningKind Kind,
+        AConstructionOpeningActor*& OutOpening);
+    /** Takes a piece out of a structure when everything on it has another support. */
+    bool DismantlePiece(ALogBuildPiece* Piece);
+    /** Where Board would lie across Support and a parallel second support. */
+    bool ComputeDeckPlacement(ALogBuildPiece* Board, AActor* Support, const FVector& AimPoint,
+        const FVector& ViewDirection, bool bStairs, FTransform& OutTransform, AActor*& OutSecondSupport,
+        float& OutSpan, FString& OutReason) const;
+    bool TryPlaceDeck(AActor* Support, const FVector& AimPoint, const FVector& ViewDirection, bool bStairs);
+    bool TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotIndex);
+    ABuildPlanActor* PlacePlan(EBuildPlanKind Kind, const FVector& Location, float Yaw);
+    ARopeLineActor* TieRope(const FVector& From, AActor* FromActor, const FVector& To, AActor* ToActor);
+    bool FeedFire(AActor* Fire);
+
+    FString GetStatus() const { return Status; }
+    bool IsHelpVisible() const { return bShowHelp; }
+    EBuildPlanKind GetSelectedPlan() const { return SelectedPlan; }
+    static FString GetHelpText();
+
+private:
+    FString Status;
+    float StatusHold = 0.0f;
+    bool bShowHelp = false;
+    EBuildPlanKind SelectedPlan = EBuildPlanKind::LogWall;
+    bool bRopeStarted = false;
+    FVector RopeStart = FVector::ZeroVector;
+    TWeakObjectPtr<AActor> RopeStartActor;
+
+    ULogCarryComponent* GetCarry() const;
+    bool GetView(FVector& OutLocation, FRotator& OutRotation) const;
+    bool TraceView(float Distance, FHitResult& OutHit) const;
+    void SetStatus(const FString& NewStatus, float HoldSeconds = 4.0f);
+    void SetPreviewStatus(const FString& NewStatus);
+    bool GetSupportLine(const AActor* Support, FVector& OutA, FVector& OutB, float& OutRadius) const;
+    AConstructionOpeningActor* FindOpening(const FHitResult& Hit) const;
+    ALogContainerActor* FindContainer(const FHitResult& Hit) const;
+    void MakePlaced(ALogBuildPiece* Log) const;
+    void DropReleasedPiece(AActor* Piece) const;
+    bool CutGate(ALogBuildPiece* Post, const FVector& AimPoint, AConstructionOpeningActor*& OutOpening);
+    void UpdatePreview();
+
+    void SharpenInput();
+    void DoorInput();
+    void WindowInput();
+    void LockInput();
+    void RopeInput();
+    void TowInput();
+    void CyclePlanInput();
+    void PlacePlanInput();
+    void DismantleInput();
+    void ThrowInput();
+    void HelpInput();
+};
