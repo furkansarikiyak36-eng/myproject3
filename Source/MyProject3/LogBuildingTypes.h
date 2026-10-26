@@ -84,6 +84,19 @@ enum class ELogPlacementMode : uint8
     Diagonal   UMETA(DisplayName = "Diagonal")
 };
 
+/** User-selectable processing operation; kept as a shared contract for log and carry APIs. */
+UENUM(BlueprintType)
+enum class ELogCutAction : uint8
+{
+    SplitHalf UMETA(DisplayName = "Split Into Half-Rounds"),
+    Quarter   UMETA(DisplayName = "Split Into Quarters"),
+    Hewn      UMETA(DisplayName = "Hewn / Flatten"),
+    Gutter    UMETA(DisplayName = "Cut Groove / Gutter"),
+    Trough    UMETA(DisplayName = "Hollow Trough"),
+    Kalas     UMETA(DisplayName = "Kalas / Squared Beam"),
+    Plank     UMETA(DisplayName = "Plank")
+};
+
 /** One exact mesh mapping for an orthogonal length-fraction/cross-section state. */
 USTRUCT(BlueprintType)
 struct FLogPieceMeshVariant
