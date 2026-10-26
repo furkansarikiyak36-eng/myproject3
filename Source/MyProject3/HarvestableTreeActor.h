@@ -70,6 +70,13 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest")
     FName LogMeshVariantSetId = NAME_None;
+
+    /**
+     * Optional runtime/editor-authored mesh family supplied to spawned logs.
+     * Empty preserves the existing Blueprint-configured output behaviour.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest|Meshes")
+    TArray<FLogProcessingMeshSet> OutputProcessingMeshSets;
     
     /** If configured, exactly one height band must match; no filename-based size guesses. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield")
