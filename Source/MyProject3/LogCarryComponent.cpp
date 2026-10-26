@@ -755,6 +755,15 @@ void ULogCarryComponent::CycleCutAction()
         SelectedCutAction = ELogCutAction::Plank;
         break;
     case ELogCutAction::Plank:
+        SelectedCutAction = ELogCutAction::SplitLengthHalf;
+        break;
+    case ELogCutAction::SplitLengthHalf:
+        SelectedCutAction = ELogCutAction::SplitLengthThreeQuarter;
+        break;
+    case ELogCutAction::SplitLengthThreeQuarter:
+        SelectedCutAction = ELogCutAction::SplitHalfLengthIntoQuarters;
+        break;
+    case ELogCutAction::SplitHalfLengthIntoQuarters:
     default:
         SelectedCutAction = ELogCutAction::SplitHalf;
         break;

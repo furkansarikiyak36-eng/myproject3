@@ -355,10 +355,12 @@ void ALogBuildPiece::BeginPlay()
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(!bIsPlaced);
+        // Collision must be enabled before simulation is requested; a body with
+        // no collision silently refuses to simulate.
         Mesh->SetCollisionProfileName(
             bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
         Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(!bIsPlaced);
     }
 }
 
@@ -1815,6 +1817,16 @@ FWorldOperationResult ALogBuildPiece::TryCommitPhysicalSplitOutputs(
             EWorldOperationResultCode::InternalError,
             OperationId,
             FText::FromString(TEXT("Physical split output registration failed; the transaction was rolled back.")));
+    }
+
+    // The second output was spawned with collision off so it could not interact
+    // before registration. Make it a normal loose physical piece only now.
+    Child->SetActorEnableCollision(true);
+    if (Child->Mesh)
+    {
+        Child->Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Child->Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Child->Mesh->SetSimulatePhysics(true);
     }
 
     TArray<FGuid> AffectedIds;
