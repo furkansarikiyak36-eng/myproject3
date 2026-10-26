@@ -88,6 +88,8 @@ private:
     FLogProcessingMeshSet Family;
     bool bBuilt = false;
     bool bInputBound = false;
+    int32 ChopSwingCount = 0;
+    int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
     float Hours = 13.5f;
     float TimeToSurvivalUpdate = 0.0f;
