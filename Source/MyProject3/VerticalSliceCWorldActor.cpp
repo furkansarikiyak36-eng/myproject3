@@ -28,6 +28,8 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/PostProcessComponent.h"
@@ -827,6 +829,8 @@ void AVerticalSliceCWorldActor::BeginPlay()
 {
     Super::BeginPlay();
     BuildWorld();
+    // -StartHour=21 starts at night; -NoStartView keeps a camera set from the command line.
+    FParse::Value(FCommandLine::Get(), TEXT("StartHour="), StartHour);
     Hours = StartHour;
     if (UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
         Survival->SetWeather(EWorldWeatherState::Wind, 0.35f);
@@ -861,7 +865,8 @@ void AVerticalSliceCWorldActor::SetupPlayer()
         return;
     PlayerSurvivalId = Profile.EntityId;
     // Start by the cold fire looking towards the unfinished cabin.
-    Controller->SetControlRotation(FRotator(-6.0f, 148.0f, 0.0f));
+    if (!FParse::Param(FCommandLine::Get(), TEXT("NoStartView")))
+        Controller->SetControlRotation(FRotator(-6.0f, 148.0f, 0.0f));
     if (UShelterSensorComponent* Shelter = Pawn->FindComponentByClass<UShelterSensorComponent>())
         Shelter->SurvivalEntityId = PlayerSurvivalId;
 
@@ -928,7 +933,7 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
         }
     }
 
-    if (!bIntroShown && GEngine && PlayerSurvivalId.IsValid())
+    if (!bIntroShown && GEngine && PlayerSurvivalId.IsValid() && !FParse::Param(FCommandLine::Get(), TEXT("NoStartView")))
     {
         bIntroShown = true;
         GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor(230, 210, 160),
