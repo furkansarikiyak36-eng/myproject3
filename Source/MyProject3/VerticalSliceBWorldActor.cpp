@@ -515,7 +515,9 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
 
     for (const FLengthFamily& Length : Lengths)
     {
-        AddRow(Length.Fraction, ELogCrossSectionProfile::Round, LoadLogMesh(Length.RoundMesh));
+        // Full-length round is the family's base mesh, not a variant row.
+        if (Length.Fraction != ELogLengthFraction::FullLength)
+            AddRow(Length.Fraction, ELogCrossSectionProfile::Round, LoadLogMesh(Length.RoundMesh));
         for (const FProfileSuffix& Profile : Profiles)
             AddRow(Length.Fraction, Profile.Profile,
                 LoadLogMesh(FString(Length.Prefix) + Profile.Suffix));

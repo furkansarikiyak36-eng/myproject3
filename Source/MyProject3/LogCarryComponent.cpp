@@ -1160,8 +1160,23 @@ bool ULogCarryComponent::ProcessAimedPiece()
         return false;
     }
 
+    // Remember what already lies here, so the new pieces can be found after the cut.
+    TSet<ALogBuildPiece*> Before;
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+        Before.Add(*It);
+
     if (Piece->ApplyCutAction(SelectedCutAction))
     {
+        // Cut pieces start at rest where the log lay; nothing is thrown about.
+        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+        {
+            ALogBuildPiece* Output = *It;
+            if ((Output != Piece && Before.Contains(Output)) || !Output->GetLogMesh() ||
+                !Output->GetLogMesh()->IsSimulatingPhysics())
+                continue;
+            Output->GetLogMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Output->GetLogMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        }
         const UEnum* Enum = StaticEnum<ELogCutAction>();
         const FString ActionName = Enum
             ? Enum->GetDisplayNameTextByValue(static_cast<int64>(SelectedCutAction)).ToString()

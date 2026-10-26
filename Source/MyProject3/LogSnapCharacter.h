@@ -44,6 +44,12 @@ public:
     TObjectPtr<UShelterSensorComponent> ShelterSensor;
 
 protected:
+    /** Camera offset that eases out height jumps from steps, logs and rocks. */
+    float StepSmoothingOffset = 0.0f;
+    float LastGroundZ = 0.0f;
+    bool bHasLastGroundZ = false;
+    float CameraBaseHeight = 64.0f;
+
     void MoveForward(float Value);
     void MoveBackward(float Value);
     void MoveRight(float Value);

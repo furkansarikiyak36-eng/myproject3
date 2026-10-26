@@ -5,6 +5,7 @@
 #include "CarryLoadComponent.h"
 #include "VerticalSliceDemoActor.h"
 #include "VerticalSliceCWorldActor.h"
+#include "VerticalSliceBWorldActor.h"
 #include "VoxelTerrainChunkComponent.h"
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
@@ -1369,6 +1370,97 @@ bool FVerticalSliceCTest::RunTest(const FString& Parameters)
     for (TActorIterator<ARopeLineActor> It(TestWorld.World); It; ++It)
         ++Ropes;
     TestEqual(TEXT("The old bridge rope and the zipline"), Ropes, 2);
+    return true;
+}
+
+
+// Every cut on the real demo log family: what comes out, where, and whether
+// the pieces end up inside each other.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCutMatrixDiagnosticTest,
+    "MyProject3.Diagnostics.CutMatrix", TestFlags)
+bool FCutMatrixDiagnosticTest::RunTest(const FString& Parameters)
+{
+    const FLogProcessingMeshSet Family = AVerticalSliceBWorldActor::BuildLogMeshFamily();
+    if (!TestNotNull(TEXT("Demo log family"), Family.BaseRoundMesh.Get()))
+        return false;
+    struct FStep { ELogCutAction First; ELogCutAction Then; bool bThen; };
+    const FStep Steps[] =
+    {
+        { ELogCutAction::SplitHalf, ELogCutAction::SplitHalf, false },
+        { ELogCutAction::Quarter, ELogCutAction::SplitHalf, false },
+        { ELogCutAction::Hewn, ELogCutAction::HewSecondFace, true },
+        { ELogCutAction::Kalas, ELogCutAction::SplitHalf, false },
+        { ELogCutAction::Plank, ELogCutAction::SplitLengthHalf, true },
+        { ELogCutAction::Gutter, ELogCutAction::SplitHalf, false },
+        { ELogCutAction::Trough, ELogCutAction::SplitHalf, false },
+        { ELogCutAction::SplitLengthHalf, ELogCutAction::SplitHalfLengthIntoQuarters, true },
+        { ELogCutAction::SplitLengthThreeQuarter, ELogCutAction::SplitHalf, false },
+        { ELogCutAction::SplitHalf, ELogCutAction::SplitLengthHalf, true },
+    };
+    const UEnum* Actions = StaticEnum<ELogCutAction>();
+    for (const FStep& Step : Steps)
+    {
+        FScopedTestWorld TestWorld;
+        UWorld* World = TestWorld.World;
+        const FTransform Spawn(FRotator(0, 30, 0), FVector(0, 0, 300));
+        ALogBuildPiece* Log = World->SpawnActorDeferred<ALogBuildPiece>(ALogBuildPiece::StaticClass(), Spawn,
+            nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        Log->BaseDefinitionId = TEXT("Wood.Log.Diag");
+        Log->SelectedProcessingMeshSetId = Family.VariantSetId;
+        Log->ProcessingMeshSets.Add(Family);
+        Log->SetPieceStaticMesh(Family.BaseRoundMesh);
+        Log->FinishSpawning(Spawn);
+        Log->GetLogMesh()->SetSimulatePhysics(false);
+
+        auto Apply = [&](ELogCutAction Action, ALogBuildPiece* Target) -> FString
+        {
+            const FString Name = Actions->GetNameStringByValue(static_cast<int64>(Action));
+            if (!Target->CanApplyCutAction(Action))
+                return FString::Printf(TEXT("%s BLOCKED (%s)"), *Name, *Target->GetCutActionBlockReason(Action));
+            return FString::Printf(TEXT("%s %s"), *Name, Target->ApplyCutAction(Action) ? TEXT("ok") : TEXT("FAILED"));
+        };
+        FString Report = Apply(Step.First, Log);
+        if (Step.bThen)
+        {
+            ALogBuildPiece* Next = nullptr;
+            for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
+            {
+                if (It->CanApplyCutAction(Step.Then)) { Next = *It; break; }
+            }
+            Report += TEXT(" -> ") + (Next ? Apply(Step.Then, Next) : FString(TEXT("no piece accepts next step")));
+        }
+
+        TArray<ALogBuildPiece*> Pieces;
+        for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
+            Pieces.Add(*It);
+        for (ALogBuildPiece* Piece : Pieces)
+        {
+            MyProject3Construction::FLogGeometry Shape;
+            MyProject3Construction::GetLogGeometry(Piece, Shape);
+            Report += FString::Printf(TEXT("\n    %s len=%.0f r=%.0f prof=%s frac=%s at (%.0f,%.0f,%.0f) scale=(%.2f,%.2f,%.2f)"),
+                *GetNameSafe(Piece->GetLogMesh()->GetStaticMesh()), Shape.Length(), Shape.Radius,
+                *StaticEnum<ELogCrossSectionProfile>()->GetNameStringByValue(static_cast<int64>(Piece->GetCrossSectionProfile())),
+                *StaticEnum<ELogLengthFraction>()->GetNameStringByValue(static_cast<int64>(Piece->GetLengthFraction())),
+                Shape.Centre.X, Shape.Centre.Y, Shape.Centre.Z,
+                Piece->GetActorScale3D().X, Piece->GetActorScale3D().Y, Piece->GetActorScale3D().Z);
+        }
+        for (int32 A = 0; A < Pieces.Num(); ++A)
+        {
+            for (int32 B = A + 1; B < Pieces.Num(); ++B)
+            {
+                const FBox BoxA = Pieces[A]->GetComponentsBoundingBox(true);
+                const FBox BoxB = Pieces[B]->GetComponentsBoundingBox(true);
+                const FBox Overlap = BoxA.Overlap(BoxB);
+                if (Overlap.IsValid && Overlap.GetVolume() > 0.25f * FMath::Min(BoxA.GetVolume(), BoxB.GetVolume()))
+                    Report += FString::Printf(TEXT("\n    OVERLAP %d/%d: %.0f%% of the smaller piece"), A, B,
+                        100.0f * Overlap.GetVolume() / FMath::Min(BoxA.GetVolume(), BoxB.GetVolume()));
+            }
+        }
+        AddInfo(Report);
+        TestFalse(TEXT("Cut pieces do not start inside each other"), Report.Contains(TEXT("OVERLAP")));
+        TestFalse(TEXT("No allowed cut fails"), Report.Contains(TEXT("FAILED")));
+        TestFalse(TEXT("The demo family is valid"), Report.Contains(TEXT("No unique processing mesh set")));
+    }
     return true;
 }
 

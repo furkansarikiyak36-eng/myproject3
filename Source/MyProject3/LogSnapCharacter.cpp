@@ -31,6 +31,22 @@ ALogSnapCharacter::ALogSnapCharacter()
         Movement->MaxWalkSpeed = 420.0f;
         Movement->JumpZVelocity = 420.0f;
         Movement->AirControl = 0.25f;
+        // A rolling or turning log under the feet must not spin the view or
+        // carry the player off; pushes against loose logs stay gentle.
+        Movement->bImpartBaseAngularVelocity = false;
+        Movement->bIgnoreBaseRotation = true;
+        Movement->bImpartBaseVelocityX = false;
+        Movement->bImpartBaseVelocityY = false;
+        Movement->bImpartBaseVelocityZ = false;
+        Movement->bEnablePhysicsInteraction = true;
+        Movement->PushForceFactor = 30000.0f;
+        Movement->bPushForceScaledToMass = true;
+        Movement->StandingDownwardForceScale = 0.1f;
+        Movement->InitialPushForceFactor = 50.0f;
+        Movement->MaxStepHeight = 40.0f;
+        // Do not balance on the very edge of a round log.
+        Movement->PerchRadiusThreshold = 12.0f;
+        Movement->PerchAdditionalHeight = 20.0f;
     }
 
     FirstPersonCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FirstPersonCamera"));
@@ -148,4 +164,20 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
     };
     MoveForward(KeyValue(EKeys::W) - KeyValue(EKeys::S));
     MoveRight(KeyValue(EKeys::D) - KeyValue(EKeys::A));
+
+    // Step-ups onto logs and rocks move the capsule in one frame; the camera
+    // follows smoothly instead of snapping.
+    const UCharacterMovementComponent* Movement = GetCharacterMovement();
+    const float GroundZ = GetActorLocation().Z;
+    if (Movement && Movement->IsMovingOnGround() && bHasLastGroundZ)
+    {
+        const float Jump = GroundZ - LastGroundZ;
+        if (FMath::Abs(Jump) > 2.0f && FMath::Abs(Jump) < 60.0f)
+            StepSmoothingOffset -= Jump;
+    }
+    LastGroundZ = GroundZ;
+    bHasLastGroundZ = true;
+    StepSmoothingOffset = FMath::Clamp(FMath::FInterpTo(StepSmoothingOffset, 0.0f, DeltaSeconds, 10.0f), -60.0f, 60.0f);
+    if (FirstPersonCamera)
+        FirstPersonCamera->SetRelativeLocation(FVector(0.0f, 0.0f, CameraBaseHeight + StepSmoothingOffset));
 }

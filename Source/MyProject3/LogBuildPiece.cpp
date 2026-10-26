@@ -263,6 +263,13 @@ ALogBuildPiece::ALogBuildPiece()
 
     Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     Mesh->SetSimulatePhysics(false);
+    // Loose logs settle instead of rolling away under a foot.
+    Mesh->SetAngularDamping(0.8f);
+    Mesh->SetLinearDamping(0.05f);
+    // Pieces that start slightly inside each other (fresh cut outputs, logs
+    // dropped on a pile) separate slowly instead of being shot apart.
+    Mesh->BodyInstance.SetOverrideMaxDepenetrationVelocity(true);
+    Mesh->BodyInstance.SetMaxDepenetrationVelocity(40.0f);
 }
 
 void ALogBuildPiece::OnConstruction(const FTransform& Transform)
