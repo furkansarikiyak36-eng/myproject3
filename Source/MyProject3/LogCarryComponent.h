@@ -29,6 +29,10 @@ public:
         meta = (ClampMin = "50.0"))
     float PickupRange = 350.0f;
 
+    /** Normalized processing work contributed by each deliberate F press. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Processing", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+    float CutWorkPerPress = 0.25f;
+
     /** Impulse used by the optional loose-log push/roll interaction. Tune per project physics scale. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics",
         meta = (ClampMin = "0.0"))
