@@ -65,8 +65,8 @@ bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
     bFellingStarted = true;
     TreeMesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     TreeMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-    TreeMesh->SetLinearDamping(2.5f);
-    TreeMesh->SetAngularDamping(3.0f);
+    TreeMesh->SetLinearDamping(0.8f);
+    TreeMesh->SetAngularDamping(0.8f);
     TreeMesh->SetSimulatePhysics(true);
     TreeMesh->WakeAllRigidBodies();
 
@@ -81,13 +81,16 @@ bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
     const float BodyMassKg = FMath::Max(1.0f, TreeMesh->GetMass());
     const float RequestedImpulsePerMass = FallImpulse > 0.0f
         ? FallImpulse / BodyMassKg
-        : 100.0f;
-    const float SafeImpulse = BodyMassKg * FMath::Clamp(RequestedImpulsePerMass, 35.0f, 120.0f);
+        : 15.0f;
+    const float SafeImpulse = BodyMassKg * FMath::Clamp(RequestedImpulsePerMass, 5.0f, 25.0f);
     const FVector ImpulsePoint = TreeMesh->GetComponentLocation()
         + TreeMesh->GetUpVector() * TreeMesh->Bounds.BoxExtent.Z * 0.85f;
+    const FVector FallAxis = FVector::CrossProduct(FVector::UpVector, Direction).GetSafeNormal();
 
     TreeMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
-    TreeMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+    // Give the trunk a controlled tipping angular velocity. A horizontal impulse
+    // alone mostly translates tall, heavy tree meshes instead of reliably felling them.
+    TreeMesh->SetPhysicsAngularVelocityInDegrees(FallAxis * 45.0f);
     TreeMesh->AddImpulseAtLocation(Direction * SafeImpulse, ImpulsePoint);
     return true;
 }
