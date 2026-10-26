@@ -396,7 +396,7 @@ void AVerticalSliceBWorldActor::BuildTrailMesh()
         TrailMesh->SetMaterial(0, TrailMaterial);
 }
 
-UStaticMesh* AVerticalSliceBWorldActor::LoadLogMesh(const FString& Name) const
+UStaticMesh* AVerticalSliceBWorldActor::LoadLogMesh(const FString& Name)
 {
     const FString Path = FString(DemoLogAssetRoot) + Name + TEXT(".") + Name;
     return LoadObject<UStaticMesh>(nullptr, *Path);
@@ -454,7 +454,7 @@ UStaticMeshComponent* AVerticalSliceBWorldActor::AddProp(const TCHAR* MeshName,
     return Component;
 }
 
-FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily() const
+FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
 {
     FLogProcessingMeshSet Family;
     Family.VariantSetId = TEXT("Log600");

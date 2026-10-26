@@ -47,6 +47,10 @@ public:
     UFUNCTION(BlueprintPure, Category="Demo B")
     int32 GetSpawnedLogCount() const { return SpawnedLogs.Num(); }
 
+    /** The 600 cm demo log family with every authored length/profile mesh and cut rule. */
+    static FLogProcessingMeshSet BuildLogMeshFamily();
+    static UStaticMesh* LoadLogMesh(const FString& Name);
+
 protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo B|Terrain", meta=(ClampMin="8000.0", ClampMax="30000.0"))
     float WorldHalfExtentCm = 12000.0f;
@@ -104,8 +108,6 @@ private:
     int32 TerrainIndex(int32 X, int32 Y) const;
     float EditTerrainAt(const FVector& WorldPoint, float RadiusCm, bool bAdd);
 
-    FLogProcessingMeshSet BuildLogMeshFamily() const;
-    UStaticMesh* LoadLogMesh(const FString& Name) const;
     UStaticMesh* LoadBasicMesh(const TCHAR* Name) const;
     UMaterialInterface* MakeTintedMaterial(const FLinearColor& Tint) const;
     UStaticMeshComponent* AddProp(const TCHAR* MeshName, const FVector& Location,

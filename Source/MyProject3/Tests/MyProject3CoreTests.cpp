@@ -4,6 +4,7 @@
 
 #include "CarryLoadComponent.h"
 #include "VerticalSliceDemoActor.h"
+#include "VerticalSliceCWorldActor.h"
 #include "VoxelTerrainChunkComponent.h"
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
@@ -1341,6 +1342,33 @@ bool FShelterCoverTest::RunTest(const FString& Parameters)
     SpawnBeam(World, FVector(0, 0, 300), FRotator::ZeroRotator, 2000.0f, 2000.0f, true)->SetActorScale3D(FVector(20.0f, 20.0f, 0.2f));
     UShelterSensorComponent::MeasureAt(World, FVector(0, 0, 100), nullptr, Roof, Walls);
     TestTrue(FString::Printf(TEXT("Under a roof (%.2f)"), Roof), Roof > 0.8f);
+    return true;
+}
+
+
+// VerticalSlice_C: the clearing builds as one place - forest, creek too deep
+// to wade except at the ford, a cabin, the old bridge and the lookout.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVerticalSliceCTest,
+    "MyProject3.Demo.VerticalSliceC.BuildsClearing", TestFlags)
+bool FVerticalSliceCTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    AVerticalSliceCWorldActor* World = TestWorld.World->SpawnActor<AVerticalSliceCWorldActor>();
+    if (!TestNotNull(TEXT("World actor"), World))
+        return false;
+    World->BuildWorld();
+    TestTrue(FString::Printf(TEXT("A forest stands (%d trees)"), World->GetTreeCount()), World->GetTreeCount() > 120);
+    TestTrue(FString::Printf(TEXT("Built pieces exist (%d)"), World->GetPlacedLogCount()), World->GetPlacedLogCount() > 60);
+    const float CreekY = World->GetCreekCentreY(0.0f);
+    TestTrue(TEXT("The creek is below the water line"), World->GetGroundHeight(0.0f, CreekY) < AVerticalSliceCWorldActor::WaterLevel - 50.0f);
+    TestTrue(TEXT("The ford is shallow"), World->GetGroundHeight(2600.0f, World->GetCreekCentreY(2600.0f)) > AVerticalSliceCWorldActor::WaterLevel);
+    TestTrue(TEXT("The camp is level"), FMath::Abs(World->GetGroundHeight(100.0f, 100.0f)) < 5.0f);
+    TestTrue(TEXT("The lookout is high on the hill"), World->GetGroundHeight(600.0f, 2650.0f) > 600.0f);
+    TestTrue(TEXT("The cliff is a real step"), World->GetGroundHeight(800.0f, 1600.0f) - World->GetGroundHeight(800.0f, 1440.0f) > 200.0f);
+    int32 Ropes = 0;
+    for (TActorIterator<ARopeLineActor> It(TestWorld.World); It; ++It)
+        ++Ropes;
+    TestEqual(TEXT("The old bridge rope and the zipline"), Ropes, 2);
     return true;
 }
 

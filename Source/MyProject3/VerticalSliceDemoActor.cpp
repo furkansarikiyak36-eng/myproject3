@@ -33,7 +33,7 @@ namespace
         return LoadObject<UStaticMesh>(nullptr, *Path);
     }
 
-    UStaticMesh* LoadEngineShape(const TCHAR* Name)
+    UStaticMesh* LoadDemoShape(const TCHAR* Name)
     {
         return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Engine/BasicShapes/%s.%s"), Name, Name));
     }
@@ -245,7 +245,7 @@ ALogBuildPiece* AVerticalSliceDemoActor::SpawnLog(
 
 void AVerticalSliceDemoActor::BuildFootingWithLog(const FLogProcessingMeshSet& Family)
 {
-    UStaticMesh* Cube = LoadEngineShape(TEXT("Cube"));
+    UStaticMesh* Cube = LoadDemoShape(TEXT("Cube"));
     AStoneBuildingPiece* Footing = GetWorld()->SpawnActor<AStoneBuildingPiece>(
         GetActorLocation() + FVector(350.0, -450.0, 20.0), FRotator::ZeroRotator);
     ALogBuildPiece* Log = SpawnLog(Family, FVector(350.0, -450.0, 120.0), FRotator::ZeroRotator);
@@ -269,8 +269,8 @@ void AVerticalSliceDemoActor::BuildFootingWithLog(const FLogProcessingMeshSet& F
 
 void AVerticalSliceDemoActor::SpawnStonesAndSticks()
 {
-    UStaticMesh* Cube = LoadEngineShape(TEXT("Cube"));
-    UStaticMesh* Cylinder = LoadEngineShape(TEXT("Cylinder"));
+    UStaticMesh* Cube = LoadDemoShape(TEXT("Cube"));
+    UStaticMesh* Cylinder = LoadDemoShape(TEXT("Cylinder"));
     for (int32 Index = 0; Index < 4; ++Index)
     {
         AStoneBuildingPiece* Stone = GetWorld()->SpawnActor<AStoneBuildingPiece>(
@@ -300,7 +300,7 @@ void AVerticalSliceDemoActor::SpawnFire()
     if (!FireActor)
         return;
     UStaticMeshComponent* Pile = NewObject<UStaticMeshComponent>(FireActor);
-    Pile->SetStaticMesh(LoadEngineShape(TEXT("Cone")));
+    Pile->SetStaticMesh(LoadDemoShape(TEXT("Cone")));
     FireActor->SetRootComponent(Pile);
     Pile->SetWorldScale3D(FVector(0.6, 0.6, 0.4));
     Pile->RegisterComponent();

@@ -41,7 +41,7 @@ void AWildlifeActor::ConfigureKind(EWildlifeKind NewKind)
     case EWildlifeKind::Plant:
         Body->SetStaticMesh(LoadEngineShape(TEXT("Cone")));
         SetActorScale3D(FVector(0.8f, 0.8f, 0.9f));
-        Body->SetMaterial(0, MakeTint(this, FLinearColor(0.12f, 0.45f, 0.1f)));
+        Body->SetMaterial(0, MakeTint(this, FLinearColor(0.05f, 0.14f, 0.04f)));
         Health->MaxHealth = Health->Health = 15.0f;
         MoveSpeed = 0.0f;
         break;
