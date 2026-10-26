@@ -59,6 +59,10 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Harvest")
     float ChopHealth = 5.0f;
 
+    /** Captured while upright; the fallen trunk AABB must not determine its yield. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Yield")
+    float StandingWorldHeightCm = 0.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.0"))
     float FallImpulse = 250000.0f;
 
