@@ -1037,16 +1037,16 @@ float AVerticalSliceBWorldActor::EditTerrainAt(const FVector& WorldPoint, float 
             const float Before = TerrainHeights[Index];
             const float Target = bAdd ? WorldPoint.Z + Depth : WorldPoint.Z - Depth;
             TerrainHeights[Index] = bAdd ? FMath::Max(Before, Target) : FMath::Min(Before, Target);
-            VolumeChange += (TerrainHeights[Index] - Before) / 100.0f * CellAreaM2;
+            VolumeChangeM3 += (TerrainHeights[Index] - Before) / 100.0f * CellAreaM2;
         }
     }
 
-    if (!FMath::IsNearlyZero(VolumeChange))
+    if (!FMath::IsNearlyZero(VolumeChangeM3))
     {
         RebuildTerrainMesh();
         BuildTrailMesh();
     }
-    return VolumeChange;
+    return VolumeChangeM3;
 }
 
 void AVerticalSliceBWorldActor::DigInput()
