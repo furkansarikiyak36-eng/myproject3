@@ -124,7 +124,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BodyRightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightArm"));
     BodyRightArm->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyRightArm, CylinderMesh, FVector(0.0f, 25.0f, 10.0f),
-        FVector(0.085f, 0.085f, 0.29f), ClothMaterial);
+        FVector(0.065f, 0.065f, 0.52f), ClothMaterial);
 
     BodyLeftLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftLeg"));
     BodyLeftLeg->SetupAttachment(GetCapsuleComponent());
@@ -133,7 +133,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BodyRightLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightLeg"));
     BodyRightLeg->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyRightLeg, CylinderMesh, FVector(0.0f, 11.0f, -45.0f),
-        FVector(0.095f, 0.095f, 0.46f), ClothMaterial);
+        FVector(0.085f, 0.085f, 0.86f), ClothMaterial);
 
     // Camera-relative forearm and axe make the chop action visible in first person.
     FirstPersonForearm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonForearm"));
