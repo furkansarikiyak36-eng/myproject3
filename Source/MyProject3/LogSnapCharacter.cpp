@@ -166,21 +166,21 @@ void ALogSnapCharacter::ApplyBlockoutMaterials()
     const FLinearColor SkinColor(0.48f, 0.29f, 0.18f);
     const FLinearColor WoodColor(0.20f, 0.095f, 0.035f);
     const FLinearColor MetalColor(0.24f, 0.28f, 0.30f);
-    const UMaterialInterface* ClothMaterial = MakeTint(ClothColor);
-    const UMaterialInterface* SkinMaterial = MakeTint(SkinColor);
-    const UMaterialInterface* WoodMaterial = MakeTint(WoodColor);
-    const UMaterialInterface* MetalMaterial = MakeTint(MetalColor);
+    UMaterialInterface* ClothMaterial = MakeTint(ClothColor);
+    UMaterialInterface* SkinMaterial = MakeTint(SkinColor);
+    UMaterialInterface* WoodMaterial = MakeTint(WoodColor);
+    UMaterialInterface* MetalMaterial = MakeTint(MetalColor);
 
-    if (BodyTorso) BodyTorso->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
-    if (BodyHead) BodyHead->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
+    if (BodyTorso) BodyTorso->SetMaterial(0, ClothMaterial);
+    if (BodyHead) BodyHead->SetMaterial(0, SkinMaterial);
     if (BodyLeftArm) BodyLeftArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
     if (BodyRightArm) BodyRightArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
     if (BodyLeftLeg) BodyLeftLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
     if (BodyRightLeg) BodyRightLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
     if (FirstPersonForearm) FirstPersonForearm->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
     if (AxeHand) AxeHand->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
-    if (AxeHandle) AxeHandle->SetMaterial(0, const_cast<UMaterialInterface*>(WoodMaterial));
-    if (AxeHead) AxeHead->SetMaterial(0, const_cast<UMaterialInterface*>(MetalMaterial));
+    if (AxeHandle) AxeHandle->SetMaterial(0, WoodMaterial);
+    if (AxeHead) AxeHead->SetMaterial(0, MetalMaterial);
 }
 
 void ALogSnapCharacter::BeginPlay()
