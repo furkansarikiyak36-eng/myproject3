@@ -66,13 +66,93 @@ ALogSnapCharacter::ALogSnapCharacter()
     UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
     UStaticMesh* SphereMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
     UStaticMesh* CylinderMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    auto SetupBodyPart = [](UStaticMeshComponent* Part, UStaticMesh* PartMesh,
+        const FVector& Location, const FVector& Scale)
+    {
+        if (!Part)
+            return;
+        if (PartMesh)
+            Part->SetStaticMesh(PartMesh);
+        Part->SetRelativeLocation(Location);
+        Part->SetRelativeScale3D(Scale);
+        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Part->SetGenerateOverlapEvents(false);
+    };
+
+    // A simple low-poly humanoid, attached to the capsule; no collision is added.
+    BodyTorso = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutTorso"));
+    BodyTorso->SetupAttachment(GetCapsuleComponent());
+    SetupBodyPart(BodyTorso, CubeMesh, FVector(0.0f, 0.0f, 1.0f),
+        FVector(0.32f, 0.22f, 0.48f));
+
+    BodyHead = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutHead"));
+    BodyHead->SetupAttachment(GetCapsuleComponent());
+    SetupBodyPart(BodyHead, SphereMesh, FVector(0.0f, 0.0f, 49.0f),
+        FVector(0.27f, 0.25f, 0.30f));
+
+    BodyLeftArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftArm"));
+    BodyLeftArm->SetupAttachment(GetCapsuleComponent());
+    SetupBodyPart(BodyLeftArm, CylinderMesh, FVector(0.0f, -25.0f, 10.0f),
+        FVector(0.065f, 0.065f, 0.52f));
+    BodyRightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightArm"));
+    BodyRightArm->SetupAttachment(GetCapsuleComponent());
+    SetupBodyPart(BodyRightArm, CylinderMesh, FVector(0.0f, 25.0f, 10.0f),
+        FVector(0.065f, 0.065f, 0.52f), ClothMaterial);
+
+    BodyLeftLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftLeg"));
+    BodyLeftLeg->SetupAttachment(GetCapsuleComponent());
+    SetupBodyPart(BodyLeftLeg, CylinderMesh, FVector(0.0f, -11.0f, -45.0f),
+        FVector(0.085f, 0.085f, 0.86f));
+    BodyRightLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightLeg"));
+    BodyRightLeg->SetupAttachment(GetCapsuleComponent());
+    SetupBodyPart(BodyRightLeg, CylinderMesh, FVector(0.0f, 11.0f, -45.0f),
+        FVector(0.085f, 0.085f, 0.86f), ClothMaterial);
+
+    // Camera-relative forearm and axe make the chop action visible in first person.
+    FirstPersonForearm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonForearm"));
+    FirstPersonForearm->SetupAttachment(FirstPersonCamera);
+    SetupBodyPart(FirstPersonForearm, CylinderMesh, FVector(27.0f, 17.0f, -34.0f),
+        FVector(0.065f, 0.065f, 0.48f));
+    FirstPersonForearm->SetRelativeRotation(
+        FRotationMatrix::MakeFromZ(FVector(0.18f, 0.42f, -1.0f).GetSafeNormal()).Rotator());
+
+    AxePivot = CreateDefaultSubobject<USceneComponent>(TEXT("FirstPersonAxePivot"));
+    AxePivot->SetupAttachment(FirstPersonCamera);
+    AxePivot->SetRelativeLocation(FVector(44.0f, 27.0f, -43.0f));
+    AxePivot->SetRelativeRotation(FRotator(-18.0f, 0.0f, 18.0f));
+
+    AxeHand = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeHand"));
+    AxeHand->SetupAttachment(AxePivot);
+    SetupBodyPart(AxeHand, CubeMesh, FVector(0.0f, 0.0f, 0.0f),
+        FVector(0.105f, 0.08f, 0.09f));
+
+    AxeHandle = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeWoodHandle"));
+    AxeHandle->SetupAttachment(AxePivot);
+    SetupBodyPart(AxeHandle, CylinderMesh, FVector(0.0f, 0.0f, 22.0f),
+        FVector(0.045f, 0.045f, 0.55f));
+
+    AxeHead = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeMetalHead"));
+    AxeHead->SetupAttachment(AxePivot);
+    SetupBodyPart(AxeHead, CubeMesh, FVector(0.0f, 0.0f, 51.0f),
+        FVector(0.08f, 0.34f, 0.12f));
+    AxePivotBaseRotation = AxePivot->GetRelativeRotation();
+
+    LogCarry = CreateDefaultSubobject<ULogCarryComponent>(TEXT("LogCarry"));
+    CarryLoad = CreateDefaultSubobject<UCarryLoadComponent>(TEXT("CarryLoad"));
+    BuildTools = CreateDefaultSubobject<ULogBuildToolsComponent>(TEXT("BuildTools"));
+    PhysicalHealth = CreateDefaultSubobject<UPhysicalHealthComponent>(TEXT("PhysicalHealth"));
+    ShelterSensor = CreateDefaultSubobject<UShelterSensorComponent>(TEXT("ShelterSensor"));
+}
+
+void ALogSnapCharacter::ApplyBlockoutMaterials()
+{
     UMaterialInterface* ShapeMaterial = LoadObject<UMaterialInterface>(
         nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+    if (!ShapeMaterial)
+        ShapeMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
 
     auto MakeTint = [this, ShapeMaterial](const FLinearColor& Color) -> UMaterialInterface*
     {
-        if (!ShapeMaterial)
-            return UMaterial::GetDefaultMaterial(MD_Surface);
         UMaterialInstanceDynamic* Dynamic = UMaterialInstanceDynamic::Create(ShapeMaterial, this);
         if (Dynamic)
         {
@@ -86,94 +166,27 @@ ALogSnapCharacter::ALogSnapCharacter()
     const FLinearColor SkinColor(0.48f, 0.29f, 0.18f);
     const FLinearColor WoodColor(0.20f, 0.095f, 0.035f);
     const FLinearColor MetalColor(0.24f, 0.28f, 0.30f);
-    UMaterialInterface* ClothMaterial = MakeTint(ClothColor);
-    UMaterialInterface* SkinMaterial = MakeTint(SkinColor);
-    UMaterialInterface* WoodMaterial = MakeTint(WoodColor);
-    UMaterialInterface* MetalMaterial = MakeTint(MetalColor);
+    const UMaterialInterface* ClothMaterial = MakeTint(ClothColor);
+    const UMaterialInterface* SkinMaterial = MakeTint(SkinColor);
+    const UMaterialInterface* WoodMaterial = MakeTint(WoodColor);
+    const UMaterialInterface* MetalMaterial = MakeTint(MetalColor);
 
-    auto SetupBodyPart = [](UStaticMeshComponent* Part, UStaticMesh* PartMesh,
-        const FVector& Location, const FVector& Scale, UMaterialInterface* Material)
-    {
-        if (!Part)
-            return;
-        if (PartMesh)
-            Part->SetStaticMesh(PartMesh);
-        Part->SetRelativeLocation(Location);
-        Part->SetRelativeScale3D(Scale);
-        Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        Part->SetGenerateOverlapEvents(false);
-        if (Material)
-            Part->SetMaterial(0, Material);
-    };
-
-    // A simple low-poly humanoid, attached to the capsule; no collision is added.
-    BodyTorso = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutTorso"));
-    BodyTorso->SetupAttachment(GetCapsuleComponent());
-    SetupBodyPart(BodyTorso, CubeMesh, FVector(0.0f, 0.0f, 1.0f),
-        FVector(0.32f, 0.22f, 0.48f), ClothMaterial);
-
-    BodyHead = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutHead"));
-    BodyHead->SetupAttachment(GetCapsuleComponent());
-    SetupBodyPart(BodyHead, SphereMesh, FVector(0.0f, 0.0f, 49.0f),
-        FVector(0.27f, 0.25f, 0.30f), SkinMaterial);
-
-    BodyLeftArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftArm"));
-    BodyLeftArm->SetupAttachment(GetCapsuleComponent());
-    SetupBodyPart(BodyLeftArm, CylinderMesh, FVector(0.0f, -25.0f, 10.0f),
-        FVector(0.065f, 0.065f, 0.52f), ClothMaterial);
-    BodyRightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightArm"));
-    BodyRightArm->SetupAttachment(GetCapsuleComponent());
-    SetupBodyPart(BodyRightArm, CylinderMesh, FVector(0.0f, 25.0f, 10.0f),
-        FVector(0.065f, 0.065f, 0.52f), ClothMaterial);
-
-    BodyLeftLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftLeg"));
-    BodyLeftLeg->SetupAttachment(GetCapsuleComponent());
-    SetupBodyPart(BodyLeftLeg, CylinderMesh, FVector(0.0f, -11.0f, -45.0f),
-        FVector(0.085f, 0.085f, 0.86f), ClothMaterial);
-    BodyRightLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightLeg"));
-    BodyRightLeg->SetupAttachment(GetCapsuleComponent());
-    SetupBodyPart(BodyRightLeg, CylinderMesh, FVector(0.0f, 11.0f, -45.0f),
-        FVector(0.085f, 0.085f, 0.86f), ClothMaterial);
-
-    // Camera-relative forearm and axe make the chop action visible in first person.
-    FirstPersonForearm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonForearm"));
-    FirstPersonForearm->SetupAttachment(FirstPersonCamera);
-    SetupBodyPart(FirstPersonForearm, CylinderMesh, FVector(27.0f, 17.0f, -34.0f),
-        FVector(0.065f, 0.065f, 0.48f), SkinMaterial);
-    FirstPersonForearm->SetRelativeRotation(
-        FRotationMatrix::MakeFromZ(FVector(0.18f, 0.42f, -1.0f).GetSafeNormal()).Rotator());
-
-    AxePivot = CreateDefaultSubobject<USceneComponent>(TEXT("FirstPersonAxePivot"));
-    AxePivot->SetupAttachment(FirstPersonCamera);
-    AxePivot->SetRelativeLocation(FVector(44.0f, 27.0f, -43.0f));
-    AxePivot->SetRelativeRotation(FRotator(-18.0f, 0.0f, 18.0f));
-
-    AxeHand = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeHand"));
-    AxeHand->SetupAttachment(AxePivot);
-    SetupBodyPart(AxeHand, CubeMesh, FVector(0.0f, 0.0f, 0.0f),
-        FVector(0.105f, 0.08f, 0.09f), SkinMaterial);
-
-    AxeHandle = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeWoodHandle"));
-    AxeHandle->SetupAttachment(AxePivot);
-    SetupBodyPart(AxeHandle, CylinderMesh, FVector(0.0f, 0.0f, 22.0f),
-        FVector(0.045f, 0.045f, 0.55f), WoodMaterial);
-
-    AxeHead = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeMetalHead"));
-    AxeHead->SetupAttachment(AxePivot);
-    SetupBodyPart(AxeHead, CubeMesh, FVector(0.0f, 0.0f, 51.0f),
-        FVector(0.08f, 0.34f, 0.12f), MetalMaterial);
-    AxePivotBaseRotation = AxePivot->GetRelativeRotation();
-
-    LogCarry = CreateDefaultSubobject<ULogCarryComponent>(TEXT("LogCarry"));
-    CarryLoad = CreateDefaultSubobject<UCarryLoadComponent>(TEXT("CarryLoad"));
-    BuildTools = CreateDefaultSubobject<ULogBuildToolsComponent>(TEXT("BuildTools"));
-    PhysicalHealth = CreateDefaultSubobject<UPhysicalHealthComponent>(TEXT("PhysicalHealth"));
-    ShelterSensor = CreateDefaultSubobject<UShelterSensorComponent>(TEXT("ShelterSensor"));
+    if (BodyTorso) BodyTorso->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (BodyHead) BodyHead->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
+    if (BodyLeftArm) BodyLeftArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (BodyRightArm) BodyRightArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (BodyLeftLeg) BodyLeftLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (BodyRightLeg) BodyRightLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (FirstPersonForearm) FirstPersonForearm->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
+    if (AxeHand) AxeHand->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
+    if (AxeHandle) AxeHandle->SetMaterial(0, const_cast<UMaterialInterface*>(WoodMaterial));
+    if (AxeHead) AxeHead->SetMaterial(0, const_cast<UMaterialInterface*>(MetalMaterial));
 }
 
 void ALogSnapCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    ApplyBlockoutMaterials();
 
     const FString Controls =
         TEXT("WASD move | Mouse look | E pick/place/use | Q throw | RMB placement mode | F1 all building keys");
