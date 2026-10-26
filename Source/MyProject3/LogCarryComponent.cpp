@@ -1183,8 +1183,30 @@ bool ULogCarryComponent::ProcessAimedPiece()
     for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
         Before.Add(*It);
 
-    if (Piece->ApplyCutAction(SelectedCutAction))
+    const FWorldOperationResult CutResult = Piece->TryAdvanceCutProgress(
+        SelectedCutAction,
+        FMath::Clamp(CutWorkPerPress, 0.05f, 1.0f),
+        FGuid::NewGuid());
+
+    if (CutResult.IsSuccess())
     {
+        // Keep work on the physical piece. Repeated interaction steps complete
+        // one operation; the geometry/ownership transaction still commits only
+        // when the cut reaches 100%.
+        if (Piece->HasActiveCutProgress())
+        {
+            const UEnum* Enum = StaticEnum<ELogCutAction>();
+            const FString ActionName = Enum
+                ? Enum->GetDisplayNameTextByValue(static_cast<int64>(SelectedCutAction)).ToString()
+                : TEXT("Processing");
+            const FString Message = FString::Printf(
+                TEXT("%s: %.0f%% — press F again to continue"),
+                *ActionName, Piece->GetCutProgress() * 100.0f);
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 1.8f, FColor::Cyan, Message);
+            return true;
+        }
+
         // Cut pieces start at rest where the log lay; nothing is thrown about.
         for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
         {
