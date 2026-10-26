@@ -189,14 +189,22 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
             Created->Destroy();
         }
     };
-    const FVector Base = GetActorLocation();
-    const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+    // The actor origin is near the middle of the standing trunk. After felling,
+    // use the fallen mesh bounds to place outputs near ground level instead of
+    // spawning them hundreds of centimetres above the terrain.
+    const FBoxSphereBounds FallenBounds = TreeMesh->Bounds;
+    const FVector Base(FallenBounds.Origin.X, FallenBounds.Origin.Y,
+        FallenBounds.Origin.Z - FallenBounds.BoxExtent.Z + 45.0f);
+    const FVector Forward = TreeMesh->GetForwardVector().GetSafeNormal2D();
     const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal();
 
+    // Keep independently spawned full-length logs apart rather than stacking all
+    // outputs at nearly the same point.
+    const float OutputSpacingCm = 350.0f;
     for (int32 Index = 0; Index < ResolvedLogCount; ++Index)
     {
-        const float Side = (static_cast<float>(Index) - (ResolvedLogCount - 1) * 0.5f) * 95.0f;
-        const FVector Location = Base + Right * Side + FVector(0.0f, 0.0f, 35.0f + Index * 8.0f);
+        const float Side = (static_cast<float>(Index) - (ResolvedLogCount - 1) * 0.5f) * OutputSpacingCm;
+        const FVector Location = Base + Right * Side;
         FActorSpawnParameters Params;
         Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
         ALogBuildPiece* Log = GetWorld()->SpawnActorDeferred<ALogBuildPiece>(
