@@ -207,9 +207,11 @@ float AVerticalSliceBWorldActor::RawHeightAt(float Xcm, float Ycm) const
 {
     const float X = Xcm / 100.0f;
     const float Y = Ycm / 100.0f;
-    return 165.0f * FMath::Sin(X / 25.0f) * FMath::Cos(Y / 31.0f)
-        + 105.0f * FMath::Sin((X + Y) / 37.0f)
-        + 65.0f * FMath::Cos((X - 2.0f * Y) / 19.0f);
+    // Broad, low-amplitude forms keep the test area readable instead of making
+    // the routes and work pads look like a field of sharp rolling bumps.
+    return 100.0f * FMath::Sin(X / 55.0f) * FMath::Cos(Y / 62.0f)
+        + 50.0f * FMath::Sin((X + Y) / 83.0f)
+        + 22.0f * FMath::Cos((X - 2.0f * Y) / 59.0f);
 }
 
 float AVerticalSliceBWorldActor::InitialHeightAt(float Xcm, float Ycm) const
@@ -223,7 +225,7 @@ float AVerticalSliceBWorldActor::InitialHeightAt(float Xcm, float Ycm) const
     {
         const FVector2D Centre = Zone.Centre;
         const float Distance = FVector2D::Distance(FVector2D(Xcm, Ycm), Centre);
-        const float Blend = 1.0f - SmoothBlend((Distance - 1300.0f) / 1900.0f);
+        const float Blend = 1.0f - SmoothBlend((Distance - 1000.0f) / 1200.0f);
         if (Blend > BestZoneBlend)
         {
             BestZoneBlend = Blend;
@@ -238,7 +240,7 @@ float AVerticalSliceBWorldActor::InitialHeightAt(float Xcm, float Ycm) const
         const FVector2D B = Zones[Route[1]].Centre;
         float T = 0.0f;
         const float Distance = DistanceToSegment(FVector2D(Xcm, Ycm), A, B, T);
-        const float Blend = 1.0f - SmoothBlend((Distance - 300.0f) / 900.0f);
+        const float Blend = 1.0f - SmoothBlend((Distance - 260.0f) / 700.0f);
         if (Blend > 0.0f)
         {
             const float RouteHeight = FMath::Lerp(RawHeightAt(A.X, A.Y), RawHeightAt(B.X, B.Y), T);
