@@ -6,6 +6,7 @@
 
 class UCameraComponent;
 class ULogCarryComponent;
+class UCarryLoadComponent;
 class UInputComponent;
 
 UCLASS(Blueprintable)
@@ -24,6 +25,10 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Building")
     TObjectPtr<ULogCarryComponent> LogCarry;
+
+    /** Shared carry budget for logs, stones and sticks; mass slows walking. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Building")
+    TObjectPtr<UCarryLoadComponent> CarryLoad;
 
 protected:
     void MoveForward(float Value);

@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "CarryLoadComponent.h"
 #include "LogBuildPiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StoneBuildingPiece.h"
@@ -392,6 +393,68 @@ bool FCrossMaterialConnectionTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Log is loose"), Log->IsPlaced());
     Graph->GetNode(Log->GetStructuralNodeId(), LogNode);
     TestFalse(TEXT("Graph edge removed"), LogNode.ParentNodeId.IsValid());
+    return true;
+}
+
+// M011/M029/M039/M050 (SOTF-C01): one carry budget for every material; a full
+// slot rejects the pickup without touching the piece, mass slows the carrier,
+// and dropping returns the piece to the world ledger.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCarryLoadTest,
+    "MyProject3.Carry.Load.SlotsMassAndLedger", TestFlags)
+bool FCarryLoadTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("Ownership"), Ownership) || !TestNotNull(TEXT("Cube"), Cube))
+        return false;
+
+    AActor* Carrier = World->SpawnActor<AActor>();
+    UCarryLoadComponent* Load = NewObject<UCarryLoadComponent>(Carrier);
+    Load->RegisterComponent();
+    if (!Load->GetCarrierId().IsValid())
+        Load->BeginPlay();
+
+    TArray<AStoneBuildingPiece*> Stones;
+    for (int32 Index = 0; Index < 3; ++Index)
+    {
+        AStoneBuildingPiece* Stone = World->SpawnActor<AStoneBuildingPiece>(
+            FVector(Index * 200.0, 0.0, 50.0), FRotator::ZeroRotator);
+        if (!TestNotNull(TEXT("Stone"), Stone))
+            return false;
+        Stone->Mesh->SetStaticMesh(Cube);
+        Stones.Add(Stone);
+    }
+
+    FString Reason;
+    TestTrue(TEXT("Mass is measurable"), Load->EstimateMassKg(Stones[0]) > 0.0f);
+    TestTrue(TEXT("First stone taken"), Load->TryTakePiece(Stones[0], Reason));
+    TestTrue(TEXT("Second stone taken"), Load->TryTakePiece(Stones[1], Reason));
+    TestEqual(TEXT("Two stones carried"), Load->GetCarriedCount(EStructuralNodeKind::Stone), 2);
+    TestTrue(TEXT("Load slows the carrier"), Load->GetSpeedMultiplier() < 1.0f);
+
+    FWorldOwnedItemRecord ThirdBefore;
+    Ownership->TryGetItem(Stones[2]->GetStructuralNodeId(), ThirdBefore);
+    TestFalse(TEXT("Third stone rejected"), Load->TryTakePiece(Stones[2], Reason));
+    FWorldOwnedItemRecord ThirdAfter;
+    Ownership->TryGetItem(Stones[2]->GetStructuralNodeId(), ThirdAfter);
+    TestEqual(TEXT("Rejected stone stays world-owned"), ThirdAfter.OwnerKind, EWorldItemOwnerKind::World);
+    TestEqual(TEXT("Rejected stone revision unchanged"), ThirdAfter.Revision, ThirdBefore.Revision);
+    TestFalse(TEXT("Rejected stone stays visible"), Stones[2]->IsHidden());
+
+    FWorldOwnedItemRecord Held;
+    Ownership->TryGetItem(Stones[0]->GetStructuralNodeId(), Held);
+    TestEqual(TEXT("Carried stone is held"), Held.OwnerKind, EWorldItemOwnerKind::Held);
+    TestTrue(TEXT("Carried stone is stowed"), Stones[0]->IsHidden());
+
+    TestTrue(TEXT("Drop stone"), Load->TryDropPiece(Stones[0], FVector(0.0, 300.0, 100.0)));
+    FWorldOwnedItemRecord Dropped;
+    Ownership->TryGetItem(Stones[0]->GetStructuralNodeId(), Dropped);
+    TestEqual(TEXT("Dropped stone is world-owned"), Dropped.OwnerKind, EWorldItemOwnerKind::World);
+    TestFalse(TEXT("Dropped stone is visible"), Stones[0]->IsHidden());
+    TestEqual(TEXT("One stone left carried"), Load->GetCarriedCount(EStructuralNodeKind::Stone), 1);
+    TestTrue(TEXT("Third stone fits now"), Load->TryTakePiece(Stones[2], Reason));
     return true;
 }
 

@@ -160,4 +160,5 @@ private:
     void ProcessAimedPieceInput();
     void PushOrRollAimedLogInput();
     void BeginDragAimedLogInput();
+    void ReleaseHeldFromLoad();
 };

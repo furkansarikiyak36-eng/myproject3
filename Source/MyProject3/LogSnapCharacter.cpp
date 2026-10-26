@@ -8,6 +8,7 @@
 #include "GameFramework/Controller.h"
 #include "InputCoreTypes.h"
 #include "LogCarryComponent.h"
+#include "CarryLoadComponent.h"
 #include "Math/RotationMatrix.h"
 
 ALogSnapCharacter::ALogSnapCharacter()
@@ -33,6 +34,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     FirstPersonCamera->bUsePawnControlRotation = true;
 
     LogCarry = CreateDefaultSubobject<ULogCarryComponent>(TEXT("LogCarry"));
+    CarryLoad = CreateDefaultSubobject<UCarryLoadComponent>(TEXT("CarryLoad"));
 }
 
 void ALogSnapCharacter::BeginPlay()

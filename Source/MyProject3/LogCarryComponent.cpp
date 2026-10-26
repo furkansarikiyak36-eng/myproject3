@@ -1,5 +1,7 @@
 #include "LogCarryComponent.h"
 
+#include "CarryLoadComponent.h"
+
 #include "LogBuildPiece.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -244,6 +246,15 @@ bool ULogCarryComponent::TryPickupTarget()
         return false;
     }
 
+    // One carry budget covers every material; a full load blocks the pickup.
+    UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr;
+    FString LoadReason;
+    if (Load && !Load->CanCarryMore(Piece, LoadReason))
+    {
+        UE_LOG(LogTemp, Log, TEXT("Cannot pick up %s: %s"), *GetNameSafe(Piece), *LoadReason);
+        return false;
+    }
+
     FWorldOwnedItemRecord HeldRecord;
     if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::World,
         EWorldItemOwnerKind::Held, CarryOwnerId, Piece->GetActorLocation(), HeldRecord))
@@ -293,6 +304,8 @@ bool ULogCarryComponent::TryPickupTarget()
     Piece->SetPlacedState(false);
 
     HeldPiece = Piece;
+    if (Load)
+        Load->RegisterCarried(Piece);
     HeldYawOffset = 0.0f;
     bHasPlacementSurface = false;
     TimeUntilSnapRefresh = 0.0f;
@@ -597,6 +610,7 @@ bool ULogCarryComponent::PlaceHeldPiece()
             PieceToPlace->SetHeldState(false);
             PieceToPlace->SetPlacedState(true);
 
+            ReleaseHeldFromLoad();
             HeldPiece = nullptr;
             bHasPlacementSurface = false;
             ClearSnapCandidate();
@@ -644,6 +658,7 @@ bool ULogCarryComponent::PlaceHeldPiece()
     PieceToPlace->SetHeldState(false);
     PieceToPlace->SetPlacedState(true);
 
+    ReleaseHeldFromLoad();
     HeldPiece = nullptr;
     bHasPlacementSurface = false;
     ClearSnapCandidate();
@@ -692,6 +707,7 @@ void ULogCarryComponent::DropHeldPiece()
     /* legacy placement state follows the committed ledger transition */
     PieceToDrop->SetHeldState(false);
     PieceToDrop->SetPlacedState(false);
+    ReleaseHeldFromLoad();
     HeldPiece = nullptr;
     bHasPlacementSurface = false;
     ClearSnapCandidate();
@@ -984,4 +1000,10 @@ void ULogCarryComponent::BeginDragAimedLogInput()
 {
     // BindKey requires a void handler; the bool result is only for Blueprint callers.
     BeginDragAimedLog();
+}
+
+void ULogCarryComponent::ReleaseHeldFromLoad()
+{
+    if (UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
+        Load->UnregisterCarried(HeldPiece);
 }

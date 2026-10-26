@@ -1,0 +1,253 @@
+#include "CarryLoadComponent.h"
+
+#include "LogBuildPiece.h"
+#include "StickPrimitivePiece.h"
+#include "StoneBuildingPiece.h"
+#include "StructuralPieceInterface.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
+
+namespace
+{
+    bool SetPieceHeld(AActor* Piece, bool bHeld)
+    {
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
+        {
+            Log->SetHeldState(bHeld);
+            return true;
+        }
+        if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
+            return Stone->SetHeldState(bHeld);
+        if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
+            return Stick->SetHeldState(bHeld);
+        return false;
+    }
+
+    UStaticMeshComponent* GetPieceMesh(const AActor* Piece)
+    {
+        return Piece ? Piece->FindComponentByClass<UStaticMeshComponent>() : nullptr;
+    }
+}
+
+UCarryLoadComponent::UCarryLoadComponent()
+{
+    PrimaryComponentTick.bCanEverTick = false;
+
+    auto AddRule = [this](EStructuralNodeKind Kind, int32 MaxCount, float Density)
+    {
+        FCarrySlotRule Rule;
+        Rule.Kind = Kind;
+        Rule.MaxCount = MaxCount;
+        Rule.DensityKgPerCubicMetre = Density;
+        SlotRules.Add(Rule);
+    };
+    AddRule(EStructuralNodeKind::Wood, 2, 600.0f);   // two logs on the shoulder
+    AddRule(EStructuralNodeKind::Stick, 10, 600.0f); // a bundle of sticks
+    AddRule(EStructuralNodeKind::Stone, 2, 2500.0f); // one stone per hand
+}
+
+void UCarryLoadComponent::BeginPlay()
+{
+    Super::BeginPlay();
+    CarrierId = FGuid::NewGuid();
+    if (const ACharacter* Character = Cast<ACharacter>(GetOwner()))
+    {
+        if (const UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
+            BaseWalkSpeed = Movement->MaxWalkSpeed;
+    }
+}
+
+const FCarrySlotRule* UCarryLoadComponent::FindRule(EStructuralNodeKind Kind) const
+{
+    return SlotRules.FindByPredicate([Kind](const FCarrySlotRule& Rule) { return Rule.Kind == Kind; });
+}
+
+float UCarryLoadComponent::EstimateMassKg(const AActor* Piece) const
+{
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    const UStaticMeshComponent* Mesh = GetPieceMesh(Piece);
+    const FCarrySlotRule* Rule = Structural ? FindRule(Structural->GetStructuralKind()) : nullptr;
+    if (!Rule || !Mesh || !Mesh->GetStaticMesh())
+        return 0.0f;
+
+    // Unscaled mesh bounds times actor scale; centimetres to cubic metres.
+    const FVector Size = Mesh->GetStaticMesh()->GetBounds().BoxExtent * 2.0 *
+        Piece->GetActorScale3D().GetAbs();
+    const double VolumeCubicMetres = (Size.X * Size.Y * Size.Z) / 1.0e6;
+    return static_cast<float>(VolumeCubicMetres * BoundsFillFactor * Rule->DensityKgPerCubicMetre);
+}
+
+bool UCarryLoadComponent::CanCarryMore(AActor* Piece, FString& OutReason) const
+{
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    if (!IsValid(Piece) || !Structural)
+    {
+        OutReason = TEXT("Only physical building materials can be carried.");
+        return false;
+    }
+    if (CarriedPieces.Contains(Piece))
+    {
+        OutReason = TEXT("This piece is already carried.");
+        return false;
+    }
+    const FCarrySlotRule* Rule = FindRule(Structural->GetStructuralKind());
+    if (!Rule || GetCarriedCount(Structural->GetStructuralKind()) >= Rule->MaxCount)
+    {
+        OutReason = TEXT("No free carry slot for this material.");
+        return false;
+    }
+    const float Mass = EstimateMassKg(Piece);
+    if (!FMath::IsFinite(Mass) || Mass <= 0.0f)
+    {
+        // Unknown mass is never treated as free to carry.
+        OutReason = TEXT("This piece has no measurable mass.");
+        return false;
+    }
+    return true;
+}
+
+bool UCarryLoadComponent::RegisterCarried(AActor* Piece)
+{
+    FString Reason;
+    if (!CanCarryMore(Piece, Reason))
+        return false;
+    CarriedPieces.Add(Piece);
+    ApplyMovementSpeed();
+    return true;
+}
+
+void UCarryLoadComponent::UnregisterCarried(AActor* Piece)
+{
+    CarriedPieces.RemoveAll([Piece](const TWeakObjectPtr<AActor>& Item)
+    {
+        return !Item.IsValid() || Item.Get() == Piece;
+    });
+    ApplyMovementSpeed();
+}
+
+bool UCarryLoadComponent::TryTakePiece(AActor* Piece, FString& OutReason)
+{
+    if (!CanCarryMore(Piece, OutReason))
+        return false;
+    IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord Item;
+    if (!Ownership || Structural->IsStructurallyPlaced() || Structural->GetCrossMaterialParent() ||
+        !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::World)
+    {
+        OutReason = TEXT("Only a loose, world-owned piece can be taken.");
+        return false;
+    }
+    if (const ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
+    {
+        if (!Log->CanBePickedUp())
+        {
+            OutReason = TEXT("This log supports other pieces or cannot be carried.");
+            return false;
+        }
+    }
+
+    FWorldOwnedItemRecord HeldRecord;
+    if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+        EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, CarrierId,
+        Piece->GetActorLocation(), HeldRecord))
+    {
+        OutReason = TEXT("The ownership ledger rejected the pickup.");
+        return false;
+    }
+    if (!SetPieceHeld(Piece, true))
+    {
+        FWorldOwnedItemRecord RolledBack;
+        Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, HeldRecord.Revision,
+            EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
+            Piece->GetActorLocation(), RolledBack);
+        OutReason = TEXT("The piece refused to be held.");
+        return false;
+    }
+
+    if (UStaticMeshComponent* Mesh = GetPieceMesh(Piece))
+        Mesh->SetSimulatePhysics(false);
+    Piece->SetActorHiddenInGame(true);
+    Piece->SetActorEnableCollision(false);
+    CarriedPieces.Add(Piece);
+    ApplyMovementSpeed();
+    OutReason.Reset();
+    return true;
+}
+
+bool UCarryLoadComponent::TryDropPiece(AActor* Piece, FVector WorldLocation)
+{
+    IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord Item;
+    if (!Structural || !Ownership || !CarriedPieces.Contains(Piece) || WorldLocation.ContainsNaN() ||
+        !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::Held || Item.OwnerId != CarrierId)
+    {
+        return false;
+    }
+
+    FWorldOwnedItemRecord WorldRecord;
+    if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, Item.Revision,
+        EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(), WorldLocation, WorldRecord))
+    {
+        return false;
+    }
+
+    Piece->SetActorLocation(WorldLocation, false, nullptr, ETeleportType::TeleportPhysics);
+    Piece->SetActorHiddenInGame(false);
+    Piece->SetActorEnableCollision(true);
+    SetPieceHeld(Piece, false);
+    if (UStaticMeshComponent* Mesh = GetPieceMesh(Piece))
+    {
+        Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(true);
+    }
+    UnregisterCarried(Piece);
+    return true;
+}
+
+int32 UCarryLoadComponent::GetCarriedCount(EStructuralNodeKind Kind) const
+{
+    int32 Count = 0;
+    for (const TWeakObjectPtr<AActor>& Item : CarriedPieces)
+    {
+        const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Item.Get());
+        if (Structural && Structural->GetStructuralKind() == Kind)
+            ++Count;
+    }
+    return Count;
+}
+
+float UCarryLoadComponent::GetCarriedMassKg() const
+{
+    float Total = 0.0f;
+    for (const TWeakObjectPtr<AActor>& Item : CarriedPieces)
+        Total += EstimateMassKg(Item.Get());
+    return Total;
+}
+
+float UCarryLoadComponent::GetSpeedMultiplier() const
+{
+    const float Ratio = FMath::Clamp(GetCarriedMassKg() / MaxCarryMassKg, 0.0f, 1.0f);
+    return FMath::Lerp(1.0f, MinSpeedMultiplier, Ratio);
+}
+
+void UCarryLoadComponent::ApplyMovementSpeed()
+{
+    ACharacter* Character = Cast<ACharacter>(GetOwner());
+    UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+    if (!Movement || BaseWalkSpeed <= 0.0f)
+        return;
+    Movement->MaxWalkSpeed = BaseWalkSpeed * GetSpeedMultiplier();
+}
