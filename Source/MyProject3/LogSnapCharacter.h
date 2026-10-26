@@ -92,6 +92,7 @@ protected:
     bool bAxeSwingActive = false;
     FRotator AxePivotBaseRotation = FRotator::ZeroRotator;
 
+    void ApplyBlockoutMaterials();
     void MoveForward(float Value);
     void MoveBackward(float Value);
     void MoveRight(float Value);
