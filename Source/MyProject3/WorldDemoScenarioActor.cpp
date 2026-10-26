@@ -188,21 +188,35 @@ bool AWorldDemoScenarioActor::EnsureProduction(UWorldProductionSubsystem* Produc
         }
     }
 
-    const FWorldProductionRecipe* ExistingRecipe = Recipes.FindByPredicate(
-        [this](const FWorldProductionRecipe& R) { return R.RecipeId == ConfiguredRecipe.RecipeId; });
-    if (ExistingRecipe)
-    {
-        // Do not silently mutate a recipe restored from save.
-        return ExistingRecipe->DurationSeconds == ConfiguredRecipe.DurationSeconds &&
-            ExistingRecipe->RequiredStationTag == ConfiguredRecipe.RequiredStationTag &&
-            ExistingRecipe->Inputs.Num() == ConfiguredRecipe.Inputs.Num() &&
-            ExistingRecipe->Outputs.Num() == ConfiguredRecipe.Outputs.Num();
-    }
-
     FWorldProductionRecipe Recipe = ConfiguredRecipe;
     if (Recipe.RequiredStationTag.IsNone())
     {
         Recipe.RequiredStationTag = ProductionStationTag;
     }
+
+    const FWorldProductionRecipe* ExistingRecipe = Recipes.FindByPredicate(
+        [&Recipe](const FWorldProductionRecipe& R) { return R.RecipeId == Recipe.RecipeId; });
+    if (ExistingRecipe)
+    {
+        // Do not silently mutate a recipe restored from save. Compare ingredient
+        // identities and quantities, not just array lengths.
+        const auto IngredientsMatch = [](const TArray<FProductionIngredient>& A,
+            const TArray<FProductionIngredient>& B)
+        {
+            if (A.Num() != B.Num()) return false;
+            for (int32 Index = 0; Index < A.Num(); ++Index)
+            {
+                if (A[Index].ItemId != B[Index].ItemId ||
+                    A[Index].Quantity != B[Index].Quantity) return false;
+            }
+            return true;
+        };
+
+        return ExistingRecipe->DurationSeconds == Recipe.DurationSeconds &&
+            ExistingRecipe->RequiredStationTag == Recipe.RequiredStationTag &&
+            IngredientsMatch(ExistingRecipe->Inputs, Recipe.Inputs) &&
+            IngredientsMatch(ExistingRecipe->Outputs, Recipe.Outputs);
+    }
+
     return Production->RegisterRecipe(Recipe);
 }
