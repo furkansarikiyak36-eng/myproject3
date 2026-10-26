@@ -241,6 +241,26 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         ResolvedPieceType = Match->OutputPieceType;
     }
 
+    // Runtime-spawned trees in VerticalSlice_C supply the selected family but
+    // the base ALogBuildPiece class has no authored default mesh. Resolve it
+    // explicitly before FinishSpawning so BeginPlay can register a visible item.
+    UStaticMesh* OutputBaseMesh = nullptr;
+    for (const FLogProcessingMeshSet& MeshSet : OutputProcessingMeshSets)
+    {
+        if (MeshSet.VariantSetId == LogMeshVariantSetId)
+        {
+            OutputBaseMesh = MeshSet.BaseRoundMesh.Get();
+            break;
+        }
+    }
+    if (!OutputProcessingMeshSets.IsEmpty() && !IsValid(OutputBaseMesh))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("Tree '%s' has no base round mesh for output family '%s'."),
+            *GetName(), *LogMeshVariantSetId.ToString());
+        return false;
+    }
+
     // Preflight all required outputs before spawning any actor. The log Blueprint
     // must author its matching ProcessingMeshSets table; BeginPlay validates and
     // registers each physical item in the canonical ownership ledger.
@@ -267,8 +287,18 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     // spawning them hundreds of centimetres above the terrain.
     const FBoxSphereBounds FallenBounds = TreeMesh->Bounds;
     const FVector Base(FallenBounds.Origin.X, FallenBounds.Origin.Y,
-        FallenBounds.Origin.Z - FallenBounds.BoxExtent.Z + 45.0f);
-    const FVector Forward = TreeMesh->GetForwardVector().GetSafeNormal2D();
+        FallenBounds.Origin.Z - FallenBounds.BoxExtent.Z + 28.0f);
+
+    // C's tree trunks are cylinders whose long axis is local Z; log assets use
+    // local X. Align output logs to the fallen trunk axis, projected onto the ground.
+    const FVector TreeAxis3D = TreeMesh->GetUpVector().GetSafeNormal();
+    FVector Forward(TreeAxis3D.X, TreeAxis3D.Y, 0.0f);
+    Forward = Forward.GetSafeNormal();
+    if (Forward.IsNearlyZero())
+        Forward = TreeMesh->GetForwardVector().GetSafeNormal2D();
+    if (Forward.IsNearlyZero())
+        Forward = FVector::ForwardVector;
+    const FRotator LogRotation = FRotationMatrix::MakeFromX(Forward).Rotator();
     const FVector Right = FVector::CrossProduct(FVector::UpVector, Forward).GetSafeNormal();
 
     // Keep independently spawned full-length logs apart rather than stacking all
@@ -281,7 +311,7 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         FActorSpawnParameters Params;
         Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
         ALogBuildPiece* Log = GetWorld()->SpawnActorDeferred<ALogBuildPiece>(
-            LogActorClass, FTransform(GetActorRotation(), Location), this, nullptr,
+            LogActorClass, FTransform(LogRotation, Location), this, nullptr,
             ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
         if (!Log)
         {
@@ -292,10 +322,14 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         // New demo trees may provide an exact measured mesh family at runtime.
         // When unset, preserve the existing Blueprint-authored family contract.
         if (!OutputProcessingMeshSets.IsEmpty())
+        {
             Log->ProcessingMeshSets = OutputProcessingMeshSets;
+            Log->SetPieceStaticMesh(OutputBaseMesh);
+        }
         Log->SelectedProcessingMeshSetId = LogMeshVariantSetId;
+        Log->BaseDefinitionId = FName(TEXT("Wood.Log.Harvested"));
         Log->PieceType = ResolvedPieceType;
-        Log->FinishSpawning(FTransform(GetActorRotation(), Location));
+        Log->FinishSpawning(FTransform(LogRotation, Location));
         Spawned.Add(Log);
         if (ResolvedPieceType != ELogPieceType::WholeLog &&
             !Log->TrySetInitialPieceType(ResolvedPieceType, FGuid::NewGuid()))
