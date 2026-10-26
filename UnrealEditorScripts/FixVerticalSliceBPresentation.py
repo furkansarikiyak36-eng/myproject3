@@ -37,10 +37,6 @@ def spawn_labelled(actor_class, location, rotation, label):
 def delete_old_presentation_actors():
     # VerticalSlice_B is a dedicated demo map: replace old presentation lights and
     # anything created by this script, while preserving the gameplay/world actors.
-    presentation_types = {
-        "DirectionalLight", "SkyLight", "SkyAtmosphere",
-        "ExponentialHeightFog", "StaticMeshActor"
-    }
     for actor in list(unreal.EditorLevelLibrary.get_all_level_actors()):
         try:
             label = actor.get_actor_label()
