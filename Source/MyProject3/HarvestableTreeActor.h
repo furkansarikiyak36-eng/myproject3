@@ -63,6 +63,17 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Yield")
     float StandingWorldHeightCm = 0.0f;
 
+    /** Height of the persistent stump left behind after a tree is felled. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="10.0", ClampMax="100.0"))
+    float StumpHeightCm = 45.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Tree|Harvest")
+    bool bStumpSpawned = false;
+
+    UPROPERTY(Transient)
+    TObjectPtr<AActor> StumpActor = nullptr;
+
+    /** Requested impulse is mass-clamped at runtime to prevent trees being launched. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.0"))
     float FallImpulse = 250000.0f;
 
@@ -87,10 +98,10 @@ public:
     TArray<FHarvestTreeYieldRule> YieldRules;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.1"))
-    float GroundedSpeedThreshold = 12.0f;
+    float GroundedSpeedThreshold = 35.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.1"))
-    float GroundedHoldSeconds = 1.0f;
+    float GroundedHoldSeconds = 0.8f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Harvest")
     bool bFellingStarted = false;
@@ -112,5 +123,6 @@ private:
     float StableGroundedSeconds = 0.0f;
 
     bool HasGroundContact() const;
+    bool SpawnStump();
     bool SpawnHarvestLogs();
 };
