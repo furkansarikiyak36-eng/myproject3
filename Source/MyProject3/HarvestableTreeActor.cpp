@@ -90,7 +90,7 @@ bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
     TreeMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
     // Give the trunk a controlled tipping angular velocity. A horizontal impulse
     // alone mostly translates tall, heavy tree meshes instead of reliably felling them.
-    TreeMesh->SetPhysicsAngularVelocityInDegrees(FallAxis * 45.0f);
+    TreeMesh->SetPhysicsAngularVelocityInDegrees(FallAxis * 90.0f);
     TreeMesh->AddImpulseAtLocation(Direction * SafeImpulse, ImpulsePoint);
     return true;
 }
@@ -168,7 +168,10 @@ void AHarvestableTreeActor::Tick(float DeltaSeconds)
         return;
 
     const FVector Velocity = TreeMesh->GetPhysicsLinearVelocity();
-    if (Velocity.Size() <= GroundedSpeedThreshold && HasGroundContact())
+    const FVector AngularVelocity = TreeMesh->GetPhysicsAngularVelocityInDegrees();
+    const bool bLinearSettled = Velocity.Size() <= GroundedSpeedThreshold;
+    const bool bAngularSettled = AngularVelocity.Size() <= GroundedAngularSpeedThreshold;
+    if (bLinearSettled && bAngularSettled && HasGroundContact())
         StableGroundedSeconds += DeltaSeconds;
     else
         StableGroundedSeconds = 0.0f;
