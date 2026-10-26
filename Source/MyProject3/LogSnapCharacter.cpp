@@ -110,7 +110,8 @@ void ALogSnapCharacter::Turn(float Value)
 
 void ALogSnapCharacter::LookUp(float Value)
 {
-    AddControllerPitchInput(Value);
+    // Mouse Y is positive when moving up, while positive pitch input looks down.
+    AddControllerPitchInput(-Value);
 }
 
 void ALogSnapCharacter::HandleJumpPressed()
