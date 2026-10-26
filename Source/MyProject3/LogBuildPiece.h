@@ -214,6 +214,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     FWorldOperationResult TryAdvanceCutProgress(ELogCutAction Action, float NormalizedWork, FGuid OperationId);
 
+    /** Runtime progress for the current processing action; 1.0 is committed immediately. */
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
+    float GetCutProgress() const { return CutProgress; }
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
+    bool HasActiveCutProgress() const { return bHasActiveCutProgress; }
+
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceTypeByName(FName TypeName);
 
