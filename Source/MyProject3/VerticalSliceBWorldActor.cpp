@@ -948,7 +948,7 @@ bool AVerticalSliceBWorldActor::AimTrace(FHitResult& OutHit, float Range) const
     FRotator Rotation;
     Controller->GetPlayerViewPoint(Location, Rotation);
     FCollisionQueryParams Params(TEXT("VerticalSliceB_Aim"), false, Controller->GetPawn());
-    return GetWorld()->LineTraceSingleByChannel(Hit, Location,
+    return GetWorld()->LineTraceSingleByChannel(OutHit, Location,
         Location + Rotation.Vector() * Range, ECC_Visibility, Params);
 }
 
