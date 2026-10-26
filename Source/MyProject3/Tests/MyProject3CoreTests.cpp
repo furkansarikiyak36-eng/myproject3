@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CarryLoadComponent.h"
+#include "VoxelTerrainChunkComponent.h"
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
 #include "LogBuildPiece.h"
@@ -16,6 +17,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "HAL/PlatformTime.h"
 #include "GameFramework/WorldSettings.h"
 
 namespace MyProject3Tests
@@ -708,6 +710,82 @@ bool FHeatSourceWeatherTest::RunTest(const FString& Parameters)
     Survival->AdvanceSurvivalStep(1200.0, 600.0);
     TestFalse(TEXT("Hearth goes out when fuel runs out"), Hearth->IsLit());
     TestFalse(TEXT("An empty hearth cannot be relit"), Hearth->Ignite());
+    return true;
+}
+
+namespace MyProject3Tests
+{
+    UVoxelTerrainChunkComponent* SpawnVoxelChunk(UWorld* World, int32 Cells, float VoxelSize)
+    {
+        AActor* Owner = World->SpawnActor<AActor>();
+        UVoxelTerrainChunkComponent* Chunk = NewObject<UVoxelTerrainChunkComponent>(Owner);
+        Chunk->CellsPerAxis = Cells;
+        Chunk->VoxelSizeCm = VoxelSize;
+        Owner->SetRootComponent(Chunk);
+        Chunk->RegisterComponent();
+        return Chunk;
+    }
+
+    bool TraceDown(UWorld* World, FVector From, FVector& OutHit)
+    {
+        FHitResult Hit;
+        const bool bHit = World->LineTraceSingleByChannel(Hit, From, From - FVector(0.0, 0.0, 5000.0), ECC_Visibility);
+        OutHit = Hit.ImpactPoint;
+        return bHit;
+    }
+}
+
+// M071/M073/M074 (7D-V01/V03..V05): a smooth voxel chunk digs a pit whose
+// collision matches the new surface; the test also records the timings used
+// for the terrain architecture decision.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelChunkDigTest,
+    "MyProject3.Terrain.Voxel.DigUpdatesSurfaceAndCollision", TestFlags)
+bool FVoxelChunkDigTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Chunk = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    if (!TestNotNull(TEXT("Chunk"), Chunk))
+        return false;
+
+    Chunk->InitializeFlatGround(800.0f);
+    const double BuildStart = FPlatformTime::Seconds();
+    const int32 FlatTriangles = Chunk->RebuildMesh();
+    const double BuildMs = (FPlatformTime::Seconds() - BuildStart) * 1000.0;
+    TestTrue(TEXT("Flat ground has a surface"), FlatTriangles > 0);
+
+    FVector GroundHit;
+    TestTrue(TEXT("Ground collision exists"), TraceDown(TestWorld.World, FVector(800.0, 800.0, 1500.0), GroundHit));
+    TestTrue(TEXT("Ground is at the authored height"), FMath::IsNearlyEqual(GroundHit.Z, 800.0, 30.0));
+
+    const float VolumeBefore = Chunk->GetSolidVolumeCubicMetres();
+    const double DigStart = FPlatformTime::Seconds();
+    const float VolumeChange = Chunk->ApplySphereEdit(FVector(800.0, 800.0, 800.0), 200.0f, false);
+    const int32 PitTriangles = Chunk->RebuildMesh();
+    const double DigMs = (FPlatformTime::Seconds() - DigStart) * 1000.0;
+    TestTrue(TEXT("Digging removes solid volume"), VolumeChange < 0.0f);
+    TestTrue(TEXT("Volume bookkeeping matches"), FMath::IsNearlyEqual(Chunk->GetSolidVolumeCubicMetres(), VolumeBefore + VolumeChange, 0.01f));
+    TestTrue(TEXT("Pit surface exists"), PitTriangles > FlatTriangles);
+
+    FVector PitHit;
+    TestTrue(TEXT("Pit collision exists right after the rebuild"),
+        TraceDown(TestWorld.World, FVector(800.0, 800.0, 1500.0), PitHit));
+    TestTrue(TEXT("The trace now lands at the bottom of the pit"), PitHit.Z < GroundHit.Z - 120.0);
+
+    const float FillChange = Chunk->ApplySphereEdit(FVector(800.0, 800.0, 800.0), 200.0f, true);
+    TestTrue(TEXT("Filling adds volume back"), FillChange > 0.0f);
+
+    UVoxelTerrainChunkComponent* LargeChunk = SpawnVoxelChunk(TestWorld.World, 64, 50.0f);
+    LargeChunk->InitializeFlatGround(1600.0f);
+    LargeChunk->RebuildMesh();
+    const double LargeStart = FPlatformTime::Seconds();
+    LargeChunk->ApplySphereEdit(FVector(1600.0, 1600.0, 1600.0), 200.0f, false);
+    LargeChunk->RebuildMesh();
+    const double LargeMs = (FPlatformTime::Seconds() - LargeStart) * 1000.0;
+
+    AddInfo(FString::Printf(TEXT("VOXEL_TIMING chunk32 build_ms=%.2f dig_rebuild_ms=%.2f tris=%d | chunk64 dig_rebuild_ms=%.2f"),
+        BuildMs, DigMs, PitTriangles, LargeMs));
+    UE_LOG(LogTemp, Display, TEXT("VOXEL_TIMING chunk32 build_ms=%.2f dig_rebuild_ms=%.2f tris=%d | chunk64 dig_rebuild_ms=%.2f"),
+        BuildMs, DigMs, PitTriangles, LargeMs);
     return true;
 }
 
