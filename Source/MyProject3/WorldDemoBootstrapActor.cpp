@@ -38,7 +38,7 @@ void AWorldDemoBootstrapActor::Tick(float DeltaSeconds)
 
     // Preserve accumulated time when the per-frame work limit is reached;
     // never silently discard simulation time to hide a slow frame.
-    AccumulatorSeconds += static_cast<double>(DeltaSeconds);
+    AccumulatorSeconds += static_cast<double>(DeltaSeconds) * SimulationTimeScale;
     if (!FMath::IsFinite(AccumulatorSeconds))
     {
         StopSimulation();
@@ -115,5 +115,6 @@ bool AWorldDemoBootstrapActor::ValidateConfiguration() const
         FMath::IsFinite(FirstRaidDelaySeconds) && FirstRaidDelaySeconds >= 0.0 &&
         FMath::IsFinite(FixedStepSeconds) && FixedStepSeconds >= 0.01 &&
         FixedStepSeconds <= 1.0 &&
-        MaxStepsPerFrame >= 1 && MaxStepsPerFrame <= 64;
+        MaxStepsPerFrame >= 1 && MaxStepsPerFrame <= 64 &&
+        FMath::IsFinite(SimulationTimeScale) && SimulationTimeScale >= 0.01 && SimulationTimeScale <= 600.0;
 }

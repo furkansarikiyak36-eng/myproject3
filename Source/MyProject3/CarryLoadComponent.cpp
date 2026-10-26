@@ -251,3 +251,14 @@ void UCarryLoadComponent::ApplyMovementSpeed()
         return;
     Movement->MaxWalkSpeed = BaseWalkSpeed * GetSpeedMultiplier();
 }
+
+TArray<AActor*> UCarryLoadComponent::GetCarriedPieces() const
+{
+    TArray<AActor*> Result;
+    for (const TWeakObjectPtr<AActor>& Item : CarriedPieces)
+    {
+        if (Item.IsValid())
+            Result.Add(Item.Get());
+    }
+    return Result;
+}

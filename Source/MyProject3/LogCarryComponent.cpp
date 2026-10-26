@@ -43,7 +43,7 @@ void ULogCarryComponent::TickComponent(
         UWorldItemOwnershipSubsystem* Ownership = GetWorld()
             ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
         FWorldOwnedItemRecord ItemRecord;
-        FVector ViewLocation;
+        FVector ViewLocation = FVector::ZeroVector;
         FRotator ViewRotation;
         const bool bValidDrag = IsValid(Piece) && !Piece->IsHeld() && !Piece->IsPlaced() &&
             Piece->GetAttachedPieceCount() == 0 && Identity && Identity->HasValidIdentity() &&

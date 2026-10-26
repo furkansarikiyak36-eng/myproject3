@@ -70,6 +70,9 @@ public:
     int32 GetCarriedCount(EStructuralNodeKind Kind) const;
 
     UFUNCTION(BlueprintPure, Category="Carry")
+    TArray<AActor*> GetCarriedPieces() const;
+
+    UFUNCTION(BlueprintPure, Category="Carry")
     float GetCarriedMassKg() const;
 
     UFUNCTION(BlueprintPure, Category="Carry")

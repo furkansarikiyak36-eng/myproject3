@@ -6,6 +6,7 @@
 #include "Engine/Engine.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "LogCarryComponent.h"
 #include "CarryLoadComponent.h"
@@ -61,10 +62,8 @@ void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
 
     // Direct key-axis bindings keep the prototype independent of project-wide
     // legacy Axis Mappings. Enhanced Input can replace these later.
-    PlayerInputComponent->BindAxisKey(EKeys::W, this, &ALogSnapCharacter::MoveForward);
-    PlayerInputComponent->BindAxisKey(EKeys::S, this, &ALogSnapCharacter::MoveBackward);
-    PlayerInputComponent->BindAxisKey(EKeys::D, this, &ALogSnapCharacter::MoveRight);
-    PlayerInputComponent->BindAxisKey(EKeys::A, this, &ALogSnapCharacter::MoveLeft);
+    // WASD are digital keys; UE 5.8 only accepts 1D axes in BindAxisKey, so
+    // movement keys are polled in Tick instead.
     PlayerInputComponent->BindAxisKey(EKeys::MouseX, this, &ALogSnapCharacter::Turn);
     PlayerInputComponent->BindAxisKey(EKeys::MouseY, this, &ALogSnapCharacter::LookUp);
     PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &ALogSnapCharacter::HandleJumpPressed);
@@ -122,4 +121,19 @@ void ALogSnapCharacter::HandleJumpPressed()
 void ALogSnapCharacter::HandleJumpReleased()
 {
     StopJumping();
+}
+
+void ALogSnapCharacter::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+
+    const APlayerController* PlayerController = Cast<APlayerController>(Controller);
+    if (!PlayerController)
+        return;
+    const auto KeyValue = [PlayerController](const FKey& Key)
+    {
+        return PlayerController->IsInputKeyDown(Key) ? 1.0f : 0.0f;
+    };
+    MoveForward(KeyValue(EKeys::W) - KeyValue(EKeys::S));
+    MoveRight(KeyValue(EKeys::D) - KeyValue(EKeys::A));
 }

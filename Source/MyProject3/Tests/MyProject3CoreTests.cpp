@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CarryLoadComponent.h"
+#include "VerticalSliceDemoActor.h"
 #include "VoxelTerrainChunkComponent.h"
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
@@ -786,6 +787,54 @@ bool FVoxelChunkDigTest::RunTest(const FString& Parameters)
         BuildMs, DigMs, PitTriangles, LargeMs));
     UE_LOG(LogTemp, Display, TEXT("VOXEL_TIMING chunk32 build_ms=%.2f dig_rebuild_ms=%.2f tris=%d | chunk64 dig_rebuild_ms=%.2f"),
         BuildMs, DigMs, PitTriangles, LargeMs);
+    return true;
+}
+
+// DEMO-01: the vertical slice builds with the real imported log meshes; a
+// real 600 cm log cuts into two 300 cm pieces, the missing 3/4 mesh blocks
+// that cut with a reason, the stone footing carries a log, and the ground digs.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVerticalSliceDemoTest,
+    "MyProject3.Demo.VerticalSlice.BuildsWithRealAssets", TestFlags)
+bool FVerticalSliceDemoTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    AVerticalSliceDemoActor* Demo = TestWorld.World->SpawnActor<AVerticalSliceDemoActor>();
+    if (!TestNotNull(TEXT("Demo actor"), Demo))
+        return false;
+    Demo->BuildSlice();
+
+    TestEqual(TEXT("Three loose logs plus the footing log"), Demo->GetSpawnedLogCount(), 4);
+    TestTrue(TEXT("Stone footing carries a log"), Demo->IsFootingJointBuilt());
+    TestTrue(TEXT("Fire is lit"), Demo->GetFire() && Demo->GetFire()->IsLit());
+    TestTrue(TEXT("Ground can be dug"), Demo->EditTerrainAt(Demo->GetActorLocation() + FVector(-600.0, -600.0, 0.0), 90.0f, false) < 0.0f);
+
+    ALogBuildPiece* Log = nullptr;
+    for (TActorIterator<ALogBuildPiece> It(TestWorld.World); It; ++It)
+    {
+        if (!It->IsPlaced())
+        {
+            Log = *It;
+            break;
+        }
+    }
+    if (!TestNotNull(TEXT("A loose demo log"), Log))
+        return false;
+    TestEqual(TEXT("Real mesh family selected"), Log->GetSelectedProcessingMeshSetId(), FName(TEXT("Log600")));
+    TestFalse(TEXT("3/4 cut is blocked without a 450 cm mesh"), Log->CanApplyCutAction(ELogCutAction::SplitLengthThreeQuarter));
+    TestTrue(TEXT("Block reason explains the missing recipe or mesh"),
+        Log->GetCutActionBlockReason(ELogCutAction::SplitLengthThreeQuarter).Contains(TEXT("length-cut")));
+
+    const int32 LogsBefore = CountLogs(TestWorld.World);
+    const FWorldOperationResult Cut = Log->TryApplyCutAction(ELogCutAction::SplitLengthHalf, FGuid::NewGuid());
+    TestTrue(FString::Printf(TEXT("Real log cuts in half: %s"), *Cut.Message.ToString()), Cut.IsSuccess());
+    TestEqual(TEXT("One more log actor"), CountLogs(TestWorld.World), LogsBefore + 1);
+    TestTrue(TEXT("Cut piece uses the real 300 cm mesh"),
+        Log->GetLogMesh()->GetStaticMesh() && Log->GetLogMesh()->GetStaticMesh()->GetName() == TEXT("SM_RawLog_300"));
+
+    const FWorldOperationResult Split = Log->TryApplyCutAction(ELogCutAction::SplitHalf, FGuid::NewGuid());
+    TestTrue(FString::Printf(TEXT("Half-length log splits into half-rounds: %s"), *Split.Message.ToString()), Split.IsSuccess());
+    TestTrue(TEXT("Split piece uses the real 300 cm half-round mesh"),
+        Log->GetLogMesh()->GetStaticMesh() && Log->GetLogMesh()->GetStaticMesh()->GetName() == TEXT("SM_RawLog_300_Half"));
     return true;
 }
 

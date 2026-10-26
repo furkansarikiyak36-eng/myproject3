@@ -135,7 +135,7 @@
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
           "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
-          "Automation MyProject3.Core.Ownership.TransferIsIdempotentAndFailsClosed: Success (2026-10-26); covers owner transitions only, not a unified lifecycle state machine"
+          "Automation MyProject3.Core.Ownership.TransferIsIdempotentAndFailsClosed: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
@@ -169,7 +169,7 @@
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
           "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
-          "Automation MyProject3.Core.Ownership.TransferIsIdempotentAndFailsClosed + SplitIsAtomicAndIdempotent: Success (2026-10-26); single-system atomicity only"
+          "Automation MyProject3.Core.Ownership.* + Carry.Load.SlotsMassAndLedger: Success (2026-10-26); single-system atomicity"
         ]
       },
       "notes": "Scope v1.0; domain=Core / World Contracts; intended primary owner=CoreWorld."
@@ -422,12 +422,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Carry.Load.SlotsMassAndLedger: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
@@ -559,7 +560,7 @@
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
           "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
-          "Automation MyProject3.Wood.LengthCut.ProducesTwoPiecesOnce: Success (2026-10-26); recipe-driven half-length cut, outputs collide and simulate"
+          "Automation MyProject3.Wood.LengthCut.ProducesTwoPiecesOnce + QuarterIntoEighths + Demo.VerticalSlice.BuildsWithRealAssets: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
@@ -593,7 +594,7 @@
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
           "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
-          "Automation MyProject3.Core.Ownership.SplitIsAtomicAndIdempotent: Success (2026-10-26); ledger split only, physical half-round split not yet covered"
+          "Automation MyProject3.Core.Ownership.SplitIsAtomicAndIdempotent + Demo.VerticalSlice.BuildsWithRealAssets (real half-round split): Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
@@ -654,12 +655,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Wood.Hewing.ChainCannotSkipSteps: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
@@ -851,12 +853,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Structure.Materials.LogOnStoneConnectsRestoresAndDisconnects: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
@@ -917,12 +920,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Structure.Graph.SecondarySupportKeepsPieceStanding: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Log / Wood Processing; intended primary owner=LogSystem."
@@ -1011,12 +1015,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Carry.Load.SlotsMassAndLedger: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
@@ -1287,7 +1292,7 @@
       "name": "Connect mixed wood-stone construction and stone defenses",
       "phase": 1,
       "owner_system": "StoneSystem",
-      "status": "unreviewed",
+      "status": "implemented_unverified",
       "prerequisites": [
         "M033",
         "M026"
@@ -1307,11 +1312,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
+        "automated_test": "pass",
+        "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
-          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md"
+          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Structure.Materials.LogOnStoneConnectsRestoresAndDisconnects: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Stone / Masonry; intended primary owner=StoneSystem."
@@ -1693,12 +1700,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Carry.Load.SlotsMassAndLedger: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Inventory / Crafting; intended primary owner=InventoryCrafting."
@@ -2050,12 +2058,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Structure.Graph.SecondarySupportKeepsPieceStanding (shared load): Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Shared Structure / Damage; intended primary owner=StructuralGraph."
@@ -2419,7 +2428,7 @@
       "name": "Dig a pit with valid terrain geometry and collision",
       "phase": 1,
       "owner_system": "WorldStateTerrain",
-      "status": "unreviewed",
+      "status": "implemented_unverified",
       "prerequisites": [
         "M072"
       ],
@@ -2437,11 +2446,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
+        "automated_test": "pass",
+        "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
-          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md"
+          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Terrain.Voxel.DigUpdatesSurfaceAndCollision: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
@@ -2451,7 +2462,7 @@
       "name": "Dig a horizontal tunnel and small room",
       "phase": 1,
       "owner_system": "WorldStateTerrain",
-      "status": "unreviewed",
+      "status": "implemented_unverified",
       "prerequisites": [
         "M073"
       ],
@@ -2470,10 +2481,11 @@
       "verification": {
         "static_review": "fail",
         "automated_test": "not_run",
-        "unreal_build": "not_run",
+        "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
-          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md"
+          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Terrain / World State / Digging; intended primary owner=WorldStateTerrain."
@@ -3462,7 +3474,7 @@
       "name": "Manage fuel, heat and cooking stations",
       "phase": 1,
       "owner_system": "LogisticsProduction",
-      "status": "unreviewed",
+      "status": "implemented_unverified",
       "prerequisites": [
         "M043"
       ],
@@ -3480,11 +3492,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
-        "unreal_build": "not_run",
+        "automated_test": "pass",
+        "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
-          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md"
+          "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Survival.Heat.RainDrownsOpenFireButNotHearth + Temperature.FeltTemperatureCombinesAllInputs: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
@@ -3682,12 +3696,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Survival.Temperature.FeltTemperatureCombinesAllInputs + Body.ColdCoolsCoreAndBurnsCalories: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."
@@ -3715,12 +3730,13 @@
       "persistence": "save_required",
       "verification": {
         "static_review": "fail",
-        "automated_test": "not_run",
+        "automated_test": "pass",
         "unreal_build": "pass",
         "runtime_test": "not_run",
         "evidence": [
           "Static source review 2026-10-26: acceptance criterion not yet met; remaining gaps listed in Docs/Design/CURRENT_GAP_STATUS.md",
-          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)"
+          "UE 5.8.4 Build.bat MyProject3Editor Win64 Development: Result Succeeded on integration/canonical-log-model (2026-10-26)",
+          "Automation MyProject3.Survival.Body.ColdCoolsCoreAndBurnsCalories: Success (2026-10-26)"
         ]
       },
       "notes": "Scope v1.0; domain=Logistics / Production / Survival / Exploration; intended primary owner=LogisticsProduction."

@@ -57,6 +57,10 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Simulation")
     bool bAutoStartOnBeginPlay = true;
 
+    /** Simulation seconds per real second; above 1 makes hours-scale survival visible in a demo. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Simulation", meta=(ClampMin="0.01", ClampMax="600.0"))
+    double SimulationTimeScale = 1.0;
+
 private:
     UPROPERTY(Transient)
     TObjectPtr<UWorldSimulationCoordinatorSubsystem> Coordinator;
