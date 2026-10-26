@@ -207,11 +207,10 @@ float AVerticalSliceBWorldActor::RawHeightAt(float Xcm, float Ycm) const
 {
     const float X = Xcm / 100.0f;
     const float Y = Ycm / 100.0f;
-    // Broad, low-amplitude forms keep the test area readable instead of making
-    // the routes and work pads look like a field of sharp rolling bumps.
-    return 100.0f * FMath::Sin(X / 55.0f) * FMath::Cos(Y / 62.0f)
-        + 50.0f * FMath::Sin((X + Y) / 83.0f)
-        + 22.0f * FMath::Cos((X - 2.0f * Y) / 59.0f);
+    // VerticalSlice_B presentation mode uses one level, plane-backed test floor.
+    // Keep all zone anchors, trails, props and editable terrain on the same Z=0 surface.
+    // The gameplay terrain-editing mesh remains enabled; raised/lowered areas are runtime edits.
+    return 0.0f;
 }
 
 float AVerticalSliceBWorldActor::InitialHeightAt(float Xcm, float Ycm) const
