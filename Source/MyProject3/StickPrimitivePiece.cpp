@@ -1,5 +1,7 @@
 #include "StickPrimitivePiece.h"
 
+#include "MaterialConnectionSubsystem.h"
+
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "WorldObjectIdentityComponent.h"
@@ -141,6 +143,11 @@ bool AStickPrimitivePiece::ActivateAfterOwnershipTransfer()
 void AStickPrimitivePiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     RemoveConnection(true);
+    if (UMaterialConnectionSubsystem* Connections =
+        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
+    {
+        Connections->ReleaseCrossMaterialChildren(this);
+    }
     for (const TWeakObjectPtr<AStickPrimitivePiece>& Child : AttachedPieces)
     {
         if (Child.IsValid())
@@ -198,7 +205,8 @@ bool AStickPrimitivePiece::SetHeldState(bool bNewHeld)
     if (bNewHeld)
     {
         if (!bCanBeCarried || bIsHeld || bIsPlaced ||
-            ParentPiece.IsValid() || AttachedPieces.Num() > 0)
+            ParentPiece.IsValid() || AttachedPieces.Num() > 0 ||
+            CrossMaterialParent.IsValid() || HasStructuralDependents())
         {
             return false;
         }
@@ -439,6 +447,19 @@ void AStickPrimitivePiece::ReleaseAnchor(FName AnchorId)
 
 bool AStickPrimitivePiece::RemoveConnection(bool bAllowGraphFailure)
 {
+    if (CrossMaterialParent.IsValid() || (bAllowGraphFailure && !CrossMaterialParent.IsExplicitlyNull()))
+    {
+        UMaterialConnectionSubsystem* Connections =
+            GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+        if (Connections && Connections->TryDisconnect(this))
+            return true;
+        if (!bAllowGraphFailure)
+            return false;
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        ClearCrossMaterialAttachment();
+        return true;
+    }
+
     AStickPrimitivePiece* Parent = ParentPiece.Get();
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
@@ -488,4 +509,72 @@ bool AStickPrimitivePiece::RemoveConnection(bool bAllowGraphFailure)
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     }
     return true;
+}
+
+bool AStickPrimitivePiece::HasStructuralDependents() const
+{
+    const UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    return Graph && StructuralIdentity &&
+        !Graph->GetAllDependents(StructuralIdentity->GetInstanceId()).IsEmpty();
+}
+
+FGuid AStickPrimitivePiece::GetStructuralNodeId() const
+{
+    return StructuralIdentity ? StructuralIdentity->GetInstanceId() : FGuid();
+}
+
+bool AStickPrimitivePiece::GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const
+{
+    const int32 Index = FindAnchorIndex(AnchorId);
+    if (!Anchors.IsValidIndex(Index))
+        return false;
+    const FPrimitiveAnchor* Match = &Anchors[Index];
+    OutAnchor.AnchorId = Match->AnchorId;
+    OutAnchor.Tag = Match->CompatibilityTag;
+    OutAnchor.LocalTransform = Match->LocalTransform;
+    OutAnchor.bCanReceive = true;
+    OutAnchor.bCanConnect = true;
+    OutAnchor.bOccupied = Match->bOccupied;
+    return true;
+}
+
+bool AStickPrimitivePiece::SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied)
+{
+    const int32 Index = FindAnchorIndex(AnchorId);
+    if (!Anchors.IsValidIndex(Index))
+        return false;
+    Anchors[Index].bOccupied = bOccupied;
+    return true;
+}
+
+bool AStickPrimitivePiece::CanAttachAsCrossMaterialChild() const
+{
+    return !bIsPlaced && !ParentPiece.IsValid() && AttachedPieces.IsEmpty() &&
+        !CrossMaterialParent.IsValid() && !HasStructuralDependents();
+}
+
+void AStickPrimitivePiece::ApplyCrossMaterialAttachment(AActor* Parent)
+{
+    CrossMaterialParent = Parent;
+    bIsHeld = false;
+    bIsPlaced = true;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+}
+
+void AStickPrimitivePiece::ClearCrossMaterialAttachment()
+{
+    CrossMaterialParent.Reset();
+    bIsPlaced = false;
+    if (Mesh && !bIsHeld)
+    {
+        Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(true);
+    }
 }

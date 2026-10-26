@@ -3,6 +3,8 @@
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "LogBuildPiece.h"
+#include "MaterialConnectionSubsystem.h"
+#include "StructuralPieceInterface.h"
 #include "EngineUtils.h"
 
 bool UWorldStructuralGraphSubsystem::ExportSnapshot(
@@ -29,6 +31,7 @@ bool UWorldStructuralGraphSubsystem::ExportSnapshot(
         State.ParentNodeId = Node.ParentNodeId;
         State.ParentAnchorId = Node.ParentAnchorId;
         State.OwnAnchorId = Node.OwnAnchorId;
+        State.SecondarySupports = Node.SecondarySupports;
         State.LocalLoad = Node.LocalLoad;
         State.MaxSupportedLoad = Node.MaxSupportedLoad;
         State.bGroundSupported = Node.bGroundSupported;
@@ -85,10 +88,12 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
             !FMath::IsFinite(State.Damage) || State.Damage < 0.0f ||
             !FMath::IsFinite(State.DamageThreshold) || State.DamageThreshold <= 0.0f ||
             State.Revision < 0 ||
+            // A child is supported through its parent and must not also claim
+            // ground contact; a parentless root may be ground-supported or loose.
             (State.ParentNodeId.IsValid() &&
-                (State.ParentAnchorId.IsNone() || State.OwnAnchorId.IsNone())) ||
+                (State.ParentAnchorId.IsNone() || State.OwnAnchorId.IsNone() || State.bGroundSupported)) ||
             (!State.ParentNodeId.IsValid() &&
-                (!State.ParentAnchorId.IsNone() || !State.OwnAnchorId.IsNone() || State.bGroundSupported)))
+                (!State.ParentAnchorId.IsNone() || !State.OwnAnchorId.IsNone())))
         {
             return false;
         }
@@ -101,6 +106,29 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
             OccupiedParentAnchors.Add(AnchorKey);
         }
 
+        // Secondary supports only exist next to a primary edge, and every
+        // contact still occupies exactly one physical anchor on each side.
+        if (!State.SecondarySupports.IsEmpty() && !State.ParentNodeId.IsValid())
+            return false;
+        TSet<FName> OwnAnchors;
+        OwnAnchors.Add(State.OwnAnchorId);
+        TSet<FGuid> SupportIds;
+        SupportIds.Add(State.ParentNodeId);
+        for (const FStructuralSupportLink& Link : State.SecondarySupports)
+        {
+            const FString AnchorKey = Link.SupportNodeId.ToString() + TEXT(":") + Link.SupportAnchorId.ToString();
+            if (!Link.SupportNodeId.IsValid() || Link.SupportNodeId == State.NodeId ||
+                Link.SupportAnchorId.IsNone() || Link.OwnAnchorId.IsNone() ||
+                SupportIds.Contains(Link.SupportNodeId) || OwnAnchors.Contains(Link.OwnAnchorId) ||
+                OccupiedParentAnchors.Contains(AnchorKey))
+            {
+                return false;
+            }
+            SupportIds.Add(Link.SupportNodeId);
+            OwnAnchors.Add(Link.OwnAnchorId);
+            OccupiedParentAnchors.Add(AnchorKey);
+        }
+
         FStructuralNodeRecord Node;
         Node.NodeId = State.NodeId;
         Node.Actor = *Actor;
@@ -108,6 +136,7 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
         Node.ParentNodeId = State.ParentNodeId;
         Node.ParentAnchorId = State.ParentAnchorId;
         Node.OwnAnchorId = State.OwnAnchorId;
+        Node.SecondarySupports = State.SecondarySupports;
         Node.LocalLoad = State.LocalLoad;
         Node.MaxSupportedLoad = State.MaxSupportedLoad;
         Node.bGroundSupported = State.bGroundSupported;
@@ -122,36 +151,25 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
     {
         if (Pair.Value.ParentNodeId.IsValid() && !Proposed.Contains(Pair.Value.ParentNodeId))
             return false;
-
-        // Loose, unplaced pieces may be valid graph roots without ground support.
-        // Any node that claims a parent must, however, lead to a supported root.
-        if (!Pair.Value.ParentNodeId.IsValid())
-            continue;
-
-        TSet<FGuid> Visited;
-        FGuid CurrentId = Pair.Key;
-        bool bReachedSupportedRoot = false;
-        while (CurrentId.IsValid())
+        for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
         {
-            if (Visited.Contains(CurrentId))
+            if (!Proposed.Contains(Link.SupportNodeId))
                 return false;
-            Visited.Add(CurrentId);
-            const FStructuralNodeRecord* Current = Proposed.Find(CurrentId);
-            if (!Current)
-                return false;
-            if (!Current->ParentNodeId.IsValid())
-            {
-                bReachedSupportedRoot = Current->bGroundSupported;
-                break;
-            }
-            CurrentId = Current->ParentNodeId;
         }
-        if (!bReachedSupportedRoot)
-            return false;
     }
 
     TMap<FGuid, FStructuralNodeRecord> Previous = MoveTemp(Nodes);
     Nodes = MoveTemp(Proposed);
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        // Loose, unplaced pieces may be valid graph roots without ground support.
+        // Any node that claims a support must reach ground through some support.
+        if (Pair.Value.ParentNodeId.IsValid() && !HasValidSupportPath(Pair.Key))
+        {
+            Nodes = MoveTemp(Previous);
+            return false;
+        }
+    }
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
         TSet<FGuid> Visiting;
@@ -188,20 +206,50 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
             return false;
         const bool bChildIsLog = Cast<ALogBuildPiece>(ChildNode.Actor.Get()) != nullptr;
         const bool bParentIsLog = Cast<ALogBuildPiece>(ParentNode->Actor.Get()) != nullptr;
-        if (bChildIsLog != bParentIsLog)
+        const bool bMixedMaterial = ChildNode.Kind != ParentNode->Kind;
+        if (bMixedMaterial &&
+            (!Cast<IStructuralPieceInterface>(ChildNode.Actor.Get()) ||
+             !Cast<IStructuralPieceInterface>(ParentNode->Actor.Get())))
         {
             UE_LOG(LogTemp, Error,
-                TEXT("Cannot restore mixed log/non-log structural edge until both actor adapters support local anchor rehydration (child %s)."),
+                TEXT("Cannot restore mixed-material edge without structural adapters on both actors (child %s)."),
                 *Pair.Key.ToString());
             return false;
         }
+        if (!bMixedMaterial && bChildIsLog != bParentIsLog)
+            return false;
     }
+
+    UMaterialConnectionSubsystem* Connections =
+        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
 
     // First clear stale actor-local pointers/reservations. The canonical graph
     // remains untouched and is the only authority for parent/anchor relations.
     for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
-        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Pair.Value.Actor.Get()))
+        AActor* Actor = Pair.Value.Actor.Get();
+        if (IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
+        {
+            if (Piece->GetCrossMaterialParent())
+            {
+                Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+                Piece->ClearCrossMaterialAttachment();
+            }
+            // Release both anchors of a mixed-material edge so the rebuild can
+            // reserve them again from the canonical record.
+            const FStructuralNodeRecord* ParentNode = Pair.Value.ParentNodeId.IsValid()
+                ? Nodes.Find(Pair.Value.ParentNodeId) : nullptr;
+            if (ParentNode && ParentNode->Kind != Pair.Value.Kind)
+            {
+                Piece->SetStructuralAnchorOccupied(Pair.Value.OwnAnchorId, false);
+                if (IStructuralPieceInterface* ParentPiece =
+                    Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()))
+                {
+                    ParentPiece->SetStructuralAnchorOccupied(Pair.Value.ParentAnchorId, false);
+                }
+            }
+        }
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
             Log->ResetActorLocalSnapStateForGraphRestore();
     }
 
@@ -218,8 +266,22 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
         if (!ChildNode || !ChildNode->ParentNodeId.IsValid())
             continue;
 
-        ALogBuildPiece* Child = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
         const FStructuralNodeRecord* ParentNode = Nodes.Find(ChildNode->ParentNodeId);
+        if (ParentNode && ParentNode->Kind != ChildNode->Kind)
+        {
+            // Cross-material joints are rebuilt by the material connection adapter.
+            if (!Connections || !Connections->RestoreLinkFromGraph(ParentNode->Actor.Get(),
+                ChildNode->ParentAnchorId, ChildNode->Actor.Get(), ChildNode->OwnAnchorId))
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Structural graph restored but cross-material anchor reconstruction failed for node %s."),
+                    *NodeId.ToString());
+                return false;
+            }
+            continue;
+        }
+
+        ALogBuildPiece* Child = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
         ALogBuildPiece* Parent = ParentNode
             ? Cast<ALogBuildPiece>(ParentNode->Actor.Get()) : nullptr;
 
@@ -284,7 +346,7 @@ bool UWorldStructuralGraphSubsystem::UnregisterNode(
         return false;
 
     const TArray<FGuid> Dependents = GetDirectDependents(NodeId);
-    if (bRequireNoDependents && !Dependents.IsEmpty())
+    if (bRequireNoDependents && !GetAllDependents(NodeId).IsEmpty())
         return false;
 
     for (const FGuid& ChildId : Dependents)
@@ -310,18 +372,41 @@ bool UWorldStructuralGraphSubsystem::UnregisterNode(
         CurrentId = Current->ParentNodeId;
     }
 
-    // If a caller explicitly permits removal with dependents, detach those
-    // graph edges and mark them unsupported rather than leaving dangling IDs.
+    // If a caller explicitly permits removal with dependents, a child with
+    // another contact keeps standing on it; otherwise its edge is detached and
+    // it becomes unsupported rather than keeping a dangling ID.
     for (const FGuid& ChildId : Dependents)
     {
         if (FStructuralNodeRecord* Child = Nodes.Find(ChildId))
         {
-            Child->ParentNodeId.Invalidate();
-            Child->ParentAnchorId = NAME_None;
-            Child->OwnAnchorId = NAME_None;
+            Child->SecondarySupports.RemoveAll([&NodeId](const FStructuralSupportLink& Link)
+            {
+                return Link.SupportNodeId == NodeId;
+            });
+            if (!Child->SecondarySupports.IsEmpty())
+            {
+                const FStructuralSupportLink Promoted = Child->SecondarySupports[0];
+                Child->SecondarySupports.RemoveAt(0);
+                Child->ParentNodeId = Promoted.SupportNodeId;
+                Child->ParentAnchorId = Promoted.SupportAnchorId;
+                Child->OwnAnchorId = Promoted.OwnAnchorId;
+            }
+            else
+            {
+                Child->ParentNodeId.Invalidate();
+                Child->ParentAnchorId = NAME_None;
+                Child->OwnAnchorId = NAME_None;
+            }
             Child->bGroundSupported = false;
             ++Child->Revision;
         }
+    }
+    for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        const int32 Removed = Pair.Value.SecondarySupports.RemoveAll(
+            [&NodeId](const FStructuralSupportLink& Link) { return Link.SupportNodeId == NodeId; });
+        if (Removed > 0 && Pair.Value.Revision < MAX_int64)
+            ++Pair.Value.Revision;
     }
 
     for (const FGuid& AncestorId : AncestorIds)
@@ -353,14 +438,8 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
 
     // Enforce one edge per physical anchor even when a caller bypasses the
     // actor-level snap-point reservation API.
-    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
-    {
-        if (Pair.Value.ParentNodeId == ParentNodeId &&
-            Pair.Value.ParentAnchorId == ParentAnchorId)
-        {
-            return false;
-        }
-    }
+    if (IsAnchorInUse(ParentNodeId, ParentAnchorId))
+        return false;
 
     TArray<FGuid> AncestorIds;
     TSet<FGuid> AncestorsVisited;
@@ -437,6 +516,17 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
         CurrentId = Current->ParentNodeId;
     }
 
+    // Disconnecting removes the piece from the structure entirely: its extra
+    // contacts go too, so actor-local detachment and graph state stay aligned.
+    for (const FStructuralSupportLink& Link : Child->SecondarySupports)
+    {
+        if (FStructuralNodeRecord* Support = Nodes.Find(Link.SupportNodeId))
+        {
+            if (Support->Revision < MAX_int64)
+                ++Support->Revision;
+        }
+    }
+    Child->SecondarySupports.Reset();
     Child->ParentNodeId.Invalidate();
     Child->ParentAnchorId = NAME_None;
     Child->OwnAnchorId = NAME_None;
@@ -448,6 +538,100 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
             ++Ancestor->Revision;
     }
     return true;
+}
+
+bool UWorldStructuralGraphSubsystem::IsAnchorInUse(FGuid SupportNodeId, FName SupportAnchorId) const
+{
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        if (Pair.Value.ParentNodeId == SupportNodeId && Pair.Value.ParentAnchorId == SupportAnchorId)
+            return true;
+        for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
+        {
+            if (Link.SupportNodeId == SupportNodeId && Link.SupportAnchorId == SupportAnchorId)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
+    FGuid ChildNodeId, FGuid SupportNodeId, FName SupportAnchorId, FName OwnAnchorId)
+{
+    FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
+    FStructuralNodeRecord* Support = Nodes.Find(SupportNodeId);
+    if (!Child || !Support || ChildNodeId == SupportNodeId ||
+        !Child->ParentNodeId.IsValid() || Child->ParentNodeId == SupportNodeId ||
+        SupportAnchorId.IsNone() || OwnAnchorId.IsNone() || OwnAnchorId == Child->OwnAnchorId ||
+        !Child->Actor.IsValid() || !Support->Actor.IsValid() ||
+        Child->Revision == MAX_int64 || Support->Revision == MAX_int64 ||
+        IsAnchorInUse(SupportNodeId, SupportAnchorId) ||
+        WouldCreateCycle(SupportNodeId, ChildNodeId) ||
+        !HasValidSupportPath(SupportNodeId))
+    {
+        return false;
+    }
+    for (const FStructuralSupportLink& Link : Child->SecondarySupports)
+    {
+        if (Link.SupportNodeId == SupportNodeId || Link.OwnAnchorId == OwnAnchorId)
+            return false;
+    }
+
+    FStructuralSupportLink Link;
+    Link.SupportNodeId = SupportNodeId;
+    Link.SupportAnchorId = SupportAnchorId;
+    Link.OwnAnchorId = OwnAnchorId;
+    Child->SecondarySupports.Add(Link);
+
+    // Sharing the load changes every support's aggregate; reject overloads.
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        TSet<FGuid> Visiting;
+        bool bLoadValid = true;
+        const float Aggregate = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid);
+        if (!bLoadValid || Aggregate > Pair.Value.MaxSupportedLoad)
+        {
+            Child = Nodes.Find(ChildNodeId);
+            Child->SecondarySupports.Pop();
+            return false;
+        }
+    }
+
+    ++Child->Revision;
+    ++Support->Revision;
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId, FGuid SupportNodeId)
+{
+    FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
+    if (!Child || Child->Revision == MAX_int64)
+        return false;
+    const int32 Removed = Child->SecondarySupports.RemoveAll(
+        [&SupportNodeId](const FStructuralSupportLink& Link) { return Link.SupportNodeId == SupportNodeId; });
+    if (Removed == 0)
+        return false;
+    ++Child->Revision;
+    if (FStructuralNodeRecord* Support = Nodes.Find(SupportNodeId))
+    {
+        if (Support->Revision < MAX_int64)
+            ++Support->Revision;
+    }
+    return true;
+}
+
+TArray<FGuid> UWorldStructuralGraphSubsystem::GetAllDependents(FGuid NodeId) const
+{
+    TArray<FGuid> Result;
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        bool bDepends = Pair.Value.ParentNodeId == NodeId;
+        for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
+            bDepends |= Link.SupportNodeId == NodeId;
+        if (bDepends)
+            Result.Add(Pair.Key);
+    }
+    return Result;
 }
 
 bool UWorldStructuralGraphSubsystem::SetGroundSupported(FGuid NodeId, bool bGroundSupported)
@@ -467,42 +651,47 @@ bool UWorldStructuralGraphSubsystem::SetGroundSupported(FGuid NodeId, bool bGrou
 
 bool UWorldStructuralGraphSubsystem::HasValidSupportPath(FGuid NodeId) const
 {
+    TSet<FGuid> Visiting;
+    return HasValidSupportPathInternal(NodeId, FGuid(), Visiting);
+}
+
+bool UWorldStructuralGraphSubsystem::HasValidSupportPathInternal(
+    FGuid NodeId, FGuid ExcludedNodeId, TSet<FGuid>& Visiting) const
+{
     const FStructuralNodeRecord* Current = Nodes.Find(NodeId);
-    if (!Current)
+    if (!Current || NodeId == ExcludedNodeId || Visiting.Contains(NodeId) ||
+        !Current->Actor.IsValid() || Current->Damage >= Current->DamageThreshold)
     {
         return false;
     }
+    if (Current->bGroundSupported)
+        return true;
 
-    TSet<FGuid> Visited;
-    while (Current)
+    Visiting.Add(NodeId);
+    bool bSupported = Current->ParentNodeId.IsValid() &&
+        HasValidSupportPathInternal(Current->ParentNodeId, ExcludedNodeId, Visiting);
+    for (int32 Index = 0; !bSupported && Index < Current->SecondarySupports.Num(); ++Index)
     {
-        if (Visited.Contains(Current->NodeId))
-        {
-            return false;
-        }
-        Visited.Add(Current->NodeId);
-
-        if (!Current->Actor.IsValid() || Current->Damage >= Current->DamageThreshold)
-        {
-            return false;
-        }
-        if (Current->bGroundSupported)
-        {
-            return true;
-        }
-        if (!Current->ParentNodeId.IsValid())
-        {
-            return false;
-        }
-        Current = Nodes.Find(Current->ParentNodeId);
+        bSupported = HasValidSupportPathInternal(
+            Current->SecondarySupports[Index].SupportNodeId, ExcludedNodeId, Visiting);
     }
-    return false;
+    Visiting.Remove(NodeId);
+    return bSupported;
 }
 
 bool UWorldStructuralGraphSubsystem::CanSafelyRemove(FGuid NodeId) const
 {
-    const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
-    return Node && GetDirectDependents(NodeId).IsEmpty();
+    if (!Nodes.Contains(NodeId))
+        return false;
+    // Removal is safe when every piece resting on this node still reaches
+    // ground through another contact.
+    for (const FGuid& DependentId : GetAllDependents(NodeId))
+    {
+        TSet<FGuid> Visiting;
+        if (!HasValidSupportPathInternal(DependentId, NodeId, Visiting))
+            return false;
+    }
+    return true;
 }
 
 bool UWorldStructuralGraphSubsystem::BuildDependentRemovalOrder(
@@ -546,6 +735,11 @@ bool UWorldStructuralGraphSubsystem::CollectDependentsDepthFirst(
     });
     for (const FGuid& ChildId : Children)
     {
+        // A child that still reaches ground through another contact does not
+        // collapse with this node.
+        TSet<FGuid> SupportVisiting;
+        if (HasValidSupportPathInternal(ChildId, NodeId, SupportVisiting))
+            continue;
         if (!CollectDependentsDepthFirst(ChildId, Visited, OutOrder)) return false;
     }
     OutOrder.Add(NodeId);
@@ -574,9 +768,14 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
     float Total = Node->LocalLoad;
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
-        if (Pair.Value.ParentNodeId == NodeId)
+        bool bSupportsChild = Pair.Value.ParentNodeId == NodeId;
+        for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
+            bSupportsChild |= Link.SupportNodeId == NodeId;
+        if (bSupportsChild)
         {
-            Total += ComputeAggregateLoad(Pair.Key, Visiting, bOutValid);
+            // A piece resting on several supports shares its load equally.
+            const float ChildLoad = ComputeAggregateLoad(Pair.Key, Visiting, bOutValid);
+            Total += ChildLoad / static_cast<float>(1 + Pair.Value.SecondarySupports.Num());
             if (!bOutValid)
             {
                 Visiting.Remove(NodeId);
@@ -637,21 +836,25 @@ TArray<FGuid> UWorldStructuralGraphSubsystem::GetDirectDependents(FGuid NodeId) 
 bool UWorldStructuralGraphSubsystem::WouldCreateCycle(
     FGuid ParentNodeId, FGuid ChildNodeId) const
 {
-    FGuid CurrentId = ParentNodeId;
+    // The child must not already be below the proposed support through any link.
+    TArray<FGuid> Pending;
+    Pending.Add(ParentNodeId);
     TSet<FGuid> Visited;
-    while (CurrentId.IsValid())
+    while (!Pending.IsEmpty())
     {
-        if (CurrentId == ChildNodeId || Visited.Contains(CurrentId))
-        {
+        const FGuid CurrentId = Pending.Pop();
+        if (CurrentId == ChildNodeId)
             return true;
-        }
+        if (Visited.Contains(CurrentId))
+            continue;
         Visited.Add(CurrentId);
         const FStructuralNodeRecord* Current = Nodes.Find(CurrentId);
         if (!Current)
-        {
             return true;
-        }
-        CurrentId = Current->ParentNodeId;
+        if (Current->ParentNodeId.IsValid())
+            Pending.Add(Current->ParentNodeId);
+        for (const FStructuralSupportLink& Link : Current->SecondarySupports)
+            Pending.Add(Link.SupportNodeId);
     }
     return false;
 }

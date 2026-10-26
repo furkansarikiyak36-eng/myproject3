@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "StickPrimitiveTypes.h"
+#include "StructuralPieceInterface.h"
 #include "StickPrimitivePiece.generated.h"
 
 class UStaticMesh;
@@ -14,7 +15,7 @@ class UWorldObjectIdentityComponent;
  * This domain layer never treats mesh overlap as a structural connection.
  */
 UCLASS(Blueprintable)
-class MYPROJECT3_API AStickPrimitivePiece : public AActor
+class MYPROJECT3_API AStickPrimitivePiece : public AActor, public IStructuralPieceInterface
 {
     GENERATED_BODY()
 
@@ -94,6 +95,17 @@ public:
     UFUNCTION(BlueprintPure, Category="Primitive|Anchors")
     FTransform GetAnchorWorldTransform(FName AnchorId) const;
 
+    // IStructuralPieceInterface
+    virtual EStructuralNodeKind GetStructuralKind() const override { return EStructuralNodeKind::Stick; }
+    virtual FGuid GetStructuralNodeId() const override;
+    virtual bool GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const override;
+    virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) override;
+    virtual bool IsStructurallyPlaced() const override { return bIsPlaced; }
+    virtual bool CanAttachAsCrossMaterialChild() const override;
+    virtual void ApplyCrossMaterialAttachment(AActor* Parent) override;
+    virtual void ClearCrossMaterialAttachment() override;
+    virtual AActor* GetCrossMaterialParent() const override { return CrossMaterialParent.Get(); }
+
 private:
     UPROPERTY(Transient)
     bool bIsHeld = false;
@@ -116,6 +128,12 @@ private:
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<AStickPrimitivePiece>> AttachedPieces;
 
+    /** Support of another material this piece rests on; the graph holds the edge. */
+    UPROPERTY(Transient)
+    TWeakObjectPtr<AActor> CrossMaterialParent;
+
+    /** True when any piece of any material rests on this piece in the canonical graph. */
+    bool HasStructuralDependents() const;
     int32 FindAnchorIndex(FName AnchorId) const;
     bool HasValidSupportChain() const;
     void ReleaseAnchor(FName AnchorId);

@@ -1,5 +1,7 @@
 #include "StoneBuildingPiece.h"
 
+#include "MaterialConnectionSubsystem.h"
+
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
@@ -145,6 +147,11 @@ bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
 void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     RemoveConnection(true);
+    if (UMaterialConnectionSubsystem* Connections =
+        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
+    {
+        Connections->ReleaseCrossMaterialChildren(this);
+    }
 
     for (const TWeakObjectPtr<AStoneBuildingPiece>& Child : AttachedPieces)
     {
@@ -216,7 +223,8 @@ bool AStoneBuildingPiece::SetHeldState(bool bNewHeld)
     if (bNewHeld)
     {
         if (!bCanBeCarried || bIsHeld || bIsPlaced ||
-            ParentPiece.IsValid() || AttachedPieces.Num() > 0)
+            ParentPiece.IsValid() || AttachedPieces.Num() > 0 ||
+            CrossMaterialParent.IsValid() || HasStructuralDependents())
         {
             return false;
         }
@@ -403,6 +411,19 @@ void AStoneBuildingPiece::ReleaseAnchorReservation(FName AnchorId)
 
 bool AStoneBuildingPiece::RemoveConnection(bool bAllowGraphFailure)
 {
+    if (CrossMaterialParent.IsValid() || (bAllowGraphFailure && !CrossMaterialParent.IsExplicitlyNull()))
+    {
+        UMaterialConnectionSubsystem* Connections =
+            GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+        if (Connections && Connections->TryDisconnect(this))
+            return true;
+        if (!bAllowGraphFailure)
+            return false;
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        ClearCrossMaterialAttachment();
+        return true;
+    }
+
     AStoneBuildingPiece* Parent = ParentPiece.Get();
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
@@ -459,4 +480,72 @@ bool AStoneBuildingPiece::RemoveConnection(bool bAllowGraphFailure)
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
     }
     return true;
+}
+
+bool AStoneBuildingPiece::HasStructuralDependents() const
+{
+    const UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    return Graph && StructuralIdentity &&
+        !Graph->GetAllDependents(StructuralIdentity->GetInstanceId()).IsEmpty();
+}
+
+FGuid AStoneBuildingPiece::GetStructuralNodeId() const
+{
+    return StructuralIdentity ? StructuralIdentity->GetInstanceId() : FGuid();
+}
+
+bool AStoneBuildingPiece::GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const
+{
+    const int32 Index = FindAnchorIndex(AnchorId);
+    if (!Anchors.IsValidIndex(Index))
+        return false;
+    const FStoneSnapAnchor* Match = &Anchors[Index];
+    OutAnchor.AnchorId = Match->AnchorId;
+    OutAnchor.Tag = Match->CompatibilityTag;
+    OutAnchor.LocalTransform = Match->LocalTransform;
+    OutAnchor.bCanReceive = Match->bCanReceive;
+    OutAnchor.bCanConnect = Match->bCanConnect;
+    OutAnchor.bOccupied = Match->bOccupied;
+    return true;
+}
+
+bool AStoneBuildingPiece::SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied)
+{
+    const int32 Index = FindAnchorIndex(AnchorId);
+    if (!Anchors.IsValidIndex(Index))
+        return false;
+    Anchors[Index].bOccupied = bOccupied;
+    return true;
+}
+
+bool AStoneBuildingPiece::CanAttachAsCrossMaterialChild() const
+{
+    return !bIsPlaced && !ParentPiece.IsValid() && AttachedPieces.IsEmpty() &&
+        !CrossMaterialParent.IsValid() && !HasStructuralDependents();
+}
+
+void AStoneBuildingPiece::ApplyCrossMaterialAttachment(AActor* Parent)
+{
+    CrossMaterialParent = Parent;
+    bIsHeld = false;
+    bIsPlaced = true;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+}
+
+void AStoneBuildingPiece::ClearCrossMaterialAttachment()
+{
+    CrossMaterialParent.Reset();
+    bIsPlaced = false;
+    if (Mesh && !bIsHeld)
+    {
+        Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(true);
+    }
 }

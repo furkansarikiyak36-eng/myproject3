@@ -3,6 +3,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "LogBuildPiece.h"
+#include "MaterialConnectionSubsystem.h"
+#include "StoneBuildingPiece.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
@@ -290,6 +292,106 @@ bool FLogUnmatchedMeshSetTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Length cut blocked"), Log->CanApplyCutAction(ELogCutAction::SplitLengthHalf));
     TestTrue(TEXT("Block reason names the mesh set"),
         Log->GetCutActionBlockReason(ELogCutAction::SplitLengthHalf).Contains(TEXT("processing mesh set")));
+    return true;
+}
+
+// M026/M061 (SOTF-D01): a piece resting on two supports survives losing one,
+// shares its load, and blocks removal only while it has no other support.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGraphMultiSupportTest,
+    "MyProject3.Structure.Graph.SecondarySupportKeepsPieceStanding", TestFlags)
+bool FGraphMultiSupportTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldStructuralGraphSubsystem* Graph = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Graph"), Graph))
+        return false;
+
+    AActor* ActorA = TestWorld.World->SpawnActor<AActor>();
+    AActor* ActorB = TestWorld.World->SpawnActor<AActor>();
+    AActor* ActorC = TestWorld.World->SpawnActor<AActor>();
+    const FGuid A = FGuid::NewGuid();
+    const FGuid B = FGuid::NewGuid();
+    const FGuid C = FGuid::NewGuid();
+    TestTrue(TEXT("Register A"), Graph->RegisterNode(ActorA, A, EStructuralNodeKind::Wood, true, 1.0f, 1000.0f, 100.0f));
+    TestTrue(TEXT("Register B"), Graph->RegisterNode(ActorB, B, EStructuralNodeKind::Wood, true, 1.0f, 1000.0f, 100.0f));
+    TestTrue(TEXT("Register C"), Graph->RegisterNode(ActorC, C, EStructuralNodeKind::Wood, false, 10.0f, 1000.0f, 100.0f));
+
+    TestTrue(TEXT("C rests on A"), Graph->TryConnect(A, TEXT("a1"), C, TEXT("c1")));
+    TestFalse(TEXT("A cannot be removed while C has no other support"), Graph->CanSafelyRemove(A));
+    TestFalse(TEXT("A secondary on the primary support is rejected"),
+        Graph->TryAddSecondarySupport(C, A, TEXT("a2"), TEXT("c2")));
+    TestTrue(TEXT("C also rests on B"), Graph->TryAddSecondarySupport(C, B, TEXT("b1"), TEXT("c2")));
+    TestFalse(TEXT("An occupied anchor is rejected"),
+        Graph->TryAddSecondarySupport(C, B, TEXT("b1"), TEXT("c3")));
+    TestEqual(TEXT("A carries half of C"), Graph->GetAggregateLoad(A), 6.0f);
+    TestTrue(TEXT("A can be removed once C has another support"), Graph->CanSafelyRemove(A));
+
+    TestTrue(TEXT("Remove A"), Graph->UnregisterNode(A, false));
+    FStructuralNodeRecord NodeC;
+    TestTrue(TEXT("C still tracked"), Graph->GetNode(C, NodeC));
+    TestEqual(TEXT("B was promoted to primary support"), NodeC.ParentNodeId, B);
+    TestTrue(TEXT("C still reaches ground"), Graph->HasValidSupportPath(C));
+    TestEqual(TEXT("B now carries all of C"), Graph->GetAggregateLoad(B), 11.0f);
+    return true;
+}
+
+// M038/M024 (SOTF-M01/M02): a log can rest on a placed stone through the
+// material rule table, survives a graph save/restore with its local state, and
+// a pairing without a rule changes nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCrossMaterialConnectionTest,
+    "MyProject3.Structure.Materials.LogOnStoneConnectsRestoresAndDisconnects", TestFlags)
+bool FCrossMaterialConnectionTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UMaterialConnectionSubsystem* Connections = World ? World->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Graph"), Graph) || !TestNotNull(TEXT("Connections"), Connections))
+        return false;
+
+    AStoneBuildingPiece* Stone = World->SpawnActor<AStoneBuildingPiece>(FVector::ZeroVector, FRotator::ZeroRotator);
+    ALogBuildPiece* Log = SpawnConfiguredLog(World, true);
+    if (!TestNotNull(TEXT("Stone"), Stone) || !TestNotNull(TEXT("Log"), Log))
+        return false;
+    TestTrue(TEXT("Stone top anchor"), Stone->AddCustomAnchor(TEXT("Top"), TEXT("Stone"),
+        FTransform(FVector(0.0, 0.0, 50.0)), true, false));
+    TestTrue(TEXT("Pick up stone"), Stone->SetHeldState(true));
+    TestTrue(TEXT("Place stone on ground"), Stone->TryCommitGroundPlacement(FVector::ZeroVector, FRotator::ZeroRotator));
+    Log->AddCustomSnapPoint(TEXT("Bottom"), TEXT("LogEnd"), FTransform::Identity, true, false, true, false);
+
+    TArray<FMaterialConnectionRule> AuthoredRules = Connections->Rules;
+    Connections->Rules.Reset();
+    FString Reason;
+    TestFalse(TEXT("No rule means no joint"), Connections->TryConnect(Stone, TEXT("Top"), Log, TEXT("Bottom"), Reason));
+    FStructuralNodeRecord LogNode;
+    Graph->GetNode(Log->GetStructuralNodeId(), LogNode);
+    TestFalse(TEXT("Rejected joint left no graph edge"), LogNode.ParentNodeId.IsValid());
+    TestFalse(TEXT("Rejected joint left the log loose"), Log->IsPlaced());
+    Connections->Rules = AuthoredRules;
+
+    TestTrue(FString::Printf(TEXT("Log rests on stone (%s)"), *Reason),
+        Connections->TryConnect(Stone, TEXT("Top"), Log, TEXT("Bottom"), Reason));
+    Graph->GetNode(Log->GetStructuralNodeId(), LogNode);
+    TestEqual(TEXT("Graph edge points at the stone"), LogNode.ParentNodeId, Stone->GetStructuralNodeId());
+    TestTrue(TEXT("Log is placed"), Log->IsPlaced());
+    TestTrue(TEXT("Log knows its stone support"), Log->GetCrossMaterialParent() == Stone);
+    TestFalse(TEXT("A stone carrying a log cannot be picked up"), Stone->SetHeldState(true));
+
+    TArray<FWorldStructuralNodeSnapshot> Snapshot;
+    TestTrue(TEXT("Graph exports"), Graph->ExportSnapshot(Snapshot));
+    TestTrue(TEXT("Graph with a ground-supported root restores"), Graph->RestoreSnapshot(Snapshot));
+    TestTrue(TEXT("Actor-local state rebuilds from the graph"), Graph->RebuildLogActorAttachmentsFromSnapshot());
+    TestTrue(TEXT("Log is still placed on the stone after restore"),
+        Log->IsPlaced() && Log->GetCrossMaterialParent() == Stone);
+
+    TestTrue(TEXT("Disconnect"), Connections->TryDisconnect(Log));
+    FStructuralAnchorView TopAnchor;
+    Stone->GetStructuralAnchor(TEXT("Top"), TopAnchor);
+    TestFalse(TEXT("Stone anchor is free again"), TopAnchor.bOccupied);
+    TestFalse(TEXT("Log is loose"), Log->IsPlaced());
+    Graph->GetNode(Log->GetStructuralNodeId(), LogNode);
+    TestFalse(TEXT("Graph edge removed"), LogNode.ParentNodeId.IsValid());
     return true;
 }
 

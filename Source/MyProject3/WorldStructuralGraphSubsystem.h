@@ -18,10 +18,29 @@ enum class EStructuralNodeKind : uint8
     Other
 };
 
+/** An additional load-bearing contact besides the primary parent edge. */
+USTRUCT(BlueprintType)
+struct FStructuralSupportLink
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Structure")
+    FGuid SupportNodeId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Structure")
+    FName SupportAnchorId = NAME_None;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Structure")
+    FName OwnAnchorId = NAME_None;
+};
+
 USTRUCT()
 struct FWorldStructuralNodeSnapshot
 {
     GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    TArray<FStructuralSupportLink> SecondarySupports;
 
     UPROPERTY(SaveGame)
     FGuid NodeId;
@@ -83,6 +102,10 @@ struct FStructuralNodeRecord
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
     FName OwnAnchorId = NAME_None;
 
+    /** Extra load-bearing contacts; the node stands while any support reaches ground. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
+    TArray<FStructuralSupportLink> SecondarySupports;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
     float LocalLoad = 0.0f;
 
@@ -130,6 +153,18 @@ public:
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool TryDisconnect(FGuid ChildNodeId);
 
+    /** Adds a load-bearing contact to a node that already has a primary parent. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool TryAddSecondarySupport(FGuid ChildNodeId, FGuid SupportNodeId,
+        FName SupportAnchorId, FName OwnAnchorId);
+
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool TryRemoveSecondarySupport(FGuid ChildNodeId, FGuid SupportNodeId);
+
+    /** Primary children and nodes that use this node as a secondary support. */
+    UFUNCTION(BlueprintPure, Category="Structure|Graph")
+    TArray<FGuid> GetAllDependents(FGuid NodeId) const;
+
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool SetGroundSupported(FGuid NodeId, bool bGroundSupported);
 
@@ -168,6 +203,9 @@ private:
     TMap<FGuid, FStructuralNodeRecord> Nodes;
 
     bool WouldCreateCycle(FGuid ParentNodeId, FGuid ChildNodeId) const;
+    /** Support search over primary and secondary links, optionally ignoring one node. */
+    bool HasValidSupportPathInternal(FGuid NodeId, FGuid ExcludedNodeId, TSet<FGuid>& Visiting) const;
+    bool IsAnchorInUse(FGuid SupportNodeId, FName SupportAnchorId) const;
     bool CollectDependentsDepthFirst(FGuid NodeId, TSet<FGuid>& Visited,
         TArray<FGuid>& OutOrder) const;
     float ComputeAggregateLoad(FGuid NodeId, TSet<FGuid>& Visiting,

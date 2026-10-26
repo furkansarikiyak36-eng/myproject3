@@ -1,6 +1,7 @@
 #include "LogBuildPiece.h"
 
 #include "GameplayCoreTypes.h"
+#include "MaterialConnectionSubsystem.h"
 #include "WorldCommittedEventSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
@@ -992,6 +993,11 @@ void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
     }
 
     DetachFromSnapParent(true);
+    if (UMaterialConnectionSubsystem* Connections =
+        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
+    {
+        Connections->ReleaseCrossMaterialChildren(this);
+    }
     for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
     {
         if (Child.IsValid())
@@ -2609,7 +2615,89 @@ void ALogBuildPiece::AddCustomSnapPoint(
 
 bool ALogBuildPiece::CanBePickedUp() const
 {
-    return bCanBeCarried && !bIsHeld && GetAttachedPieceCount() == 0;
+    return bCanBeCarried && !bIsHeld && GetAttachedPieceCount() == 0 &&
+        !HasStructuralDependents();
+}
+
+bool ALogBuildPiece::HasStructuralDependents() const
+{
+    const UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    return Graph && StructuralIdentity &&
+        !Graph->GetAllDependents(StructuralIdentity->GetInstanceId()).IsEmpty();
+}
+
+FGuid ALogBuildPiece::GetStructuralNodeId() const
+{
+    return StructuralIdentity ? StructuralIdentity->GetInstanceId() : FGuid();
+}
+
+bool ALogBuildPiece::GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const
+{
+    const FLogSnapPoint* Match = nullptr;
+    for (const FLogSnapPoint& Point : SnapPoints)
+    {
+        if (Point.PointId != AnchorId)
+            continue;
+        if (Match)
+            return false; // Ambiguous anchor names fail closed.
+        Match = &Point;
+    }
+    if (!Match)
+        return false;
+    OutAnchor.AnchorId = Match->PointId;
+    OutAnchor.Tag = Match->SnapTag;
+    OutAnchor.LocalTransform = Match->LocalTransform;
+    OutAnchor.bCanReceive = Match->bCanReceive;
+    OutAnchor.bCanConnect = Match->bCanSource;
+    OutAnchor.bOccupied = Match->bOccupied;
+    return true;
+}
+
+bool ALogBuildPiece::SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied)
+{
+    for (FLogSnapPoint& Point : SnapPoints)
+    {
+        if (Point.PointId == AnchorId)
+        {
+            Point.bOccupied = bOccupied;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ALogBuildPiece::CanAttachAsCrossMaterialChild() const
+{
+    return !bIsPlaced && !SnapParent.IsValid() && OwnSnapPointIndexUsed == INDEX_NONE &&
+        !CrossMaterialParent.IsValid() && GetAttachedPieceCount() == 0 && !HasStructuralDependents();
+}
+
+void ALogBuildPiece::ApplyCrossMaterialAttachment(AActor* Parent)
+{
+    CrossMaterialParent = Parent;
+    bIsHeld = false;
+    bIsPlaced = true;
+    SetActorEnableCollision(true);
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+}
+
+void ALogBuildPiece::ClearCrossMaterialAttachment()
+{
+    CrossMaterialParent.Reset();
+    bIsPlaced = false;
+    bStartsPlaced = false;
+    if (Mesh && !bIsHeld)
+    {
+        Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(true);
+    }
 }
 
 void ALogBuildPiece::SetPlacedState(bool bNewPlaced)
@@ -2816,6 +2904,20 @@ bool ALogBuildPiece::AttachToSnapParent(
 
 bool ALogBuildPiece::DetachFromSnapParent(bool bAllowGraphFailure)
 {
+    if (CrossMaterialParent.IsValid() || (bAllowGraphFailure && !CrossMaterialParent.IsExplicitlyNull()))
+    {
+        UMaterialConnectionSubsystem* Connections =
+            GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+        if (Connections && Connections->TryDisconnect(this))
+            return true;
+        if (!bAllowGraphFailure)
+            return false;
+        // Lifecycle cleanup: the support is gone or the graph is unavailable.
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        ClearCrossMaterialAttachment();
+        return true;
+    }
+
     ALogBuildPiece* Parent = SnapParent.Get();
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;

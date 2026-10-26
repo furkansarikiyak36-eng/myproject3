@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "LogBuildingTypes.h"
 #include "GameplayCoreTypes.h"
+#include "StructuralPieceInterface.h"
 #include "LogBuildPiece.generated.h"
 
 class UStaticMesh;
@@ -13,7 +14,7 @@ enum class EWorldItemOwnerKind : uint8;
 struct FWorldOwnedItemRecord;
 
 UCLASS(Blueprintable)
-class MYPROJECT3_API ALogBuildPiece : public AActor
+class MYPROJECT3_API ALogBuildPiece : public AActor, public IStructuralPieceInterface
 {
     GENERATED_BODY()
 
@@ -252,6 +253,17 @@ public:
     int32 GetAttachedPieceCount() const;
 
     const TArray<FLogSnapPoint>& GetSnapPoints() const { return SnapPoints; }
+
+    // IStructuralPieceInterface
+    virtual EStructuralNodeKind GetStructuralKind() const override { return EStructuralNodeKind::Wood; }
+    virtual FGuid GetStructuralNodeId() const override;
+    virtual bool GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const override;
+    virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) override;
+    virtual bool IsStructurallyPlaced() const override { return bIsPlaced; }
+    virtual bool CanAttachAsCrossMaterialChild() const override;
+    virtual void ApplyCrossMaterialAttachment(AActor* Parent) override;
+    virtual void ClearCrossMaterialAttachment() override;
+    virtual AActor* GetCrossMaterialParent() const override { return CrossMaterialParent.Get(); }
     FTransform GetSnapPointLocalTransform(int32 Index) const;
 
 private:
@@ -282,6 +294,13 @@ private:
 
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
+
+    /** Non-log support (stone, stick) this log rests on; the graph holds the edge. */
+    UPROPERTY(Transient)
+    TWeakObjectPtr<AActor> CrossMaterialParent;
+
+    /** True when any piece of any material rests on this log in the canonical graph. */
+    bool HasStructuralDependents() const;
 
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
