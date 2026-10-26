@@ -193,6 +193,12 @@ bool AWorldDemoScenarioActor::EnsureProduction(UWorldProductionSubsystem* Produc
     {
         Recipe.RequiredStationTag = ProductionStationTag;
     }
+    else if (Recipe.RequiredStationTag != ProductionStationTag)
+    {
+        // A recipe that targets a different station type would be registered
+        // successfully but could never run at this configured demo station.
+        return false;
+    }
 
     const FWorldProductionRecipe* ExistingRecipe = Recipes.FindByPredicate(
         [&Recipe](const FWorldProductionRecipe& R) { return R.RecipeId == Recipe.RecipeId; });
