@@ -35,10 +35,22 @@ def spawn_labelled(actor_class, location, rotation, label):
 
 
 def delete_old_presentation_actors():
-    # Remove only actors owned by this presentation script; keep gameplay actors/map content.
+    # VerticalSlice_B is a dedicated demo map: replace old presentation lights and
+    # anything created by this script, while preserving the gameplay/world actors.
+    presentation_types = {
+        "DirectionalLight", "SkyLight", "SkyAtmosphere",
+        "ExponentialHeightFog", "StaticMeshActor"
+    }
     for actor in list(unreal.EditorLevelLibrary.get_all_level_actors()):
         try:
-            if actor.get_actor_label().startswith(PRESENTATION_PREFIX):
+            label = actor.get_actor_label()
+            class_name = actor.get_class().get_name()
+            is_script_actor = label.startswith(PRESENTATION_PREFIX)
+            is_old_light = class_name in {
+                "DirectionalLight", "SkyLight", "SkyAtmosphere", "ExponentialHeightFog"
+            }
+            is_old_fallback_plane = class_name == "StaticMeshActor" and label.startswith("VSliceB_")
+            if is_script_actor or is_old_light or is_old_fallback_plane:
                 unreal.EditorLevelLibrary.destroy_actor(actor)
         except Exception:
             pass
