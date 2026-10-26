@@ -51,6 +51,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Geometry")
     bool bUseCanonicalGeometryDimensions = false;
 
+    /**
+     * Explicit nominal asset families. If this list is non-empty, a valid set must be
+     * selected and all geometry/length-cut data resolves from that set only.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TArray<FLogProcessingMeshSet> ProcessingMeshSets;
+
+    /** Persisted selector so processed pieces keep resolving variants from the same source family. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Processing")
+    FName SelectedProcessingMeshSetId = NAME_None;
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
+    FName GetSelectedProcessingMeshSetId() const { return SelectedProcessingMeshSetId; }
+
     /** Stable root definition; the ledger DefinitionId may change after processing. */
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing")
     FName BaseDefinitionId = NAME_None;
@@ -180,6 +194,8 @@ public:
 
     // Completes the actor-side registration after a unique inventory item becomes world-owned.
     bool ActivateAfterOwnershipTransfer();
+    /** Applies a configured initial geometry state to a newly spawned, world-owned output. */
+    bool TrySetInitialPieceType(ELogPieceType DesiredType, FGuid OperationId);
 
     UFUNCTION(BlueprintPure, Category = "Log Piece|Processing")
     bool CanApplyCutAction(ELogCutAction Action) const;
@@ -193,6 +209,9 @@ public:
     /** Result-bearing processing entry point; legacy bool API remains compatible. */
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     FWorldOperationResult TryApplyCutAction(ELogCutAction Action, FGuid OperationId);
+    /** Adds normalized cut work (0..1) before committing the geometry transaction. */
+    UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
+    FWorldOperationResult TryAdvanceCutProgress(ELogCutAction Action, float NormalizedWork, FGuid OperationId);
 
     UFUNCTION(BlueprintCallable, Category = "Log Piece")
     void SetPieceTypeByName(FName TypeName);
@@ -224,6 +243,10 @@ public:
         int32 MyPointIndex);
     /** Disconnects graph and actor state together; force-local cleanup is reserved for EndPlay. */
     bool DetachFromSnapParent(bool bAllowGraphFailure = false);
+    /** Rebuild transient actor/anchor bookkeeping after canonical graph restore; never mutates the graph. */
+    void ResetActorLocalSnapStateForGraphRestore();
+    bool RestoreActorLocalSnapLinkFromGraph(ALogBuildPiece* Parent, FName ParentAnchorId,
+        FName OwnAnchorId, bool bPlaced);
     void RegisterAttachedPiece(ALogBuildPiece* Child);
     void UnregisterAttachedPiece(ALogBuildPiece* Child);
     int32 GetAttachedPieceCount() const;
@@ -232,6 +255,16 @@ public:
     FTransform GetSnapPointLocalTransform(int32 Index) const;
 
 private:
+    /** Persisted in-progress cut; completion still requires a valid configured output mesh. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true", ClampMin="0.0", ClampMax="1.0"))
+    float CutProgress = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true"))
+    ELogCutAction ActiveCutAction = ELogCutAction::SplitHalf;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true"))
+    bool bHasActiveCutProgress = false;
+
     UPROPERTY(Transient)
     bool bIsPlaced = false;
 
@@ -263,6 +296,16 @@ private:
 
     void SyncCanonicalGeometryFromLegacyPieceType();
     void SetCanonicalCrossSectionFromPieceType(ELogPieceType Type);
+
+    /** Selects a set only when the current mesh matches exactly one authored set mesh. */
+    bool SelectProcessingMeshSetFromCurrentMesh();
+    /** Derives canonical dimensions from an exact, unambiguous mesh match in the active set. */
+    void SynchronizeGeometryStateFromCurrentMeshSet();
+    const FLogProcessingMeshSet* GetActiveProcessingMeshSet() const;
+    /** True when sets are configured but none is uniquely and validly selected. */
+    bool HasInvalidProcessingMeshSetSelection() const;
+
+    FWorldOperationResult CommitCutAction(ELogCutAction Action, FGuid OperationId);
     bool TryResolveGeometryVariant(ELogLengthFraction InLength,
         ELogCrossSectionProfile InProfile, UStaticMesh*& OutMesh,
         FVector* OutSecondPieceCenterOffset = nullptr,

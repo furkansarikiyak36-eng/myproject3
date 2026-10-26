@@ -18,6 +18,48 @@ enum class EStructuralNodeKind : uint8
     Other
 };
 
+USTRUCT()
+struct FWorldStructuralNodeSnapshot
+{
+    GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    FGuid NodeId;
+
+    UPROPERTY(SaveGame)
+    FGuid ActorIdentityId;
+
+    UPROPERTY(SaveGame)
+    EStructuralNodeKind Kind = EStructuralNodeKind::Unknown;
+
+    UPROPERTY(SaveGame)
+    FGuid ParentNodeId;
+
+    UPROPERTY(SaveGame)
+    FName ParentAnchorId = NAME_None;
+
+    UPROPERTY(SaveGame)
+    FName OwnAnchorId = NAME_None;
+
+    UPROPERTY(SaveGame)
+    float LocalLoad = 0.0f;
+
+    UPROPERTY(SaveGame)
+    float MaxSupportedLoad = 100000.0f;
+
+    UPROPERTY(SaveGame)
+    bool bGroundSupported = false;
+
+    UPROPERTY(SaveGame)
+    float Damage = 0.0f;
+
+    UPROPERTY(SaveGame)
+    float DamageThreshold = 100.0f;
+
+    UPROPERTY(SaveGame)
+    int64 Revision = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FStructuralNodeRecord
 {
@@ -115,6 +157,11 @@ public:
 
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     int32 GetNodeCount() const { return Nodes.Num(); }
+
+    bool ExportSnapshot(TArray<FWorldStructuralNodeSnapshot>& OutSnapshot) const;
+    bool RestoreSnapshot(const TArray<FWorldStructuralNodeSnapshot>& Snapshot);
+    /** Rehydrates log actor-local attachment refs from restored canonical edges without reconnecting graph nodes. */
+    bool RebuildLogActorAttachmentsFromSnapshot();
 
 private:
     UPROPERTY(Transient)

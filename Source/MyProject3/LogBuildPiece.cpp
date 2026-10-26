@@ -100,6 +100,66 @@ namespace
             *BaseDefinitionId.ToString(), LengthFractionToken(Length), CrossSectionToken(Profile)));
     }
 
+    /** Unprocessed full-length round pieces keep the plain base definition. */
+    FName MakeDefinitionIdForGeometry(
+        FName BaseDefinitionId, ELogLengthFraction Length, ELogCrossSectionProfile Profile)
+    {
+        if (Length == ELogLengthFraction::FullLength && Profile == ELogCrossSectionProfile::Round)
+            return BaseDefinitionId;
+        return MakeCanonicalGeometryDefinitionId(BaseDefinitionId, Length, Profile);
+    }
+
+    /**
+     * Reads the interim "[Length<Fraction>.]<LegacyShape>" suffix written by the
+     * mesh-variant-set branch before the canonical ".Geom." format was adopted.
+     */
+    bool TryParseInterimGeometrySuffix(
+        const FString& Suffix, ELogLengthFraction& InOutLength, ELogCrossSectionProfile& OutProfile)
+    {
+        FString ShapeToken = Suffix;
+        FString LengthToken;
+        FString ParsedShape;
+        if (Suffix.Split(TEXT("."), &LengthToken, &ParsedShape, ESearchCase::IgnoreCase))
+        {
+            if (LengthToken.Equals(TEXT("LengthFull"), ESearchCase::IgnoreCase))
+                InOutLength = ELogLengthFraction::FullLength;
+            else if (LengthToken.Equals(TEXT("LengthThreeQuarter"), ESearchCase::IgnoreCase))
+                InOutLength = ELogLengthFraction::ThreeQuarterLength;
+            else if (LengthToken.Equals(TEXT("LengthHalf"), ESearchCase::IgnoreCase))
+                InOutLength = ELogLengthFraction::HalfLength;
+            else if (LengthToken.Equals(TEXT("LengthQuarter"), ESearchCase::IgnoreCase))
+                InOutLength = ELogLengthFraction::QuarterLength;
+            else
+                return false;
+            ShapeToken = ParsedShape;
+        }
+
+        if (ShapeToken.Equals(TEXT("FullRound"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::Round;
+        else if (ShapeToken.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::HalfRound;
+        else if (ShapeToken.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
+            ShapeToken.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::QuarterRound;
+        else if (ShapeToken.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::Hewn;
+        else if (ShapeToken.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::GroovedHalfRound;
+        else if (ShapeToken.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::Trough;
+        else if (ShapeToken.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::SquareBeam;
+        else if (ShapeToken.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::Plank;
+        else if (ShapeToken.Equals(TEXT("NotchedLog"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::Notched;
+        else if (ShapeToken.Equals(TEXT("JointPiece"), ESearchCase::IgnoreCase))
+            OutProfile = ELogCrossSectionProfile::Joint;
+        else
+            return false;
+        return true;
+    }
+
     bool TryParseCanonicalGeometrySuffix(
         const FString& Suffix, ELogLengthFraction& OutLength, ELogCrossSectionProfile& OutProfile)
     {
@@ -160,6 +220,14 @@ void ALogBuildPiece::OnConstruction(const FTransform& Transform)
     Super::OnConstruction(Transform);
 
     SyncCanonicalGeometryFromLegacyPieceType();
+    if (!SelectProcessingMeshSetFromCurrentMesh() && !ProcessingMeshSets.IsEmpty())
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("Log '%s' has a processing-mesh table but no unique matching set; processing actions will be blocked."),
+            *GetName());
+    }
+    // An exact mesh-table match is authoritative over the inspector's legacy label.
+    SynchronizeGeometryStateFromCurrentMeshSet();
     if (!IsValid(BaseLogVariantMesh) && Mesh && Mesh->GetStaticMesh() &&
         GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
     {
@@ -217,6 +285,24 @@ void ALogBuildPiece::BeginPlay()
             return;
         }
 
+        if (!Item.MeshVariantSetId.IsNone())
+            SelectedProcessingMeshSetId = Item.MeshVariantSetId;
+        if (HasInvalidProcessingMeshSetSelection())
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("Log '%s' requires missing/ambiguous mesh variant set '%s'; actor was quarantined."),
+                *GetName(), *SelectedProcessingMeshSetId.ToString());
+            if (Mesh)
+            {
+                Mesh->SetSimulatePhysics(false);
+                Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+            SetActorHiddenInGame(true);
+            SetActorEnableCollision(false);
+            SetActorTickEnabled(false);
+            return;
+        }
+
         if (Item.BaseDefinitionId.IsNone())
             Item.BaseDefinitionId = Item.DefinitionId;
         BaseDefinitionId = Item.BaseDefinitionId;
@@ -225,9 +311,16 @@ void ALogBuildPiece::BeginPlay()
     else
     {
         Item.ItemId = StructuralIdentity->GetInstanceId();
-        Item.DefinitionId = StructuralIdentity->GetDefinitionId().IsNone()
-            ? BaseDefinitionId : StructuralIdentity->GetDefinitionId();
+        // A pre-shortened or pre-processed authored piece must record its exact
+        // dimensions so a later restore cannot assume a full-length round log.
+        const FName AuthoredDefinitionId = StructuralIdentity->GetDefinitionId();
+        Item.DefinitionId = AuthoredDefinitionId.IsNone() || AuthoredDefinitionId == BaseDefinitionId
+            ? MakeDefinitionIdForGeometry(BaseDefinitionId, GetLengthFraction(), GetCrossSectionProfile())
+            : AuthoredDefinitionId;
+        if (Item.DefinitionId.IsNone())
+            Item.DefinitionId = BaseDefinitionId;
         Item.BaseDefinitionId = BaseDefinitionId;
+        Item.MeshVariantSetId = SelectedProcessingMeshSetId;
         Item.Quantity = 1;
         Item.OwnerKind = EWorldItemOwnerKind::World;
         Item.WorldLocation = GetActorLocation();
@@ -296,6 +389,60 @@ bool ALogBuildPiece::TryTransferOwnership(
         ExpectedOwner, NewOwner, NewOwnerId, NewWorldLocation, OutRecord);
 }
 
+bool ALogBuildPiece::TrySetInitialPieceType(ELogPieceType DesiredType, FGuid OperationId)
+{
+    if (!OperationId.IsValid())
+        OperationId = FGuid::NewGuid();
+
+    UWorldObjectIdentityComponent* ItemIdentity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord CurrentItem;
+    if (!ItemIdentity || !Ownership || !Mesh || bIsHeld || bIsPlaced ||
+        !Ownership->TryGetItem(ItemIdentity->GetInstanceId(), CurrentItem) ||
+        CurrentItem.OwnerKind != EWorldItemOwnerKind::World || CurrentItem.Quantity != 1)
+        return false;
+
+    // Resolve the complete output before mutating ledger or actor state.
+    const ELogLengthFraction TargetLength = LengthFractionFromLegacyType(DesiredType);
+    const ELogCrossSectionProfile TargetProfile = CrossSectionFromLegacyType(DesiredType);
+    UStaticMesh* OutputMesh = nullptr;
+    if (!TryResolveGeometryVariant(TargetLength, TargetProfile, OutputMesh) || !IsValid(OutputMesh))
+        return false;
+
+    const FName EffectiveBaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.BaseDefinitionId
+        : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
+    const FName OutputDefinition =
+        MakeDefinitionIdForGeometry(EffectiveBaseDefinition, TargetLength, TargetProfile);
+    if (OutputDefinition.IsNone())
+        return false;
+
+    if (OutputDefinition != CurrentItem.DefinitionId)
+    {
+        FWorldOwnedItemRecord UpdatedItem;
+        if (!Ownership->TryUpdateItemDefinition(OperationId, CurrentItem.ItemId,
+            CurrentItem.Revision, EWorldItemOwnerKind::World, OutputDefinition, UpdatedItem))
+            return false;
+    }
+
+    BaseDefinitionId = EffectiveBaseDefinition;
+    ItemIdentity->SetDefinitionId(OutputDefinition);
+    FVector OldOrigin, OldExtent;
+    GetActorBounds(false, OldOrigin, OldExtent);
+    SetPieceStaticMesh(OutputMesh);
+    PieceType = DesiredType;
+    LengthFraction = TargetLength;
+    CrossSectionProfile = TargetProfile;
+    bUseCanonicalGeometryDimensions = true;
+    FVector NewOrigin, NewExtent;
+    GetActorBounds(false, NewOrigin, NewExtent);
+    AddActorWorldOffset(FVector(0.0f, 0.0f,
+        (OldOrigin.Z - OldExtent.Z) - (NewOrigin.Z - NewExtent.Z)), false);
+    return true;
+}
+
 bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
 {
     if (!StructuralIdentity || !Mesh || !GetWorld() ||
@@ -313,6 +460,11 @@ bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
     if (!Ownership->TryGetItem(StructuralIdentity->GetInstanceId(), Item) ||
         Item.OwnerKind != EWorldItemOwnerKind::World ||
         Item.DefinitionId.IsNone())
+        return false;
+
+    if (!Item.MeshVariantSetId.IsNone())
+        SelectedProcessingMeshSetId = Item.MeshVariantSetId;
+    if (HasInvalidProcessingMeshSetSelection())
         return false;
 
     FStructuralNodeRecord ExistingNode;
@@ -449,6 +601,129 @@ ELogPieceType ALogBuildPiece::LegacyTypeFromCanonicalDimensions(
     }
 }
 
+const FLogProcessingMeshSet* ALogBuildPiece::GetActiveProcessingMeshSet() const
+{
+    if (ProcessingMeshSets.IsEmpty() || SelectedProcessingMeshSetId.IsNone())
+        return nullptr;
+
+    const FLogProcessingMeshSet* Match = nullptr;
+    for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
+    {
+        if (Candidate.VariantSetId != SelectedProcessingMeshSetId)
+            continue;
+
+        if (Match)
+            return nullptr; // Duplicate IDs are invalid; never choose by array order.
+        Match = &Candidate;
+    }
+    if (!Match || Match->VariantSetId.IsNone() || !IsValid(Match->BaseRoundMesh))
+        return nullptr;
+
+    for (int32 Index = 0; Index < Match->MeshVariants.Num(); ++Index)
+    {
+        const FLogGeometryVariantMesh& Variant = Match->MeshVariants[Index];
+        // The base-round slot is canonical for full-length/round. Null rows and
+        // duplicate base or state rows are configuration errors.
+        if (!IsValid(Variant.Mesh) ||
+            (Variant.LengthFraction == ELogLengthFraction::FullLength &&
+             Variant.CrossSectionProfile == ELogCrossSectionProfile::Round))
+        {
+            return nullptr;
+        }
+        for (int32 Other = Index + 1; Other < Match->MeshVariants.Num(); ++Other)
+        {
+            if (Match->MeshVariants[Other].LengthFraction == Variant.LengthFraction &&
+                Match->MeshVariants[Other].CrossSectionProfile == Variant.CrossSectionProfile)
+            {
+                return nullptr;
+            }
+        }
+    }
+    return Match;
+}
+
+bool ALogBuildPiece::HasInvalidProcessingMeshSetSelection() const
+{
+    // A set ID without its table, or a table without a valid selection, must not
+    // silently fall back to a possibly different nominal mesh family.
+    return ProcessingMeshSets.IsEmpty()
+        ? !SelectedProcessingMeshSetId.IsNone()
+        : GetActiveProcessingMeshSet() == nullptr;
+}
+
+bool ALogBuildPiece::SelectProcessingMeshSetFromCurrentMesh()
+{
+    if (ProcessingMeshSets.IsEmpty())
+        return SelectedProcessingMeshSetId.IsNone();
+
+    if (!SelectedProcessingMeshSetId.IsNone())
+        return GetActiveProcessingMeshSet() != nullptr;
+
+    const UStaticMesh* CurrentMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+    if (!CurrentMesh)
+        return false;
+
+    const FLogProcessingMeshSet* Match = nullptr;
+    for (const FLogProcessingMeshSet& Candidate : ProcessingMeshSets)
+    {
+        bool bCandidateUsesCurrentMesh = Candidate.BaseRoundMesh.Get() == CurrentMesh;
+        for (const FLogGeometryVariantMesh& Variant : Candidate.MeshVariants)
+        {
+            if (bCandidateUsesCurrentMesh)
+                break;
+            bCandidateUsesCurrentMesh = Variant.Mesh.Get() == CurrentMesh;
+        }
+        if (!bCandidateUsesCurrentMesh)
+            continue;
+
+        if (Match)
+            return false; // A mesh shared by two families must not select arbitrarily.
+        Match = &Candidate;
+    }
+    if (!Match || Match->VariantSetId.IsNone())
+        return false;
+
+    SelectedProcessingMeshSetId = Match->VariantSetId;
+    if (!GetActiveProcessingMeshSet())
+    {
+        SelectedProcessingMeshSetId = NAME_None;
+        return false;
+    }
+    return true;
+}
+
+void ALogBuildPiece::SynchronizeGeometryStateFromCurrentMeshSet()
+{
+    const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+    const UStaticMesh* CurrentMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+    if (!Set || !CurrentMesh)
+        return;
+
+    ELogLengthFraction MatchedLength = ELogLengthFraction::FullLength;
+    ELogCrossSectionProfile MatchedProfile = ELogCrossSectionProfile::Round;
+    if (Set->BaseRoundMesh.Get() != CurrentMesh)
+    {
+        const FLogGeometryVariantMesh* Match = nullptr;
+        for (const FLogGeometryVariantMesh& Variant : Set->MeshVariants)
+        {
+            if (Variant.Mesh.Get() != CurrentMesh)
+                continue;
+            if (Match)
+                return; // A mesh assigned to multiple states is ambiguous; keep authored state.
+            Match = &Variant;
+        }
+        if (!Match)
+            return;
+        MatchedLength = Match->LengthFraction;
+        MatchedProfile = Match->CrossSectionProfile;
+    }
+
+    LengthFraction = MatchedLength;
+    CrossSectionProfile = MatchedProfile;
+    bUseCanonicalGeometryDimensions = true;
+    PieceType = LegacyTypeFromCanonicalDimensions(MatchedLength, MatchedProfile);
+}
+
 bool ALogBuildPiece::TryResolveGeometryVariant(
     ELogLengthFraction InLength,
     ELogCrossSectionProfile InProfile,
@@ -461,6 +736,34 @@ bool ALogBuildPiece::TryResolveGeometryVariant(
         *OutSecondPieceCenterOffset = FVector::ZeroVector;
     if (OutSecondPieceRotationOffset)
         *OutSecondPieceRotationOffset = FRotator::ZeroRotator;
+
+    // A configured family table is the only authority for this actor.
+    if (!ProcessingMeshSets.IsEmpty() || !SelectedProcessingMeshSetId.IsNone())
+    {
+        const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+        if (!Set)
+            return false;
+
+        if (InLength == ELogLengthFraction::FullLength &&
+            InProfile == ELogCrossSectionProfile::Round)
+        {
+            OutMesh = Set->BaseRoundMesh.Get();
+            return IsValid(OutMesh);
+        }
+
+        for (const FLogGeometryVariantMesh& Variant : Set->MeshVariants)
+        {
+            if (Variant.LengthFraction != InLength || Variant.CrossSectionProfile != InProfile)
+                continue;
+            OutMesh = Variant.Mesh.Get();
+            if (OutSecondPieceCenterOffset)
+                *OutSecondPieceCenterOffset = Variant.SecondPieceCenterOffsetLocal;
+            if (OutSecondPieceRotationOffset)
+                *OutSecondPieceRotationOffset = Variant.SecondPieceRotationOffsetLocal;
+            return IsValid(OutMesh);
+        }
+        return false;
+    }
 
     const FLogGeometryVariantMesh* Match = nullptr;
     for (const FLogGeometryVariantMesh& Variant : GeometryVariantMeshes)
@@ -587,10 +890,19 @@ bool ALogBuildPiece::TryResolveLengthCutVariant(
     if (!IsLengthCutAction(Action))
         return false;
 
+    const TArray<FLogLengthCutVariant>* Recipes = &LengthCutVariants;
+    if (!ProcessingMeshSets.IsEmpty() || !SelectedProcessingMeshSetId.IsNone())
+    {
+        const FLogProcessingMeshSet* Set = GetActiveProcessingMeshSet();
+        if (!Set)
+            return false;
+        Recipes = &Set->LengthCutVariants;
+    }
+
     const ELogLengthFraction CurrentLength = GetLengthFraction();
     const ELogCrossSectionProfile CurrentProfile = GetCrossSectionProfile();
     const FLogLengthCutVariant* Match = nullptr;
-    for (const FLogLengthCutVariant& Variant : LengthCutVariants)
+    for (const FLogLengthCutVariant& Variant : *Recipes)
     {
         if (Variant.Action != Action ||
             Variant.SourceLengthFraction != CurrentLength ||
@@ -982,6 +1294,8 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
         return TEXT("Drop the log before processing it.");
     if (GetAttachedPieceCount() > 0)
         return TEXT("Remove attached pieces before processing the support log.");
+    if (HasInvalidProcessingMeshSetSelection())
+        return TEXT("No unique processing mesh set is selected. Select a set whose base-round mesh matches this actor; mesh length is not inferred from its filename.");
 
     if (IsLengthCutAction(Action))
     {
@@ -1334,6 +1648,8 @@ FWorldOperationResult ALogBuildPiece::TryCommitPhysicalSplitOutputs(
     Child->BaseLogVariantLengthFraction = BaseLogVariantLengthFraction;
     Child->GeometryVariantMeshes = GeometryVariantMeshes;
     Child->LengthCutVariants = LengthCutVariants;
+    Child->ProcessingMeshSets = ProcessingMeshSets;
+    Child->SelectedProcessingMeshSetId = SelectedProcessingMeshSetId;
     Child->LengthFraction = OutputLengths[1];
     Child->CrossSectionProfile = OutputProfiles[1];
     Child->bUseCanonicalGeometryDimensions = true;
@@ -1468,6 +1784,12 @@ FWorldOperationResult ALogBuildPiece::TryCommitPhysicalSplitOutputs(
     Child->StructuralIdentity->InstanceId = OutputRecords[1].ItemId;
     Child->StructuralIdentity->SetDefinitionId(OutputRecords[1].DefinitionId);
     Child->FinishSpawning(OutputTransforms[1]);
+    // Construction may resynchronize labels from a shared mesh; the committed
+    // output dimensions remain authoritative for the new piece.
+    Child->LengthFraction = OutputLengths[1];
+    Child->CrossSectionProfile = OutputProfiles[1];
+    Child->bUseCanonicalGeometryDimensions = true;
+    Child->PieceType = OutputLegacyTypes[1];
 
     FWorldOwnedItemRecord ChildItem;
     FStructuralNodeRecord ChildNode;
@@ -1518,6 +1840,61 @@ FWorldOperationResult ALogBuildPiece::TryCommitPhysicalSplitOutputs(
 }
 
 FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
+    ELogCutAction Action,
+    FGuid OperationId)
+{
+    // Preserve idempotent retries first: after a successful commit, prerequisites
+    // are intentionally false, but CommitCutAction can resolve its durable receipt.
+    if (!CanApplyCutAction(Action))
+        return CommitCutAction(Action, OperationId);
+
+    // Compatibility entry point for existing Blueprints. Chopping tools can call
+    // TryAdvanceCutProgress repeatedly; one-shot actions still pass through the
+    // same progress state and geometry commit boundary.
+    return TryAdvanceCutProgress(Action, 1.0f, OperationId);
+}
+
+FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
+    ELogCutAction Action, float NormalizedWork, FGuid OperationId)
+{
+    if (!FMath::IsFinite(NormalizedWork) || NormalizedWork <= 0.0f ||
+        NormalizedWork > 1.0f)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InvalidState, OperationId,
+            FText::FromString(TEXT("Cut work must be finite and within (0, 1].")));
+    }
+
+    if (!CanApplyCutAction(Action))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration, OperationId,
+            FText::FromString(GetCutActionBlockReason(Action)));
+    }
+
+    if (!bHasActiveCutProgress || ActiveCutAction != Action)
+    {
+        ActiveCutAction = Action;
+        CutProgress = 0.0f;
+        bHasActiveCutProgress = true;
+    }
+
+    CutProgress = FMath::Clamp(CutProgress + NormalizedWork, 0.0f, 1.0f);
+    if (CutProgress < 1.0f)
+    {
+        return FWorldOperationResult::Success(
+            OperationId,
+            FText::FromString(FString::Printf(TEXT("Cut progress: %.0f%%."), CutProgress * 100.0f)),
+            TArray<FGuid>());
+    }
+
+    const FWorldOperationResult CommitResult = CommitCutAction(Action, OperationId);
+    CutProgress = 0.0f;
+    bHasActiveCutProgress = false;
+    return CommitResult;
+}
+
+FWorldOperationResult ALogBuildPiece::CommitCutAction(
     ELogCutAction Action,
     FGuid OperationId)
 {
@@ -2014,6 +2391,12 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     {
         PieceType = ELogPieceType::SplitHalfLog;
     }
+    // The imported FBX names use RawLog + Quarter for a quarter-round cross
+    // section, whereas a standalone QuarterLog label is a legacy length fraction.
+    else if (Key.Contains(TEXT("rawlog")) && Key.Contains(TEXT("quarter")))
+    {
+        PieceType = ELogPieceType::QuarterSectionLog;
+    }
     else if (Key.Contains(TEXT("quarter")))
     {
         PieceType = ELogPieceType::QuarterLog;
@@ -2142,32 +2525,18 @@ bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
         return ApplyResolvedVariant(ParsedLength, ParsedProfile, CanonicalMesh);
     }
 
-    // Backwards compatibility for pre-canonical single-suffix item definitions.
-    // Shortened legacy pieces require an exact GeometryVariantMeshes entry; old
-    // full-length slots are deliberately not applied to shorter pieces.
+    // Backwards compatibility for pre-canonical item definitions: single legacy
+    // suffixes ("SplitHalfLog") and the interim "LengthHalf.SplitHalfLog" form.
+    // Shortened pieces require an exact mesh entry; old full-length slots are
+    // deliberately not applied to shorter pieces.
+    ELogLengthFraction LegacyLength = GetLengthFraction();
     ELogCrossSectionProfile LegacyProfile = ELogCrossSectionProfile::Other;
-    if (Suffix.Equals(TEXT("SplitHalfLog"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::HalfRound;
-    else if (Suffix.Equals(TEXT("QuarterSectionLog"), ESearchCase::IgnoreCase) ||
-        Suffix.Equals(TEXT("QuarterLog"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::QuarterRound;
-    else if (Suffix.Equals(TEXT("HewnLog"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::Hewn;
-    else if (Suffix.Equals(TEXT("GutterLog"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::GroovedHalfRound;
-    else if (Suffix.Equals(TEXT("TroughLog"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::Trough;
-    else if (Suffix.Equals(TEXT("SquaredBeam"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::SquareBeam;
-    else if (Suffix.Equals(TEXT("Plank"), ESearchCase::IgnoreCase))
-        LegacyProfile = ELogCrossSectionProfile::Plank;
-    else
+    if (!TryParseInterimGeometrySuffix(Suffix, LegacyLength, LegacyProfile))
         return false;
 
     UStaticMesh* LegacyMesh = nullptr;
     FVector IgnoredOffset = FVector::ZeroVector;
     FRotator IgnoredRotation = FRotator::ZeroRotator;
-    const ELogLengthFraction LegacyLength = GetLengthFraction();
     if (!TryResolveGeometryVariant(LegacyLength, LegacyProfile,
         LegacyMesh, &IgnoredOffset, &IgnoredRotation))
     {
@@ -2484,6 +2853,65 @@ bool ALogBuildPiece::DetachFromSnapParent(bool bAllowGraphFailure)
     ParentSnapPointIndex = INDEX_NONE;
     OwnSnapPointIndexUsed = INDEX_NONE;
     SetPlacedState(false);
+    return true;
+}
+
+void ALogBuildPiece::ResetActorLocalSnapStateForGraphRestore()
+{
+    // Canonical graph state is already restored by the save coordinator. This
+    // method deliberately performs no graph operation, preventing duplicate edges.
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    SnapParent.Reset();
+    ParentSnapPointIndex = INDEX_NONE;
+    OwnSnapPointIndexUsed = INDEX_NONE;
+    AttachedPieces.Reset();
+    for (FLogSnapPoint& Point : SnapPoints)
+        Point.bOccupied = false;
+    bIsPlaced = false;
+}
+
+bool ALogBuildPiece::RestoreActorLocalSnapLinkFromGraph(
+    ALogBuildPiece* Parent, FName ParentAnchorId, FName OwnAnchorId, bool bPlaced)
+{
+    if (!IsValid(Parent) || Parent == this || ParentAnchorId.IsNone() ||
+        OwnAnchorId.IsNone() || SnapParent.IsValid() ||
+        ParentSnapPointIndex != INDEX_NONE || OwnSnapPointIndexUsed != INDEX_NONE)
+        return false;
+
+    int32 ParentIndex = INDEX_NONE;
+    int32 OwnIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Parent->SnapPoints.Num(); ++Index)
+    {
+        if (Parent->SnapPoints[Index].PointId == ParentAnchorId)
+        {
+            if (ParentIndex != INDEX_NONE)
+                return false; // Ambiguous authored anchor names fail closed.
+            ParentIndex = Index;
+        }
+    }
+    for (int32 Index = 0; Index < SnapPoints.Num(); ++Index)
+    {
+        if (SnapPoints[Index].PointId == OwnAnchorId)
+        {
+            if (OwnIndex != INDEX_NONE)
+                return false;
+            OwnIndex = Index;
+        }
+    }
+    if (ParentIndex == INDEX_NONE || OwnIndex == INDEX_NONE ||
+        Parent->SnapPoints[ParentIndex].bOccupied || SnapPoints[OwnIndex].bOccupied)
+        return false;
+
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+        return false;
+
+    SnapParent = Parent;
+    ParentSnapPointIndex = ParentIndex;
+    OwnSnapPointIndexUsed = OwnIndex;
+    Parent->SnapPoints[ParentIndex].bOccupied = true;
+    SnapPoints[OwnIndex].bOccupied = true;
+    Parent->RegisterAttachedPiece(this);
+    bIsPlaced = bPlaced;
     return true;
 }
 

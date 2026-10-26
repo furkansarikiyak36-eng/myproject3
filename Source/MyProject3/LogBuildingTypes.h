@@ -152,6 +152,37 @@ struct FLogLengthCutVariant
     FRotator SecondOutputRotationOffsetLocal = FRotator::ZeroRotator;
 };
 
+/**
+ * Authored asset bundle for one nominal log-mesh family.
+ * VariantSetId is a stable selector; NominalLengthLabel is descriptive metadata,
+ * not an assumption that filename digits are measured centimeters.
+ * When an actor has any set configured, all geometry and length-cut data is
+ * resolved from the selected set only; actor-level tables are not consulted.
+ */
+USTRUCT(BlueprintType)
+struct FLogProcessingMeshSet
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FName VariantSetId = NAME_None;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    FName NominalLengthLabel = NAME_None;
+
+    /** Full-length round mesh of this family; also identifies the set on an unprocessed actor. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TObjectPtr<UStaticMesh> BaseRoundMesh = nullptr;
+
+    /** One row for every other exact length + cross-section combination this family supports. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TArray<FLogGeometryVariantMesh> MeshVariants;
+
+    /** Mesh-specific longitudinal cut layouts for this family. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Mesh Set")
+    TArray<FLogLengthCutVariant> LengthCutVariants;
+};
+
 USTRUCT(BlueprintType)
 struct FLogSnapPoint
 {

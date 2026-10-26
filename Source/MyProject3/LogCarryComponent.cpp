@@ -5,6 +5,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -31,6 +32,44 @@ void ULogCarryComponent::TickComponent(
     FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    if (bIsDraggingLog)
+    {
+        ALogBuildPiece* Piece = DraggedPiece.Get();
+        UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+            ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        UWorldItemOwnershipSubsystem* Ownership = GetWorld()
+            ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        FWorldOwnedItemRecord ItemRecord;
+        FVector ViewLocation;
+        FRotator ViewRotation;
+        const bool bValidDrag = IsValid(Piece) && !Piece->IsHeld() && !Piece->IsPlaced() &&
+            Piece->GetAttachedPieceCount() == 0 && Identity && Identity->HasValidIdentity() &&
+            Ownership && Ownership->TryGetItem(Identity->GetInstanceId(), ItemRecord) &&
+            ItemRecord.OwnerKind == EWorldItemOwnerKind::World && ItemRecord.Quantity == 1 &&
+            Piece->GetLogMesh() && Piece->GetLogMesh()->IsSimulatingPhysics() &&
+            GetViewPoint(ViewLocation, ViewRotation) &&
+            FMath::IsFinite(DragForceStrength) && FMath::IsFinite(MaxDragForceMagnitude);
+        if (!bValidDrag)
+        {
+            EndDragAimedLog();
+        }
+        else
+        {
+            FVector Target = GetOwner() ? GetOwner()->GetActorLocation() +
+                GetOwner()->GetActorForwardVector() * DragTargetDistance : ViewLocation;
+            Target.Z = Piece->GetActorLocation().Z;
+            FVector Force = Target - Piece->GetActorLocation();
+            const float Distance = Force.Size();
+            if (Distance > 5.0f)
+            {
+                const float Magnitude = FMath::Clamp(
+                    DragForceStrength * FMath::Min(Distance / 200.0f, 1.0f),
+                    0.0f, FMath::Max(0.0f, MaxDragForceMagnitude));
+                Piece->GetLogMesh()->AddForce(Force.GetSafeNormal() * Magnitude);
+            }
+        }
+    }
 
     if (!IsValid(HeldPiece))
     {
@@ -118,6 +157,9 @@ void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
         EKeys::RightMouseButton, IE_Pressed, this, &ULogCarryComponent::CyclePlacementMode);
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &ULogCarryComponent::CycleCutAction);
     InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ULogCarryComponent::ProcessAimedPieceInput);
+    InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ULogCarryComponent::PushOrRollAimedLogInput);
+    InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ULogCarryComponent::BeginDragAimedLog);
+    InputComponent->BindKey(EKeys::B, IE_Released, this, &ULogCarryComponent::EndDragAimedLog);
 }
 
 bool ULogCarryComponent::GetViewPoint(
@@ -729,6 +771,137 @@ void ULogCarryComponent::CycleCutAction()
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, Message);
+    }
+}
+
+bool ULogCarryComponent::BeginDragAimedLog()
+{
+    if (IsValid(HeldPiece) || !GetWorld())
+        return false;
+
+    FHitResult Hit;
+    if (!TraceFromView(PickupRange, Hit) || !Hit.bBlockingHit)
+        return false;
+
+    ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Hit.GetActor());
+    UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+        ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    FWorldOwnedItemRecord ItemRecord;
+    if (!IsValid(Piece) || Piece->IsHeld() || Piece->IsPlaced() ||
+        Piece->GetAttachedPieceCount() > 0 || !Identity || !Identity->HasValidIdentity() ||
+        !Ownership || !Ownership->TryGetItem(Identity->GetInstanceId(), ItemRecord) ||
+        ItemRecord.OwnerKind != EWorldItemOwnerKind::World || ItemRecord.Quantity != 1 ||
+        !Piece->GetLogMesh() || !Piece->GetLogMesh()->IsSimulatingPhysics() ||
+        !FMath::IsFinite(DragForceStrength) || !FMath::IsFinite(MaxDragForceMagnitude) ||
+        MaxDragForceMagnitude <= 0.0f)
+        return false;
+
+    DraggedPiece = Piece;
+    bIsDraggingLog = true;
+    return true;
+}
+
+void ULogCarryComponent::EndDragAimedLog()
+{
+    bIsDraggingLog = false;
+    DraggedPiece.Reset();
+}
+
+bool ULogCarryComponent::TryPushOrRollAimedLog()
+{
+    // A held or structurally placed piece must use the carry/placement workflow,
+    // not the loose-body impulse path.
+    if (IsValid(HeldPiece) || !GetWorld())
+    {
+        return false;
+    }
+
+    FHitResult Hit;
+    if (!TraceFromView(PickupRange, Hit) || !Hit.bBlockingHit)
+    {
+        return false;
+    }
+
+    ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Hit.GetActor());
+    if (!IsValid(Piece) || Piece->IsHeld() || Piece->IsPlaced() ||
+        Piece->GetAttachedPieceCount() > 0)
+    {
+        return false;
+    }
+
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    if (!Identity || !Identity->HasValidIdentity())
+    {
+        return false;
+    }
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    FWorldOwnedItemRecord ItemRecord;
+    if (!Ownership ||
+        !Ownership->TryGetItem(Identity->GetInstanceId(), ItemRecord) ||
+        ItemRecord.OwnerKind != EWorldItemOwnerKind::World ||
+        ItemRecord.Quantity != 1)
+    {
+        // Only a single, world-owned physical actor can be pushed. Stack stock,
+        // inventory items and in-transit cargo are not physics-push targets.
+        return false;
+    }
+
+    UStaticMeshComponent* LogMesh = Piece->GetLogMesh();
+    if (!IsValid(LogMesh) || !LogMesh->IsSimulatingPhysics() ||
+        LogMesh->GetCollisionEnabled() == ECollisionEnabled::NoCollision)
+    {
+        return false;
+    }
+
+    FVector ViewLocation;
+    FRotator ViewRotation;
+    if (!GetViewPoint(ViewLocation, ViewRotation))
+    {
+        return false;
+    }
+
+    FVector PushDirection(
+        ViewRotation.Vector().X,
+        ViewRotation.Vector().Y,
+        0.0f);
+    PushDirection = PushDirection.GetSafeNormal();
+    if (PushDirection.IsNearlyZero() ||
+        !FMath::IsFinite(PushImpulseStrength) ||
+        !FMath::IsFinite(MaxPushImpulseMagnitude))
+    {
+        return false;
+    }
+
+    const float SafeMaximum = FMath::Max(0.0f, MaxPushImpulseMagnitude);
+    const float SafeStrength = FMath::Clamp(
+        PushImpulseStrength, 0.0f, SafeMaximum);
+    if (SafeStrength <= KINDA_SMALL_NUMBER)
+    {
+        return false;
+    }
+
+    // Applying the impulse at the trace contact point, rather than at the
+    // centre of mass, lets off-centre contact create natural rolling torque.
+    LogMesh->AddImpulseAtLocation(PushDirection * SafeStrength, Hit.ImpactPoint);
+    return true;
+}
+
+void ULogCarryComponent::PushOrRollAimedLogInput()
+{
+    if (TryPushOrRollAimedLog())
+    {
+        return;
+    }
+
+    const FString Message =
+        TEXT("Push/roll requires an aimed loose, world-owned log with active physics.");
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Yellow, Message);
     }
 }
 

@@ -4,7 +4,7 @@
 **Belge rolü:** Bu belge, referans oyunlardan çıkarılan eksiklerin kapatılması için tek ana ilerleme takip noktasıdır.  
 **Planın kaynak dalı:** `landscape-builder-plan`  
 **Kaynak inceleme temeli:** `mechanic-detailing-pass-h-integrated-world-systems`  
-**Son güncelleme:** 2026-10-25  
+**Son güncelleme:** 2026-10-26  
 **Mevcut kanıt seviyesi:** Kaynak/doküman incelemesi. Unreal Engine derlemesi, UHT, Editor, PIE veya oynanış doğrulaması yapıldığı varsayılmaz.
 
 ---
@@ -102,7 +102,11 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 
 ### 3A. Ağaç ve kütük işleme — M009–M028
 
-- [ ] Ağaç kesme ve devrilme durum makinesini tamamla.
+- [x] `AHarvestableTreeActor` kaynak katmanı eklendi: kesme hasarı → fiziksel devrilme → düşük hız + zemin temasını belirli süre doğrulama → tek seferlik log çıktısı durum zinciri var; ağaç grounded olmadan log üretmiyor.
+- [x] Ağaç çıktıları paralel envanter kaydı açmıyor; `ALogBuildPiece` aktörleri mevcut `WorldItemOwnershipSubsystem` / structural graph BeginPlay kayıt akışına giriyor ve `LogMeshVariantSetId` açıkça atanmalı.
+- [ ] Ağaç türü/ölçüsü → log sayısı, uzunluk kesri ve nominal mesh seti veri tablosunu gerçek varlıklara göre tanımla.
+- [ ] Ağaç FBX collision/physics mass/center-of-mass ve devrilme impulse değerlerini UE içinde ayarla; ground trace'in gerçek zemin kanallarında çalıştığını doğrula.
+- [ ] Kısmi spawn hatası, yanlış/eksik mesh-set, save/load, tekrar hasat ve grounded negative-case senaryolarını Unreal kabul kapısında çalıştır.
 - [ ] Ağaç boyutu/kurallarından çıkan kütük miktarı ve boyutlarını tanımla.
 - [ ] Tam kütük, taşınan kütük, bırakılan kütük ve yerde serbest kütük durumlarını ayır.
 - [ ] Kütüğün yuvarlanma, sürüklenme, itilme ve çarpışma davranışlarını tanımla.
@@ -124,10 +128,17 @@ Bu aşama, daha sonraki bütün sistemlerin dayandığı ortak kuralları kapat�
 - [ ] Önizlemede görünen yerleşim ile commit edilen fiziksel dönüşümün aynı olmasını sağla.
 - [ ] Taşıyıcı parça kaldırıldığında bağımlı parçaların güvenli sırayla çözülmesini tamamla.
 - [ ] Tamir, sökme, hurdaya ayırma ve yakma/geri kazanım çıktılarının eşya sahipliğini bağla.
-- [x] Uzunluk kesri ile kesit profili ayrı kaynak alanları olarak tanımlandı; yeni item definition `Base.Geom.<Length>.<Profile>` iki boyutu kaydediyor ve yeniden yükleme/drop sırasında okuyor.
-- [x] `GeometryVariantMeshes` exact length/profile çifti için mesh, ikinci çıktı ofseti ve child rotation tanımlıyor. Eksik/çift eşleşmeler ve yanlış tam-boy mesh fallback'i reddediliyor.
-- [ ] Gerçek Blueprint/content asset'lerinde desteklenen her uzunluk/profile çifti için `GeometryVariantMeshes` satırlarını doldur ve mesh/pivot/ofsetleri UE'de doğrula.
-- [ ] Her kesme eylemi için durum → eylem → ön koşul → çıktı sayısı/yan ürün → mesh/çarpışma → kaynak miktarı tablosunu tamamla. Uzunlamasına kesim eylemleri henüz uygulanmadı.
+- [ ] Her kesme eylemi için durum → eylem → ön koşul → çıktı türü → mesh/çarpışma tablosunu tamamla.
+- [x] Nominal mesh aileleri için `FLogProcessingMeshSet` eklendi: açık SetId, base-round mesh ve `LengthFraction × CrossSectionShape → mesh` tablosu; çift ID/çift state mapping belirsizliği fail-closed reddediliyor.
+- [x] Mesh-set seçimi item ownership kaydında `MeshVariantSetId` olarak saklanıyor; split çıktıları ve envanterden tekrar dünyaya çıkış aynı selector'ı taşıyor.
+- [x] Kısaltılmış parçanın geometri durumu item `DefinitionId` içinde de korunuyor (ör. `LengthHalf.SplitHalfLog`); variant restore bu iki ekseni yeniden çözümlüyor; SaveGame şeması v8.
+- [ ] Her nominal family için gerçek FBX'leri `ProcessingMeshSets` içine doldur; ölçülmeyen dosya adlarından ölçü varsayma.
+- [ ] Hatalı/eksik table, duplicate SetId, duplicate geometry tuple, inventory round-trip, split retry ve legacy-save senaryolarını Unreal kabul kapısında çalıştır.
+- [x] Legacy PieceType etiketinin yanında bağımsız LengthFraction ve CrossSectionShape metadata sözleşmesi eklendi; işlem ön koşulları kesit şekline göre kontrol ediliyor.
+- [x] SM_RawLog_150_Quarter_04 gibi RawLog + Quarter adları çeyrek kesit şekli olarak çözümleniyor; standalone QuarterLog uzunluk kesriyle karıştırılmıyor.
+- [ ] Gerçek FBX ölçü/pivot/yönlerini Unreal staging level'da doğrula ve her Blueprint'in mesh/offset/rotasyon ayarlarını kaydet.
+- [ ] SM_RawLog_75.fbx base-round mesh eksikliğini gider veya kayıtta bilinçli fallback tanımla.
+- [ ] Long_01..08 ve Short_01..04 için gerçek nominal ölçü/şekil etiketlerini belirle.
 - [ ] Özellikle yarım kesilen kütüğün yanlışlıkla tam/düz kütük mesh'ine dönmesi hatasını özel kabul koşulu olarak kapat.
 
 ### 3B. Taş ve duvarcılık — M029–M038
@@ -448,6 +459,9 @@ Adaylar yalnızca inceleme konusudur, henüz kayıtlı mekanik değildir:
 
 ## 13. Final demo — 119 mekaniğin aynı dünyada birlikte çalıştığını kanıtla
 
+**Demo uygulama başlangıç belgesi:** [DEMO_VERTICAL_SLICE_PHASE_01.md](./DEMO_VERTICAL_SLICE_PHASE_01.md). Bu belge, ilk oynanabilir dikey dilimin alanlarını, sebep-sonuç akışını, negatif testlerini ve UE 5.8 kabul kapısını tanımlar; haritanın oluşturulduğu veya mekaniklerin çalıştığı anlamına gelmez.
+
+
 **Temel kural:** Final demo, 119 mekanik için 119 ayrı vitrinden veya birbirinden kopuk test adalarından oluşmayacak. Tek bir küçük, kalıcı ve birbirine bağlı dünyada, mekaniklerin birbirlerinin durumunu nasıl değiştirdiğini gösterecek. Yedi bölge yalnızca okunaklı yerleşim/işlev alanlarıdır; yedi bağımsız simülasyon, yedi ayrı kaynak sistemi veya birbirinden kopuk sahneler değildir.
 
 Demo aynı anda iki şeyi kanıtlamalı:
@@ -727,31 +741,216 @@ Her görev kapatıldığında aşağıdaki kaydı doldur. Kaydı yalnızca sohbe
 
 ---
 
-### İş kaydı: WOOD-003 — Kanonik kütük boyutu, kesit profili ve mesh tablosu
+### İş kaydı: WOOD-003 — Uzunluk kesri ve kesit geometrisini ayırma; FBX varyant kataloğu
 
-- [x] `ELogLengthFraction` ve `ELogCrossSectionProfile` ayrı enum'ları eklendi; eski `ELogPieceType` serialized sıralaması değişmedi.
-- [x] `ALogBuildPiece` bağımsız uzunluk/profil alanlarını, açık legacy/canonical geçiş bayrağını ve Blueprint erişimli getter'ları taşıyor.
-- [x] `FLogGeometryVariantMesh` tablosu tam uzunluk/profil eşleşmesi, mesh, ikinci parçanın merkez ofseti ve dönüşünü birlikte saklıyor.
-- [x] Mesh çözümleyici duplicate eşleşmeleri reddediyor; kısalmış parçalarda tam eşleşme yoksa tam-boy mesh'i sessizce kullanmıyor.
-- [x] Yeni item definition biçimi `Base.Geom.<Length>.<Profile>`; envanterden dünyaya drop sırasında iki boyut da asset/mesh çözümlemesine bağlanıyor.
-- [x] Kesme ön koşulları cross-section profilini kullanıyor; tek aktörlü şekillendirmeler mevcut uzunluk oranını koruyor.
-- [x] Split işlemi kullanılan uzunluk/profil eşleşmesinden mesh/ofset/dönüş alıyor; rollback hatasında kanonik alanlar da geri yükleniyor.
-- [x] Statik kaynak kontrolleri, çağrı noktası bağlantıları ve brace-balance kontrolleri geçti.
-- [ ] UE 5.8 UHT/UBT derlemesi.
-- [ ] Her gerçek Blueprint/mesh için `GeometryVariantMeshes` satırlarını doldur ve duplicate/eksik eşleşmeleri kontrol et.
-- [ ] PIE: full/half/quarter length × round/half-round/quarter-round örneklerinde doğru geometri ve çarpışmayı doğrula.
-- [ ] Kayıt/yükleme ve envanterden tekrar dünyaya bırakma akışlarında canonical definition çözümünü runtime'da doğrula.
-- [ ] Uzunlamasına kesim eylemlerini ve 3/4 + 1/4 gibi yan ürün miktarlarını ayrı bir atomik çoklu-çıktı işi olarak uygula.
+- [x] `ELogLengthFraction` enum'u eklendi: full, 3/4, 1/2, 1/4 length
+- [x] `ELogCrossSectionShape` enum'u eklendi: full-round, half-round, quarter-round, hewn, square, groove, trough, plank, notch, joint, other
+- [x] `FLogPieceGeometryState` bağımsız iki alanı taşır; `ALogBuildPiece` içinde SaveGame metadata ve Blueprint pure accessor var
+- [x] Legacy `PieceType` alanı korunurken işlem eylemlerinin ön koşulları `CrossSectionShape` üzerinden kontrol ediliyor; length fraction split sırasında korunuyor
+- [x] `SM_RawLog_150_Quarter_04` gibi RawLog+Quarter isimleri kesit biçimi olarak ayrılıyor; tek başına `QuarterLog` legacy length fraction olarak korunuyor
+- [x] Repo envanteri doğrulandı: 48 root FBX + 10 Archive FBX; boyut grupları ve belirsiz Long/Short adları kataloğa yazıldı
+- [ ] Gerçek FBX bounds/pivot/rotation UE 5.8 staging level'da doğrulandı
+- [ ] `SM_RawLog_75.fbx` base-round eksikliği çözüldü
+- [ ] Her blueprint output mesh, center-offset ve child rotation alanlarıyla yapılandırıldı
+- [ ] UHT/UBT derlemesi ve runtime işlem testleri
 
-**Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `InventoryCraftingComponent.cpp` (mevcut base-class variant restore call-site)  
-**Commit/PR:** [PR #25 — Separate log length fraction and cross-section geometry](https://github.com/furkansarikiyak36-eng/myproject3/pull/25); `feat/log-canonical-dimensions`.  
-**Sonuç:** Kod artık boy kesrini ve kesit şeklini tek bir enum'da karıştırmıyor. Mesh seçimi exact length/profile çiftine bağlandı ve item definition bu iki değeri taşıyor. Bu, gerçek Blueprint asset tablosunun doldurulduğu veya doğru mesh/pivot/çarpışmanın motor içinde kanıtlandığı anlamına gelmiyor. Kısalmış bir log için eşleşen mesh yoksa işlem güvenli biçimde reddediliyor.
-**Kanıt seviyesi:** Statik kaynak kontrolü; Unreal derlemesi, UHT, PIE, asset doğrulaması ve runtime Save/Load testi yapılmadı.
-**Kalan sınırlamalar:** Uzunluk boyunca gerçek kesme eylemleri, 3/4 + 1/4 gibi farklı boylarda çoklu fiziksel çıktı ve bu çıktılar için konum/yan ürün miktarı sözleşmesi henüz uygulanmadı. Eski belirsiz `.QuarterLog` tanımlarındaki tarihsel uzunluk/kesit niyeti kesin olarak geri kazanılamaz; bunlar uyumluluk alias'ı olarak okunur.
-**Sonraki bağımlı iş:** WOOD-004 — uzunlamasına kesim eylemleri, farklı uzunluktaki çıktıların konumlandırılması ve yan ürün miktarlarını atomik çoklu-çıktı işlemine bağlamak.
+**Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `AssetPackages/README.md`, `Docs/Architecture/WOOD_003_ASSET_VARIANT_CATALOG.md`  
+**Commit/PR:** [PR #24 — Separate log length fraction from cross-section geometry](https://github.com/furkansarikiyak36-eng/myproject3/pull/24); `fix/log-geometry-dimensions`.  
+**Sonuç:** LengthFraction ile CrossSectionShape artık aynı birleşik etiketten ayrı tutuluyor. Fiziksel işlem eylemleri, örneğin 1/2 uzunluğundaki bir round log üzerinde de kesit-shape ön koşullarını kullanabilir; split işlemi length fraction metadata'sını korur. FBX listesi isimlerden çıkarılmıştır, gerçek geometri ölçümü olarak sunulmuyor.  
+**Kanıt seviyesi:** Kaynak değişikliği, API/koşul kontrolü ve GitHub asset-inventory incelemesi. Unreal geometri doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** Asset pivot/ölçü/ekseni, import edilmiş Content varlıkları ve Blueprint alan atamaları motor içinde kontrol edilmedi. `SM_RawLog_75.fbx` base mesh yok; Long/Short varlıklarının gerçek boyları belirsiz.  
+**Sonraki bağımlı iş:** WOOD-005 — tree-felling/grounding ve kaynak miktarı/çıktı oluşturma zincirini açık duruma bağla. Gerçek FBX ölçümü, ProcessingMeshSets değerlerini doldurma ve runtime doğrulama ayrı açık kabul maddeleridir.
 
 ---
 
-## 15. İlk yapılacak iş
+### İş kaydı: WOOD-004 — Data-driven nominal mesh aileleri ve sahiplikte geometri kimliği
 
-Sıradaki sıra: **WOOD-004 — uzunlamasına kesim ve farklı uzunluktaki çıktı/yan ürünlerin atomik üretimi**; ardından 2.1'in kalan ağaç devrilmesi, kaynak miktarı, fiziksel snap/inşa ve malzeme geri kazanımı işleri. Sonraki referans oyun ve LB0–LB4 işlerine de aynı kanıt standardıyla geçilecek; final demo tüm mekanikleri tek dünyada birlikte çalıştıran son kabul kapısı olarak en sonda kurulacak.
+- [x] `FLogProcessingMeshSet` ve `FLogPieceMeshVariant` eklendi; bir mesh seti tabanı ve exact `LengthFraction × CrossSectionShape → UStaticMesh` eşlemesini tutuyor
+- [x] Kaynak aktörün set'i seçmesi, yalnızca explicit selector veya current mesh için tekil bir eşleşme olduğunda kabul ediliyor; duplicate SetId/base-mesh/geometry tuple belirsizse fail-closed
+- [x] Kesme eligibility, action çıktısı ve definition-variant restore tek resolver'ı kullanıyor; legacy mesh property fallback yalnızca tablo boş ve selector None iken kalıyor
+- [x] Split center offset/child rotasyon ayarları seçilmiş mesh setinden okunuyor; child aynı set'i miras alıyor
+- [x] `MeshVariantSetId` item ownership record'una eklendi; split çıktıları ve inventory drop spawn'ı bu ID'yi koruyor
+- [x] Geometry DefinitionId artık length fraction + shape birleşimini koruyabiliyor (ör. `LengthHalf.SplitHalfLog`); restore parser length fraction'ı resolver'dan önce uyguluyor
+- [x] SaveGame schema v8'e çıktı; v7→v8 geçişi eski FName alanını none bırakıp dosya adından tahmin üretmiyor
+- [x] Statik wiring kontrolleri ve C++ brace-balance kontrolleri geçti
+- [ ] UE 5.8 UHT/UBT derlemesi
+- [ ] Per-Blueprint gerçek FBX mesh setleri, center offset ve child rotations dolduruldu
+- [ ] Import edilmiş FBX ölçü/pivot/local-axis doğrulaması
+- [ ] Runtime: length fraction split sonrası korunuyor, iki parça farklı ID ile tek tek inventory/storage/cargo akışından geçiyor
+- [ ] Runtime: SaveGame v8 round-trip ile MeshVariantSetId + geometry DefinitionId korunuyor
+- [ ] Runtime: yanlış/eksik tuple, duplicate state mapping ve eksik variant asset eylemi reddediyor; kaynak state değişmiyor
+
+**Kaynak dosyaları:** `LogBuildingTypes.h`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`, `InventoryCraftingComponent.cpp`, `WorldSimulationSaveGame.h`, `WorldSaveCoordinatorSubsystem.cpp`  
+**Commit/PR:** [PR #26 — Data-drive log mesh variants and preserve geometry identity](https://github.com/furkansarikiyak36-eng/myproject3/pull/26); `fix/log-mesh-variant-sets`.  
+**Sonuç:** Tek bir nominal kaynak mesh ailesine ait işlenmiş şekiller için sabit tek mesh pointer'ları yerine açık state tuple tablosu kullanılabiliyor. Doğru set seçimi ownership record ve definition ID boyunca korunuyor. Bu, gerçek FBX'ler tabloya atanmış veya geometri UE içinde doğrulanmış demek değildir.  
+**Kanıt seviyesi:** Statik kaynak incelemesi ve targeted structural checks; Unreal motor doğrulaması yapılmadı.  
+**Kalan sınırlamalar:** `SM_RawLog_75.fbx` base-round mesh yok; Long/Short dosyalarının gerçek ölçüleri belirsiz. Yeni data-driven tablolar için mevcut Blueprint/content asset atamaları henüz yapılmadı.  
+**Sonraki bağımlı iş:** WOOD-005 — ağaç kesme/devrilme/zemine oturma ve kaynak log miktarı/ID üretimini ownership + mesh family akışına bağla.
+
+---
+
+### İş kaydı: WOOD-005 — Ağaç kesme, fiziksel devrilme ve grounded hasat çıktısı
+
+- [x] Yeni `AHarvestableTreeActor` sınıfı eklendi; ağaç hasarı, devrilme ve grounded/çıktı durumları tek aktör yaşam döngüsünde tutuluyor
+- [x] Kesme hasarı pozitif ve sonlu olmalı; ağaç varlığı, log actor class ve çıktı konfigürasyonu yoksa hasar/hasat işlemi reddediliyor
+- [x] Sağlık sıfırlandığında tree mesh fizik simülasyonuna geçiyor ve chop direction üzerinden impulse alıyor
+- [x] Log üretimi yalnızca fizik hızı eşik altında kalıp görünürlük kanalında zemin teması `GroundedHoldSeconds` süresince doğrulanınca açılıyor
+- [x] Log sayısı, `ALogBuildPiece` subclass'ı ve `LogMeshVariantSetId` açık konfigürasyon; log actor'ları var olan ownership + structural graph BeginPlay kayıt yolunu kullanıyor
+- [x] Aynı tree actor'da grounded/harvest transition tekrar çalıştırılmıyor; kısmi spawn başarısızlığında otomatik tekrar yapılmıyor
+- [x] Bir output actor spawn/validation aşamasında başarısız olursa bu hasat denemesindeki bütün oluşturulmuş log actor'ları gizlenip destroy edilerek kısmi görünür kaynak seti temizleniyor; actor EndPlay mevcut sahiplik lifecycle'ını kullanıyor
+- [x] İlgili kaynak dosyalarında brace-balance kontrolü sıfır fark
+- [ ] UE 5.8 UHT/UBT derlemesi ve Blueprint oluşturma
+- [ ] Gerçek tree FBX collision, physics mass/center of mass, impulse, ground trace channel ve grounded hold süresi ayarı
+- [ ] Tür/ölçü → log count/length fraction/mesh family tablosu; filename'den ölçü tahmini yapılmayacak
+- [ ] Runtime: düşmeden önce log yok; grounded olmadan log yok; grounded sonrası doğru sayıda unique ownership ID
+- [ ] Runtime: yanlış/eksik mesh-set, invalid log class, zemin yok, eğimli yüzey, su/boşluk, bir log spawn başarısızlığı ve tekrar hasat negative cases
+- [ ] Save/load ve 119 mekanik entegre kabul senaryosu
+
+**Kaynak dosyaları:** `HarvestableTreeActor.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`, `WorldStructuralGraphSubsystem.h/.cpp`  
+**Branch:** `fix/log-mesh-variant-sets`  
+**Sonuç:** İlk ağaç yaşam döngüsü adapter'ı eklendi; grounded gate hasat çıktısından önce gelir. Bu, ağaç asset'lerinin ayarlandığı, log count'un oyuna göre doğrulandığı veya motor içinde çalıştığı anlamına gelmez.
+**Kanıt seviyesi:** Kaynak dosyası incelemesi ve statik yapı kontrolü. Unreal derlemesi/PIE yapılmadı.
+**Kalan sınırlamalar:** Actor tree mesh asset'ini Blueprint'ten alır; gerçek collision/pivot/physics ayarları henüz bilinmiyor. Hasat çıktısı nominal mesh family selector ister. Actor transform/lifecycle SaveGame restore ile henüz entegre değil. Kısmi spawn actor'larını temizleme kaynak katmanı eklendi; gerçek actor/ledger davranışı, motor doğrulaması, otomatik retry ve tam işlem rollback'i kanıtlanmadı.
+**Sonraki bağımlı iş:** WOOD-006 — mevcut `LogCarryComponent` ve actor lifecycle sınırları denetlendi; serbest kütüğe sınırlı itme/yuvarlanma kaynak API'si eklendi. Kaynak miktarı/production stoğu aktarımı ve transform kalıcılığı WOOD-007 kapsamında açık kalıyor.
+
+---
+
+### İş kaydı: WOOD-006 — Serbest kütük için doğrulanmış itme/yuvarlanma eylemi
+
+- [x] Mevcut taşıma akışı denetlendi: pickup, held-owner transferi, snap/free placement ve drop mevcut ownership/lifecycle kapılarını kullanıyor.
+- [x] `ULogCarryComponent::TryPushOrRollAimedLog` eklendi; yalnızca hedeflenen, serbest, elde olmayan, yapıya bağlı olmayan ve `World` sahipliğindeki tekil fiziksel kütük kabul ediliyor.
+- [x] Kimlik/ownership kaydı, Quantity=1, aktif rigid-body simülasyonu ve çarpışma ön koşulları kontrol ediliyor; envanter/kargo/yığın kaydı fiziksel hedef olarak kabul edilmiyor.
+- [x] Sonlu ve ayarlanabilir impulse gücü sınırlandırılıyor; impulse hit noktasına uygulanarak doğal dönme momentine izin veriliyor.
+- [x] İsteğe bağlı doğrudan input için V bağlaması ve Blueprint/Enhanced Input üzerinden çağrılabilir API eklendi.
+- [x] Kaynak düzeyinde çağrı noktası, koruma koşulları, brace dengesi ve ilgili semboller statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT, Editor ve PIE doğrulaması.
+- [ ] Gerçek mesh kütlesi, sürtünme, çarpışma profili ve impulse değerlerini sahnede ayarlama.
+- [ ] Fizik hareketi durduğunda authoritative item WorldLocation bilgisini güvenli biçimde eşitleme; SaveGame fiziksel transform geri yüklemesiyle bağlama.
+- [ ] Yerden sürükleme için ayrı, açık bir oyuncu etkileşimi tasarlama; mevcut held carry bunu tek başına tamamlamaz.
+- [ ] Fiziksel parça sayısı/miktarı ile `WorldProductionSubsystem` stok ve tarif girdileri arasındaki gerçek aktarımı kurma.
+- [ ] İtme sonrası sahiplik, pickup tekrar denemesi, destek grafiği ve save/load negatif durumlarını Unreal içinde kabul etme.
+
+**Kaynak dosyaları:** `Source/MyProject3/LogCarryComponent.h/.cpp`, `LogBuildPiece.h/.cpp`, `WorldItemOwnershipSubsystem.h/.cpp`  
+**Branch/PR:** `fix/log-mesh-variant-sets`; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Kütüğü elde taşıma/yerleştirme akışına dokunmadan, serbest fiziksel kütük için açık bir itme/yuvarlanma eylemi eklendi. Bu, yerden sürükleme, fiziksel transform kalıcılığı veya üretim stok entegrasyonunun tamamlandığı anlamına gelmez.  
+**Kanıt seviyesi:** Kaynak değişikliği + statik kontrol; Unreal motoru doğrulanmadı.  
+**Sonraki bağımlı iş:** WOOD-007 — fiziksel kütük/tahta çıktılarını tekil sahiplikten üretim stokları, tarif girdileri ve çıktı aktörlerine kayıpsız bağlama.
+
+---
+
+### İş kaydı: WOOD-007 — Fiziksel kütüğü üretim istasyonu stokuna güvenli alma
+
+- [x] FWorldProductionPhysicalIntakeReceipt eklendi; işlem ID'si, kaynak item ID/revizyonu, istasyon revizyonu, kaynak DefinitionId, mesh-family ID, stok anahtarı ve sonuç revizyonlarını kaydediyor.
+- [x] TryIngestWorldOwnedLogPiece eklendi: yalnızca kimliği geçerli, tekil (Quantity == 1), World sahipliğinde, serbest, elde/yerleşimde/bağlı olmayan fiziksel ALogBuildPiece kabul ediliyor.
+- [x] Üretim istasyonunun mevcut miktarı, kapasitesi ve devam eden işlerin rezerve çıktı kapasitesi kaynak sahipliğini değiştirmeden önce denetleniyor.
+- [x] Kabul edilen fiziksel item sahiplik defterinde World → Transformed geçişi yapıyor; istasyon stok miktarı ve intake fişi aynı kaynak çağrısında güncelleniyor, fiziksel aktör gizlenip devre dışı bırakılıyor ve destroy ediliyor.
+- [x] Stok anahtarı DefinitionId ile varsa MeshVariantSetId bileşimini koruyor; nominal mesh aileleri sessizce tek bir genel stok türüne katılmıyor.
+- [x] Aynı OperationId ve aynı istek için retry mevcut fişi döndürüyor; aynı kaynak ID'sinin farklı işlem/istasyonla ikinci kez alınması reddediliyor.
+- [x] Intake fişleri istasyon snapshot'ının parçası; SaveGame şeması v9'a yükseltildi ve v8→v9 geçişi eski kayıtlarda boş yeni fiş dizisiyle uyumlu.
+- [x] Restore sırasında intake operation/source ID tekrarları ve geçersiz revizyonlar fail-closed reddediliyor.
+- [x] Kaynak dosyalarında brace balance ve declaration/definition/migration wiring statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT ve runtime retry/failure-injection testleri.
+- [ ] Gerçek üretim tariflerinin MakePhysicalStockItemId anahtar sözleşmesine göre yapılandırılması.
+- [ ] Tarif girdisinin stoktan atomik tüketilmesi, işin tamamlanması ve çıktı item/aktörlerinin aynı sahiplik akışında üretilmesi.
+- [ ] İstasyon stoklarına girmiş kaynakların save/load sonrası tarifler ve intake receipt'leri ile çapraz doğrulanması.
+- [ ] Stok girişinde actor destroy başarısızlığı ve save sırasında mevcut fiziksel aktörlerin tutarsız kalmaması için Unreal kabul testi.
+
+**Kaynak dosyaları:** WorldProductionSubsystem.h/.cpp, WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp, WorldItemOwnershipSubsystem.h/.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Fiziksel ve serbest dünya kütüğünü üretim istasyonundaki miktar tabanlı stoğa alma için kaynak katmanı eklendi. Kaynak sahipliği değiştirilmeden önce kapasite doğrulanıyor; değişiklik ve kalıcı intake fişi birlikte commit ediliyor. Bu iş henüz fiziksel makine/animasyon, tarif tüketimi veya çıktı aktörü oluşturma döngüsünü tamamlamıyor.
+**Kanıt seviyesi:** Kaynak değişikliği + statik yapı kontrolü. Unreal motoru doğrulanmadı.
+**Kalan sınırlamalar:** Stok yalnızca aggregate miktarı temsil eder; Transformed kaynak kaydı ve intake receipt fiziksel aktörü tanımlar, ancak tamamlanmış üretim işinin recipe tüketimi/output spawn/save-load çapraz bütünlüğü ayrı WOOD-008 işidir.
+**Sonraki bağımlı iş:** WOOD-008 — tarif başlatma/tamamlama, stock consumption, output capacity reservation ve output item creation arasında tek bir tekrar-denemeye dayanıklı üretim işlemi kurmak.
+
+---
+
+### İş kaydı: WOOD-008 — Üretim işi kuyruğa alma/toplama için kalıcı retry fişleri
+
+- [x] FWorldProductionEnqueueReceipt ile OperationId → RecipeId/JobId/revizyon sonucu saklanıyor.
+- [x] TryEnqueueJob açık OperationId ve ExpectedStationRevision ister; aynı tam istek retry edildiğinde aynı JobId döner ve kaynaklar ikinci kez düşülmez.
+- [x] Üretim girdileri, iş kuyruğu limiti, istasyon etiketi ve rezerve edilmiş/gelecek çıktı kapasitesi değişiklikten önce doğrulanıyor; stok ve iş kaydı ancak tüm ön kontroller geçince güncelleniyor.
+- [x] FWorldProductionCollectReceipt ile tamamlanmış işin çıkarılması kalıcı retry fişine bağlandı; aynı OperationId retry'si ikinci kez job removal yapmadan başarı döner.
+- [x] İşe alma, fiziksel stok kabulü ve job collection fişleri arasında aynı production OperationId'nin türler arası tekrar kullanımı reddediliyor.
+- [x] Receipt dizileri station snapshot'ında saklanıyor; SaveGame schema v10 ve v9→v10 migration eklendi.
+- [x] RestoreSnapshot receipt kimlik/revizyonlarını, recipe referanslarını, duplicate operation ID'leri ve collected job tutarlılığını kontrol ediyor.
+- [x] RestoreSnapshot istasyonlar arasında da duplicate JobId'yi reddediyor; bütün recipe referanslarını snapshot'ın yeni recipe tablosundan çözüyor.
+- [x] Restore sırasında stok toplamı + queued/running işlerin rezerve çıktıları kapasiteyi aşıyorsa snapshot fail-closed reddediliyor; job progress/state sınırları doğrulanıyor.
+- [x] İlgili C++ dosyalarında declaration/definition, migration ve brace-balance statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT ve enqueue/collect aynı-ID retry/failure-injection runtime testleri.
+- [ ] Tarife girdi tüketimi ile tamamlanma çıktısının item ownership kaydına aktarılması hâlâ ayrı işlem zinciri.
+- [ ] Tarif çıktısının fiziksel aktör olarak üretilmesi veya depoya/enventere aktarılması; üretim makinesi sunumu ve ilgili save/load testleri açık.
+
+**Kaynak dosyaları:** WorldProductionSubsystem.h/.cpp, WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Üretim işini kuyruklama ve tamamlanmış iş kaydını toplama için açık, kalıcı OperationId API'leri eklendi. Geriye dönük EnqueueJob/CollectCompletedJob sarmalayıcıları korunuyor; retry garantisi isteyen yeni çağıranlar TryEnqueueJob/TryCollectCompletedJob kullanmalı.
+**Kanıt seviyesi:** Kaynak değişikliği ve statik wiring/brace kontrolü; Unreal motoru doğrulanmadı.
+**Kalan sınırlamalar:** EnqueueJob/CollectCompletedJob eski sarmalayıcıları her çağrıda yeni ID ürettiğinden çağıranın tekrar isteğini ayırt edemez. Tarif tamamlanması şu anda aggregate stock ekliyor; bütün giriş/çıkışın fiziksel item/aktör ve ownership ile atomik eşleşmesi tamamlanmadı.
+**Sonraki bağımlı iş:** WOOD-009 — üretim sonucunun gerçek item kaydı/physical actor/stock/depo ile tutarlı oluşturulması ve station output materialization işleminin retry-safe yapılması.
+
+---
+
+### İş kaydı: WOOD-009 — Üretim stoğundan fiziksel kütük oluşturma
+
+- [x] TryMaterializeStockAsWorldLog eklendi; çağrı stok anahtarı, DefinitionId, BaseDefinitionId ve MeshVariantSetId'nin aynı sözleşmeye uymasını doğruluyor.
+- [x] İstasyon revizyonu ve eldeki stok miktarı spawn öncesi ve Blueprint/BeginPlay akışından sonra yeniden doğrulanıyor.
+- [x] Yeni output actor deferred spawn ile hidden/inert başlatılıyor; benzersiz item ID, definition/family ve graph node BeginPlay sonrası kontrol ediliyor.
+- [x] Varyant DefinitionId gerçek mesh ailesine ApplyDefinitionVariant üzerinden bağlanıyor; eksik/yanlış mesh tuple'ı varsa stok azaltılmadan actor geri alınıyor.
+- [x] Başarılı materialization fiziksel item için tekil World sahiplik kaydı oluşturuyor, stoktan bir birim indiriyor ve WorldItemId içeren kalıcı fiş kaydediyor.
+- [x] Aynı OperationId ve aynı istek tekrarlandığında yeni actor/ikinci stok azaltımı yapılmıyor; farklı istekle aynı ID reddediliyor.
+- [x] Materialization fişleri station snapshot'ına dahil; SaveGame schema v11 ve v10→v11 migration eklendi.
+- [x] Save/load öncesi intake ve materialization fişlerinin item ownership defterinde karşılığı olması denetleniyor.
+- [x] Operation ID'lerinin intake/enqueue/collect/materialize türleri arasında çakışması reddediliyor; restore duplicate output IDs ve stock-key tutarsızlığını fail-closed ele alıyor.
+- [x] İlgili dosyalarda source wiring, schema migration, brace-balance kontrolleri yapıldı.
+- [ ] UE 5.8 UHT/UBT, Editor/PIE, gerçek mesh family, physics/collision ve failed-spawn rollback kabul testleri.
+- [ ] Fiziksel aktör dönüşümleri genel SaveGame manifestine alınmalı; receipt yalnızca kimliği saklıyor, konum/dönüş/physics state'i geri kurmuyor.
+- [ ] Çıktıyı doğrudan depo/envantere alma ve fiziksel olmayan ürün türlerini aynı sahiplik sözleşmesine bağlama.
+- [ ] Stok anahtarlarını gerçek tarif/Blueprint verisine atama; üretim işinin recipe outputs ile materialization arasında uçtan uca çalıştığını doğrulama.
+
+**Kaynak dosyaları:** WorldProductionSubsystem.h/.cpp, WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp, WorldItemOwnershipSubsystem.h/.cpp, LogBuildPiece.h/.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Aggregate üretim stokundan, birim miktarı düşürerek benzersiz kimlikli fiziksel kütük aktörü oluşturma kaynak katmanı eklendi. Stok azalması ancak aktörün kimlik, mesh-varyant ve yapısal graph doğrulamaları tamamlandıktan sonra commit ediliyor.  
+**Kanıt seviyesi:** Kaynak değişikliği + statik yapısal kontrol; Unreal motoru doğrulanmadı.
+**Kalan sınırlamalar:** Fiziksel aktör transform/lifecycle save/load hâlâ genel kayıtta yer almıyor. Recipe output oluşturulması stok seviyesine kadar çalışıyor, ancak gerçek tarif verisi, makine aktörü ve save/load sonrası fiziksel dünyayı tam geri kurma kapısı açık.
+**Tamamlanan kaynak katmanı:** WOOD-010 — kimlik bağlı fiziksel aktör/graph snapshot (motor doğrulaması açık).
+
+---
+
+### İş kaydı: WOOD-010 — Kimlik bağlı fiziksel aktör ve yapı grafiği SaveGame
+
+- [x] SaveGame şeması v13'e yükseltildi; v11→v12 fiziksel aktör durumu ve v12→v13 yapısal grafik migrasyon adımları eklendi.
+- [x] Kimlik bileşeni bulunan aktörlerin class path'i, transform'u, DefinitionId/lifecycle/revision alanları ve actor-level UPROPERTY(SaveGame) verisi snapshot'a yazılıyor.
+- [x] Primitive component başına isim, collision enabled, physics simülasyon durumu, linear/angular velocity ve static mesh asset path'i saklanıyor.
+- [x] Hasat ağacına kalıcı identity component eklendi; ChopHealth, felling/grounded/output flags ve grounded stabilite sayacı actor SaveGame payload'ına dahil edildi.
+- [x] Yapı grafiğinin node ID'si, aktör identity ID'si, parent edge, anchor adları, yük sınırları, destek durumu, hasar ve revision alanları snapshot'a eklendi.
+- [x] Restore, fiziksel aktör kimliklerinin/klasslarının/component adlarının mevcut level ile birebir eşleşmesini doğruluyor; belirsiz veya eksik eşleşmede fail-closed davranıyor.
+- [x] Restore sırası: aktör kimlik/class/component eşleşmesini doğrula → sahiplik/işlem defterini geri yükle → aktör transform/SaveGame/component fizik durumunu uygula → yapısal grafiği kimliklerle yeniden bağla.
+- [x] Grafik restore duplicate node/actor IDs, eksik parent, aynı parent anchor'ın iki kez kullanımı, cycle, geçersiz yük/hasar ve desteklenmeyen parent-chain durumlarını reddediyor; loose unsupported root parçalar geçerli kalıyor.
+- [x] Eski SaveGame'lerde bulunmayan geçmiş fiziksel durum ve grafik ilişkileri mevcut level'dan tahmin edilerek uydurulmuyor.
+- [x] İlgili C++ dosyalarında brace-balance, schema migration sırası ve capture/apply wiring statik kontrol edildi.
+- [ ] UE 5.8 UHT/UBT, Editor/PIE, gerçek save→move/physics→load round-trip ve bozuk snapshot/failure-injection kabul testleri.
+- [ ] Fiziksel actor identity snapshot'ı yalnızca UWorldObjectIdentityComponent taşıyan aktörleri kapsıyor; identity bileşeni olmayan mevcut aktör sınıfları eklenmeli.
+- [ ] Snapshot aynı level'da mevcut actor setiyle birebir eşleşme ister; yok olan runtime aktörleri spawn etmez ve farklı level/streaming durumunda otomatik actor recreation/partition restore yapmaz.
+- [x] Log aktörlerinde canonical graph restore sonrasında `SnapParent`, parent/own snap index, `AttachedPieces` ve iki uçtaki snap-point occupancy yeniden kuruluyor; graph edge tekrar eklenmiyor. Statik kaynak katmanı.
+- [ ] Stone/stick/foundation sınıflarının actor-local anchor/attachment state'ini aynı canonical graph'tan yeniden kurması ve UE runtime doğrulaması.
+- [ ] Envanterde Held owner durumu hâlâ save sırasında reddediliyor; carry component/attached actor state'inin tam save/load akışı açık.
+- [ ] Terrain edit deltasının görünür Landscape/mesh/collision/nav restore'u ve fiziksel crop/animal actor re-creation bu işin kapsamına dahil değil.
+
+**Kaynak dosyaları:** WorldSimulationSaveGame.h, WorldSaveCoordinatorSubsystem.cpp, WorldStructuralGraphSubsystem.h/.cpp, HarvestableTreeActor.h/.cpp  
+**Branch/PR:** fix/log-mesh-variant-sets; [PR #26](https://github.com/furkansarikiyak36-eng/myproject3/pull/26)  
+**Sonuç:** Kimlikli ve mevcut level'da bulunan aktörlerin transform/SaveGame state/primitive physics/mesh referansları ile canonical structural graph snapshot'ı genel SaveGame akışına bağlandı. Eski kayıtlarda bulunmayan fiziksel durum tahmin edilmiyor; uyumsuz level/snapshot yüklemesi güvenli biçimde reddediliyor.  
+**Kanıt seviyesi:** Kaynak değişikliği + statik wiring/schema/brace kontrolü; Unreal motoru doğrulanmadı.
+**WOOD-012 kaynak ilerlemesi (2026-10-26):** `ALogBuildPiece::TryAdvanceCutProgress` artık SaveGame ile saklanan ayrı kesme ilerlemesi tutuyor; tüm public kesme girişleri aynı progress kapısından geçiyor; eski tek çağrılı API uyumluluk için %100 work gönderiyor, yeni etkileşimler artımlı work gönderebiliyor. Eylem/mesh önkoşulu eksikse ilerleme başlamıyor; tamamlanan iş mevcut atomik işlem yoluna devrediliyor. `AHarvestableTreeActor` artık isteğe bağlı, gerçek tree mesh world-height sınırlarına göre seçilen `YieldRules` tablosuyla kütük adedini ve çıktı `ELogPieceType` değerini belirleyebiliyor. Kural tablosu boşsa eski `LogsToSpawn` ayarı geriye uyumluluk için kullanılıyor. Bu, veri odaklı kaynak katmanıdır; gerçek ağaç ölçüleri ve her kütük Blueprint'inin uygun length/shape varyantı hâlâ elle eşleştirilip UE'de doğrulanmalıdır.
+**WOOD-011 kaynak ilerlemesi (2026-10-26):** `ALogBuildPiece` artık canonical graph restore sonrasında actor-local `SnapParent`, parent/own snap index'leri, `AttachedPieces` ve anchor occupancy bilgisini graph kenarlarından yeniden kuran ayrı bir yol sağlıyor. `UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot` yalnızca actor-local state'i yeniden kurar; `TryConnect` çağırmaz ve graph'ta ikinci bir kenar oluşturmaz. `WorldSaveCoordinatorSubsystem` bunu graph restore'un hemen ardından çağırıyor. Kaynak/statik inceleme düzeyinde; UE derleme ve runtime testi yapılmadı.
+**Açık kalanlar:** Held/carry bileşen state'i ve actor recreation politikası; stone/stick/foundation actor-local anchor rehydration; gerçek FBX/Blueprint konfigürasyonu ve fiziksel doğrulama.
+
+**Sonraki bağımlı iş:** WOOD-013 — held/carry SaveGame manifestini ve world-location/physics settle senkronizasyonunu tamamlamak; gerçek FBX/Blueprint varyant ölçümünü motor doğrulamasıyla kapatmak.
+
+---
+
+## 15. Sonraki uygulama sırası
+
+WOOD-004–010 kaynak katmanları ile WOOD-011 log-to-log actor-local graph rehydration dalda mevcut. WOOD-012 artık ayrı SaveGame kesme ilerlemesi ve ağaç mesh world-height bantlarına göre yield rule tablosu sunuyor; eski tek çağrılı kesme API'si uyumluluk için aynı progress kapısından %100 iş ile geçiyor. Yield tablosu boşsa eski sabit `LogsToSpawn` davranışı korunuyor.
+
+**Kalan kapanış kapıları:** Held/carry SaveGame manifesti; gerçek FBX/Blueprint mesh family, pivot, orientation, collision ve split offset ölçüleri; her ağaç yüksekliği için onaylı kütük sayısı/uzunluk tablosu; sınırlı kuvvetli sürekli drag akışı kaynak katmanı eklendi; gerçek settle/world-location fizik doğrulaması; stone/stick/foundation local-link rehydration; UE 5.8 build/PIE ve save→move/physics→load kabulü. Dosya adlarındaki 75/150/300/600 veya Long/Short etiketlerinden gerçek ölçü tahmin etme. Bu varlık ölçümleri olmadan asset-side iş tamamlandı sayılmayacak.
+
+Sıradaki kaynak işi **WOOD-013 — held/carry persistence ve world-location/physics settle sözleşmesi**. Sonrasında taş/çubuk ve ortak yapı sistemine devam; final demo en sonda.

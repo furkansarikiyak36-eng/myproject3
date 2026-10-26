@@ -3,7 +3,7 @@
 **Project:** MyProject3  
 **Review branch:** `audit/reference-game-and-landscape-status`  
 **Source baseline:** H-integrated systems plus the current stacked core-fix branch  
-**Review date:** 2026-10-25  
+**Review date:** 2026-10-26  
 **Evidence level:** Repository docs and C++ source inspection only. Unreal 5.8 UHT/UBT, Editor, PIE and gameplay tests were not run.
 
 ## Executive result
@@ -30,29 +30,50 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 
 **Status: PARTIAL — not complete.**
 
-**Progress in WOOD-001–WOOD-003:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `SplitHalf` / `Quarter` have a source-level atomic ownership split receipt, a second deferred physical actor, graph/ownership verification and rollback attempt. `ELogLengthFraction` and `ELogCrossSectionProfile` are independent; new item definitions encode both as `Base.Geom.<Length>.<Profile>`. `GeometryVariantMeshes` maps an exact length/profile pair to mesh, split offset and child rotation. Legacy mesh slots are a full-length fallback only; missing shorter-piece variants are rejected instead of applying a wrong full-length mesh. **Still partial:** the actual Blueprint asset table must be authored and verified; UE 5.8 build/PIE, failure injection, physical geometry, actor transforms, and end-to-end source quantities remain unverified.
+**Progress in WOOD-001 / WOOD-002:** `QuarterSectionLog` and `.QuarterSectionLog` distinguish quarter-round output from the legacy `.QuarterLog` suffix. `TrySplitItem` now atomically registers the first output (retaining the source ID) and a new output (new GUID) with a durable split receipt; `SplitHalf` / `Quarter` actor paths spawn a deferred second physical actor, bind its ownership ID, validate its structural node and attempt rollback on failure. SaveGame v7/fixed-step rollback carry split receipts. **Still partial:** mesh-specific center offsets and child rotations must be configured and visually verified per mesh. UE 5.8 build/PIE, failure injection, exact physical geometry, actor transform persistence and end-to-end source counts remain unverified.
+
+### WOOD-005 progress: tree felling lifecycle adapter
+
+A new `AHarvestableTreeActor` source class owns chop health, fall impulse, stable grounded detection and one-shot output state. It refuses invalid/non-positive damage and missing harvest configuration. After health reaches zero, the tree mesh simulates physics; output is gated until its linear speed remains under a configured threshold and a ground trace reports contact for a configured hold interval. Only then are configured `ALogBuildPiece` actors spawned. Each spawned log uses the existing BeginPlay registration path for item ownership and the structural graph; no second tree-specific item ledger was added.
+
+**Progress:** a failed spawn or hidden/quarantined output now triggers source-level cleanup of every sibling actor from that harvest attempt; retry is still deliberately disabled to avoid duplicating resources.
+**Still open:** no Unreal compile/PIE run; tree asset collision, physics mass/center-of-mass and trace channel are not measured; log actor subclass and `LogMeshVariantSetId` must be authored; species/size → output count/length fraction is not yet data-driven; save/load, failure injection and retry behavior need acceptance. Full cross-system transaction rollback is not proven.
+
+### WOOD-006 progress: loose-log physical push/roll
+
+`ULogCarryComponent` already handled pickup, held ownership, placement/snap reservation and drop. Source-level push/roll interaction is now added without introducing a parallel item ledger: it rejects held/placed/attached pieces, requires a stable identity and a single world-owned item record, verifies active mesh physics/collision, clamps finite impulse strength and applies the impulse at the hit point so off-centre contact can induce rolling. V is an optional direct input binding; the Blueprint-callable method may also be bound by Enhanced Input.
+
+**Still open:** this is not a drag-on-ground implementation. Physics movement does not yet synchronize the ownership record's WorldLocation after the body settles, full physical actor transforms are not restored by world SaveGame, and actor resource count/outputs are not transactionally connected to production station stock/recipe consumption. UE 5.8 build/PIE and physical parameter tuning were not run.
 
 ### Already present in source
 - `ALogBuildPiece` owns cut-action eligibility and blocks processing while placed, held or carrying attached pieces.
-- `CanApplyCutAction` checks the independent cross-section profile and resolves an authored mesh by exact length fraction + profile; legacy mesh slots are only a full-length compatibility fallback.
+- `CanApplyCutAction` maps whole/split-half states to specific configured output mesh slots for split-half, quarter, hewn, gutter, trough, squared-beam and plank operations.
 - `TryApplyCutAction` checks the output mesh before changing the authoritative item definition and then applies the mesh/type change.
 - `SetPieceStaticMesh` regenerates automatically generated snap points against the replacement mesh while retaining authored points.
 - Log actors register with the item ownership ledger; the structural graph provides support/connection primitives.
 
 ### Still missing / not proven
 - [ ] Separate **cut progress** from completed piece type; there is no complete partial-cut progress state and visible progression contract.
-- [x] Separate length fraction (full, 3/4, 1/2, 1/4) from cross-section profile (round, half-round, quarter-round, hewn, square, groove, trough). Canonical item definitions persist both; legacy `QuarterLog` remains an older compatibility alias and cannot disambiguate every historical record.
+- [ ] Separate length fraction (whole, 3/4, 1/2 length, 1/4 length) from cross-section shape (whole round, half-round, quarter-round, hewn, squared, groove, trough). The existing `QuarterLog` / `Quarter` naming risks mixing length and cross-section meanings.
 - [x] Source-level output path now supports two physically separate outputs for `SplitHalf` and `Quarter`, with an ownership split receipt, stable source ID, unique child ID, deferred child spawn, graph-registration verification and rollback attempt. This is a code-layer result only, not a verified engine result.
 - [ ] Configure and verify per-mesh cross-section center offsets; default zero offsets deliberately reject splitting rather than placing overlapping pieces.
 - [ ] Add/review authoring data for any additional offcuts/multiple output counts; other cut actions still use single-actor transformation semantics.
-- [ ] Complete the state → allowed action → output count/byproduct → mesh/collision → length/profile table for every action. Exact mesh mapping exists now, but physical longitudinal length-cut actions and offcut quantities remain unimplemented.
-- [ ] Fill and validate `GeometryVariantMeshes` in the real Blueprint/content assets for every supported length/profile pair, including split offsets and child rotations; C++ properties alone do not prove that the right assets are assigned.
+- [ ] Define the state → allowed action → resulting piece(s) → mesh/collision → length/quantity table for every action.
+- [ ] Confirm every required output mesh/asset is actually assigned in the intended Blueprint/content assets; C++ properties alone do not prove that.
 - [ ] Complete tree-felling/grounding/length-to-log generation, with stable IDs and collision.
 - [ ] Complete grounded spike/tent/trap preconditions, actor adapters for stones/sticks, safe support removal, salvage and damage/repair in the shared graph.
 - [ ] Prove preview transform equals committed placement transform in UE.
 - [ ] Negative cases must leave actor, geometry, ownership, anchors and inventory unchanged.
 
-**Next implementation:** WOOD-004 must add genuine length-direction cuts and different-size output pieces (e.g. 3/4 + 1/4 length) using an atomic multi-output transaction and authored placement offsets. Partial-cut visual progress, tree felling/grounding, and actual content/UE acceptance remain open.
+**Progress in WOOD-002/003:** `TrySplitItem` commits the original item plus a unique second item under a split receipt; `SplitHalf` / `Quarter` use deferred second-actor creation with ownership/graph verification and a rollback attempt. Geometry metadata now separates `ELogLengthFraction` from `ELogCrossSectionShape`; split-related eligibility uses cross-section shape so a shortened round log does not fail merely because its legacy `PieceType` label names a length fraction. The repository inventory lists 48 root FBX meshes and 10 Archive/joinery meshes, based on filenames only.
+
+**Still not verified:** actual FBX bounds/pivots/orientations, output mesh assignment, per-Blueprint offsets/rotations, the absent `SM_RawLog_75.fbx` base-round mesh, and ambiguous `Long_01..08` / `Short_01..04` dimensions. The import script stages a gallery; it does not complete production Blueprint configuration or physical actor save/load.
+
+**Progress in WOOD-004:** The source now has explicit `FLogProcessingMeshSet` / `FLogPieceMeshVariant` rows keyed by `LengthFraction × CrossSectionShape`. Cut eligibility, output mesh resolution, variant restore and split offsets/rotations use the selected set; missing/ambiguous table rows fail closed. `MeshVariantSetId` follows the ownership item through split outputs and inventory drop, while the item DefinitionId can encode a non-full length fraction plus shape. SaveGame schema v8 includes that selector as part of the item record.
+
+**Still not verified:** no nominal variant table has been populated from actual imported assets; mesh bounds/pivot/orientation and output collision are still unknown. `SM_RawLog_75.fbx` is absent, `Long_01..08` / `Short_01..04` dimensions remain ambiguous, and Unreal build/PIE/retry/save-load tests were not run.
+
+**Next implementation:** WOOD-007 should connect physical wood pieces and processing outputs to production stock/recipe input/output ownership without duplicating the source actor/item. In parallel, actual FBX import measurements and tree-size output configuration remain explicit UE acceptance tasks.
 
 ## 2.2 — 7 Days to Die: constrained excavation, raids and structural pressure
 
@@ -195,7 +216,21 @@ Static checks for those changes passed, but the Unreal build and runtime tests a
 - [ ] Give blocked jobs actionable reasons for missing input, station, fuel, capacity or route, and ensure retries do not consume resources twice.
 - [ ] Physical conveyance/machine movement is not implemented merely by a logical cargo queue.
 
-**Next implementation:** close one raw wood → processed timber/plank → storage/transport chain before adding larger factories.
+**WOOD-007 source progress:** a bounded physical-log intake adapter validates a loose, single-unit, world-owned log and station revision/capacity, converts the authoritative item to Transformed, increments one station stock key preserving DefinitionId plus optional MeshVariantSetId, and persists an idempotency receipt inside the station snapshot. Save schema v9 and v8→v9 additive migration are included.
+
+**WOOD-008 source progress:** production job queue and collection now have durable operation receipts and explicit retry-safe APIs. TryEnqueueJob accepts OperationId plus ExpectedStationRevision and replays the original JobId for the same request. TryCollectCompletedJob replays collection success by receipt, rather than attempting to remove the same completed job twice. These receipts are included in station snapshots; SaveGame schema v10 and v9→v10 migration were added. Production receipt operation IDs are checked across physical intake/enqueue/collection kinds. Restore now rejects duplicate JobIds across different stations, malformed/unknown job states and progress outside the recipe duration, and any snapshot where current stock plus queued/running jobs' reserved output units exceed station capacity.
+
+**WOOD-009 source progress:** TryMaterializeStockAsWorldLog creates a deferred ALogBuildPiece with a unique identity, applies the requested mesh-family/geometry definition, verifies canonical World ownership and its structural graph node, then decrements one matching station stock unit and commits a durable output receipt. Station snapshots persist these receipts; save/load validates intake/materialization receipt references. SaveGame schema v11.
+
+**WOOD-010 source progress:** SaveGame schema v13 carries identity-bound actor class/transform, actor-level UPROPERTY(SaveGame) payload, primitive component collision/physics velocities and static-mesh asset paths. AHarvestableTreeActor now has stable identity so its chop/fall/grounded/output lifecycle can be captured. Canonical structural graph node IDs, actor identity mapping, parent/anchor edges, support/load/damage/revision fields are exported and restored after physical actor state. Restore rejects actor-set/class/component mismatches, duplicate/invalid graph IDs, missing parents, duplicate parent anchors, cycles, invalid load values and unsupported connected chains.
+
+**Still open:** only actors with UWorldObjectIdentityComponent are captured; restore requires the same actors/classes/components already present and does not recreate missing runtime actors or handle world-partition streaming. Canonical graph is restored but actor-local log/stone/stick SnapParent/AttachedPieces weak refs and snap reservations still need rebinding. Held/carry state is still refused during save. Legacy saves lack historical physical/graph state and will fail closed when the current level requires those records. Real FBX/Blueprint configuration, UE compile/PIE/failure-injection and save→physics→load acceptance were not run. Recipe stock keys and non-log physical output/storage handoff also remain open.
+
+**WOOD-012 source progress (2026-10-26):** `TryAdvanceCutProgress` stores cut progress independently from completed geometry and only delegates to the private ownership/geometry commit at full progress. The legacy one-shot public API routes through the same gate with 100% work for backward compatibility. `AHarvestableTreeActor::YieldRules` can resolve log count and output piece type from non-overlapping tree-mesh world-height bands; the spawned log then applies its matching mesh variant and ownership DefinitionId through `TrySetInitialPieceType`, rolling back the harvest if the variant is missing. An uncovered/overlapping authored table fails closed. Empty tables preserve the legacy fixed-count path. This is not an asset-side completion: real bounds, pivot, collision, output length/shape variants and UE runtime acceptance remain open.
+**WOOD-011 source progress (2026-10-26):** `ALogBuildPiece` exposes graph-restore-only helpers that clear stale local reservations and rebuild log-to-log `SnapParent`, parent/own snap indices, parent `AttachedPieces`, and both occupied anchors from canonical graph edge IDs. The coordinator calls `RebuildLogActorAttachmentsFromSnapshot` immediately after graph restore. This path does not call `TryConnect` and therefore does not create duplicate graph edges. Static source checks only; UE build/runtime is not verified.
+**Still open:** Held/carry component persistence, actor recreation, non-log structural actor local-anchor rebuild, actual FBX/Blueprint configuration, and runtime acceptance.
+
+**Next implementation:** WOOD-013 — persist held/carry component state and reconcile dropped/settled transforms with world item ownership; actual FBX/Blueprint measurements and UE acceptance remain a separate gate.
 
 ---
 
