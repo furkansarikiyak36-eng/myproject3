@@ -174,11 +174,11 @@ void ALogSnapCharacter::ApplyBlockoutMaterials()
     if (BodyTorso) BodyTorso->SetMaterial(0, ClothMaterial);
     if (BodyHead) BodyHead->SetMaterial(0, SkinMaterial);
     if (BodyLeftArm) BodyLeftArm->SetMaterial(0, ClothMaterial);
-    if (BodyRightArm) BodyRightArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
-    if (BodyLeftLeg) BodyLeftLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
-    if (BodyRightLeg) BodyRightLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (BodyRightArm) BodyRightArm->SetMaterial(0, ClothMaterial);
+    if (BodyLeftLeg) BodyLeftLeg->SetMaterial(0, ClothMaterial);
+    if (BodyRightLeg) BodyRightLeg->SetMaterial(0, ClothMaterial);
     if (FirstPersonForearm) FirstPersonForearm->SetMaterial(0, SkinMaterial);
-    if (AxeHand) AxeHand->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
+    if (AxeHand) AxeHand->SetMaterial(0, SkinMaterial);
     if (AxeHandle) AxeHandle->SetMaterial(0, WoodMaterial);
     if (AxeHead) AxeHead->SetMaterial(0, MetalMaterial);
 }
