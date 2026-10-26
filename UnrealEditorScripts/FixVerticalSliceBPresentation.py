@@ -64,7 +64,7 @@ def configure_directional_sun():
     component = actor.get_component_by_class(unreal.DirectionalLightComponent)
     if component:
         safe_set(component, "mobility", unreal.ComponentMobility.MOVABLE)
-        safe_set(component, "intensity", 100000.0)
+        safe_set(component, "intensity", 38.716587)
         safe_set(component, "light_color", unreal.LinearColor(1.0, 0.94, 0.82, 1.0))
         safe_set(component, "cast_shadows", True)
     return actor
@@ -119,7 +119,7 @@ def create_editor_visible_ground():
     # It remains visible in the editor if the world actor has not generated its terrain yet.
     actor = spawn_labelled(
         unreal.StaticMeshActor,
-        unreal.Vector(0, 0, -500),
+        unreal.Vector(0, 0, -5),
         unreal.Rotator(0, 0, 0),
         PRESENTATION_PREFIX + "FallbackGround"
     )
