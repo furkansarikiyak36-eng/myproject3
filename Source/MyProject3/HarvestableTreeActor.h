@@ -73,6 +73,9 @@ public:
     UPROPERTY(Transient)
     TObjectPtr<AActor> StumpActor = nullptr;
 
+    UPROPERTY(Transient)
+    TObjectPtr<UStaticMeshComponent> StumpMeshComponent = nullptr;
+
     /** Requested impulse is mass-clamped at runtime to prevent trees being launched. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest", meta=(ClampMin="0.0"))
     float FallImpulse = 250000.0f;
