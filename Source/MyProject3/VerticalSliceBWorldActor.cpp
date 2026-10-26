@@ -205,8 +205,6 @@ int32 AVerticalSliceBWorldActor::TerrainIndex(int32 X, int32 Y) const
 
 float AVerticalSliceBWorldActor::RawHeightAt(float Xcm, float Ycm) const
 {
-    const float X = Xcm / 100.0f;
-    const float Y = Ycm / 100.0f;
     // VerticalSlice_B presentation mode uses one level, plane-backed test floor.
     // Keep all zone anchors, trails, props and editable terrain on the same Z=0 surface.
     // The gameplay terrain-editing mesh remains enabled; raised/lowered areas are runtime edits.
