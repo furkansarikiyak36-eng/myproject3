@@ -120,7 +120,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BodyLeftArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftArm"));
     BodyLeftArm->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyLeftArm, CylinderMesh, FVector(0.0f, -25.0f, 10.0f),
-        FVector(0.085f, 0.085f, 0.29f), ClothMaterial);
+        FVector(0.065f, 0.065f, 0.52f), ClothMaterial);
     BodyRightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightArm"));
     BodyRightArm->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyRightArm, CylinderMesh, FVector(0.0f, 25.0f, 10.0f),
@@ -129,7 +129,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BodyLeftLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftLeg"));
     BodyLeftLeg->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyLeftLeg, CylinderMesh, FVector(0.0f, -11.0f, -45.0f),
-        FVector(0.095f, 0.095f, 0.46f), ClothMaterial);
+        FVector(0.085f, 0.085f, 0.86f), ClothMaterial);
     BodyRightLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightLeg"));
     BodyRightLeg->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyRightLeg, CylinderMesh, FVector(0.0f, 11.0f, -45.0f),
@@ -139,13 +139,13 @@ ALogSnapCharacter::ALogSnapCharacter()
     FirstPersonForearm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonForearm"));
     FirstPersonForearm->SetupAttachment(FirstPersonCamera);
     SetupBodyPart(FirstPersonForearm, CylinderMesh, FVector(27.0f, 17.0f, -34.0f),
-        FVector(0.075f, 0.075f, 0.31f), SkinMaterial);
+        FVector(0.065f, 0.065f, 0.48f), SkinMaterial);
     FirstPersonForearm->SetRelativeRotation(
         FRotationMatrix::MakeFromZ(FVector(0.18f, 0.42f, -1.0f).GetSafeNormal()).Rotator());
 
     AxePivot = CreateDefaultSubobject<USceneComponent>(TEXT("FirstPersonAxePivot"));
     AxePivot->SetupAttachment(FirstPersonCamera);
-    AxePivot->SetRelativeLocation(FVector(44.0f, 27.0f, -26.0f));
+    AxePivot->SetRelativeLocation(FVector(44.0f, 27.0f, -43.0f));
     AxePivot->SetRelativeRotation(FRotator(-18.0f, 0.0f, 18.0f));
 
     AxeHand = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeHand"));
@@ -156,7 +156,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     AxeHandle = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeWoodHandle"));
     AxeHandle->SetupAttachment(AxePivot);
     SetupBodyPart(AxeHandle, CylinderMesh, FVector(0.0f, 0.0f, 22.0f),
-        FVector(0.045f, 0.045f, 0.32f), WoodMaterial);
+        FVector(0.045f, 0.045f, 0.55f), WoodMaterial);
 
     AxeHead = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AxeMetalHead"));
     AxeHead->SetupAttachment(AxePivot);
