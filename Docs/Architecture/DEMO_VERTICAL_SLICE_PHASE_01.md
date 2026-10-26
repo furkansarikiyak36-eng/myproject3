@@ -109,3 +109,17 @@ A shared location may exercise multiple IDs, but each ID keeps its own acceptanc
 - [ ] UE 5.8 compile and runtime evidence is recorded by the user/Claude Code.
 
 **Current truth:** the build contract is documented and `AWorldDemoBootstrapActor` now provides an explicit, level-placed fixed-step bootstrap/driver. The map has not been created, and the actor has not been compiled or runtime-tested in UE 5.8.
+
+## Step 5 — Remaining mechanics in the same world
+
+The level-placed `AWorldDemoScenarioActor` is the explicit registration adapter for additional real subsystem state:
+
+- **Storehouse:** registers or verifies one stable storage ID and capacity; a saved record with mismatched configuration fails instead of being silently overwritten.
+- **Routes:** registers camp → timber → workshop route nodes/edges and verifies that the route query returns the expected three-node path. This is the logical route graph, not physical cart/zipline animation.
+- **Agriculture:** an opt-in logical crop record can advance through the existing shared fixed-step coordinator. It is labelled `TestCrop_Unbound` by default and must remain disabled until a crop definition and visual/interaction adapter are wired.
+- **Production:** an opt-in station and recipe are supplied through level-instance properties. Existing saved recipe ingredients and quantities are compared exactly; conflicting definitions fail rather than being silently accepted. Configure recipe item IDs to match actual production stock definitions.
+- **Weather/survival:** optional weather is applied to the existing survival subsystem. It only affects registered survival profiles; this actor does not invent a player profile or claim that the HUD/character adapter exists.
+
+All options that could imply an unconnected gameplay feature are opt-in. The actor returns a readiness boolean and status string, and fails if enabled records cannot be registered. A successful registration is not proof that corresponding physical props, interaction prompts, cargo animation, player HUD, raid AI or discovery presentation exist.
+
+Next implementation dependency is to wire the level's actual tree/log/build actors and player interactions to these existing systems, then create and validate the UE 5.8 level. The source-only workflow cannot produce a verified `.umap` without the user's Unreal project/editor asset workflow.
