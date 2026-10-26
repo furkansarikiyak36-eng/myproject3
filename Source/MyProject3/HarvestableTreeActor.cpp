@@ -4,6 +4,7 @@
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "LogBuildPiece.h"
+#include "Math/RotationMatrix.h"
 
 void AHarvestableTreeActor::BeginPlay()
 {
@@ -53,9 +54,20 @@ bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
         return false;
     }
 
+    // A chopped tree must leave a stationary stump before the trunk starts moving.
+    // If stump creation fails, do not launch a tree that cannot complete its harvest.
+    if (!SpawnStump())
+    {
+        ChopHealth = FMath::Max(1.0f, MaxChopHealth * 0.25f);
+        return false;
+    }
+
     bFellingStarted = true;
-    TreeMesh->SetSimulatePhysics(true);
     TreeMesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+    TreeMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    TreeMesh->SetLinearDamping(2.5f);
+    TreeMesh->SetAngularDamping(3.0f);
+    TreeMesh->SetSimulatePhysics(true);
     TreeMesh->WakeAllRigidBodies();
 
     FVector Direction = ChopDirection.GetSafeNormal2D();
@@ -64,19 +76,80 @@ bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
     if (Direction.IsNearlyZero())
         Direction = FVector::ForwardVector;
 
-    // Existing trees retain their original impulse behaviour by default. A
-    // configured mesh-family tree uses an off-centre impulse so the trunk has
-    // a chance to rotate/fall rather than only translating sideways.
-    if (!OutputProcessingMeshSets.IsEmpty())
+    // FallImpulse is a legacy authored value. Clamp its per-mass effect so a
+    // value such as 250000 cannot launch the tree across the map.
+    const float BodyMassKg = FMath::Max(1.0f, TreeMesh->GetMass());
+    const float RequestedImpulsePerMass = FallImpulse > 0.0f
+        ? FallImpulse / BodyMassKg
+        : 100.0f;
+    const float SafeImpulse = BodyMassKg * FMath::Clamp(RequestedImpulsePerMass, 35.0f, 120.0f);
+    const FVector ImpulsePoint = TreeMesh->GetComponentLocation()
+        + TreeMesh->GetUpVector() * TreeMesh->Bounds.BoxExtent.Z * 0.85f;
+
+    TreeMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+    TreeMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+    TreeMesh->AddImpulseAtLocation(Direction * SafeImpulse, ImpulsePoint);
+    return true;
+}
+
+bool AHarvestableTreeActor::SpawnStump()
+{
+    if (bStumpSpawned)
+        return IsValid(StumpActor);
+
+    if (!GetWorld() || !TreeMesh || !TreeMesh->GetStaticMesh())
+        return false;
+
+    UStaticMesh* TrunkAsset = TreeMesh->GetStaticMesh();
+    const float LocalMeshHeight = TrunkAsset->GetBounds().BoxExtent.Z * 2.0f;
+    if (!FMath::IsFinite(LocalMeshHeight) || LocalMeshHeight <= KINDA_SMALL_NUMBER)
+        return false;
+
+    const float StandingHeight = StandingWorldHeightCm > KINDA_SMALL_NUMBER
+        ? StandingWorldHeightCm
+        : LocalMeshHeight * TreeMesh->GetComponentScale().Z;
+    const FVector TrunkCentre = TreeMesh->GetComponentLocation();
+    const float TrunkBaseZ = TrunkCentre.Z - StandingHeight * 0.5f;
+    const float ActualStumpHeight = FMath::Clamp(StumpHeightCm, 10.0f, 100.0f);
+    const FRotator StumpRotation(0.0f, TreeMesh->GetComponentRotation().Yaw, 0.0f);
+    const FVector StumpLocation(TrunkCentre.X, TrunkCentre.Y, TrunkBaseZ + ActualStumpHeight * 0.5f);
+    const FTransform StumpTransform(StumpRotation, StumpLocation);
+
+    AActor* NewStump = GetWorld()->SpawnActorDeferred<AActor>(
+        AActor::StaticClass(), StumpTransform, this, nullptr,
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    if (!NewStump)
+        return false;
+
+    UStaticMeshComponent* StumpMesh = NewObject<UStaticMeshComponent>(NewStump, TEXT("StumpMesh"));
+    if (!StumpMesh)
     {
-        const FVector ImpulsePoint = TreeMesh->GetComponentLocation()
-            + FVector(0.0f, 0.0f, TreeMesh->Bounds.BoxExtent.Z * 0.85f);
-        TreeMesh->AddImpulseAtLocation(Direction * FallImpulse, ImpulsePoint);
+        NewStump->Destroy();
+        return false;
     }
-    else
+
+    NewStump->AddInstanceComponent(StumpMesh);
+    NewStump->SetRootComponent(StumpMesh);
+    StumpMesh->SetStaticMesh(TrunkAsset);
+    const FVector TreeScale = TreeMesh->GetComponentScale();
+    StumpMesh->SetRelativeScale3D(FVector(
+        TreeScale.X, TreeScale.Y, ActualStumpHeight / LocalMeshHeight));
+    StumpMesh->SetMaterial(0, TreeMesh->GetMaterial(0));
+    StumpMesh->SetCollisionProfileName(TEXT("BlockAll"));
+    StumpMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    StumpMesh->SetSimulatePhysics(false);
+    StumpMesh->RegisterComponent();
+    NewStump->FinishSpawning(StumpTransform);
+
+    if (!IsValid(NewStump) || !IsValid(StumpMesh) || !StumpMesh->GetStaticMesh())
     {
-        TreeMesh->AddImpulse(Direction * FallImpulse, NAME_None, true);
+        if (IsValid(NewStump))
+            NewStump->Destroy();
+        return false;
     }
+
+    StumpActor = NewStump;
+    bStumpSpawned = true;
     return true;
 }
 
