@@ -5,6 +5,8 @@
 #include "LogSnapCharacter.generated.h"
 
 class UCameraComponent;
+class USceneComponent;
+class UStaticMeshComponent;
 class ULogCarryComponent;
 class UCarryLoadComponent;
 class ULogBuildToolsComponent;
@@ -26,6 +28,41 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
     TObjectPtr<UCameraComponent> FirstPersonCamera;
+
+    /** Low-poly body blockout so the first-person pawn has a visible silhouette/shadow. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Blockout")
+    TObjectPtr<UStaticMeshComponent> BodyTorso;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Blockout")
+    TObjectPtr<UStaticMeshComponent> BodyHead;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Blockout")
+    TObjectPtr<UStaticMeshComponent> BodyLeftArm;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Blockout")
+    TObjectPtr<UStaticMeshComponent> BodyRightArm;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Blockout")
+    TObjectPtr<UStaticMeshComponent> BodyLeftLeg;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Blockout")
+    TObjectPtr<UStaticMeshComponent> BodyRightLeg;
+
+    /** Camera-relative arm, hand, and primitive axe for readable first-person chopping. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Axe")
+    TObjectPtr<UStaticMeshComponent> FirstPersonForearm;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Axe")
+    TObjectPtr<USceneComponent> AxePivot;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Axe")
+    TObjectPtr<UStaticMeshComponent> AxeHand;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Axe")
+    TObjectPtr<UStaticMeshComponent> AxeHandle;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Axe")
+    TObjectPtr<UStaticMeshComponent> AxeHead;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Building")
     TObjectPtr<ULogCarryComponent> LogCarry;
@@ -50,6 +87,11 @@ protected:
     bool bHasLastGroundZ = false;
     float CameraBaseHeight = 64.0f;
 
+    float AxeSwingElapsed = 0.0f;
+    float AxeSwingDuration = 0.30f;
+    bool bAxeSwingActive = false;
+    FRotator AxePivotBaseRotation = FRotator::ZeroRotator;
+
     void MoveForward(float Value);
     void MoveBackward(float Value);
     void MoveRight(float Value);
@@ -58,4 +100,9 @@ protected:
     void LookUp(float Value);
     void HandleJumpPressed();
     void HandleJumpReleased();
+
+public:
+    /** Called by the active vertical-slice chopping handler on every mouse swing. */
+    UFUNCTION(BlueprintCallable, Category = "Character|Axe")
+    void PlayAxeSwing();
 };
