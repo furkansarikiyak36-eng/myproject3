@@ -60,7 +60,19 @@ bool AHarvestableTreeActor::ApplyChopDamage(float Damage, FVector ChopDirection)
     if (Direction.IsNearlyZero())
         Direction = FVector::ForwardVector;
 
-    TreeMesh->AddImpulse(Direction * FallImpulse, NAME_None, true);
+    // Existing trees retain their original impulse behaviour by default. A
+    // configured mesh-family tree uses an off-centre impulse so the trunk has
+    // a chance to rotate/fall rather than only translating sideways.
+    if (!OutputProcessingMeshSets.IsEmpty())
+    {
+        const FVector ImpulsePoint = TreeMesh->GetComponentLocation()
+            + FVector(0.0f, 0.0f, TreeMesh->Bounds.BoxExtent.Z * 0.85f);
+        TreeMesh->AddImpulseAtLocation(Direction * FallImpulse, ImpulsePoint);
+    }
+    else
+    {
+        TreeMesh->AddImpulse(Direction * FallImpulse, NAME_None, true);
+    }
     return true;
 }
 
@@ -190,6 +202,10 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
             return false;
         }
 
+        // New demo trees may provide an exact measured mesh family at runtime.
+        // When unset, preserve the existing Blueprint-authored family contract.
+        if (!OutputProcessingMeshSets.IsEmpty())
+            Log->ProcessingMeshSets = OutputProcessingMeshSets;
         Log->SelectedProcessingMeshSetId = LogMeshVariantSetId;
         Log->PieceType = ResolvedPieceType;
         Log->FinishSpawning(FTransform(GetActorRotation(), Location));
