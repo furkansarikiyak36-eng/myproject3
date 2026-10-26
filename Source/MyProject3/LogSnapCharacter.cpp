@@ -97,7 +97,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BodyRightArm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightArm"));
     BodyRightArm->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyRightArm, CylinderMesh, FVector(0.0f, 25.0f, 10.0f),
-        FVector(0.065f, 0.065f, 0.52f), ClothMaterial);
+        FVector(0.065f, 0.065f, 0.52f));
 
     BodyLeftLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutLeftLeg"));
     BodyLeftLeg->SetupAttachment(GetCapsuleComponent());
@@ -106,7 +106,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BodyRightLeg = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BlockoutRightLeg"));
     BodyRightLeg->SetupAttachment(GetCapsuleComponent());
     SetupBodyPart(BodyRightLeg, CylinderMesh, FVector(0.0f, 11.0f, -45.0f),
-        FVector(0.085f, 0.085f, 0.86f), ClothMaterial);
+        FVector(0.085f, 0.085f, 0.86f));
 
     // Camera-relative forearm and axe make the chop action visible in first person.
     FirstPersonForearm = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("FirstPersonForearm"));
@@ -173,11 +173,11 @@ void ALogSnapCharacter::ApplyBlockoutMaterials()
 
     if (BodyTorso) BodyTorso->SetMaterial(0, ClothMaterial);
     if (BodyHead) BodyHead->SetMaterial(0, SkinMaterial);
-    if (BodyLeftArm) BodyLeftArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
+    if (BodyLeftArm) BodyLeftArm->SetMaterial(0, ClothMaterial);
     if (BodyRightArm) BodyRightArm->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
     if (BodyLeftLeg) BodyLeftLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
     if (BodyRightLeg) BodyRightLeg->SetMaterial(0, const_cast<UMaterialInterface*>(ClothMaterial));
-    if (FirstPersonForearm) FirstPersonForearm->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
+    if (FirstPersonForearm) FirstPersonForearm->SetMaterial(0, SkinMaterial);
     if (AxeHand) AxeHand->SetMaterial(0, const_cast<UMaterialInterface*>(SkinMaterial));
     if (AxeHandle) AxeHandle->SetMaterial(0, WoodMaterial);
     if (AxeHead) AxeHead->SetMaterial(0, MetalMaterial);
