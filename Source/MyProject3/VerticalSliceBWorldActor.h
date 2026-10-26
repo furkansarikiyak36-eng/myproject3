@@ -7,6 +7,8 @@
 
 class AHarvestableTreeActor;
 class ALogBuildPiece;
+class AStoneBuildingPiece;
+class AStickPrimitivePiece;
 class UHeatSourceComponent;
 class UProceduralMeshComponent;
 class UStaticMesh;
