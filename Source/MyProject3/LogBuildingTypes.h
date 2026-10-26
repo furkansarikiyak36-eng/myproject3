@@ -35,7 +35,11 @@ enum class ELogLengthFraction : uint8
     ThreeQuarterLength UMETA(DisplayName = "3/4 Length"),
     HalfLength UMETA(DisplayName = "1/2 Length"),
     QuarterLength UMETA(DisplayName = "1/4 Length"),
-    Other UMETA(DisplayName = "Other / Authored Length")
+    Other UMETA(DisplayName = "Other / Authored Length"),
+
+    // Appended so serialized values stay stable. Matches the 75 cm mesh family
+    // cut from a 150 cm quarter-length piece.
+    EighthLength UMETA(DisplayName = "1/8 Length")
 };
 
 /** Cross-section/processing shape, independent of longitudinal length. */
@@ -52,7 +56,11 @@ enum class ELogCrossSectionProfile : uint8
     Plank UMETA(DisplayName = "Plank"),
     Notched UMETA(DisplayName = "Notched"),
     Joint UMETA(DisplayName = "Joint Piece"),
-    Other UMETA(DisplayName = "Other / Authored Profile")
+    Other UMETA(DisplayName = "Other / Authored Profile"),
+
+    // Appended so serialized values stay stable. Second hewn face (Hewn2 meshes);
+    // a squared beam can only be made from this profile.
+    HewnTwoFaces UMETA(DisplayName = "Hewn / Two Faces")
 };
 
 
@@ -115,7 +123,9 @@ enum class ELogCutAction : uint8
     // Appended so existing serialized ELogCutAction values remain unchanged.
     SplitLengthHalf UMETA(DisplayName = "Cut Full Length into Two Half-Length Pieces"),
     SplitLengthThreeQuarter UMETA(DisplayName = "Cut Full Length into 3/4 + 1/4 Length"),
-    SplitHalfLengthIntoQuarters UMETA(DisplayName = "Cut Half-Length into Two Quarter-Length Pieces")
+    SplitHalfLengthIntoQuarters UMETA(DisplayName = "Cut Half-Length into Two Quarter-Length Pieces"),
+    SplitQuarterLengthIntoEighths UMETA(DisplayName = "Cut Quarter-Length into Two Eighth-Length Pieces"),
+    HewSecondFace UMETA(DisplayName = "Hew the Second Face")
 };
 
 USTRUCT(BlueprintType)

@@ -110,6 +110,57 @@ namespace MyProject3Tests
         return Log;
     }
 
+    /** Log with a mesh family covering the hewing chain and the quarter-to-eighth cut. */
+    ALogBuildPiece* SpawnProcessingChainLog(UWorld* World, ELogLengthFraction StartLength)
+    {
+        UStaticMesh* Round = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+        UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+        UStaticMesh* Cone = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cone.Cone"));
+        UStaticMesh* Sphere = LoadEngineMesh(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+        UStaticMesh* Plane = LoadEngineMesh(TEXT("/Engine/BasicShapes/Plane.Plane"));
+        if (!World || !Round || !Cube || !Cone || !Sphere || !Plane)
+            return nullptr;
+
+        FLogProcessingMeshSet Set;
+        Set.VariantSetId = TEXT("ChainFamily");
+        Set.BaseRoundMesh = Round;
+        auto AddRow = [&Set](ELogLengthFraction Length, ELogCrossSectionProfile Profile, UStaticMesh* Mesh)
+        {
+            FLogGeometryVariantMesh Row;
+            Row.LengthFraction = Length;
+            Row.CrossSectionProfile = Profile;
+            Row.Mesh = Mesh;
+            Set.MeshVariants.Add(Row);
+        };
+        AddRow(ELogLengthFraction::FullLength, ELogCrossSectionProfile::Hewn, Cube);
+        AddRow(ELogLengthFraction::FullLength, ELogCrossSectionProfile::HewnTwoFaces, Cone);
+        AddRow(ELogLengthFraction::FullLength, ELogCrossSectionProfile::SquareBeam, Sphere);
+        AddRow(ELogLengthFraction::QuarterLength, ELogCrossSectionProfile::Round, Plane);
+        AddRow(ELogLengthFraction::EighthLength, ELogCrossSectionProfile::Round, Cube);
+
+        FLogLengthCutVariant Cut;
+        Cut.Action = ELogCutAction::SplitQuarterLengthIntoEighths;
+        Cut.SourceLengthFraction = ELogLengthFraction::QuarterLength;
+        Cut.CrossSectionProfile = ELogCrossSectionProfile::Round;
+        Cut.FirstOutputLengthFraction = ELogLengthFraction::EighthLength;
+        Cut.SecondOutputLengthFraction = ELogLengthFraction::EighthLength;
+        Cut.FirstOutputCenterOffsetLocal = FVector(-20.0, 0.0, 0.0);
+        Cut.SecondOutputCenterOffsetLocal = FVector(20.0, 0.0, 0.0);
+        Set.LengthCutVariants.Add(Cut);
+
+        const FTransform SpawnTransform(FVector(0.0, 0.0, 200.0));
+        ALogBuildPiece* Log = World->SpawnActorDeferred<ALogBuildPiece>(
+            ALogBuildPiece::StaticClass(), SpawnTransform, nullptr, nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (!Log)
+            return nullptr;
+        Log->BaseDefinitionId = TEXT("Test.ChainLog");
+        Log->ProcessingMeshSets.Add(Set);
+        Log->SetPieceStaticMesh(StartLength == ELogLengthFraction::QuarterLength ? Plane : Round);
+        Log->FinishSpawning(SpawnTransform);
+        return Log;
+    }
+
     int32 CountLogs(UWorld* World)
     {
         int32 Count = 0;
@@ -455,6 +506,60 @@ bool FCarryLoadTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Dropped stone is visible"), Stones[0]->IsHidden());
     TestEqual(TEXT("One stone left carried"), Load->GetCarriedCount(EStructuralNodeKind::Stone), 1);
     TestTrue(TEXT("Third stone fits now"), Load->TryTakePiece(Stones[2], Reason));
+    return true;
+}
+
+// M018 (SOTF-L03): hewing is a chain round -> one face -> two faces -> squared
+// beam; skipping a step is rejected without mutation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogHewingChainTest,
+    "MyProject3.Wood.Hewing.ChainCannotSkipSteps", TestFlags)
+bool FLogHewingChainTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    ALogBuildPiece* Log = SpawnProcessingChainLog(TestWorld.World, ELogLengthFraction::FullLength);
+    if (!TestNotNull(TEXT("Log"), Log))
+        return false;
+
+    TestFalse(TEXT("Squared beam from a round log is rejected"),
+        Log->TryApplyCutAction(ELogCutAction::Kalas, FGuid::NewGuid()).IsSuccess());
+    TestFalse(TEXT("Second face before the first is rejected"),
+        Log->TryApplyCutAction(ELogCutAction::HewSecondFace, FGuid::NewGuid()).IsSuccess());
+    TestEqual(TEXT("Rejected steps left the log round"), Log->GetCrossSectionProfile(), ELogCrossSectionProfile::Round);
+
+    TestTrue(TEXT("First face"), Log->TryApplyCutAction(ELogCutAction::Hewn, FGuid::NewGuid()).IsSuccess());
+    TestEqual(TEXT("Hewn on one face"), Log->GetCrossSectionProfile(), ELogCrossSectionProfile::Hewn);
+    TestTrue(TEXT("Second face"), Log->TryApplyCutAction(ELogCutAction::HewSecondFace, FGuid::NewGuid()).IsSuccess());
+    TestEqual(TEXT("Hewn on two faces"), Log->GetCrossSectionProfile(), ELogCrossSectionProfile::HewnTwoFaces);
+    TestTrue(TEXT("Squared beam"), Log->TryApplyCutAction(ELogCutAction::Kalas, FGuid::NewGuid()).IsSuccess());
+    TestEqual(TEXT("Squared beam profile"), Log->GetCrossSectionProfile(), ELogCrossSectionProfile::SquareBeam);
+    return true;
+}
+
+// M015 (SOTF-L02): the 75 cm family is reachable as an eighth length cut from a
+// quarter-length piece, and the cut needs a quarter-length source.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogEighthCutTest,
+    "MyProject3.Wood.LengthCut.QuarterIntoEighths", TestFlags)
+bool FLogEighthCutTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld FullWorld;
+    ALogBuildPiece* FullLog = SpawnProcessingChainLog(FullWorld.World, ELogLengthFraction::FullLength);
+    if (!TestNotNull(TEXT("Full log"), FullLog))
+        return false;
+    TestFalse(TEXT("Eighth cut needs a quarter-length log"),
+        FullLog->CanApplyCutAction(ELogCutAction::SplitQuarterLengthIntoEighths));
+
+    FScopedTestWorld TestWorld;
+    ALogBuildPiece* Log = SpawnProcessingChainLog(TestWorld.World, ELogLengthFraction::QuarterLength);
+    if (!TestNotNull(TEXT("Quarter log"), Log))
+        return false;
+    TestEqual(TEXT("Quarter length derived from its mesh"), Log->GetLengthFraction(), ELogLengthFraction::QuarterLength);
+
+    const FWorldOperationResult Result =
+        Log->TryApplyCutAction(ELogCutAction::SplitQuarterLengthIntoEighths, FGuid::NewGuid());
+    TestTrue(FString::Printf(TEXT("Eighth cut succeeds: %s"), *Result.Message.ToString()), Result.IsSuccess());
+    TestEqual(TEXT("Two eighth-length pieces"), CountLogs(TestWorld.World), 2);
+    for (TActorIterator<ALogBuildPiece> It(TestWorld.World); It; ++It)
+        TestEqual(TEXT("Piece is an eighth"), It->GetLengthFraction(), ELogLengthFraction::EighthLength);
     return true;
 }
 

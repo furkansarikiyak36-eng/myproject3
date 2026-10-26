@@ -22,6 +22,7 @@ namespace
         case ELogLengthFraction::HalfLength: return TEXT("Half");
         case ELogLengthFraction::QuarterLength: return TEXT("Quarter");
         case ELogLengthFraction::Other: return TEXT("Other");
+        case ELogLengthFraction::EighthLength: return TEXT("Eighth");
         case ELogLengthFraction::FullLength:
         default: return TEXT("Full");
         }
@@ -39,6 +40,8 @@ namespace
             OutValue = ELogLengthFraction::QuarterLength;
         else if (Token.Equals(TEXT("Other"), ESearchCase::IgnoreCase))
             OutValue = ELogLengthFraction::Other;
+        else if (Token.Equals(TEXT("Eighth"), ESearchCase::IgnoreCase))
+            OutValue = ELogLengthFraction::EighthLength;
         else
             return false;
         return true;
@@ -58,6 +61,7 @@ namespace
         case ELogCrossSectionProfile::Notched: return TEXT("Notched");
         case ELogCrossSectionProfile::Joint: return TEXT("Joint");
         case ELogCrossSectionProfile::Other: return TEXT("Other");
+        case ELogCrossSectionProfile::HewnTwoFaces: return TEXT("HewnTwoFaces");
         case ELogCrossSectionProfile::Round:
         default: return TEXT("Round");
         }
@@ -87,6 +91,8 @@ namespace
             OutValue = ELogCrossSectionProfile::Joint;
         else if (Token.Equals(TEXT("Other"), ESearchCase::IgnoreCase))
             OutValue = ELogCrossSectionProfile::Other;
+        else if (Token.Equals(TEXT("HewnTwoFaces"), ESearchCase::IgnoreCase))
+            OutValue = ELogCrossSectionProfile::HewnTwoFaces;
         else
             return false;
         return true;
@@ -200,6 +206,49 @@ namespace
             FMath::Abs(FVector::DotProduct(Offset.GetSafeNormal(),
                 GetLocalLongitudinalAxis(LongitudinalAxis)));
         return LongitudinalComponent <= 0.05f;
+    }
+
+    /** One cross-section processing step: required input profile and produced output. */
+    struct FProfileActionRule
+    {
+        ELogCutAction Action;
+        ELogCrossSectionProfile Required;
+        ELogCrossSectionProfile Output;
+        bool bSplitsIntoTwo;
+        const TCHAR* PrerequisiteMessage;
+    };
+
+    /**
+     * The canonical processing graph. Hewing is a chain (round -> one face ->
+     * two faces -> squared beam); skipping a step is rejected.
+     */
+    const FProfileActionRule* FindProfileActionRule(ELogCutAction Action)
+    {
+        static const FProfileActionRule Rules[] =
+        {
+            { ELogCutAction::SplitHalf, ELogCrossSectionProfile::Round, ELogCrossSectionProfile::HalfRound, true,
+              TEXT("Splitting into half-rounds requires a round cross-section.") },
+            { ELogCutAction::Quarter, ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::QuarterRound, true,
+              TEXT("Quarter-round shaping requires a half-round cross-section first.") },
+            { ELogCutAction::Hewn, ELogCrossSectionProfile::Round, ELogCrossSectionProfile::Hewn, false,
+              TEXT("Hewing the first face requires a round cross-section.") },
+            { ELogCutAction::HewSecondFace, ELogCrossSectionProfile::Hewn, ELogCrossSectionProfile::HewnTwoFaces, false,
+              TEXT("The second face can only be hewn after the first face.") },
+            { ELogCutAction::Kalas, ELogCrossSectionProfile::HewnTwoFaces, ELogCrossSectionProfile::SquareBeam, false,
+              TEXT("A squared beam requires a log hewn on two faces first.") },
+            { ELogCutAction::Gutter, ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::GroovedHalfRound, false,
+              TEXT("A groove can only be cut into a half-round cross-section.") },
+            { ELogCutAction::Trough, ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::Trough, false,
+              TEXT("A trough requires a half-round cross-section first.") },
+            { ELogCutAction::Plank, ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::Plank, false,
+              TEXT("Plank shaping requires a half-round cross-section first.") },
+        };
+        for (const FProfileActionRule& Rule : Rules)
+        {
+            if (Rule.Action == Action)
+                return &Rule;
+        }
+        return nullptr;
     }
 }
 
@@ -592,6 +641,7 @@ ELogPieceType ALogBuildPiece::LegacyTypeFromCanonicalDimensions(
     case ELogCrossSectionProfile::HalfRound: return ELogPieceType::SplitHalfLog;
     case ELogCrossSectionProfile::QuarterRound: return ELogPieceType::QuarterSectionLog;
     case ELogCrossSectionProfile::Hewn: return ELogPieceType::HewnLog;
+    case ELogCrossSectionProfile::HewnTwoFaces: return ELogPieceType::HewnLog;
     case ELogCrossSectionProfile::SquareBeam: return ELogPieceType::SquaredBeam;
     case ELogCrossSectionProfile::GroovedHalfRound: return ELogPieceType::GutterLog;
     case ELogCrossSectionProfile::Trough: return ELogPieceType::TroughLog;
@@ -857,7 +907,8 @@ bool ALogBuildPiece::IsLengthCutAction(ELogCutAction Action) const
 {
     return Action == ELogCutAction::SplitLengthHalf ||
         Action == ELogCutAction::SplitLengthThreeQuarter ||
-        Action == ELogCutAction::SplitHalfLengthIntoQuarters;
+        Action == ELogCutAction::SplitHalfLengthIntoQuarters ||
+        Action == ELogCutAction::SplitQuarterLengthIntoEighths;
 }
 
 bool ALogBuildPiece::IsValidLengthCutLayout(const FLogLengthCutVariant& Variant) const
@@ -943,6 +994,12 @@ bool ALogBuildPiece::TryResolveLengthCutVariant(
             CurrentLength == ELogLengthFraction::HalfLength &&
             Match->FirstOutputLengthFraction == ELogLengthFraction::QuarterLength &&
             Match->SecondOutputLengthFraction == ELogLengthFraction::QuarterLength;
+        break;
+    case ELogCutAction::SplitQuarterLengthIntoEighths:
+        bOutputLengthsValid =
+            CurrentLength == ELogLengthFraction::QuarterLength &&
+            Match->FirstOutputLengthFraction == ELogLengthFraction::EighthLength &&
+            Match->SecondOutputLengthFraction == ELogLengthFraction::EighthLength;
         break;
     default:
         return false;
@@ -1243,48 +1300,11 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
     ELogCrossSectionProfile RequiredProfile = ELogCrossSectionProfile::Other;
     bool bNeedsSplitConfiguration = false;
 
-    switch (Action)
-    {
-    case ELogCutAction::SplitHalf:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::HalfRound;
-        bNeedsSplitConfiguration = true;
-        break;
-    case ELogCutAction::Quarter:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::QuarterRound;
-        bNeedsSplitConfiguration = true;
-        break;
-    case ELogCutAction::Hewn:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::Hewn;
-        break;
-    case ELogCutAction::Gutter:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::GroovedHalfRound;
-        break;
-    case ELogCutAction::Trough:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::Trough;
-        break;
-    case ELogCutAction::Kalas:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::SquareBeam;
-        break;
-    case ELogCutAction::Plank:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return false;
-        RequiredProfile = ELogCrossSectionProfile::Plank;
-        break;
-    default:
+    const FProfileActionRule* Rule = FindProfileActionRule(Action);
+    if (!Rule || GetCrossSectionProfile() != Rule->Required)
         return false;
-    }
+    RequiredProfile = Rule->Output;
+    bNeedsSplitConfiguration = Rule->bSplitsIntoTwo;
 
     if (!TryResolveGeometryVariant(GetLengthFraction(), RequiredProfile,
         OutputMesh, &SplitOffset, &ChildRotation) || !IsValid(OutputMesh))
@@ -1318,6 +1338,10 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
             if (GetLengthFraction() != ELogLengthFraction::HalfLength)
                 return TEXT("Quarter-length cutting requires a half-length log first.");
             break;
+        case ELogCutAction::SplitQuarterLengthIntoEighths:
+            if (GetLengthFraction() != ELogLengthFraction::QuarterLength)
+                return TEXT("Eighth-length cutting requires a quarter-length log first.");
+            break;
         default:
             break;
         }
@@ -1332,48 +1356,13 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
 
     ELogCrossSectionProfile RequiredProfile = ELogCrossSectionProfile::Other;
     bool bNeedsSplitConfiguration = false;
-    switch (Action)
-    {
-    case ELogCutAction::SplitHalf:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
-            return TEXT("Splitting into half-rounds requires a round cross-section.");
-        RequiredProfile = ELogCrossSectionProfile::HalfRound;
-        bNeedsSplitConfiguration = true;
-        break;
-    case ELogCutAction::Quarter:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return TEXT("Quarter-round shaping requires a half-round cross-section first.");
-        RequiredProfile = ELogCrossSectionProfile::QuarterRound;
-        bNeedsSplitConfiguration = true;
-        break;
-    case ELogCutAction::Gutter:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return TEXT("A groove can only be cut into a half-round cross-section.");
-        RequiredProfile = ELogCrossSectionProfile::GroovedHalfRound;
-        break;
-    case ELogCutAction::Trough:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return TEXT("A trough requires a half-round cross-section first.");
-        RequiredProfile = ELogCrossSectionProfile::Trough;
-        break;
-    case ELogCutAction::Hewn:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
-            return TEXT("Hewing requires a round cross-section in this prototype.");
-        RequiredProfile = ELogCrossSectionProfile::Hewn;
-        break;
-    case ELogCutAction::Kalas:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::Round)
-            return TEXT("Squared-beam shaping requires a round cross-section.");
-        RequiredProfile = ELogCrossSectionProfile::SquareBeam;
-        break;
-    case ELogCutAction::Plank:
-        if (GetCrossSectionProfile() != ELogCrossSectionProfile::HalfRound)
-            return TEXT("Plank shaping requires a half-round cross-section first.");
-        RequiredProfile = ELogCrossSectionProfile::Plank;
-        break;
-    default:
+    const FProfileActionRule* Rule = FindProfileActionRule(Action);
+    if (!Rule)
         return TEXT("Unsupported processing action.");
-    }
+    if (GetCrossSectionProfile() != Rule->Required)
+        return Rule->PrerequisiteMessage;
+    RequiredProfile = Rule->Output;
+    bNeedsSplitConfiguration = Rule->bSplitsIntoTwo;
 
     UStaticMesh* OutputMesh = nullptr;
     FVector Offset = FVector::ZeroVector;
@@ -1554,6 +1543,9 @@ FWorldOperationResult ALogBuildPiece::TrySplitLengthOutputPieces(
         break;
     case ELogCutAction::SplitHalfLengthIntoQuarters:
         SuccessMessage = FText::FromString(TEXT("Half-length log cut into two quarter-length pieces."));
+        break;
+    case ELogCutAction::SplitQuarterLengthIntoEighths:
+        SuccessMessage = FText::FromString(TEXT("Quarter-length log cut into two eighth-length pieces."));
         break;
     default:
         return FWorldOperationResult::Failure(
@@ -1992,6 +1984,12 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
             FirstProfile = GetCrossSectionProfile();
             SecondProfile = GetCrossSectionProfile();
             break;
+        case ELogCutAction::SplitQuarterLengthIntoEighths:
+            FirstLength = ELogLengthFraction::EighthLength;
+            SecondLength = ELogLengthFraction::EighthLength;
+            FirstProfile = GetCrossSectionProfile();
+            SecondProfile = GetCrossSectionProfile();
+            break;
         default:
             bKnownSplitAction = false;
             break;
@@ -2062,6 +2060,9 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
         RetryTargetType = ELogPieceType::TroughLog; RetrySuffix = TEXT("TroughLog"); break;
     case ELogCutAction::Kalas:
         RetryTargetType = ELogPieceType::SquaredBeam; RetrySuffix = TEXT("SquaredBeam"); break;
+    case ELogCutAction::HewSecondFace:
+        // No legacy single-suffix definition ever existed for the second face.
+        RetryTargetType = ELogPieceType::HewnLog; RetrySuffix = TEXT("HewnTwoFaces"); break;
     case ELogCutAction::Plank:
         RetryTargetType = ELogPieceType::Plank; RetrySuffix = TEXT("Plank"); break;
     default:
@@ -2081,7 +2082,9 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
         const FName RetryBase = !RetryCurrent.BaseDefinitionId.IsNone()
             ? RetryCurrent.BaseDefinitionId
             : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : RetryCurrent.DefinitionId);
-        const ELogCrossSectionProfile RetryProfile = CrossSectionFromLegacyType(RetryTargetType);
+        const FProfileActionRule* RetryRule = FindProfileActionRule(Action);
+        const ELogCrossSectionProfile RetryProfile = RetryRule
+            ? RetryRule->Output : CrossSectionFromLegacyType(RetryTargetType);
         const FName RetryDefinition = MakeCanonicalGeometryDefinitionId(
             RetryBase, GetLengthFraction(), RetryProfile);
         const FName LegacyActionDefinition(*FString::Printf(
@@ -2162,33 +2165,28 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
             bool bPrerequisiteMet = false;
             bool bActionSupported = true;
 
-            switch (Action)
+            if (const FProfileActionRule* Rule = FindProfileActionRule(Action))
             {
-            case ELogCutAction::SplitHalf:
-            case ELogCutAction::Hewn:
-            case ELogCutAction::Kalas:
-                bPrerequisiteMet = GetCrossSectionProfile() == ELogCrossSectionProfile::Round;
-                break;
-
-            case ELogCutAction::Quarter:
-            case ELogCutAction::Gutter:
-            case ELogCutAction::Trough:
-            case ELogCutAction::Plank:
-                bPrerequisiteMet = GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound;
-                break;
-
-            case ELogCutAction::SplitLengthHalf:
-            case ELogCutAction::SplitLengthThreeQuarter:
-                bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::FullLength;
-                break;
-
-            case ELogCutAction::SplitHalfLengthIntoQuarters:
-                bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::HalfLength;
-                break;
-
-            default:
-                bActionSupported = false;
-                break;
+                bPrerequisiteMet = GetCrossSectionProfile() == Rule->Required;
+            }
+            else
+            {
+                switch (Action)
+                {
+                case ELogCutAction::SplitLengthHalf:
+                case ELogCutAction::SplitLengthThreeQuarter:
+                    bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::FullLength;
+                    break;
+                case ELogCutAction::SplitHalfLengthIntoQuarters:
+                    bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::HalfLength;
+                    break;
+                case ELogCutAction::SplitQuarterLengthIntoEighths:
+                    bPrerequisiteMet = GetLengthFraction() == ELogLengthFraction::QuarterLength;
+                    break;
+                default:
+                    bActionSupported = false;
+                    break;
+                }
             }
 
             FailureCode = !bActionSupported
@@ -2225,44 +2223,23 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
     }
 
     UStaticMesh* NewMesh = nullptr;
-    ELogPieceType NewType = ELogPieceType::Other;
-
-    switch (Action)
+    const FProfileActionRule* ProfileRule = FindProfileActionRule(Action);
+    if (!ProfileRule)
     {
-    case ELogCutAction::SplitHalf:
-        NewType = ELogPieceType::SplitHalfLog;
-        break;
-    case ELogCutAction::Quarter:
-        NewType = ELogPieceType::QuarterSectionLog;
-        break;
-    case ELogCutAction::Hewn:
-        NewType = ELogPieceType::HewnLog;
-        break;
-    case ELogCutAction::Gutter:
-        NewType = ELogPieceType::GutterLog;
-        break;
-    case ELogCutAction::Trough:
-        NewType = ELogPieceType::TroughLog;
-        break;
-    case ELogCutAction::Kalas:
-        NewType = ELogPieceType::SquaredBeam;
-        break;
-    case ELogCutAction::Plank:
-        NewType = ELogPieceType::Plank;
-        break;
-    default:
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::Unsupported,
             OperationId,
             FText::FromString(TEXT("Unsupported processing action.")));
     }
+    const ELogCrossSectionProfile NewProfile = ProfileRule->Output;
+    const ELogPieceType NewType = LegacyTypeFromCanonicalDimensions(GetLengthFraction(), NewProfile);
 
     // Resolve the exact authored output for this length/profile pair. A legacy
     // single-slot mesh is never silently reused for a shorter log.
     FVector OutputSplitOffset = FVector::ZeroVector;
     FRotator OutputChildRotation = FRotator::ZeroRotator;
     if (!TryResolveGeometryVariant(GetLengthFraction(),
-            CrossSectionFromLegacyType(NewType), NewMesh,
+            NewProfile, NewMesh,
             &OutputSplitOffset, &OutputChildRotation) ||
         !IsValid(NewMesh) || !Mesh)
     {
@@ -2294,7 +2271,7 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
         ? CurrentItem.BaseDefinitionId
         : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
     const FName NewDefinitionId = MakeCanonicalGeometryDefinitionId(
-        EffectiveBaseDefinition, GetLengthFraction(), CrossSectionFromLegacyType(NewType));
+        EffectiveBaseDefinition, GetLengthFraction(), NewProfile);
 
     if (Action == ELogCutAction::SplitHalf || Action == ELogCutAction::Quarter)
     {
@@ -2323,7 +2300,8 @@ FWorldOperationResult ALogBuildPiece::CommitCutAction(
 
     SetPieceStaticMesh(NewMesh);
     PieceType = NewType;
-    SetCanonicalCrossSectionFromPieceType(NewType);
+    CrossSectionProfile = NewProfile;
+    bUseCanonicalGeometryDimensions = true;
 
     FVector NewOrigin;
     FVector NewExtent;
@@ -2426,6 +2404,15 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
     else if (Key.Contains(TEXT("gutter")) || Key.Contains(TEXT("groove")))
     {
         PieceType = ELogPieceType::GutterLog;
+    }
+    else if (Key.Contains(TEXT("hewn2")))
+    {
+        // The second-face mesh has no legacy label; record it canonically.
+        PieceType = ELogPieceType::HewnLog;
+        CrossSectionProfile = ELogCrossSectionProfile::HewnTwoFaces;
+        LengthFraction = ELogLengthFraction::FullLength;
+        bUseCanonicalGeometryDimensions = true;
+        return;
     }
     else if (Key.Contains(TEXT("hewn")))
     {

@@ -759,6 +759,9 @@ void ULogCarryComponent::CycleCutAction()
         SelectedCutAction = ELogCutAction::Hewn;
         break;
     case ELogCutAction::Hewn:
+        SelectedCutAction = ELogCutAction::HewSecondFace;
+        break;
+    case ELogCutAction::HewSecondFace:
         SelectedCutAction = ELogCutAction::Gutter;
         break;
     case ELogCutAction::Gutter:
@@ -780,6 +783,9 @@ void ULogCarryComponent::CycleCutAction()
         SelectedCutAction = ELogCutAction::SplitHalfLengthIntoQuarters;
         break;
     case ELogCutAction::SplitHalfLengthIntoQuarters:
+        SelectedCutAction = ELogCutAction::SplitQuarterLengthIntoEighths;
+        break;
+    case ELogCutAction::SplitQuarterLengthIntoEighths:
     default:
         SelectedCutAction = ELogCutAction::SplitHalf;
         break;

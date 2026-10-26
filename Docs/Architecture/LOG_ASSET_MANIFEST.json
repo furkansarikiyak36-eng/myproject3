@@ -1,0 +1,985 @@
+{
+  "tolerance": 0.02,
+  "full_length_cm": 600,
+  "meshes": [
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150.SM_RawLog_150",
+      "file": "SM_RawLog_150.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "Round",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Gutter.SM_RawLog_150_Gutter",
+      "file": "SM_RawLog_150_Gutter.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 35.0,
+        "Z": 30.2
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        2.4
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "GroovedHalfRound",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Half.SM_RawLog_150_Half",
+      "file": "SM_RawLog_150_Half.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 35.0,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -8.75
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "HalfRound",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Hewn1.SM_RawLog_150_Hewn1",
+      "file": "SM_RawLog_150_Hewn1.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 35.0,
+        "Z": 29.5
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -2.75
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "Hewn",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Hewn2.SM_RawLog_150_Hewn2",
+      "file": "SM_RawLog_150_Hewn2.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 35.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "HewnTwoFaces",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Kalas.SM_RawLog_150_Kalas",
+      "file": "SM_RawLog_150_Kalas.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 24.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "SquareBeam",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Plank.SM_RawLog_150_Plank",
+      "file": "SM_RawLog_150_Plank.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 24.0,
+        "Z": 6.0
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "Plank",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Quarter_04.SM_RawLog_150_Quarter_04",
+      "file": "SM_RawLog_150_Quarter_04.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 17.5,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        8.75,
+        -8.75
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "QuarterRound",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_150_Trough.SM_RawLog_150_Trough",
+      "file": "SM_RawLog_150_Trough.fbx",
+      "size_cm": {
+        "X": 150.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 150.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "QuarterLength",
+      "cross_section_profile": "Trough",
+      "nominal_length_cm": 150,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300.SM_RawLog_300",
+      "file": "SM_RawLog_300.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "Round",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Gutter.SM_RawLog_300_Gutter",
+      "file": "SM_RawLog_300_Gutter.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 35.0,
+        "Z": 30.2
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        2.4
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "GroovedHalfRound",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Half.SM_RawLog_300_Half",
+      "file": "SM_RawLog_300_Half.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 35.0,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -8.75
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "HalfRound",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Hewn1.SM_RawLog_300_Hewn1",
+      "file": "SM_RawLog_300_Hewn1.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 35.0,
+        "Z": 29.5
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -2.75
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "Hewn",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Hewn2.SM_RawLog_300_Hewn2",
+      "file": "SM_RawLog_300_Hewn2.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 35.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "HewnTwoFaces",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Kalas.SM_RawLog_300_Kalas",
+      "file": "SM_RawLog_300_Kalas.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 24.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "SquareBeam",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Plank.SM_RawLog_300_Plank",
+      "file": "SM_RawLog_300_Plank.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 24.0,
+        "Z": 6.0
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "Plank",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Quarter_04.SM_RawLog_300_Quarter_04",
+      "file": "SM_RawLog_300_Quarter_04.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 17.5,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        8.75,
+        -8.75
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "QuarterRound",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_300_Trough.SM_RawLog_300_Trough",
+      "file": "SM_RawLog_300_Trough.fbx",
+      "size_cm": {
+        "X": 300.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 300.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "HalfLength",
+      "cross_section_profile": "Trough",
+      "nominal_length_cm": 300,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600.SM_RawLog_600",
+      "file": "SM_RawLog_600.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "Round",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Gutter.SM_RawLog_600_Gutter",
+      "file": "SM_RawLog_600_Gutter.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 35.0,
+        "Z": 30.2
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        2.4
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "GroovedHalfRound",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Half.SM_RawLog_600_Half",
+      "file": "SM_RawLog_600_Half.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 35.0,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -8.75
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "HalfRound",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Hewn1.SM_RawLog_600_Hewn1",
+      "file": "SM_RawLog_600_Hewn1.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 35.0,
+        "Z": 29.5
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -2.75
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "Hewn",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Hewn2.SM_RawLog_600_Hewn2",
+      "file": "SM_RawLog_600_Hewn2.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 35.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "HewnTwoFaces",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Kalas.SM_RawLog_600_Kalas",
+      "file": "SM_RawLog_600_Kalas.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 24.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "SquareBeam",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Plank.SM_RawLog_600_Plank",
+      "file": "SM_RawLog_600_Plank.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 24.0,
+        "Z": 6.0
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "Plank",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Quarter_04.SM_RawLog_600_Quarter_04",
+      "file": "SM_RawLog_600_Quarter_04.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 17.5,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        8.75,
+        -8.75
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "QuarterRound",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_600_Trough.SM_RawLog_600_Trough",
+      "file": "SM_RawLog_600_Trough.fbx",
+      "size_cm": {
+        "X": 600.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 600.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "FullLength",
+      "cross_section_profile": "Trough",
+      "nominal_length_cm": 600,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_FlatNotch_TopBottom.SM_RawLog_75_FlatNotch_TopBottom",
+      "file": "SM_RawLog_75_FlatNotch_TopBottom.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "Notched",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Gutter.SM_RawLog_75_Gutter",
+      "file": "SM_RawLog_75_Gutter.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 30.2
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        2.4
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "GroovedHalfRound",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Half.SM_RawLog_75_Half",
+      "file": "SM_RawLog_75_Half.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -8.75
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "HalfRound",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Hewn1.SM_RawLog_75_Hewn1",
+      "file": "SM_RawLog_75_Hewn1.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 29.5
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -2.75
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "Hewn",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Hewn2.SM_RawLog_75_Hewn2",
+      "file": "SM_RawLog_75_Hewn2.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "HewnTwoFaces",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Kalas.SM_RawLog_75_Kalas",
+      "file": "SM_RawLog_75_Kalas.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 24.0,
+        "Z": 24.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "SquareBeam",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Plank.SM_RawLog_75_Plank",
+      "file": "SM_RawLog_75_Plank.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 24.0,
+        "Z": 6.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "Plank",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Quarter_04.SM_RawLog_75_Quarter_04",
+      "file": "SM_RawLog_75_Quarter_04.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 17.5,
+        "Z": 17.5
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        8.75,
+        -8.75
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "QuarterRound",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_75_Trough.SM_RawLog_75_Trough",
+      "file": "SM_RawLog_75_Trough.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "length_fraction": "EighthLength",
+      "cross_section_profile": "Trough",
+      "nominal_length_cm": 75,
+      "length_deviation": 0.0,
+      "status": "ok"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_01.SM_RawLog_Long_01",
+      "file": "SM_RawLog_Long_01.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_02.SM_RawLog_Long_02",
+      "file": "SM_RawLog_Long_02.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_03.SM_RawLog_Long_03",
+      "file": "SM_RawLog_Long_03.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_04.SM_RawLog_Long_04",
+      "file": "SM_RawLog_Long_04.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_05.SM_RawLog_Long_05",
+      "file": "SM_RawLog_Long_05.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_06.SM_RawLog_Long_06",
+      "file": "SM_RawLog_Long_06.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_07.SM_RawLog_Long_07",
+      "file": "SM_RawLog_Long_07.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Long_08.SM_RawLog_Long_08",
+      "file": "SM_RawLog_Long_08.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Short_01.SM_RawLog_Short_01",
+      "file": "SM_RawLog_Short_01.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Short_02.SM_RawLog_Short_02",
+      "file": "SM_RawLog_Short_02.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Short_03.SM_RawLog_Short_03",
+      "file": "SM_RawLog_Short_03.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    },
+    {
+      "asset": "/Game/DemoAssets/Logs/SM_RawLog_Short_04.SM_RawLog_Short_04",
+      "file": "SM_RawLog_Short_04.fbx",
+      "size_cm": {
+        "X": 75.0,
+        "Y": 35.0,
+        "Z": 35.0
+      },
+      "main_axis": "X",
+      "length_cm": 75.0,
+      "pivot_offset_cm": [
+        -0.0,
+        -0.0,
+        -0.0
+      ],
+      "status": "unmapped"
+    }
+  ],
+  "missing_required_combinations": [
+    "ThreeQuarterLength + Round",
+    "EighthLength + Round"
+  ],
+  "errors": [],
+  "warnings": [
+    "SM_RawLog_Long_01: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_02: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_03: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_04: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_05: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_06: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_07: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Long_08: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Short_01: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Short_02: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Short_03: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment",
+    "SM_RawLog_Short_04: name does not follow SM_RawLog_<cm>[_<variant>]; measured 75.0 cm on X, needs a manual family assignment"
+  ]
+}
