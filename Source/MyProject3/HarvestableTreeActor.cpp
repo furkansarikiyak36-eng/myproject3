@@ -8,6 +8,10 @@
 void AHarvestableTreeActor::BeginPlay()
 {
     Super::BeginPlay();
+    // Capture true standing height before physics rotates the trunk. The world-space
+    // Z extent after falling is mostly trunk diameter and would under-yield wood.
+    if (TreeMesh && TreeMesh->GetStaticMesh() && StandingWorldHeightCm <= KINDA_SMALL_NUMBER)
+        StandingWorldHeightCm = TreeMesh->Bounds.BoxExtent.Z * 2.0f;
     if (Identity)
     {
         Identity->EnsureIdentity();
@@ -137,7 +141,9 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     ELogPieceType ResolvedPieceType = ELogPieceType::WholeLog;
     if (!YieldRules.IsEmpty())
     {
-        const float TreeWorldHeight = TreeMesh->Bounds.BoxExtent.Z * 2.0f;
+        const float TreeWorldHeight = StandingWorldHeightCm > KINDA_SMALL_NUMBER
+            ? StandingWorldHeightCm
+            : TreeMesh->GetStaticMesh()->GetBounds().BoxExtent.Z * 2.0f * TreeMesh->GetComponentScale().Z;
         const FHarvestTreeYieldRule* Match = nullptr;
         for (const FHarvestTreeYieldRule& Rule : YieldRules)
         {
