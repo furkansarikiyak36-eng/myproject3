@@ -1,19 +1,32 @@
 #include "WorldSurvivalSubsystem.h"
 
+#include "HeatSourceComponent.h"
+
+namespace
+{
+    bool InRange(float Value, float Min, float Max)
+    {
+        return FMath::IsFinite(Value) && Value >= Min && Value <= Max;
+    }
+}
+
+bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profile) const
+{
+    return Profile.EntityId.IsValid() && Profile.Revision > 0 &&
+        InRange(Profile.Health, 0.0f, 100.0f) && InRange(Profile.Hunger, 0.0f, 100.0f) &&
+        InRange(Profile.Thirst, 0.0f, 100.0f) && InRange(Profile.Stamina, 0.0f, 100.0f) &&
+        InRange(Profile.Fatigue, 0.0f, 100.0f) && InRange(Profile.ClothingInsulation, 0.0f, 1.0f) &&
+        InRange(Profile.ShelterProtection, 0.0f, 1.0f) && InRange(Profile.Wetness, 0.0f, 1.0f) &&
+        InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) &&
+        InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) &&
+        InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) &&
+        !Profile.Location.ContainsNaN();
+}
+
 bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profile)
 {
-    if (!Profile.EntityId.IsValid() || Profile.Revision <= 0 || Profiles.Contains(Profile.EntityId) ||
-        !FMath::IsFinite(Profile.Health) || Profile.Health < 0.0f || Profile.Health > 100.0f ||
-        !FMath::IsFinite(Profile.Hunger) || Profile.Hunger < 0.0f || Profile.Hunger > 100.0f ||
-        !FMath::IsFinite(Profile.Thirst) || Profile.Thirst < 0.0f || Profile.Thirst > 100.0f ||
-        !FMath::IsFinite(Profile.Stamina) || Profile.Stamina < 0.0f || Profile.Stamina > 100.0f ||
-        !FMath::IsFinite(Profile.Fatigue) || Profile.Fatigue < 0.0f || Profile.Fatigue > 100.0f ||
-        !FMath::IsFinite(Profile.ClothingInsulation) || Profile.ClothingInsulation < 0.0f || Profile.ClothingInsulation > 1.0f ||
-        !FMath::IsFinite(Profile.ShelterProtection) || Profile.ShelterProtection < 0.0f || Profile.ShelterProtection > 1.0f ||
-        !FMath::IsFinite(Profile.Wetness) || Profile.Wetness < 0.0f || Profile.Wetness > 1.0f)
-    {
+    if (Profiles.Contains(Profile.EntityId) || !IsValidProfile(Profile))
         return false;
-    }
     Profiles.Add(Profile.EntityId, Profile);
     return true;
 }
@@ -23,8 +36,7 @@ bool UWorldSurvivalSubsystem::UpdateProtection(
 {
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
     if (!Profile || Profile->Revision != ExpectedRevision || Profile->Revision == MAX_int64 ||
-        !FMath::IsFinite(ClothingInsulation) || ClothingInsulation < 0.0f || ClothingInsulation > 1.0f ||
-        !FMath::IsFinite(ShelterProtection) || ShelterProtection < 0.0f || ShelterProtection > 1.0f)
+        !InRange(ClothingInsulation, 0.0f, 1.0f) || !InRange(ShelterProtection, 0.0f, 1.0f))
     {
         return false;
     }
@@ -36,10 +48,137 @@ bool UWorldSurvivalSubsystem::UpdateProtection(
 
 bool UWorldSurvivalSubsystem::SetWeather(EWorldWeatherState NewWeather, float Severity)
 {
-    if (!FMath::IsFinite(Severity) || Severity < 0.0f || Severity > 1.0f) return false;
+    if (!InRange(Severity, 0.0f, 1.0f)) return false;
     Weather = NewWeather;
     WeatherSeverity = Severity;
     return true;
+}
+
+bool UWorldSurvivalSubsystem::UpdateLocation(const FGuid& EntityId, FVector NewLocation)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || NewLocation.ContainsNaN())
+        return false;
+    Profile->Location = NewLocation;
+    return true;
+}
+
+float UWorldSurvivalSubsystem::GetActivityKcalPerHour(ESurvivalActivity Activity) const
+{
+    switch (Activity)
+    {
+    case ESurvivalActivity::Walk:  return 200.0f;
+    case ESurvivalActivity::Run:   return 600.0f;
+    case ESurvivalActivity::Chop:  return 450.0f;
+    case ESurvivalActivity::Dig:   return 500.0f;
+    case ESurvivalActivity::Build: return 300.0f;
+    case ESurvivalActivity::Carry: return 250.0f;
+    default:                       return 0.0f;
+    }
+}
+
+bool UWorldSurvivalSubsystem::RecordActivity(
+    const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || !InRange(DurationSeconds, 0.0f, 3600.0f) || DurationSeconds == 0.0f ||
+        !InRange(CarriedMassKg, 0.0f, 1000.0f) || Profile->Revision == MAX_int64)
+    {
+        return false;
+    }
+    const float Hours = DurationSeconds / 3600.0f;
+    const float Kcal = (GetActivityKcalPerHour(Activity) + CarriedMassKg * CarryKcalPerKgHour) * Hours;
+    Profile->PendingActivityKcal = FMath::Min(100000.0f, Profile->PendingActivityKcal + Kcal);
+    // Hard work drains stamina now; rest recovers it during simulation steps.
+    float StaminaPerHour = 30.0f;
+    switch (Activity)
+    {
+    case ESurvivalActivity::Run:   StaminaPerHour = 600.0f; break;
+    case ESurvivalActivity::Chop:
+    case ESurvivalActivity::Dig:   StaminaPerHour = 300.0f; break;
+    case ESurvivalActivity::Build: StaminaPerHour = 150.0f; break;
+    case ESurvivalActivity::Carry: StaminaPerHour = 120.0f; break;
+    default: break;
+    }
+    const float StaminaCost = (StaminaPerHour + CarriedMassKg * 6.0f) * Hours;
+    Profile->Stamina = FMath::Clamp(Profile->Stamina - StaminaCost, 0.0f, 100.0f);
+    ++Profile->Revision;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::ConsumeFood(const FGuid& EntityId, float Kcal, float ThirstRelief)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || !InRange(Kcal, 0.0f, 10000.0f) || !InRange(ThirstRelief, 0.0f, 100.0f) ||
+        (Kcal == 0.0f && ThirstRelief == 0.0f) || Profile->Revision == MAX_int64)
+    {
+        return false;
+    }
+    Profile->CaloriesKcal = FMath::Min(MaxCaloriesKcal, Profile->CaloriesKcal + Kcal);
+    Profile->Hunger = 100.0f * (1.0f - Profile->CaloriesKcal / MaxCaloriesKcal);
+    Profile->Thirst = FMath::Max(0.0f, Profile->Thirst - ThirstRelief);
+    ++Profile->Revision;
+    return true;
+}
+
+float UWorldSurvivalSubsystem::GetWeatherTemperatureDelta() const
+{
+    switch (Weather)
+    {
+    case EWorldWeatherState::Rain:     return -4.0f * WeatherSeverity;
+    case EWorldWeatherState::Wind:     return -2.0f * WeatherSeverity;
+    case EWorldWeatherState::Snow:     return -14.0f * WeatherSeverity;
+    case EWorldWeatherState::Storm:    return -10.0f * WeatherSeverity;
+    case EWorldWeatherState::Heatwave: return 18.0f * WeatherSeverity;
+    case EWorldWeatherState::Clear:
+    default:                           return 0.0f;
+    }
+}
+
+float UWorldSurvivalSubsystem::GetWindChill() const
+{
+    switch (Weather)
+    {
+    case EWorldWeatherState::Wind:  return 8.0f * WeatherSeverity;
+    case EWorldWeatherState::Storm: return 10.0f * WeatherSeverity;
+    case EWorldWeatherState::Snow:  return 4.0f * WeatherSeverity;
+    default:                        return 0.0f;
+    }
+}
+
+float UWorldSurvivalSubsystem::GetHeatAt(const FVector& Location) const
+{
+    float Heat = 0.0f;
+    for (const TWeakObjectPtr<UHeatSourceComponent>& Source : HeatSources)
+    {
+        if (Source.IsValid())
+            Heat += Source->GetHeatAt(Location);
+    }
+    return Heat;
+}
+
+float UWorldSurvivalSubsystem::ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const
+{
+    const float Air = AmbientTemperatureCelsius + GetWeatherTemperatureDelta();
+    const float WindChill = GetWindChill() * (1.0f - Profile.ShelterProtection);
+    return Air - WindChill + GetHeatAt(Profile.Location) +
+        Profile.ClothingInsulation * ClothingWarmthCelsius +
+        Profile.ShelterProtection * ShelterWarmthCelsius -
+        Profile.Wetness * WetnessPenaltyCelsius;
+}
+
+void UWorldSurvivalSubsystem::RegisterHeatSource(UHeatSourceComponent* Source)
+{
+    if (IsValid(Source))
+        HeatSources.AddUnique(Source);
+}
+
+void UWorldSurvivalSubsystem::UnregisterHeatSource(UHeatSourceComponent* Source)
+{
+    HeatSources.RemoveAll([Source](const TWeakObjectPtr<UHeatSourceComponent>& Item)
+    {
+        return !Item.IsValid() || Item.Get() == Source;
+    });
 }
 
 bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
@@ -47,11 +186,14 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
         !FMath::IsFinite(LogicalTimeSeconds) || LogicalTimeSeconds < 0.0 ||
-        !FMath::IsFinite(WeatherSeverity) || WeatherSeverity < 0.0f || WeatherSeverity > 1.0f ||
+        !InRange(WeatherSeverity, 0.0f, 1.0f) ||
         !FMath::IsFinite(HungerPerHour) || HungerPerHour < 0.0f ||
         !FMath::IsFinite(ThirstPerHour) || ThirstPerHour < 0.0f ||
         !FMath::IsFinite(FatiguePerHour) || FatiguePerHour < 0.0f ||
-        !FMath::IsFinite(ColdDamagePerHour) || ColdDamagePerHour < 0.0f)
+        !FMath::IsFinite(ColdDamagePerHour) || ColdDamagePerHour < 0.0f ||
+        !FMath::IsFinite(MaxCaloriesKcal) || MaxCaloriesKcal <= 0.0f ||
+        !FMath::IsFinite(BasalKcalPerHour) || BasalKcalPerHour < 0.0f ||
+        !FMath::IsFinite(AmbientTemperatureCelsius))
         return false;
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
         if (Pair.Value.Revision == MAX_int64) return false;
@@ -62,35 +204,53 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
 {
     if (!CanAdvanceSurvivalStep(DeltaSeconds, LogicalTimeSeconds)) return false;
 
+    // Fuel burns on the same clock that drives the bodies it warms.
+    for (const TWeakObjectPtr<UHeatSourceComponent>& Source : HeatSources)
+    {
+        if (Source.IsValid())
+            Source->AdvanceFuel(DeltaSeconds, Weather, WeatherSeverity);
+    }
+
     const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
     for (TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
     {
         FWorldSurvivalProfile& P = Pair.Value;
-        P.Hunger = FMath::Clamp(P.Hunger + HungerPerHour * Hours, 0.0f, 100.0f);
         P.Thirst = FMath::Clamp(P.Thirst + ThirstPerHour * Hours, 0.0f, 100.0f);
         P.Fatigue = FMath::Clamp(P.Fatigue + FatiguePerHour * Hours, 0.0f, 100.0f);
 
-        const bool bColdWeather = Weather == EWorldWeatherState::Snow ||
-            Weather == EWorldWeatherState::Storm || Weather == EWorldWeatherState::Wind ||
-            Weather == EWorldWeatherState::Rain;
-        const bool bHeatWeather = Weather == EWorldWeatherState::Heatwave;
-        if (bColdWeather)
+        // Exposure: one felt temperature drives core temperature and shivering.
+        P.FeltTemperatureCelsius = ComputeFeltTemperature(P);
+        const float ColdDegrees = FMath::Max(0.0f, ComfortTemperatureCelsius - P.FeltTemperatureCelsius);
+        if (ColdDegrees > 0.0f)
         {
-            const float Exposure = WeatherSeverity * (1.0f - P.ClothingInsulation) *
-                (1.0f - P.ShelterProtection) * (1.0f - P.Wetness * 0.25f);
-            P.Health = FMath::Max(0.0f, P.Health - ColdDamagePerHour * Hours * Exposure);
-            if (Weather == EWorldWeatherState::Rain || Weather == EWorldWeatherState::Storm)
-                P.Wetness = FMath::Clamp(P.Wetness + WeatherSeverity * Hours * 0.2f, 0.0f, 1.0f);
+            P.CoreTemperatureCelsius = FMath::Max(20.0f,
+                P.CoreTemperatureCelsius - ColdDegrees * CoreCoolingPerDegreeHour * Hours);
         }
-        if (bHeatWeather)
+        else
         {
-            const float Exposure = WeatherSeverity * (1.0f - P.ShelterProtection);
-            P.Thirst = FMath::Clamp(P.Thirst + Exposure * Hours * 2.0f, 0.0f, 100.0f);
+            P.CoreTemperatureCelsius = FMath::Min(37.0f, P.CoreTemperatureCelsius + CoreRecoveryPerHour * Hours);
         }
-        if (P.Hunger >= 95.0f || P.Thirst >= 98.0f)
+        const float HypothermiaDegrees = FMath::Max(0.0f, HypothermiaThresholdCelsius - P.CoreTemperatureCelsius);
+        P.Health = FMath::Max(0.0f, P.Health - ColdDamagePerHour * HypothermiaDegrees * Hours);
+        if (P.FeltTemperatureCelsius > 32.0f)
+            P.Thirst = FMath::Clamp(P.Thirst + (P.FeltTemperatureCelsius - 32.0f) * 0.2f * Hours, 0.0f, 100.0f);
+
+        // Calories: basal metabolism, reported activity and shivering.
+        const float BurnKcal = BasalKcalPerHour * Hours + P.PendingActivityKcal +
+            ColdDegrees * ShiverKcalPerDegreeHour * Hours;
+        P.PendingActivityKcal = 0.0f;
+        P.CaloriesKcal = FMath::Clamp(P.CaloriesKcal - BurnKcal, 0.0f, MaxCaloriesKcal);
+        P.Hunger = 100.0f * (1.0f - P.CaloriesKcal / MaxCaloriesKcal);
+
+        if (Weather == EWorldWeatherState::Rain || Weather == EWorldWeatherState::Storm)
+            P.Wetness = FMath::Clamp(P.Wetness + WeatherSeverity * (1.0f - P.ShelterProtection) * Hours * 0.2f, 0.0f, 1.0f);
+        // Warmth dries clothing faster.
+        const float DryingBoost = FMath::Max(0.0f, P.FeltTemperatureCelsius - ComfortTemperatureCelsius) * 0.01f;
+        P.Wetness = FMath::Max(0.0f, P.Wetness - Hours * (0.05f + P.ShelterProtection * 0.25f + DryingBoost));
+
+        if (P.CaloriesKcal <= 0.0f || P.Thirst >= 98.0f)
             P.Health = FMath::Max(0.0f, P.Health - Hours * 2.0f);
         P.Stamina = FMath::Clamp(P.Stamina + (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours, 0.0f, 100.0f);
-        P.Wetness = FMath::Max(0.0f, P.Wetness - Hours * (0.05f + P.ShelterProtection * 0.25f));
         ++P.Revision;
     }
     return true;
@@ -99,8 +259,7 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
 bool UWorldSurvivalSubsystem::RecordDiscovery(
     FName DiscoveryId, FVector Location, double LogicalTimeSeconds)
 {
-    if (DiscoveryId.IsNone() || !FMath::IsFinite(Location.X) || !FMath::IsFinite(Location.Y) ||
-        !FMath::IsFinite(Location.Z) || !FMath::IsFinite(LogicalTimeSeconds) ||
+    if (DiscoveryId.IsNone() || Location.ContainsNaN() || !FMath::IsFinite(LogicalTimeSeconds) ||
         LogicalTimeSeconds < 0.0)
     {
         return false;
@@ -144,27 +303,18 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     const TArray<FWorldDiscoveryRecord>& DiscoverySnapshot,
     EWorldWeatherState InWeather, float InSeverity)
 {
-    if (!FMath::IsFinite(InSeverity) || InSeverity < 0.0f || InSeverity > 1.0f) return false;
+    if (!InRange(InSeverity, 0.0f, 1.0f)) return false;
     TMap<FGuid, FWorldSurvivalProfile> Proposed;
     for (const FWorldSurvivalProfile& P : ProfileSnapshot)
     {
-        if (!P.EntityId.IsValid() || P.Revision <= 0 || Proposed.Contains(P.EntityId) ||
-            !FMath::IsFinite(P.Health) || P.Health < 0.0f || P.Health > 100.0f ||
-            !FMath::IsFinite(P.Hunger) || P.Hunger < 0.0f || P.Hunger > 100.0f ||
-            !FMath::IsFinite(P.Thirst) || P.Thirst < 0.0f || P.Thirst > 100.0f ||
-            !FMath::IsFinite(P.Stamina) || P.Stamina < 0.0f || P.Stamina > 100.0f ||
-            !FMath::IsFinite(P.Fatigue) || P.Fatigue < 0.0f || P.Fatigue > 100.0f ||
-            !FMath::IsFinite(P.ClothingInsulation) || P.ClothingInsulation < 0.0f || P.ClothingInsulation > 1.0f ||
-            !FMath::IsFinite(P.ShelterProtection) || P.ShelterProtection < 0.0f || P.ShelterProtection > 1.0f ||
-            !FMath::IsFinite(P.Wetness) || P.Wetness < 0.0f || P.Wetness > 1.0f) return false;
+        if (Proposed.Contains(P.EntityId) || !IsValidProfile(P)) return false;
         Proposed.Add(P.EntityId, P);
     }
     TSet<FName> SeenDiscoveries;
     for (const FWorldDiscoveryRecord& D : DiscoverySnapshot)
     {
         if (D.DiscoveryId.IsNone() || SeenDiscoveries.Contains(D.DiscoveryId) ||
-            !FMath::IsFinite(D.Location.X) || !FMath::IsFinite(D.Location.Y) ||
-            !FMath::IsFinite(D.Location.Z) || !FMath::IsFinite(D.DiscoveredAtTime) ||
+            D.Location.ContainsNaN() || !FMath::IsFinite(D.DiscoveredAtTime) ||
             D.DiscoveredAtTime < 0.0) return false;
         SeenDiscoveries.Add(D.DiscoveryId);
     }

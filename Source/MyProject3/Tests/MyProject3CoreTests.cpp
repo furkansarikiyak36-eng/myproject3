@@ -3,6 +3,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CarryLoadComponent.h"
+#include "HeatSourceComponent.h"
+#include "WorldSurvivalSubsystem.h"
 #include "LogBuildPiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StoneBuildingPiece.h"
@@ -560,6 +562,152 @@ bool FLogEighthCutTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Two eighth-length pieces"), CountLogs(TestWorld.World), 2);
     for (TActorIterator<ALogBuildPiece> It(TestWorld.World); It; ++It)
         TestEqual(TEXT("Piece is an eighth"), It->GetLengthFraction(), ELogLengthFraction::EighthLength);
+    return true;
+}
+
+namespace MyProject3Tests
+{
+    FWorldSurvivalProfile MakeSurvivor(FVector Location)
+    {
+        FWorldSurvivalProfile Profile;
+        Profile.EntityId = FGuid::NewGuid();
+        Profile.Location = Location;
+        return Profile;
+    }
+
+    UHeatSourceComponent* SpawnFire(UWorld* World, FVector Location, float Protection)
+    {
+        AActor* Fire = World->SpawnActor<AActor>();
+        UHeatSourceComponent* Heat = NewObject<UHeatSourceComponent>(Fire);
+        Fire->SetRootComponent(Heat);
+        Heat->RegisterComponent();
+        Fire->SetActorLocation(Location);
+        Heat->WeatherProtection = Protection;
+        return Heat;
+    }
+}
+
+// M105/M111/M117/M118 (RISK-H01/H02): one felt-temperature function combines
+// weather, wind, heat sources, clothing, shelter and wetness.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFeltTemperatureTest,
+    "MyProject3.Survival.Temperature.FeltTemperatureCombinesAllInputs", TestFlags)
+bool FFeltTemperatureTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldSurvivalSubsystem* Survival = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival"), Survival))
+        return false;
+
+    const FWorldSurvivalProfile Bare = MakeSurvivor(FVector::ZeroVector);
+    const float ClearFelt = Survival->ComputeFeltTemperature(Bare);
+    Survival->SetWeather(EWorldWeatherState::Snow, 1.0f);
+    const float SnowFelt = Survival->ComputeFeltTemperature(Bare);
+    TestTrue(TEXT("Snow feels colder than clear weather"), SnowFelt < ClearFelt);
+
+    FWorldSurvivalProfile Dressed = Bare;
+    Dressed.ClothingInsulation = 1.0f;
+    TestTrue(TEXT("Clothing warms"), Survival->ComputeFeltTemperature(Dressed) > SnowFelt);
+    FWorldSurvivalProfile Sheltered = Bare;
+    Sheltered.ShelterProtection = 1.0f;
+    TestTrue(TEXT("Shelter warms"), Survival->ComputeFeltTemperature(Sheltered) > SnowFelt);
+    FWorldSurvivalProfile Wet = Bare;
+    Wet.Wetness = 1.0f;
+    TestTrue(TEXT("Wet clothing chills"), Survival->ComputeFeltTemperature(Wet) < SnowFelt);
+
+    UHeatSourceComponent* Fire = SpawnFire(TestWorld.World, FVector(100.0, 0.0, 0.0), 1.0f);
+    TestTrue(TEXT("An unfueled fire cannot be lit"), !Fire->Ignite());
+    TestTrue(TEXT("Add fuel"), Fire->AddFuel(1800.0f));
+    TestTrue(TEXT("Light fire"), Fire->Ignite());
+    TestTrue(TEXT("Standing by the fire is warmer"), Survival->ComputeFeltTemperature(Bare) > SnowFelt);
+    const FWorldSurvivalProfile FarAway = MakeSurvivor(FVector(5000.0, 0.0, 0.0));
+    TestEqual(TEXT("Outside the radius the fire adds nothing"), Survival->ComputeFeltTemperature(FarAway), SnowFelt);
+    return true;
+}
+
+// M107/M111/M112 (RISK-B01): exposure cools the core and burns extra calories;
+// a fire keeps the core warm; carrying costs more energy than walking empty.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCoreTemperatureCaloriesTest,
+    "MyProject3.Survival.Body.ColdCoolsCoreAndBurnsCalories", TestFlags)
+bool FCoreTemperatureCaloriesTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldSurvivalSubsystem* Survival = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival"), Survival))
+        return false;
+
+    Survival->SetWeather(EWorldWeatherState::Snow, 1.0f);
+    const FWorldSurvivalProfile Exposed = MakeSurvivor(FVector(5000.0, 0.0, 0.0));
+    // In a full snowstorm a fire alone is not enough; it needs clothing as well.
+    FWorldSurvivalProfile ByFire = MakeSurvivor(FVector::ZeroVector);
+    ByFire.ClothingInsulation = 0.5f;
+    TestTrue(TEXT("Register exposed"), Survival->RegisterProfile(Exposed));
+    TestTrue(TEXT("Register by fire"), Survival->RegisterProfile(ByFire));
+    UHeatSourceComponent* Fire = SpawnFire(TestWorld.World, FVector::ZeroVector, 1.0f);
+    Fire->AddFuel(4.0f * 3600.0f);
+    Fire->Ignite();
+
+    for (int32 Hour = 0; Hour < 3; ++Hour)
+        TestTrue(TEXT("Advance one hour"), Survival->AdvanceSurvivalStep(3600.0, Hour * 3600.0));
+
+    FWorldSurvivalProfile ExposedAfter, FireAfter;
+    Survival->GetProfile(Exposed.EntityId, ExposedAfter);
+    Survival->GetProfile(ByFire.EntityId, FireAfter);
+    TestTrue(TEXT("Exposed core cooled"), ExposedAfter.CoreTemperatureCelsius < 37.0f);
+    TestEqual(TEXT("Core by the fire with clothing stays normal"), FireAfter.CoreTemperatureCelsius, 37.0f);
+    TestTrue(TEXT("Shivering burns extra calories"), ExposedAfter.CaloriesKcal < FireAfter.CaloriesKcal);
+    TestEqual(TEXT("Hunger follows the calorie store"),
+        ExposedAfter.Hunger, 100.0f * (1.0f - ExposedAfter.CaloriesKcal / Survival->MaxCaloriesKcal));
+    TestTrue(TEXT("Fire burned fuel"), Fire->GetFuelSeconds() < 4.0f * 3600.0f);
+
+    Survival->SetWeather(EWorldWeatherState::Clear, 0.0f);
+    const FWorldSurvivalProfile Empty = MakeSurvivor(FVector::ZeroVector);
+    const FWorldSurvivalProfile Loaded = MakeSurvivor(FVector::ZeroVector);
+    Survival->RegisterProfile(Empty);
+    Survival->RegisterProfile(Loaded);
+    TestTrue(TEXT("Walk empty"), Survival->RecordActivity(Empty.EntityId, ESurvivalActivity::Walk, 600.0f, 0.0f));
+    TestTrue(TEXT("Walk with two logs"), Survival->RecordActivity(Loaded.EntityId, ESurvivalActivity::Walk, 600.0f, 80.0f));
+    TestFalse(TEXT("Negative duration is rejected"), Survival->RecordActivity(Empty.EntityId, ESurvivalActivity::Walk, -1.0f, 0.0f));
+    Survival->AdvanceSurvivalStep(60.0, 4.0 * 3600.0);
+    FWorldSurvivalProfile EmptyAfter, LoadedAfter;
+    Survival->GetProfile(Empty.EntityId, EmptyAfter);
+    Survival->GetProfile(Loaded.EntityId, LoadedAfter);
+    TestTrue(TEXT("Carrying burns more calories"), LoadedAfter.CaloriesKcal < EmptyAfter.CaloriesKcal);
+    TestTrue(TEXT("Carrying costs more stamina"), LoadedAfter.Stamina < EmptyAfter.Stamina);
+
+    TestTrue(TEXT("Eat"), Survival->ConsumeFood(Loaded.EntityId, 500.0f, 10.0f));
+    FWorldSurvivalProfile Fed;
+    Survival->GetProfile(Loaded.EntityId, Fed);
+    TestTrue(TEXT("Eating restores calories"), Fed.CaloriesKcal > LoadedAfter.CaloriesKcal);
+    return true;
+}
+
+// RISK-H02: an open fire goes out in heavy rain; a sheltered hearth keeps
+// burning until its fuel runs out.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHeatSourceWeatherTest,
+    "MyProject3.Survival.Heat.RainDrownsOpenFireButNotHearth", TestFlags)
+bool FHeatSourceWeatherTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldSurvivalSubsystem* Survival = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival"), Survival))
+        return false;
+
+    UHeatSourceComponent* OpenFire = SpawnFire(TestWorld.World, FVector::ZeroVector, 0.0f);
+    UHeatSourceComponent* Hearth = SpawnFire(TestWorld.World, FVector(2000.0, 0.0, 0.0), 1.0f);
+    OpenFire->AddFuel(1800.0f);
+    Hearth->AddFuel(1800.0f);
+    OpenFire->Ignite();
+    Hearth->Ignite();
+
+    Survival->SetWeather(EWorldWeatherState::Rain, 0.8f);
+    Survival->AdvanceSurvivalStep(600.0, 0.0);
+    TestFalse(TEXT("Open fire drowned"), OpenFire->IsLit());
+    TestTrue(TEXT("Hearth still burns"), Hearth->IsLit());
+    TestEqual(TEXT("Hearth burned ten minutes of fuel"), Hearth->GetFuelSeconds(), 1200.0f);
+
+    Survival->AdvanceSurvivalStep(1200.0, 600.0);
+    TestFalse(TEXT("Hearth goes out when fuel runs out"), Hearth->IsLit());
+    TestFalse(TEXT("An empty hearth cannot be relit"), Hearth->Ignite());
     return true;
 }
 
