@@ -135,8 +135,11 @@ bool AHarvestableTreeActor::SpawnStump()
     StumpMesh->SetRelativeScale3D(FVector(
         TreeScale.X, TreeScale.Y, ActualStumpHeight / LocalMeshHeight));
     StumpMesh->SetMaterial(0, TreeMesh->GetMaterial(0));
-    StumpMesh->SetCollisionProfileName(TEXT("BlockAll"));
-    StumpMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    // The upright/falling trunk initially overlaps the stump footprint. Keep
+    // stump collision disabled during the fall to avoid a depenetration kick;
+    // it is enabled only after the trunk has been removed from the scene.
+    StumpMesh->SetCollisionProfileName(TEXT("NoCollision"));
+    StumpMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     StumpMesh->SetSimulatePhysics(false);
     StumpMesh->RegisterComponent();
     NewStump->FinishSpawning(StumpTransform);
@@ -149,6 +152,7 @@ bool AHarvestableTreeActor::SpawnStump()
     }
 
     StumpActor = NewStump;
+    StumpMeshComponent = StumpMesh;
     bStumpSpawned = true;
     return true;
 }
@@ -354,6 +358,14 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
             RollbackSpawnedOutputs();
             return false;
         }
+    }
+
+    // The stump becomes a solid world object only after the fallen trunk has
+    // been removed, so the two pieces cannot launch each other through overlap.
+    if (IsValid(StumpMeshComponent))
+    {
+        StumpMeshComponent->SetCollisionProfileName(TEXT("BlockAll"));
+        StumpMeshComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     }
 
     bLogsSpawned = true;
