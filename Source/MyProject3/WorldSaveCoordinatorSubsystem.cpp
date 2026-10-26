@@ -213,7 +213,7 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
                 !Component.bIsPrimitive || Component.ComponentClass.IsNull() ||
                 static_cast<uint8>(Component.CollisionEnabled.GetValue()) >
                     static_cast<uint8>(ECollisionEnabled::QueryAndPhysics) ||
-                !Component.LinearVelocity.IsFinite() || !Component.AngularVelocityRadians.IsFinite())
+                Component.LinearVelocity.ContainsNaN() || Component.AngularVelocityRadians.ContainsNaN())
             {
                 return false;
             }

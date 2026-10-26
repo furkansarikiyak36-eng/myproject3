@@ -159,4 +159,5 @@ private:
     FRotator MakePlacementRotation(float ViewYaw) const;
     void ProcessAimedPieceInput();
     void PushOrRollAimedLogInput();
+    void BeginDragAimedLogInput();
 };

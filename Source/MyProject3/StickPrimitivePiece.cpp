@@ -225,7 +225,7 @@ bool AStickPrimitivePiece::TryCommitGroundPlacement(
     const FVector& SurfaceLocation, const FRotator& SurfaceRotation)
 {
     if (!bIsHeld || bIsPlaced || ParentPiece.IsValid() ||
-        !SurfaceLocation.IsFinite() || SurfaceRotation.ContainsNaN())
+        SurfaceLocation.ContainsNaN() || SurfaceRotation.ContainsNaN())
     {
         return false;
     }

@@ -158,7 +158,7 @@ void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &ULogCarryComponent::CycleCutAction);
     InputComponent->BindKey(EKeys::F, IE_Pressed, this, &ULogCarryComponent::ProcessAimedPieceInput);
     InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ULogCarryComponent::PushOrRollAimedLogInput);
-    InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ULogCarryComponent::BeginDragAimedLog);
+    InputComponent->BindKey(EKeys::B, IE_Pressed, this, &ULogCarryComponent::BeginDragAimedLogInput);
     InputComponent->BindKey(EKeys::B, IE_Released, this, &ULogCarryComponent::EndDragAimedLog);
 }
 
@@ -969,4 +969,10 @@ bool ULogCarryComponent::ProcessAimedPiece()
         GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, Message);
     }
     return false;
+}
+
+void ULogCarryComponent::BeginDragAimedLogInput()
+{
+    // BindKey requires a void handler; the bool result is only for Blueprint callers.
+    BeginDragAimedLog();
 }
