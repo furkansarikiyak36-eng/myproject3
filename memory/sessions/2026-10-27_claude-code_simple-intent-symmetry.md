@@ -18,3 +18,13 @@ Branch: feature/simple-intent · Commits: 41d8480, 7de76ff, eaf6d8d
 ## Open
 - Build and run `mp3.SnapGallery` in VerticalSlice_C, look at the screenshots, fix what is wrong.
 - Mitre cuts (45° ends) do not exist.
+
+## Later the same day (commit a7c90d2)
+- Ran `mp3.SnapGallery` in VerticalSlice_C and looked at every screenshot.
+- Cause of "bent joint does not work": a standing player looking at a log's end hits its top,
+  which chose stacking. Fixed: the last 30 cm of a lying log (`EndZoneCm`), carried outward,
+  continue it (straight or bent).
+- Verified by eye: bends 45/90/135/-90, post top 45 centred, post-to-post span, frame corner, struts.
+- Found: two mirrored wall diagonals made of full 6 m logs cross each other at the same height (clip).
+- Launch the game from PowerShell, not Git Bash: Git Bash rewrites `/Game/...` into a file path
+  and the default map opens.

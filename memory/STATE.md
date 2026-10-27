@@ -26,8 +26,8 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 
 ## Open
 
-- Nothing is verified in PIE yet. The user reported the bent end joint "does not look right"
-  (2026-10-27); a screenshot gallery command `mp3.SnapGallery` is written to check every kind.
+- Checked by eye with `mp3.SnapGallery` (screenshots), not yet by the user in PIE.
+- Two mirrored wall diagonals of full-length logs clip into each other where they cross.
 - Mitre (45° end) cuts do not exist; cut ends stay square.
 - `GatherPlacedBodies` scans the whole world on every solve (performance risk).
 - 7 joinery meshes need hand-placed NotchCradle sockets.
