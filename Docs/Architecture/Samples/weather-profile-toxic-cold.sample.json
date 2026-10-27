@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "WTH_TOXIC_COLD",
+  "displayNameKey": "weather.toxic_cold",
+  "temperatureBiasC": -2,
+  "windIntensity": 0.65,
+  "precipitation": "ToxicFallout",
+  "precipitationIntensity": 0.4,
+  "visibilityFactor": 0.35,
+  "stormRisk": 0.25,
+  "lightningRisk": 0.05,
+  "ambientEventIds": [
+    "AMB_TOXIC_FOREST"
+  ],
+  "hazardTags": [
+    "TOXIC_EXPOSURE",
+    "COLD",
+    "LOW_VISIBILITY"
+  ],
+  "travelCostMultiplier": 1.35,
+  "exposureRateMultiplier": 1.4,
+  "notes": "Illustrative weather profile; scheduling, weather transitions, and exposure tuning remain separate implementation tasks."
+}
