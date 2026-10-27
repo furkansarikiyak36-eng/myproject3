@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "id": "SRC_TREE_FALLEN",
+  "displayNameKey": "source.fallen_tree",
+  "sourceType": "FallenTree",
+  "materialDefinitionId": "MAT_WOOD",
+  "regionTags": [
+    "FOREST",
+    "TOXIC"
+  ],
+  "requiredToolDefinitionIds": [
+    "ITEM_AXE_BASIC"
+  ],
+  "requiredToolTags": [
+    "WOODWORKING"
+  ],
+  "allowedOperationIds": [
+    "ACTION_HARVEST_WOOD"
+  ],
+  "yieldPolicy": "StagedDamage",
+  "yields": [
+    {
+      "itemDefinitionId": "ITEM_LOG_WHOLE_600",
+      "minimumQuantity": 1,
+      "maximumQuantity": 3,
+      "resultStateId": "STATE_WOOD_WHOLE"
+    }
+  ],
+  "maximumHarvestCount": 3,
+  "stateIds": [
+    "STATE_TREE_INTACT",
+    "STATE_TREE_FELLED"
+  ],
+  "feedbackEventIds": [
+    "SFX_WOOD_SPLIT"
+  ],
+  "notes": "Example source contract; actual tree-felling actor and generation flow remain an explicit source audit gap."
+}
