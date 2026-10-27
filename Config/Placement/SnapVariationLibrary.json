@@ -1,0 +1,318 @@
+{
+  "schemaVersion": "1.0.0",
+  "libraryId": "myproject3.global-placement.snap-variation-library",
+  "status": "design_catalogue_not_yet_runtime_integrated",
+  "units": {
+    "distance": "cm",
+    "angle": "degrees"
+  },
+  "designRules": [
+    "The global placement kernel owns candidate search, scoring, transforms, validation, preview and atomic commit; object families provide geometry and compatibility data.",
+    "A variation is a named placement recipe, not a unique spawned actor or a hard-coded branch in the solver.",
+    "Snap anchors, physical contact points, cut targets and voxel cells are distinct concepts. A profile may relate them, but they must not be conflated.",
+    "Multi-anchor solutions are solved as one candidate and committed atomically. A failed secondary anchor must not silently degrade a two-ended beam into a one-ended placement.",
+    "Physics settling is an explicit profile outcome, never an automatic fallback that changes the requested construction type.",
+    "A mesh can expose authored anchors, generated anchors, or both. Radial orientation around a log is computed from the contact frame; it does not require duplicate actors for every angle."
+  ],
+  "anchorGeneration": {
+    "log": {
+      "moduleLengthCm": 75,
+      "maximumStandardLengthCm": 600,
+      "standardLengthsCm": [75, 150, 225, 300, 375, 450, 525, 600],
+      "endAnchors": {
+        "count": 2,
+        "positionsRule": ["start_end_plane", "finish_end_plane"],
+        "roles": ["log.end", "log.end"],
+        "generatedFromActualGeometry": true
+      },
+      "surfaceStations": {
+        "meaning": "One longitudinal surface-connection station per complete 75 cm module, plus the two separate end anchors.",
+        "countRule": "floor(actualLengthCm / 75)",
+        "positionRule": "center_of_each_75cm_module",
+        "firstStationOffsetCm": 37.5,
+        "spacingCm": 75,
+        "maximumCountAt600Cm": 8,
+        "example600CmPositionsCm": [37.5, 112.5, 187.5, 262.5, 337.5, 412.5, 487.5, 562.5],
+        "radialFrameRule": "derive_candidate_normal_and_tangent_from_contact_direction_at_runtime",
+        "anchorRepresentation": "logical_station_with_generated_contact_frame",
+        "doNotSpawnPerRotation": true
+      },
+      "cutStations": {
+        "defaultStepCm": 75,
+        "targetRule": "integer_multiples_of_75_cm_strictly_between_the_two_ends",
+        "600CmExampleTargetsCm": [75, 150, 225, 300, 375, 450, 525],
+        "snapAndCutAreSeparateCapabilities": true,
+        "partialCutDoesNotChangePieceTopology": true,
+        "completedCutRebuildsEndAnchorsAndSurfaceStations": true,
+        "legacyFineCutProfile": "log.free_cut_25cm"
+      },
+      "nonStandardLengths": {
+        "policy": "derive end anchors from actual piece endpoints; generate only complete 75 cm surface modules; allow the profile to disable modular snap where the piece cannot be represented safely.",
+        "neverAssumeLengthFromAssetName": true
+      }
+    }
+  },
+  "profiles": [
+    {
+      "id": "log.end_to_end",
+      "family": "log",
+      "geometry": "end_to_end",
+      "description": "Align the end face of a carried log to the end face of a target log.",
+      "sourceAnchors": ["log.end"],
+      "targetAnchors": ["log.end"],
+      "solver": "paired_anchor_transform",
+      "atomicAnchorCount": 2,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.end_to_surface_t",
+      "family": "log",
+      "geometry": "end_to_surface",
+      "description": "Join a log end to a compatible side station to form a T connection.",
+      "sourceAnchors": ["log.end"],
+      "targetAnchors": ["log.surface_station"],
+      "solver": "anchor_plus_contact_frame",
+      "requiresCompatibleTargetFace": true,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.surface_cross_90",
+      "family": "log",
+      "geometry": "surface_to_surface_cross",
+      "description": "Cross two logs at a right angle using surface stations on both pieces.",
+      "sourceAnchors": ["log.surface_station"],
+      "targetAnchors": ["log.surface_station"],
+      "nominalCrossingAnglesDeg": [90],
+      "solver": "two_axis_intersection",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.surface_cross_angled",
+      "family": "log",
+      "geometry": "surface_to_surface_cross",
+      "description": "Cross two logs at a configured non-right angle when the material profile allows it.",
+      "sourceAnchors": ["log.surface_station"],
+      "targetAnchors": ["log.surface_station"],
+      "nominalCrossingAnglesDeg": [30, 45, 60, 120, 135, 150],
+      "solver": "two_axis_intersection",
+      "angleSetIsConfigurable": true,
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.parallel_stack",
+      "family": "log",
+      "geometry": "parallel_surface_stack",
+      "description": "Place a log parallel to another log using longitudinal grid stations and a configured interlock.",
+      "sourceAnchors": ["log.surface_station", "log.end"],
+      "targetAnchors": ["log.surface_station", "log.end"],
+      "solver": "parallel_axis_grid_fit",
+      "requiresOverlapAndCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.two_support_beam",
+      "family": "log",
+      "geometry": "multi_anchor_beam",
+      "description": "Resolve both beam ends against two compatible supports in one placement solution.",
+      "sourceAnchors": ["log.end", "log.end"],
+      "targetAnchorProvider": "two_distinct_compatible_supports",
+      "solver": "multi_anchor_constraint_solve",
+      "minimumDistinctSupports": 2,
+      "atomicCommit": true,
+      "singleEndDowngradeAllowed": false,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.diagonal_brace",
+      "family": "log",
+      "geometry": "angled_end_to_surface_or_support",
+      "description": "A diagonal brace joins compatible post and beam support regions; actual geometry determines its length and angle.",
+      "sourceAnchors": ["log.end", "log.end"],
+      "targetAnchorProvider": "compatible_post_and_beam_regions",
+      "solver": "multi_anchor_constraint_solve",
+      "angleRangeDeg": [15, 75],
+      "angleRangeIsConfigurable": true,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.single_end_hinge",
+      "family": "log",
+      "geometry": "single_end_physical_hinge",
+      "description": "An explicitly requested or explicitly allowed one-end attachment whose free end may swing under gravity.",
+      "sourceAnchors": ["log.end"],
+      "targetAnchors": ["compatible_hinge_anchor"],
+      "solver": "single_anchor_then_physics",
+      "requiresExplicitProfileSelection": true,
+      "freeEndSupportEvaluated": true,
+      "autoConvertToDiagonal": false,
+      "requiresStructuralValidation": true,
+      "allowsPhysicsFallback": true
+    },
+    {
+      "id": "log.ground_rest",
+      "family": "log",
+      "geometry": "surface_contact_without_structural_snap",
+      "description": "Release a free log onto a valid surface. The surface provides contact, not an artificial socket connection.",
+      "sourceAnchors": [],
+      "targetProvider": "placement_surface",
+      "solver": "surface_fit_then_physics_settle",
+      "requiresSlopeAndCollisionValidation": true,
+      "createsStructuralAnchor": false,
+      "allowsPhysicsFallback": true
+    },
+    {
+      "id": "log.cut_modular_75",
+      "family": "log",
+      "geometry": "modular_length_cut",
+      "description": "Target a cut at a 75 cm internal module boundary. Progress is separate from the completed topology change.",
+      "cutStepCm": 75,
+      "requiresLoosePieceOrAllowedPostState": true,
+      "partialCutChangesTopology": false,
+      "completedCutCreatesNewPieces": true,
+      "rebuildsAnchorsOnCompletion": true
+    },
+    {
+      "id": "log.free_cut_25cm",
+      "family": "log",
+      "geometry": "fine_length_cut",
+      "description": "Compatibility profile for the existing fine free-length cut workflow, using 25 cm steps where permitted.",
+      "cutStepCm": 25,
+      "optionalProfile": true,
+      "mustNotRewriteGlobalSnapGrid": true,
+      "partialCutChangesTopology": false,
+      "completedCutCreatesNewPieces": true,
+      "rebuildsAnchorsOnCompletion": true
+    },
+    {
+      "id": "stone.face_to_face",
+      "family": "stone",
+      "geometry": "face_alignment",
+      "description": "Align compatible stone faces with tolerance based on authored piece geometry.",
+      "sourceAnchors": ["stone.face"],
+      "targetAnchors": ["stone.face"],
+      "solver": "face_normal_and_edge_alignment",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true
+    },
+    {
+      "id": "stone.edge_corner",
+      "family": "stone",
+      "geometry": "edge_or_corner_join",
+      "description": "Align stone edges or corners without assuming every stone has a log-like axis.",
+      "sourceAnchors": ["stone.edge", "stone.corner"],
+      "targetAnchors": ["stone.edge", "stone.corner"],
+      "solver": "feature_frame_alignment",
+      "requiresGeometryProvider": true,
+      "requiresCollisionValidation": true
+    },
+    {
+      "id": "stone.irregular_surface_rest",
+      "family": "stone",
+      "geometry": "irregular_surface_contact",
+      "description": "Let a loose irregular stone settle on a surface when no structural socket placement is intended.",
+      "sourceAnchors": [],
+      "targetProvider": "placement_surface",
+      "solver": "contact_fit_then_physics_settle",
+      "createsStructuralAnchor": false
+    },
+    {
+      "id": "fire.ground_surface",
+      "family": "fire",
+      "geometry": "surface_placement",
+      "description": "Place a fire fixture on an allowed ground surface with slope, clearance and collision checks.",
+      "sourceAnchors": [],
+      "targetProvider": "placement_surface",
+      "solver": "surface_normal_alignment",
+      "requiresSurfaceTags": ["fire.allowed_ground"],
+      "requiresClearanceValidation": true,
+      "createsStructuralAnchor": false
+    },
+    {
+      "id": "fire.fuel_receiver",
+      "family": "fire",
+      "geometry": "receiver_slot",
+      "description": "Transfer compatible fuel into a named fire receiver; this is an item/tool ownership operation, not a structural snap.",
+      "sourceAnchors": ["item.interaction_anchor"],
+      "targetAnchors": ["fire.fuel_receiver"],
+      "solver": "named_receiver_match",
+      "requiresMaterialCompatibility": true,
+      "usesOwnershipTransaction": true
+    },
+    {
+      "id": "voxel.cell_edit",
+      "family": "voxel",
+      "geometry": "grid_cell_edit",
+      "description": "Address a voxel cell by grid coordinates; do not create a physics snap actor for each cell.",
+      "sourceAnchors": [],
+      "targetProvider": "voxel_cell_provider",
+      "solver": "integer_cell_coordinate",
+      "requiresCellStateValidation": true,
+      "requiresNeighborRuleValidation": true,
+      "usesVoxelTransaction": true
+    },
+    {
+      "id": "voxel.face_neighbor",
+      "family": "voxel",
+      "geometry": "cell_face_adjacency",
+      "description": "Resolve adjacency through a voxel face and its neighboring cell.",
+      "sourceAnchors": ["voxel.cell_face"],
+      "targetAnchors": ["voxel.cell_face"],
+      "solver": "grid_face_adjacency",
+      "requiresGridCompatibility": true
+    }
+  ],
+  "resolutionPipeline": [
+    "discover_candidates",
+    "generate_profile_variations",
+    "solve_geometry_and_anchor_constraints",
+    "validate_material_and_profile_compatibility",
+    "validate_collision_surface_and_clearance",
+    "validate_structural_constraints_when_applicable",
+    "score_candidates",
+    "preview_solution",
+    "reserve_all_required_anchors",
+    "commit_atomically_or_rollback",
+    "activate_physics_only_for_profiles_that_request_it"
+  ],
+  "candidateScoring": {
+    "hardRejectBeforeScoring": [
+      "incompatible_anchor_roles",
+      "missing_required_support",
+      "collision_or_clearance_failure",
+      "invalid_surface_or_cell",
+      "reservation_conflict",
+      "structural_rule_failure"
+    ],
+    "softPreferences": [
+      "distance_to_aim",
+      "orientation_error",
+      "profile_preference",
+      "module_grid_error",
+      "minimal_unexpected_motion"
+    ],
+    "neverDo": [
+      "silently_change_profile_type",
+      "commit_only_one_anchor_of_a_required_multi_anchor_solution",
+      "turn_failed_beam_into_diagonal_brace",
+      "treat_ground_contact_as_structural_attachment_without_a_profile",
+      "spawn_a_physical_actor_for_every_virtual_snap_candidate"
+    ]
+  },
+  "integrationStatus": {
+    "catalogueCreated": true,
+    "runtimeKernelImplemented": false,
+    "existingLogPathsMigrated": false,
+    "stoneFireVoxelAdaptersImplemented": false,
+    "unrealBuildVerified": false,
+    "pieGameplayVerified": false
+  }
+}
