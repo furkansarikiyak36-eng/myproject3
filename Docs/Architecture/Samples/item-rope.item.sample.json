@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_ROPE",
+  "displayNameKey": "item.rope",
+  "inventoryCategory": "Resource",
+  "family": "PlantFiber",
+  "representation": "StackablePickup",
+  "unitMassKg": 0.15,
+  "unitVolumeLiters": 0.8,
+  "maxStack": 20,
+  "requiresUniqueInstance": false,
+  "durability": {
+    "model": "Durability",
+    "maximum": 100,
+    "defaultValue": 100,
+    "unit": "condition_percent"
+  },
+  "stateModel": "None",
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Store",
+    "Craft",
+    "Use",
+    "Repair"
+  ],
+  "tags": [
+    "ROPE",
+    "BINDING"
+  ],
+  "persistencePolicy": "SaveWhenOwned",
+  "notes": "Example processed plant-fiber material."
+}
