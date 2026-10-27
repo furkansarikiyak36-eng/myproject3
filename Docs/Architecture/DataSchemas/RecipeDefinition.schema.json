@@ -30,7 +30,6 @@
     "operation_kind": {
       "enum": [
         "Craft",
-        "Process",
         "Build",
         "Repair",
         "Cook",
@@ -221,5 +220,6 @@
         }
       }
     }
-  }
+  },
+  "description": "Inventory and production recipe only. Geometry/state-only transitions of an existing physical object belong in ProcessingTransitionDefinition.schema.json so the target actor identity cannot be accidentally consumed or duplicated."
 }
