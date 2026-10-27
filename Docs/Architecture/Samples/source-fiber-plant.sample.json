@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "SRC_SEEDLING",
+  "displayNameKey": "source_fiber_plant",
+  "sourceType": "Plant",
+  "materialDefinitionId": "MAT_PLANT_FIBER",
+  "regionTags": [
+    "RECOVERING"
+  ],
+  "requiredToolTags": [
+    "HAND_GATHER"
+  ],
+  "allowedOperationIds": [
+    "ACTION_GATHER_FIBER"
+  ],
+  "yieldPolicy": "RenewableByWorldState",
+  "yields": [
+    {
+      "itemDefinitionId": "ITEM_PLANT_FIBER",
+      "minimumQuantity": 1,
+      "maximumQuantity": 3,
+      "resultStateId": "STATE_PLANT_HARVESTED"
+    }
+  ],
+  "regenerationSeconds": 86400,
+  "stateIds": [
+    "STATE_PLANT_GROWING",
+    "STATE_PLANT_MATURE",
+    "STATE_PLANT_HARVESTED"
+  ],
+  "notes": "Logical source example; growth/restoration spawning is not implemented by this fixture."
+}
