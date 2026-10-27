@@ -991,6 +991,214 @@ void ULogCarryComponent::ClearSnapCandidate()
     }
 }
 
+bool ULogCarryComponent::TryPlaceHeldLogOnStructuralSurface(ALogBuildPiece* PieceToPlace)
+{
+    AActor* TargetActor = PlacementSurfaceActor.Get();
+    IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(TargetActor);
+    if (!IsValid(PieceToPlace) || PieceToPlace != HeldPiece ||
+        !IsValid(TargetActor) || !TargetPiece || !TargetPiece->IsStructurallyPlaced())
+    {
+        return false;
+    }
+
+    UWorld* World = GetWorld();
+    UPlacementKernelSubsystem* Kernel = World ? World->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!World || !Kernel || !Kernel->IsCatalogReady())
+    {
+        PlacementStatus = TEXT("Placement profiles are unavailable.");
+        return false;
+    }
+
+    FResolvedLogSupportPair Pair;
+    if (!FindCompatibleLogSupportPair(
+        TargetActor, PieceToPlace, PieceToPlace->GetActorTransform(), Pair))
+    {
+        PlacementStatus = TEXT("No compatible, free structural anchor fits this surface pose.");
+        return false;
+    }
+
+    ALogBuildPiece* TargetLog = Cast<ALogBuildPiece>(TargetActor);
+    const EStructuralNodeKind SourceKind = PieceToPlace->GetStructuralKind();
+    const EStructuralNodeKind TargetKind = TargetPiece->GetStructuralKind();
+    FString ProfileId;
+
+    if (TargetKind == EStructuralNodeKind::Wood && TargetLog)
+    {
+        if (!PieceToPlace->GetSnapPoints().IsValidIndex(Pair.SourceSnapIndex) ||
+            !TargetLog->GetSnapPoints().IsValidIndex(Pair.TargetSnapIndex))
+        {
+            PlacementStatus = TEXT("The selected log feature became stale.");
+            return false;
+        }
+        const FLogSnapPoint& SourcePoint = PieceToPlace->GetSnapPoints()[Pair.SourceSnapIndex];
+        const FLogSnapPoint& TargetPoint = TargetLog->GetSnapPoints()[Pair.TargetSnapIndex];
+        if (SourcePoint.bRuntimeRadialFrame && TargetPoint.bRuntimeRadialFrame)
+        {
+            ProfileId = PlacementMode == ELogPlacementMode::Diagonal
+                ? TEXT("log.surface_cross_angled") : TEXT("log.surface_cross_90");
+        }
+        else if (TargetPoint.bRuntimeRadialFrame)
+        {
+            ProfileId = TEXT("log.end_to_surface_t");
+        }
+        else if (SourcePoint.bRuntimeRadialFrame)
+        {
+            ProfileId = TEXT("log.surface_to_end");
+        }
+        else
+        {
+            ProfileId = TEXT("log.end_to_end");
+        }
+    }
+    else if (TargetKind == EStructuralNodeKind::Stone && SourceKind == EStructuralNodeKind::Wood)
+    {
+        // The catalog profile describes the permitted stone-support/log-child joint.
+        ProfileId = TEXT("stone.to_log");
+    }
+    else
+    {
+        PlacementStatus = TEXT("This structural material pair has no placement profile.");
+        return false;
+    }
+
+    FPlacementProfileDefinition Profile;
+    if (!Kernel->GetProfile(ProfileId, Profile) || !Profile.IsConnection())
+    {
+        PlacementStatus = TEXT("The chosen structural placement profile is not configured.");
+        return false;
+    }
+
+    UMaterialConnectionSubsystem* MaterialConnections =
+        World->GetSubsystem<UMaterialConnectionSubsystem>();
+    const bool bCrossMaterial = TargetKind != SourceKind;
+    FString ConnectionReason;
+    if (bCrossMaterial &&
+        (!MaterialConnections ||
+         !MaterialConnections->CanConnect(
+             TargetActor, Pair.TargetAnchorId, PieceToPlace, Pair.SourceAnchorId, ConnectionReason)))
+    {
+        PlacementStatus = FString::Printf(
+            TEXT("This material joint is not permitted: %s"), *ConnectionReason);
+        return false;
+    }
+
+    const FTransform CurrentTransform = PieceToPlace->GetActorTransform();
+    const FTransform SourceLocalFrame = Pair.SourceWorldTransform * CurrentTransform.Inverse();
+    FPlacementSolution Solution;
+    FString SolveFailure;
+    if (!Kernel->SolveAnchorPair(ProfileId, SourceLocalFrame,
+        Pair.TargetWorldTransform, CurrentTransform, Solution, SolveFailure))
+    {
+        PlacementStatus = FString::Printf(TEXT("Cannot solve this structural placement: %s"), *SolveFailure);
+        return false;
+    }
+
+    if (Profile.bRequiresCollisionValidation)
+    {
+        TArray<AActor*> IgnoredActors;
+        IgnoredActors.Add(TargetActor);
+        FString CollisionFailure;
+        if (!Kernel->ValidateCandidatePose(
+            PieceToPlace, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
+        {
+            PlacementStatus = TEXT("The structural placement is blocked by another object.");
+            return false;
+        }
+    }
+
+    FPlacementTransactionJournal Transaction(World);
+    if (!Transaction.RecordActor(PieceToPlace) ||
+        !Transaction.RecordActor(TargetActor) ||
+        !Transaction.CaptureStructuralGraph())
+    {
+        PlacementStatus = TEXT("The structural placement transaction could not capture the world state.");
+        return false;
+    }
+
+    const bool bWasHeld = PieceToPlace->IsHeld();
+    const bool bWasPlaced = PieceToPlace->IsPlaced();
+    const bool bWasStartsPlaced = PieceToPlace->bStartsPlaced;
+    UWorldObjectIdentityComponent* Identity =
+        PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>();
+    PieceToPlace->SetActorTransform(
+        Solution.ActorWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+
+    if (bCrossMaterial)
+    {
+        if (!MaterialConnections->TryConnectAt(
+            TargetActor, Pair.TargetAnchorId, PieceToPlace, Pair.SourceAnchorId,
+            Solution.ActorWorldTransform, ConnectionReason))
+        {
+            Transaction.Rollback();
+            PlacementStatus = FString::Printf(
+                TEXT("The material connection could not be committed: %s"), *ConnectionReason);
+            return false;
+        }
+    }
+    else if (!TargetLog->TryReserveSnapPoints(
+        Pair.TargetSnapIndex, PieceToPlace, Pair.SourceSnapIndex))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("The primary anchor reservation failed.");
+        return false;
+    }
+
+    if (Identity)
+    {
+        if (!Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+        {
+            Transaction.Rollback();
+            return false;
+        }
+        Transaction.AddUndo([Identity]()
+        {
+            return Identity->TryTransitionLifecycle(
+                EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+        });
+    }
+
+    FWorldOwnedItemRecord WorldRecord;
+    if (!PieceToPlace->TryTransferOwnership(
+        EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
+        PieceToPlace->GetActorLocation(), WorldRecord))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("The ownership ledger rejected the structural placement.");
+        return false;
+    }
+    Transaction.AddUndo([PieceToPlace, CarryOwnerId = CarryOwnerId,
+        PreviousLocation = Transaction.GetRecordedWorldLocation(PieceToPlace)]()
+    {
+        FWorldOwnedItemRecord RestoredRecord;
+        return PieceToPlace->TryTransferOwnership(
+            EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held,
+            CarryOwnerId, PreviousLocation, RestoredRecord);
+    });
+
+    Transaction.AddUndo([PieceToPlace, bWasHeld, bWasPlaced, bWasStartsPlaced]()
+    {
+        PieceToPlace->SetHeldState(bWasHeld);
+        PieceToPlace->SetPlacedState(bWasPlaced);
+        PieceToPlace->bStartsPlaced = bWasStartsPlaced;
+        return true;
+    });
+    PieceToPlace->SetHeldState(false);
+    if (!bCrossMaterial)
+        PieceToPlace->SetPlacedState(true);
+
+    Transaction.Commit();
+    ReleaseHeldFromLoad();
+    HeldPiece = nullptr;
+    bHasPlacementSurface = false;
+    ClearSnapCandidate();
+    PlacementStatus = TEXT("Placed on a compatible structural anchor.");
+    ApplyEndContactSupports(PieceToPlace);
+    CommitHeldLifts(PieceToPlace);
+    LiftDroopingEndsOnto(PieceToPlace);
+    return true;
+}
+
 bool ULogCarryComponent::PlaceHeldPiece()
 {
     if (bHasStrutPlacement && IsValid(HeldPiece))
@@ -1272,6 +1480,13 @@ bool ULogCarryComponent::PlaceHeldPiece()
         return true;
     }
 
+    if (const IStructuralPieceInterface* StructuralSurface =
+        Cast<IStructuralPieceInterface>(PlacementSurfaceActor.Get()))
+    {
+        if (StructuralSurface->IsStructurallyPlaced())
+            return TryPlaceHeldLogOnStructuralSurface(PieceToPlace);
+    }
+
     if (!bAllowFreePlacement ||
         (bRequireSurfaceForFreePlacement && !bHasPlacementSurface))
     {
@@ -1304,17 +1519,6 @@ bool ULogCarryComponent::PlaceHeldPiece()
     }
     PieceToPlace->SetHeldState(false);
     PieceToPlace->SetPlacedState(true);
-    // A free-rest placement is not a structural socket. Structural actors are
-    // handled by snap/material-anchor placement; never invent a "Rest_<GUID>" graph anchor.
-    if (const IStructuralPieceInterface* Surface = Cast<IStructuralPieceInterface>(PlacementSurfaceActor.Get()))
-    {
-        if (Surface->IsStructurallyPlaced())
-        {
-            if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
-                Graph->SetGroundSupported(PieceToPlace->GetStructuralNodeId(), false);
-        }
-    }
-
     ReleaseHeldFromLoad();
     HeldPiece = nullptr;
     bHasPlacementSurface = false;

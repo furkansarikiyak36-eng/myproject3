@@ -410,6 +410,7 @@ private:
     void UpdateHeldPreview();
     void FindBestSnapCandidate();
     void ClearSnapCandidate();
+    bool TryPlaceHeldLogOnStructuralSurface(ALogBuildPiece* PieceToPlace);
     void SetSnapCandidate(ALogBuildPiece* Target, int32 SourceIndex,
         int32 TargetIndex, const FTransform& DesiredActorTransform,
         const FTransform& SourceLocalFeatureTransform,
