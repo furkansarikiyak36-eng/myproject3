@@ -17,7 +17,32 @@
 #include "PhysicsEngine/BodyInstance.h"
 #include "Engine/EngineTypes.h"
 #include "InventoryCraftingTypes.h"
+#include "VoxelTerrainChunkComponent.h"
 #include "WorldSimulationSaveGame.generated.h"
+
+USTRUCT()
+struct FWorldVoxelChunkSnapshot
+{
+    GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    FGuid ActorIdentityId;
+
+    UPROPERTY(SaveGame)
+    int32 CellsPerAxis = 0;
+
+    UPROPERTY(SaveGame)
+    float VoxelSizeCm = 0.0f;
+
+    UPROPERTY(SaveGame)
+    int64 DensityRevision = 0;
+
+    UPROPERTY(SaveGame)
+    TArray<float> DensitySamples;
+
+    UPROPERTY(SaveGame)
+    TArray<FVoxelTerrainDigReceipt> DigReceipts;
+};
 
 USTRUCT()
 struct FWorldPhysicalComponentSnapshot
@@ -112,7 +137,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 13;
+    static constexpr int32 CurrentSchemaVersion = 14;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
@@ -122,6 +147,7 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldOperationLedgerEntry> OperationLedgerEntries;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldInventorySnapshot> Inventories;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldTerrainCellState> TerrainCells;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldVoxelChunkSnapshot> VoxelChunks;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldCropState> Crops;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldAnimalState> Animals;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldSurvivalProfile> SurvivalProfiles;
