@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_PLANT_FIBER",
+  "displayNameKey": "material.plant_fiber",
+  "family": "PlantFiber",
+  "hardnessClass": "NotApplicable",
+  "hardnessValue": 0,
+  "densityKgPerM3": 250,
+  "diggable": false,
+  "requiredToolTags": [
+    "HAND_GATHER"
+  ],
+  "yieldItemDefinitionIds": [
+    "ITEM_PLANT_FIBER"
+  ],
+  "processingTransitionIds": [],
+  "surfaceSfxEventIds": [],
+  "terrainTags": [
+    "PLANT",
+    "FIBER"
+  ],
+  "notes": "Example material definition for a harvestable plant; it is not voxel terrain."
+}
