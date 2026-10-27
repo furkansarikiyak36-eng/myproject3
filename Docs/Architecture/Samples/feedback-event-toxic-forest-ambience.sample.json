@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "AMB_TOXIC_FOREST",
+  "eventType": "Ambience",
+  "triggerId": "WORLD_HAZARD_STARTED",
+  "spatialization": "AmbientBed",
+  "priority": 30,
+  "concurrencyGroup": "REGION_AMBIENCE",
+  "maxConcurrentInstances": 1,
+  "mixBus": "WorldAmbience",
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "None",
+  "mustNotMaskThreatAudio": false,
+  "notes": "Logical ambience cue only; no loop file or mix has been authored."
+}
