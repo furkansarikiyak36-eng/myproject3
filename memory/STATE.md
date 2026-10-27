@@ -10,8 +10,8 @@ developer; replies in Turkish. Main test level: /Game/DemoAssets/Maps/VerticalSl
 | main | Behind; the snap work is not merged yet. |
 | feature/global-snap-kernel | Pushed. One placement kernel for all materials. |
 | feature/contextual-interaction-resolver | Work on top of the kernel (contextual targets, aim cuts). |
-| feature/simple-intent | Newest snap work noted in memory: contextual placement without modes, symmetric diagonals, bent end joints. Must be reviewed/integrated deliberately. |
-| planning/gdd-inventory-production-roadmap | Documentation-only branch based on main. Adds master GDD, inventory/resource catalogue, logical world/VFX/animation/SFX/music catalogue, phase plan, dependency/acceptance rules, and task template. No gameplay code or Unreal content changed. |
+| feature/simple-intent | Preferred candidate implementation line: current contextual placement/snap kernel; branch history descends from phase-06-inventory-crafting and mechanic-detailing-pass-h. Ahead of main with 3 newer main commits to reconcile (primarily memory/docs/screenshots). Must still pass UE build/PIE/save validation. |
+| planning/gdd-inventory-production-roadmap | Documentation-only branch based on main. Adds GDD/catalogues, Phase 00 baseline/branch audit, 119-row source-evidence matrix, Phase 01 shared data contracts, JSON schemas, and wood transition contract. No gameplay C++ or Unreal content changed. |
 | PR #34 architecture/global-snap-variation-library | Has a second, conflicting kernel. Recommended: close it. |
 
 ## Works (as recorded in project memory; verify the correct branch before relying on it)
@@ -34,3 +34,12 @@ developer; replies in Turkish. Main test level: /Game/DemoAssets/Maps/VerticalSl
 - The deck path in contextual placement is untested.
 - Code quality: CommitCutAction is ~450 lines; LogCarryComponent.cpp and LogBuildPiece.cpp are 3000+ lines.
 - Current planning open items: map M001–M119 to real code/content evidence, review snap branch diffs, and validate the UE 5.8 voxel approach with a bounded edit/save-load prototype before committing to full voxel production.
+
+## Phase 00–01 audit (2026-10-27)
+
+- Planning branch is documentation-only and remains unmerged.
+- Candidate code baseline is feature/simple-intent, not main; do not merge ancestor phase branches separately into it.
+- Two M001–M119 registry revisions exist. Earlier phase-01-v2 has 119 unreviewed/not_run entries. The current feature/simple-intent revision has 90 implemented_unverified, 29 unreviewed, static_review=fail for all, automation pass for 17, UnrealBuild=pass for 90, and runtime_test=not_run for all. The build evidence is not per-mechanic completion evidence.
+- The candidate registry JSON gives phase=1 to every entry; the Phase 01–14 plan uses a separate provisional mapping in Docs/Architecture/PHASE_00_M001_M119_BASELINE.csv.
+- Added GAMEPLAY_DEFINITION_CATALOG_SCHEMA.json, FEEDBACK_EVENT_CATALOG_SCHEMA.json, and WOOD_PROCESSING_TRANSITIONS.json. JSON syntax and CSV row/ID counts were checked, but formal JSON Schema validation and Unreal runtime loading are not implemented/verified.
+- Phase 00 audit, branch topology, Phase 01 contracts, plan alignment and GDD index are updated. UE 5.8 build/UHT, PIE, save/load and the per-mechanic code audit remain open.
