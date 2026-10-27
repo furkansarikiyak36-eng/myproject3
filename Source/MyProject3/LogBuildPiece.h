@@ -332,6 +332,8 @@ private:
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
     void GenerateDefaultSideSnapPoints();
+    /** Every socket on the mesh becomes a joint point "Socket.<name>" (notches, sockets made in the mesh editor). */
+    void GenerateSocketSnapPoints();
     /** World length the body stations were laid out for. */
     float StationsBuiltForLengthCm = 0.0f;
     FVector GetLongitudinalAxisVector() const;

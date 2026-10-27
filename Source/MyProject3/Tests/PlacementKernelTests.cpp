@@ -618,6 +618,71 @@ bool FPlacementBasicJointsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Real notched joints come from the imported joinery meshes: the cross-lap
+// pieces carry a NotchCradle socket, a log made with one has that joint point,
+// and two of them cross notch in notch, the upper one turned over and across.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementNotchTest, "MyProject3.Placement.NotchedPiecesCrossInTheirNotches", Flags)
+bool FPlacementNotchTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    UStaticMesh* CrossLap = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/DemoAssets/Logs/Joinery/SM_RawLog_75_CrossLap_Lower.SM_RawLog_75_CrossLap_Lower"));
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("The cross-lap mesh is imported"), CrossLap))
+        return false;
+    TestNotNull(TEXT("It has its notch socket"), CrossLap->FindSocket(TEXT("NotchCradle")));
+
+    auto SpawnNotched = [World, CrossLap](const FVector& Centre, bool bPlaced)
+    {
+        const FTransform Spawn(Centre);
+        ALogBuildPiece* Log = World->SpawnActorDeferred<ALogBuildPiece>(ALogBuildPiece::StaticClass(), Spawn,
+            nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        Log->BaseDefinitionId = TEXT("Test.Notched");
+        Log->LongitudinalAxis = ELogLongitudinalAxis::X;
+        Log->SetPieceStaticMesh(CrossLap);
+        Log->FinishSpawning(Spawn);
+        Log->GetLogMesh()->SetSimulatePhysics(false);
+        if (bPlaced)
+        {
+            if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
+                Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Placed);
+            Log->SetPlacedState(true);
+        }
+        return Log;
+    };
+    ALogBuildPiece* Lower = SpawnNotched(FVector(0, 0, 100), true);
+    ALogBuildPiece* Upper = SpawnNotched(FVector(0, 400, 100), false);
+    FPlacementFeature Notch;
+    if (!TestTrue(TEXT("The log has the notch as a joint point"),
+        FPlacementProviderRegistry::FindFeature(Lower, TEXT("Socket.NotchCradle"), Notch)))
+        return false;
+    TestTrue(TEXT("It is an authored point tagged NotchCradle"), Notch.Kind == EPlacementFeatureKind::Authored && Notch.Tag == TEXT("NotchCradle"));
+
+    FPlacementIntent Intent;
+    Intent.Held = Upper;
+    Intent.AimActor = Lower;
+    Intent.AimPoint = Notch.WorldFrame.GetLocation();
+    Intent.AllowedProfiles = { TEXT("log.notch_pair") };
+    const FPlacementSolution Pair = Kernel->Solve(Intent);
+    if (!TestTrue(FString::Printf(TEXT("Notch in notch is found (%s)"), *Pair.Reason), Pair.bValid))
+        return false;
+    const FVector UpperAxis = Pair.PieceTransform.GetUnitAxis(EAxis::X);
+    TestTrue(FString::Printf(TEXT("The upper piece crosses at 90 degrees (%s)"), *UpperAxis.ToString()), FMath::Abs(UpperAxis.X) < 0.05f && FMath::Abs(UpperAxis.Z) < 0.05f);
+    FPlacementFeature UpperNotch;
+    FPlacementProviderRegistry::FindFeature(Upper, TEXT("Socket.NotchCradle"), UpperNotch);
+    const FTransform UpperNotchWorld = UpperNotch.LocalFrame * Pair.PieceTransform;
+    TestTrue(TEXT("Its notch meets the lower notch"), UpperNotchWorld.GetLocation().Equals(Notch.WorldFrame.GetLocation(), 1.0f));
+    TestTrue(TEXT("Its notch faces down"), UpperNotchWorld.GetUnitAxis(EAxis::X).Z < -0.95f);
+    // Half and half: the two pieces share one height band, the upper sits no higher than the lower's top.
+    const FVector LowerCentre = Lower->GetLogMesh()->Bounds.Origin;
+    Upper->SetActorTransform(Pair.PieceTransform);
+    const FVector UpperCentre = Upper->GetLogMesh()->Bounds.Origin;
+    TestTrue(FString::Printf(TEXT("They interlock (lower centre %s, upper centre %s, notch local %s, lower actor %s)"),
+        *LowerCentre.ToString(), *UpperCentre.ToString(), *Notch.LocalFrame.GetLocation().ToString(), *Lower->GetActorLocation().ToString()),
+        FMath::Abs(UpperCentre.Z - LowerCentre.Z) < 1.0f);
+    return true;
+}
+
 // Modularity: the kernel and its math never name a material. New materials come
 // in as providers and profiles; if this test fails, a material rule leaked in.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementKernelNeutralTest, "MyProject3.Placement.KernelNamesNoMaterial", Flags)

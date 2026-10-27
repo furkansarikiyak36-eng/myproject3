@@ -28,7 +28,7 @@
 - **Sorgu geometriyi değiştirmez:** istasyonları kesim yeniler; taş/çubuk noktaları BeginPlay'de eklenir.
 - **Temel üç bağlantı:** uç→uç, uç→istasyon, istasyon→uç (`log.station_to_end`). `log.authored` yalnız özel noktadan başlar; `log.end_to_authored` uçtan özel noktaya.
 - **Kesit uyumu:** duvar bağlantıları (uç, istasyon, istif, üçgen) yalnız Round / Hewn / HewnTwoFaces / SquareBeam; payanda Round / HalfRound. Döşeme, merdiven, basamak her kesiti alır.
-- **Çapraz bağlantı:** 90° kesişme istif çözücüsünün çapraz modudur (istasyon üstüne istasyon). `log.station_cross` (açılı) kapalı kalır. Gerçek çentik (saddle, V, cross-lap) için özel noktalı mesh gerekir; şu an içerikte yok.
+- **Çapraz bağlantı:** 90° kesişme istif çözücüsünün çapraz modudur (istasyon üstüne istasyon). `log.station_cross` (açılı) kapalı kalır. Gerçek çentik: çentik mesh'leri `Content/DemoAssets/Logs/Joinery` altında (`UnrealEditorScripts/ImportJoineryMeshes.py`). Kütük mesh soketlerini bağlantı noktası olarak okur (`Socket.<ad>`). Cross-lap alt/üst ve yarım geçme parçalarında `NotchCradle` soketi otomatik bulundu; `log.notch_pair` iki çentikli parçayı 90° çentik içinde birleştirir (test: `NotchedPiecesCrossInTheirNotches`), `log.station_in_notch` kütüğü çentiğe oturtur. Saddle, V, çatal ve saddle A/B parçalarında çentik otomatik bulunamadı; editörde elle `NotchCradle` soketi eklenince aynı profillerle çalışır.
 - **İşlem güvenliği:** geri alma sonucu bildirir; başarısız geri alma ve zemine koymadan sonra başarısız sahiplik simülasyonu arızalı işaretler. Sahiplik her işlemden önce denetlenir. Testler: `FailedUndoIsReported`, `GroundPlacementNeedsTheLedger`.
 
 ### Plandan sapmalar ve bilinen sınırlar

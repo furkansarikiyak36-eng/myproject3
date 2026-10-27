@@ -1,4 +1,5 @@
 #include "LogBuildPiece.h"
+#include "Engine/StaticMeshSocket.h"
 #include "Placement/PlacementSolvers.h"
 
 #include "GameplayCoreTypes.h"
@@ -1108,7 +1109,7 @@ void ALogBuildPiece::RegenerateAutomaticSnapPoints()
     {
         const FString Id = Point.PointId.ToString();
         return Id.StartsWith(TEXT("AutoEnd_")) || Id.StartsWith(TEXT("AutoSide_")) ||
-            Id.StartsWith(TEXT("End.")) || Id.StartsWith(TEXT("Station."));
+            Id.StartsWith(TEXT("End.")) || Id.StartsWith(TEXT("Station.")) || Id.StartsWith(TEXT("Socket."));
     });
 
     if (bAutoGenerateEndSnapPoints)
@@ -1118,6 +1119,32 @@ void ALogBuildPiece::RegenerateAutomaticSnapPoints()
     if (bAutoGenerateSideSnapPoints)
     {
         GenerateDefaultSideSnapPoints();
+    }
+    GenerateSocketSnapPoints();
+}
+
+void ALogBuildPiece::GenerateSocketSnapPoints()
+{
+    const UStaticMesh* StaticMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+    if (!StaticMesh)
+        return;
+    // Socket frames are relative to the mesh; joint points are relative to the actor.
+    // (The root component's relative transform is the actor's own, so it adds nothing.)
+    const FTransform MeshToActor = Mesh == GetRootComponent() ? FTransform::Identity : Mesh->GetRelativeTransform();
+    for (const UStaticMeshSocket* Socket : StaticMesh->Sockets)
+    {
+        if (!Socket || Socket->SocketName.IsNone())
+            continue;
+        FLogSnapPoint Point;
+        Point.PointId = FName(*FString::Printf(TEXT("Socket.%s"), *Socket->SocketName.ToString()));
+        Point.SnapTag = Socket->Tag.IsEmpty() ? Socket->SocketName : FName(*Socket->Tag);
+        Point.LocalTransform = FTransform(Socket->RelativeRotation, Socket->RelativeLocation, Socket->RelativeScale) * MeshToActor;
+        Point.bCanSource = true;
+        Point.bCanReceive = true;
+        Point.bAcceptAnyPieceType = true;
+        Point.bFlipIncomingOrientation = true;
+        Point.bOccupied = false;
+        SnapPoints.Add(Point);
     }
 }
 
@@ -2572,7 +2599,8 @@ void ALogBuildPiece::AddCustomSnapPoint(
         IdString.StartsWith(TEXT("AutoEnd_"), ESearchCase::IgnoreCase) ||
         IdString.StartsWith(TEXT("AutoSide_"), ESearchCase::IgnoreCase) ||
         IdString.StartsWith(TEXT("End."), ESearchCase::IgnoreCase) ||
-        IdString.StartsWith(TEXT("Station."), ESearchCase::IgnoreCase))
+        IdString.StartsWith(TEXT("Station."), ESearchCase::IgnoreCase) ||
+        IdString.StartsWith(TEXT("Socket."), ESearchCase::IgnoreCase))
     {
         UE_LOG(LogTemp, Warning,
             TEXT("AddCustomSnapPoint rejected invalid/reserved PointId '%s' on '%s'."),
