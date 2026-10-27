@@ -1,6 +1,6 @@
 # P01 — Shared Data Contract Acceptance Checklist
 
-**Status:** Draft checklist; no engine/build/runtime boxes are marked complete by this planning task.
+**Status:** Design-time catalogue validation passed on GitHub Actions; engine/build/runtime gates remain open.
 
 ## A. Scope and identity
 - [x] Canonical registry files for M001–M119 are present in this planning branch.
@@ -18,9 +18,11 @@
 - [x] Build-part definition schema drafted and placement-profile ID convention reconciled.
 - [x] Region definition schema drafted.
 - [x] Feedback event definition schema drafted.
-- [ ] Validate all schemas with a JSON Schema Draft 2020-12 validator.
-- [ ] Add representative sample entries and validate them against schemas.
-- [ ] Check uniqueness of IDs and resolution of every cross-reference.
+- [x] All 14 JSON Schema Draft 2020-12 schemas pass validator meta-schema checks in GitHub Actions run [40583305901](https://github.com/furkansarikiyak36-eng/myproject3/actions/runs/40583305901).
+- [x] 45 representative sample records validate against their assigned schemas.
+- [x] Registry validator confirms 119 unique mechanic IDs, valid entry records and resolved mechanic dependencies.
+- [x] Sample definition IDs are unique within each schema family.
+- [ ] Check every cross-reference across the complete production catalogues. The current validator deliberately tolerates references to definitions absent from the representative sample set.
 - [ ] Reconcile every field with the current candidate C++ types and config IDs.
 
 ## C. Operation and ownership invariants
@@ -51,4 +53,4 @@
 
 ## Closeout rule
 
-P01 can close as a **design/data contract phase** when schema validation, sample fixtures, unique ID/reference checks, and code-contract reconciliation are recorded. The larger source integration and player-visible functionality remain separate until the actual target engine build/runtime gate passes.
+P01 may close as a **design/data contract phase** when schema validation, sample fixtures, ID integrity, cross-reference validation, and code-contract reconciliation are recorded. The first four catalogue checks now have CI evidence. Full cross-reference validation, caller/API integration review, and Unreal build/runtime checks remain open. A catalogue CI pass is not proof that Unreal code compiles or that the game plays correctly.
