@@ -121,3 +121,11 @@ The comparisons establish that:
 - This is **catalogue/schema CI only**. It does not validate the full set of external definition references, compile Unreal C++, load Unreal assets, or prove gameplay/PIE/save-load behavior.
 
 The Phase 00 audit remains open until the per-mechanic source/caller review and the target-engine verification gates are completed.
+
+## 9. Follow-up — 2026-10-28
+
+- The canonical Phase 00/01 reference set is under `Docs/Architecture/`, the GDD/catalogue under `Docs/GDD/`, and the roadmap/task documents under `Docs/Production/`. Duplicate lower-case `docs/PRODUCTION/` copies were removed because they repeated the same concepts and included a stale M001–M119 status snapshot. Use the linked canonical files only.
+- The detailed source-symbol/candidate-gap matrix is [`PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv`](PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv); the separate [`PHASE_00_M001_M119_BASELINE.csv`](PHASE_00_M001_M119_BASELINE.csv) preserves current-main evidence separately from the proposed implementation-phase mapping.
+- Rechecked the referenced GitHub Actions job for run [40583305901](https://github.com/furkansarikiyak36-eng/myproject3/actions/runs/40583305901): the `validate-catalogue` job completed with conclusion `success`. This confirms schema/sample/registry validation only; it is not an Unreal build or gameplay result.
+- The current candidate registry still reports 90 `implemented_unverified`, 29 `unreviewed`, all 119 static-review fields as `fail`, 17 automated-test fields as `pass`, 90 recorded UE-build fields as `pass`, and all 119 runtime-test fields as `not_run`. These registry labels must be carried verbatim and interpreted per mechanic; neither a shared build entry nor schema CI proves every acceptance criterion.
+- Phase 00 remains open for the full owner-function/caller review, public API/Blueprint compatibility review and target-engine validation. The recommended code baseline remains `feature/simple-intent`; do not merge its ancestor phase branches individually.
