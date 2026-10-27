@@ -203,15 +203,19 @@ bool UPlacementKernelSubsystem::LoadProfileArray(
             OutFailureReason = FString::Printf(TEXT("Array '%s' contains a profile missing id/family/operationKind/geometry/description."), *ArrayName);
             return false;
         }
-        const TMap<FString, FString> RequiredKinds = {
-            { TEXT("connectionProfiles"), TEXT("connection") },
-            { TEXT("surfacePlacementProfiles"), TEXT("surface_placement") },
-            { TEXT("receiverInteractionProfiles"), TEXT("receiver_interaction") },
-            { TEXT("voxelOperationProfiles"), TEXT("voxel_operation") },
-            { TEXT("geometryProcessingProfiles"), TEXT("geometry_processing") }
-        };
-        const FString* ExpectedKind = RequiredKinds.Find(ArrayName);
-        if (!ExpectedKind || Profile.OperationKindText != *ExpectedKind)
+        const TCHAR* ExpectedKind = nullptr;
+        if (ArrayName == TEXT("connectionProfiles"))
+            ExpectedKind = TEXT("connection");
+        else if (ArrayName == TEXT("surfacePlacementProfiles"))
+            ExpectedKind = TEXT("surface_placement");
+        else if (ArrayName == TEXT("receiverInteractionProfiles"))
+            ExpectedKind = TEXT("receiver_interaction");
+        else if (ArrayName == TEXT("voxelOperationProfiles"))
+            ExpectedKind = TEXT("voxel_operation");
+        else if (ArrayName == TEXT("geometryProcessingProfiles"))
+            ExpectedKind = TEXT("geometry_processing");
+
+        if (!ExpectedKind || Profile.OperationKindText != ExpectedKind)
         {
             OutFailureReason = FString::Printf(
                 TEXT("Profile '%s' has operationKind '%s' but is stored in '%s'."),

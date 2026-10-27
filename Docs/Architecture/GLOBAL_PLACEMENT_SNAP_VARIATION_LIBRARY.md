@@ -54,7 +54,7 @@ Existing primary log snap now uses the kernel's paired-anchor solver, profile se
 
 ## Explicit verification status
 
-- The runtime catalogue, paired-anchor solver, rigid two-anchor constraint solver and placement rollback journal exist in source. Current player-driven wood single-anchor snap is routed through the kernel; material and domain-specific paths are still being migrated and are not all globally solved.
+- The runtime catalogue, paired-anchor solver, rigid two-anchor constraint solver and placement rollback journal exist in source. The catalogue's integration-status fields are typed to match the JSON schema; source status is not inferred from engine tests. Current player-driven wood single-anchor snap is routed through the kernel; material and domain-specific paths are still being migrated and are not all globally solved.
 - Two-support atomic helpers now check graph insertion return values; full two-anchor candidate discovery and all support-rest mutation paths are still an integration requirement, not claimed complete.
 - Runtime code: added, not yet Unreal-compiled in this change.
 - Unit/automation/PIE tests: intentionally not run, per scope.

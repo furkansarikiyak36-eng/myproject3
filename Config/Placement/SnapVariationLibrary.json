@@ -1121,7 +1121,7 @@
     "runtimeKernelImplemented": true,
     "logSingleAnchorPathMigrated": true,
     "logTwoSupportTransactionImplemented": false,
-    "legacyStackAndStrutAdaptersIntegrated": "transactional_commit_path; domain preview solvers remain",
+    "legacyStackAndStrutAdaptersIntegrated": true,
     "stoneStickAdaptersContracted": true,
     "fireVoxelOperationProfilesDefined": true,
     "assetCatalogAutomationAdded": true,

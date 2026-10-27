@@ -228,11 +228,10 @@ bool UWorldStructuralGraphSubsystem::RebuildActorAttachmentsFromSnapshot()
             const bool bParentIsLog = Cast<ALogBuildPiece>(ParentNode->Actor.Get()) != nullptr;
             if (bMixedMaterial && (!ChildPiece || !ParentPiece))
                 return false;
-            if (!bMixedMaterial && bChildIsLog != bParentIsLog &&
-                !(Cast<AStoneBuildingPiece>(ChildNode.Actor.Get()) &&
-                  Cast<AStoneBuildingPiece>(ParentNode->Actor.Get())) &&
-                !(Cast<AStickPrimitivePiece>(ChildNode.Actor.Get()) &&
-                  Cast<AStickPrimitivePiece>(ParentNode->Actor.Get())))
+            // Wood's same-material concrete adapter is the log actor. Stone and
+            // stick use their own implementations of the shared interface.
+            if (!bMixedMaterial && ChildNode.Kind == EStructuralNodeKind::Wood &&
+                bChildIsLog != bParentIsLog)
             {
                 return false;
             }
