@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_LOG_WHOLE_600",
+  "displayNameKey": "item.log.whole_600",
+  "inventoryCategory": "Resource",
+  "family": "Wood",
+  "representation": "PhysicalActor",
+  "unitMassKg": 12,
+  "unitVolumeLiters": 50,
+  "maxStack": 1,
+  "requiresUniqueInstance": true,
+  "durability": {
+    "model": "None"
+  },
+  "stateModel": "WoodProcessing",
+  "meshVariantSetId": "MSH_LOG_600_WHOLE",
+  "acquisitionSourceIds": [
+    "SRC_TREE_FALLEN"
+  ],
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Process",
+    "Place"
+  ],
+  "feedbackEventIds": [
+    "SFX_WOOD_PICKUP",
+    "SFX_WOOD_SPLIT"
+  ],
+  "tags": [
+    "WOOD",
+    "LOG"
+  ],
+  "persistencePolicy": "SaveWhenInWorld",
+  "notes": "Example only; dimensions and mass must be measured from the accepted mesh family."
+}
