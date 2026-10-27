@@ -675,8 +675,9 @@ bool ULogCarryComponent::PlaceHeldPiece()
         // The joint the preview shows, plus what the far end rests on: one commit.
         const int32 OwnSnapIndex = CurrentSourceSnapPointIndex;
         FPlacementSolution Solution = CurrentSolution;
-        Solution.PieceTransform = CurrentSnapActorTransform;
-        PieceToPlace->SetActorTransform(CurrentSnapActorTransform);
+        // The solved transform is authoritative: preview and commit must not
+        // derive slightly different poses in the carry component.
+        PieceToPlace->SetActorTransform(Solution.PieceTransform);
         AActor* Support = nullptr;
         bool bGround = false;
         const bool bFarEndHeld = EvaluateFarEndSupport(PieceToPlace, OwnSnapIndex, Support, bGround);
