@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://myproject3.local/schemas/world-operation.schema.json",
+  "title": "MyProject3 World Operation Request / Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "operationId",
+    "operationType",
+    "status"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "operationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "operationType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requesterInstanceId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "targetInstanceIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "definitionIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]+$"
+      }
+    },
+    "expectedRevisions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "status": {
+      "enum": [
+        "Requested",
+        "Succeeded",
+        "Rejected",
+        "Failed",
+        "Conflict"
+      ]
+    },
+    "resultCode": {
+      "type": "string"
+    },
+    "affectedInstanceIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "diagnosticMessage": {
+      "type": "string"
+    },
+    "committedEventIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^EVT_[A-Z0-9_]+$"
+      }
+    }
+  }
+}
