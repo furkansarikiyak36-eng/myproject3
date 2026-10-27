@@ -10,7 +10,7 @@
   "recipeIds": [
     "REC_ROPE_FROM_FIBER"
   ],
-  "operationMode": "ProgressAction",
+  "operationMode": "HoldProgress",
   "operationIdRequired": true,
   "transactionPolicy": "AtomicAtCommit",
   "successEventId": "RESOURCE_CONSUMED",
