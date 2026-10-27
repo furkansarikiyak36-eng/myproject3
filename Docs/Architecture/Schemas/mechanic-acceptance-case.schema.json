@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:myproject3:schema:mechanic-acceptance-case:v1",
+  "title": "MyProject3 M001-M119 Acceptance Case Catalogue",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "targetImplementationBranch",
+    "provenance",
+    "rules",
+    "cases"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "status": {
+      "type": "string",
+      "const": "planning_test_design"
+    },
+    "targetImplementationBranch": {
+      "type": "string",
+      "const": "feature/simple-intent"
+    },
+    "provenance": {
+      "type": "string",
+      "minLength": 40
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "string",
+        "minLength": 20
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 119,
+      "maxItems": 119,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "caseId",
+          "mechanicId",
+          "mechanicName",
+          "ownerSystem",
+          "currentRegistryStatus",
+          "setup",
+          "action",
+          "expectedOutcome",
+          "rejectionScenario",
+          "retryScenario",
+          "persistenceScenario",
+          "crossSystemAssertion",
+          "candidateSourcePaths",
+          "candidateSourceSymbols",
+          "verificationStatus",
+          "evidenceRequired"
+        ],
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "pattern": "^TEST_M[0-9]{3}_[A-Z0-9_]+$"
+          },
+          "mechanicId": {
+            "type": "string",
+            "pattern": "^M[0-9]{3}$"
+          },
+          "mechanicName": {
+            "type": "string",
+            "minLength": 3
+          },
+          "ownerSystem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "currentRegistryStatus": {
+            "type": "string",
+            "enum": [
+              "unreviewed",
+              "mapped",
+              "implemented_unverified",
+              "code_checked",
+              "build_verified",
+              "runtime_verified",
+              "blocked",
+              "deferred"
+            ]
+          },
+          "setup": {
+            "type": "string",
+            "minLength": 30
+          },
+          "action": {
+            "type": "string",
+            "minLength": 50
+          },
+          "expectedOutcome": {
+            "type": "string",
+            "minLength": 35
+          },
+          "rejectionScenario": {
+            "type": "string",
+            "minLength": 35
+          },
+          "retryScenario": {
+            "type": "string",
+            "minLength": 50
+          },
+          "persistenceScenario": {
+            "type": "string",
+            "minLength": 50
+          },
+          "crossSystemAssertion": {
+            "type": "string",
+            "minLength": 30
+          },
+          "candidateSourcePaths": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidateSourceSymbols": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verificationStatus": {
+            "type": "string",
+            "const": "PROPOSED_NOT_RUN"
+          },
+          "evidenceRequired": {
+            "type": "array",
+            "minItems": 6,
+            "items": {
+              "type": "string",
+              "minLength": 8
+            }
+          }
+        }
+      }
+    }
+  }
+}
