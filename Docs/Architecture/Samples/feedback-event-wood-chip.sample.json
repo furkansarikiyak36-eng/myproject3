@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "VFX_WOOD_CHIP",
+  "eventType": "VFX",
+  "triggerId": "OBJECT_PROCESSED",
+  "spatialization": "World3D",
+  "priority": 50,
+  "concurrencyGroup": "WOOD_PROCESS",
+  "maxConcurrentInstances": 8,
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "None",
+  "mustNotMaskThreatAudio": false,
+  "notes": "Logical visual effect cue; spawn is a reaction to an authoritative process result."
+}
