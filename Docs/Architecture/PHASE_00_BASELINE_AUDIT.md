@@ -148,3 +148,13 @@ The Phase 00 audit remains open until the per-mechanic source/caller review and 
 - Added candidate scope-gap notes for regional contamination/recovery, local soil and water remediation, air-quality/safe-zone infrastructure, old-world environmental repair, recovery milestone feedback, and later spore/fungal threats. No M120+ IDs were assigned; the canonical M001–M119 registry remains unchanged.
 - Lower-case audit/contract/traceability copies created during an intermediate drafting attempt were deleted again. Continue using only the canonical uppercase Docs tree.
 - Phase 00 remains open for the full owner-function/caller review, public API/Blueprint compatibility review and target-engine validation. The recommended code baseline remains `feature/simple-intent`; do not merge its ancestor phase branches individually.
+
+
+## 11. VXL-02 selective smooth-voxel follow-up — 2026-10-28
+
+- The terrain design requires smooth voxel geometry with selective excavation: depth is measured beneath the original deterministic terrain surface, not a freshly carved pit or tunnel; surface soil can be dug with a shovel; deeper compacted/gravel/stone strata progressively require better tools; bedrock and protected regions are blocked in the initial scope.
+- Added the design decision and stratum profile schema/sample under Docs/Architecture/. Added representative topsoil, loam, clay, gravel, stone and bedrock material fixtures so the sample profile's material IDs have examples.
+- Extended Tools/Validation/validate_gameplay_catalogue.py to recognise terrain-stratum-profile samples and check contiguous non-overlapping intervals, unique stratum IDs, normalized blend weights, profile-depth alignment and the requirement that ToolGated strata specify tool tags.
+- Added VXL_02A_DEEPSEEK_TASK_PACKET.md for one isolated code task: a pure deterministic stratum-policy query. It intentionally does not mutate voxel density, collision, inventory, receipts or saves.
+- Created feature/voxel-terrain-policy-spike from feature/simple-intent. At this point it is a clean branch without the DeepSeek-generated implementation.
+- Source design files were inspected and the example profile's JSON shape/domain invariants were checked directly. The updated GitHub Actions validation result has not been retrieved; no Unreal build/UHT, Editor/PIE, save/load or voxel performance test is claimed.
