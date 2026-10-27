@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "SFX_WOOD_CUT",
+  "eventType": "SFX",
+  "triggerId": "OBJECT_PROCESSED",
+  "spatialization": "World3D",
+  "priority": 55,
+  "concurrencyGroup": "WOOD_TOOLS",
+  "maxConcurrentInstances": 5,
+  "mixBus": "ToolsAndConstruction",
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "AudioAndVisual",
+  "mustNotMaskThreatAudio": true,
+  "notes": "Logical cue only; no audio file authored."
+}
