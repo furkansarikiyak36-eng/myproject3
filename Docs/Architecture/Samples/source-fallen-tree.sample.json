@@ -9,7 +9,7 @@
     "TOXIC"
   ],
   "requiredToolDefinitionIds": [
-    "ITEM_AXE_BASIC"
+    "TOOL_AXE_BASIC"
   ],
   "requiredToolTags": [
     "WOODWORKING"
