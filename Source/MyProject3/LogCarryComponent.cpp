@@ -553,15 +553,36 @@ void ULogCarryComponent::GatherContextualSnapCandidates(
     if (!Kernel || !GetWorld())
         return;
 
-    // Start from the placed bodies near the world point the player is looking at.
-    // The kernel still applies its stricter per-feature search radius and all
-    // geometry/compatibility constraints before a candidate can become a solution.
+    // Use a bounded collision query around the aim point instead of scanning every
+    // actor in the level. The kernel then applies its stricter per-feature search
+    // radius and all geometry/compatibility constraints.
+    TArray<FOverlapResult> Overlaps;
+    FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ContextualSnapCandidates), false, GetOwner());
+    if (IsValid(HeldPiece))
+        QueryParams.AddIgnoredActor(HeldPiece);
+    GetWorld()->OverlapMultiByChannel(
+        Overlaps,
+        AimPoint,
+        FQuat::Identity,
+        ECC_Visibility,
+        FCollisionShape::MakeSphere(FMath::Max(25.0f, PlacementCandidateSearchRadiusCm)),
+        QueryParams);
+
     TArray<AActor*> NearbyBodies;
-    Kernel->GatherPlacedBodies(AimPoint, PlacementCandidateSearchRadiusCm, NearbyBodies);
-    if (IsValid(DirectAimActor) && !NearbyBodies.Contains(DirectAimActor))
+    TSet<AActor*> Seen;
+    for (const FOverlapResult& Overlap : Overlaps)
+    {
+        AActor* Actor = Overlap.GetActor();
+        if (IsValid(Actor) && !Seen.Contains(Actor))
+        {
+            Seen.Add(Actor);
+            NearbyBodies.Add(Actor);
+        }
+    }
+    if (IsValid(DirectAimActor) && !Seen.Contains(DirectAimActor))
         NearbyBodies.Insert(DirectAimActor, 0);
 
-    TSet<AActor*> Seen;
+    Seen.Reset();
     float PreferredScore = TNumericLimits<float>::Max();
     for (AActor* BodyActor : NearbyBodies)
     {
