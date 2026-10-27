@@ -32,3 +32,16 @@ Do not require the game to read these JSON files at runtime yet. First validate 
 3. Check definitions against existing C++ types without introducing duplicate authorities.
 4. Document migrations before changing any persisted field/type.
 5. Keep Unreal build, Editor/PIE and save/load verification as separate gates.
+
+## Catalogue validation
+
+A repository validator is available at Tools/Validation/validate_gameplay_catalogue.py. Run it from the repository root after installing its pinned dependency:
+
+```powershell
+python -m pip install -r Tools/Validation/requirements-catalogue.txt
+python Tools/Validation/validate_gameplay_catalogue.py
+```
+
+The GitHub Actions workflow .github/workflows/validate-gameplay-catalogue.yml is configured to run the validator when matching catalogue or validator paths change on a push or pull request. Check the actual commit status before claiming the check passed.
+
+This validator checks JSON Schema meta-schema validity, representative sample records, registry ID/dependency integrity, and duplicate sample definition IDs. It does not compile Unreal C++, load .uasset/.umap content, or verify gameplay, save/load, Editor/PIE, or runtime behavior.
