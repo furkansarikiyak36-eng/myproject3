@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_PLANT_FIBER",
+  "displayNameKey": "item.plant_fiber",
+  "inventoryCategory": "Resource",
+  "family": "PlantFiber",
+  "representation": "StackablePickup",
+  "unitMassKg": 0.02,
+  "unitVolumeLiters": 0.1,
+  "maxStack": 99,
+  "requiresUniqueInstance": false,
+  "durability": {
+    "model": "None"
+  },
+  "stateModel": "None",
+  "acquisitionSources": [
+    "SRC_SEEDLING"
+  ],
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Store",
+    "Craft"
+  ],
+  "tags": [
+    "PLANT_FIBER",
+    "RAW_MATERIAL"
+  ],
+  "persistencePolicy": "SaveWhenOwned",
+  "notes": "Example stackable resource."
+}
