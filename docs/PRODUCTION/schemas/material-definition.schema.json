@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/myproject3/schemas/material-definition.schema.json",
+  "title": "MyProject3 Material Definition",
+  "description": "Authoring-time schema for material properties and source/yield rules; not yet wired to Unreal runtime loading.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "definitionId",
+    "materialFamily",
+    "hardness",
+    "digging",
+    "sourceDefinitionIds",
+    "yieldRules",
+    "stateModel",
+    "status"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "definitionId": {
+      "type": "string",
+      "pattern": "^MAT_[A-Z0-9_]+$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "materialFamily": {
+      "enum": [
+        "Wood",
+        "Stone",
+        "Soil",
+        "Clay",
+        "Sand",
+        "Gravel",
+        "Plant",
+        "MetalScrap",
+        "Water",
+        "Food",
+        "Other"
+      ]
+    },
+    "hardness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Tuning scale; units/range must be consistent across gameplay consumers."
+    },
+    "densityKgPerM3": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "digging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "isDiggable",
+        "minimumToolTier",
+        "maximumDepthLayer"
+      ],
+      "properties": {
+        "isDiggable": {
+          "type": "boolean"
+        },
+        "minimumToolTier": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "maximumDepthLayer": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64
+        },
+        "requiresSupportBelow": {
+          "type": "boolean"
+        },
+        "permittedTerrainEdits": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "Excavate",
+              "Fill",
+              "ReplaceMaterial"
+            ]
+          }
+        }
+      }
+    },
+    "sourceDefinitionIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(ITEM|MAT|REGION)_[A-Z0-9_]+$"
+      }
+    },
+    "yieldRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceState",
+          "outputDefinitionId",
+          "quantity"
+        ],
+        "properties": {
+          "sourceState": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "outputDefinitionId": {
+            "type": "string",
+            "pattern": "^(ITEM|MAT)_[A-Z0-9_]+$"
+          },
+          "quantity": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "unitId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          }
+        }
+      }
+    },
+    "validToolDefinitionIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^TOOL_[A-Z0-9_]+$"
+      }
+    },
+    "stateModel": {
+      "enum": [
+        "None",
+        "ProcessingState",
+        "ContaminationState",
+        "Wetness",
+        "Moisture",
+        "Freshness",
+        "Rot"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PROPOSED",
+        "PLANNED",
+        "IMPLEMENTED_UNVERIFIED",
+        "VERIFIED",
+        "DEFERRED"
+      ]
+    }
+  }
+}
