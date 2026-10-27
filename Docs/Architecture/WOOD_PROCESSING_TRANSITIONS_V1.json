@@ -2,7 +2,7 @@
   "schema_version": 1,
   "domain_id": "WOOD_PROCESSING",
   "status": "proposed",
-  "note": "Logical transition catalogue only. IDs and asset keys are proposals; they do not assert that every tool, mesh variant, or operation exists in current main.",
+  "note": "Logical transition catalogue only. IDs and asset keys are proposals; they do not assert that every tool, mesh variant, or operation exists in current main. Review the split identity/output-count question before turning these transitions into gameplay.",
   "state_ids": [
     "WHOLE_LOG",
     "HALF_LENGTH_LOG",
@@ -32,7 +32,25 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_SPLIT_HALF",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [
+        "Does this action preserve one actor with split-half geometry, or create two independently placeable half-round actors? If two actors are created, define output count and parent disposition before implementation."
+      ],
+      "output_actor_policy": "UNRESOLVED: preserve one actor versus one-to-many output"
     },
     {
       "transition_id": "WOOD_QUARTER",
@@ -49,7 +67,23 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_QUARTER",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     },
     {
       "transition_id": "WOOD_HEW",
@@ -66,7 +100,23 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_HEWN",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     },
     {
       "transition_id": "WOOD_SQUARE",
@@ -83,7 +133,23 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_SQUARED_BEAM",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     },
     {
       "transition_id": "WOOD_GROOVE",
@@ -100,7 +166,23 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_GROOVED_HALF",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     },
     {
       "transition_id": "WOOD_TROUGH",
@@ -117,7 +199,23 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_TROUGH",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     },
     {
       "transition_id": "WOOD_PLANK",
@@ -134,7 +232,23 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_PLANK",
-      "status": "planned"
+      "status": "planned",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "PreserveInstance",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     },
     {
       "transition_id": "WOOD_CROSSCUT_LENGTH",
@@ -151,7 +265,25 @@
         "NoAttachedChildren"
       ],
       "required_output_asset_id": "LOG_HALF_LENGTH",
-      "status": "proposed"
+      "status": "proposed",
+      "target_definition_ids": [
+        "ITEM_LOG_WHOLE"
+      ],
+      "identity_policy": "RequiresDecision",
+      "preconditions": [
+        "WorldOwned",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren",
+        "RequiredTargetState",
+        "RequiredToolPresent",
+        "RequiredConfigurationPresent"
+      ],
+      "failure_policy": "AtomicRollback",
+      "open_questions": [
+        "Crosscut-to-length is not an existing main-branch action; define valid lengths, piece count and identity policy before implementation."
+      ],
+      "output_actor_policy": "Preserve target identity for mesh-variant prototype"
     }
   ]
 }
