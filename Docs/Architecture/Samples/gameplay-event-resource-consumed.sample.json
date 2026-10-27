@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "RESOURCE_CONSUMED",
+  "domainEventType": "ResourceConsumed",
+  "producerSystem": "ITEM_OWNERSHIP",
+  "commitTiming": "AfterAuthoritativeCommit",
+  "operationIdRequired": true,
+  "payloadFieldIds": [
+    "OPERATION_ID",
+    "ITEM_INSTANCE_ID",
+    "DEFINITION_ID",
+    "QUANTITY"
+  ],
+  "affectedObjectIdsIncluded": true,
+  "deliveryPolicy": "TransientNotificationWithSnapshotState",
+  "mustNotMutateOwnerState": true,
+  "notes": "Example event definition key; the notification itself is not saved as a durable event log."
+}
