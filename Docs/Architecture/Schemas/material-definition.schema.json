@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/material-definition.schema.json",
+  "title": "MyProject3 Material Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "family",
+    "hardnessClass",
+    "diggable"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+      "description": "Stable definition/event ID. Never use an M001-M119 mechanic ID or a display name here."
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "family": {
+      "enum": [
+        "Wood",
+        "Stone",
+        "Soil",
+        "Sand",
+        "Gravel",
+        "Clay",
+        "PlantFiber",
+        "Resin",
+        "Water",
+        "Food",
+        "Metal",
+        "Electronics",
+        "Other"
+      ]
+    },
+    "hardnessClass": {
+      "enum": [
+        "NotApplicable",
+        "Soft",
+        "Medium",
+        "Hard",
+        "VeryHard"
+      ]
+    },
+    "hardnessValue": {
+      "type": "number",
+      "minimum": 0
+    },
+    "densityKgPerM3": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "diggable": {
+      "type": "boolean"
+    },
+    "permittedDepthLayers": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "uniqueItems": true
+    },
+    "requiredToolTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "yieldItemDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "processingTransitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "surfaceSfxEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "terrainTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "damageResistances": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "contaminationModelId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
