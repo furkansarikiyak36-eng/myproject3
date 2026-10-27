@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_LOAM",
+  "displayNameKey": "material.loam",
+  "family": "Soil",
+  "hardnessClass": "Soft",
+  "hardnessValue": 0.28,
+  "densityKgPerM3": 1400,
+  "diggable": true,
+  "permittedDepthLayers": [
+    1
+  ],
+  "requiredToolTags": [
+    "TOOL_SHOVEL"
+  ],
+  "terrainTags": [
+    "SOIL",
+    "LOAM"
+  ],
+  "notes": "Example material fixture; the profile controls depth-specific tool gating."
+}
