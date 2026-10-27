@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/item-definition.schema.json",
+  "title": "MyProject3 Item Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "inventoryCategory",
+    "family",
+    "representation",
+    "maxStack",
+    "persistencePolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+      "description": "Stable definition/event ID. Never use an M001-M119 mechanic ID or a display name here."
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inventoryCategory": {
+      "enum": [
+        "Resource",
+        "Tool",
+        "Weapon",
+        "BuildingPart",
+        "Consumable",
+        "Protection",
+        "Quest",
+        "Other"
+      ],
+      "description": "Must map to the existing EInventoryItemCategory enum; use family for more detailed classification."
+    },
+    "family": {
+      "enum": [
+        "Wood",
+        "Stone",
+        "Soil",
+        "Clay",
+        "PlantFiber",
+        "Food",
+        "Water",
+        "Tool",
+        "Shelter",
+        "Protection",
+        "TechPart",
+        "Story",
+        "CropSeed",
+        "AnimalProduct",
+        "Other"
+      ]
+    },
+    "representation": {
+      "enum": [
+        "PhysicalActor",
+        "StackablePickup",
+        "EquipmentOnly",
+        "StoryRecord"
+      ]
+    },
+    "unitMassKg": {
+      "type": "number",
+      "minimum": 0
+    },
+    "unitVolumeLiters": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maxStack": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9999
+    },
+    "requiresUniqueInstance": {
+      "type": "boolean",
+      "default": false
+    },
+    "durability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "enum": [
+            "None",
+            "Durability",
+            "Charges",
+            "FilterLife",
+            "Freshness"
+          ]
+        },
+        "maximum": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "defaultValue": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "type": "string"
+        }
+      }
+    },
+    "stateModel": {
+      "enum": [
+        "None",
+        "WoodProcessing",
+        "StoneFracture",
+        "Crop",
+        "Contamination",
+        "Freshness",
+        "FilterLife",
+        "ToolWear",
+        "AnimalProduct"
+      ]
+    },
+    "baseDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "meshVariantSetId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "acquisitionSourceIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "allowedActions": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "Pickup",
+          "Drop",
+          "Equip",
+          "Use",
+          "Process",
+          "Place",
+          "Consume",
+          "Inspect",
+          "Repair",
+          "Dismantle",
+          "Store",
+          "Craft"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "persistencePolicy": {
+      "enum": [
+        "Transient",
+        "SaveWhenInWorld",
+        "SaveWhenOwned",
+        "AlwaysSave",
+        "StoryPersistent"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "representation": {
+            "const": "PhysicalActor"
+          }
+        },
+        "required": [
+          "representation"
+        ]
+      },
+      "then": {
+        "properties": {
+          "maxStack": {
+            "const": 1
+          },
+          "requiresUniqueInstance": {
+            "const": true
+          }
+        }
+      }
+    }
+  ]
+}
