@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "BLD_LOG_BEAM_600",
+  "displayNameKey": "build.log_beam_600",
+  "materialDefinitionId": "MAT_WOOD",
+  "partType": "Beam",
+  "dimensionsCm": {
+    "x": 600,
+    "y": 25,
+    "z": 25
+  },
+  "localForwardAxis": "X",
+  "pivotPolicy": "BaseCenter",
+  "collisionPolicy": "Simple",
+  "placementProviderId": "LogFeatureProvider",
+  "placementProfileId": "log.end_to_end",
+  "supportClass": "HorizontalMember",
+  "maximumSupportedLoad": 100,
+  "maximumSpanCm": 600,
+  "anchors": [
+    {
+      "featureId": "End.A",
+      "role": "Bidirectional",
+      "localPositionCm": [
+        -300,
+        0,
+        0
+      ],
+      "localRotationDeg": [
+        0,
+        0,
+        180
+      ],
+      "compatibleFeatureTags": [
+        "LOG_END"
+      ],
+      "acceptedPartTypeTags": [
+        "LOG"
+      ],
+      "maxOccupancy": 1
+    },
+    {
+      "featureId": "End.B",
+      "role": "Bidirectional",
+      "localPositionCm": [
+        300,
+        0,
+        0
+      ],
+      "localRotationDeg": [
+        0,
+        0,
+        0
+      ],
+      "compatibleFeatureTags": [
+        "LOG_END"
+      ],
+      "acceptedPartTypeTags": [
+        "LOG"
+      ],
+      "maxOccupancy": 1
+    }
+  ],
+  "meshVariantSetId": "MSH_LOG_600_WHOLE",
+  "feedbackEventIds": [
+    "SFX_WOOD_SNAP"
+  ],
+  "persistencePolicy": "SaveWhenPlaced",
+  "notes": "Illustrative only. Do not use dimensions until actual mesh bounds, axis and pivot are measured."
+}
