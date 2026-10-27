@@ -11,6 +11,8 @@ This folder defines the intended game, production catalogue, and phased implemen
 - [Branch integration matrix](../Architecture/PHASE_00_BRANCH_INTEGRATION_MATRIX.md) — recommended implementation branch and safe integration order.
 - [M001–M119 baseline matrix](../Architecture/PHASE_00_M001_M119_BASELINE.csv) — per-mechanic baseline evidence, registry fields, and provisional phase mapping.
 - [Shared data contracts](../Architecture/PHASE_01_SHARED_DATA_CONTRACTS.md) — identity, ownership, operations, units, events, persistence and domain state.
+- [Shared contract source reconciliation](../Architecture/PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md) — candidate API inspection, ownership/operation gaps, and terrain-state integration risks.
+- [Phase 01 acceptance checklist](../Architecture/PHASE_01_ACCEPTANCE_CHECKLIST.md) — schema CI evidence and remaining source/engine gates.
 - [Gameplay definition schema](../Architecture/GAMEPLAY_DEFINITION_CATALOG_SCHEMA.json) — draft schema for item/material/tool/build-part/recipe/crop/region definitions.
 - [Feedback event schema](../Architecture/FEEDBACK_EVENT_CATALOG_SCHEMA.json) — separates committed gameplay events from SFX/VFX/animation/music cues.
 - [Wood processing transitions](../Architecture/WOOD_PROCESSING_TRANSITIONS.json) — explicit length and cross-section dimensions and transition prerequisites.
