@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/logical-asset-definition.schema.json",
+  "title": "MyProject3 Logical Asset Requirement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "assetKind",
+    "productionStatus",
+    "sourcePolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assetKind": {
+      "enum": [
+        "StaticMesh",
+        "SkeletalMesh",
+        "ActorBlueprint",
+        "Animation",
+        "VFX",
+        "SFX",
+        "MusicCue",
+        "Ambience",
+        "UIElement",
+        "MapPrefab",
+        "DataOnly"
+      ]
+    },
+    "productionStatus": {
+      "enum": [
+        "LogicalRequirement",
+        "PlaceholderRequired",
+        "Authored",
+        "Imported",
+        "Verified",
+        "Deferred"
+      ]
+    },
+    "sourcePolicy": {
+      "enum": [
+        "ProjectOwned",
+        "GeneratedPlaceholder",
+        "EnginePrimitive",
+        "ExistingProjectAsset"
+      ]
+    },
+    "dimensionsCm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "y": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "z": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "localForwardAxis": {
+      "enum": [
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    "pivotPolicy": {
+      "enum": [
+        "AuthoredOrigin",
+        "Center",
+        "BaseCenter",
+        "EndA",
+        "ExplicitOffset"
+      ]
+    },
+    "collisionPolicy": {
+      "enum": [
+        "Simple",
+        "ComplexAsSimple",
+        "QueryOnly",
+        "CustomAuthored",
+        "None"
+      ]
+    },
+    "interactionType": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "meshVariantSetId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "skeletalRigId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "animationEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "lodPolicy": {
+      "enum": [
+        "NotApplicable",
+        "SinglePlaceholder",
+        "StandardStatic",
+        "BudgetedSkeletal",
+        "Streamed"
+      ]
+    },
+    "persistencePolicy": {
+      "enum": [
+        "Transient",
+        "SaveWhenInWorld",
+        "SaveWhenPlaced",
+        "SaveWhenOwned",
+        "AlwaysSave",
+        "StoryPersistent"
+      ]
+    },
+    "sourceAssetPath": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
