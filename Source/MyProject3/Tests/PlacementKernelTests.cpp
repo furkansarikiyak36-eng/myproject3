@@ -433,6 +433,31 @@ bool FPlacementStationCrossTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// A flat/non-round piece must not be picked by the round-only tangent cross profile.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementStationCrossRejectsNonRoundTest, "MyProject3.Placement.RoundStationCrossRejectsNonRound", Flags)
+bool FPlacementStationCrossRejectsNonRoundTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    ALogBuildPiece* Target = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 400, 100), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Target"), Target) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+
+    Held->bUseCanonicalGeometryDimensions = true;
+    Held->CrossSectionProfile = ELogCrossSectionProfile::HalfRound;
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Target;
+    Intent.AimPoint = FVector(37.5f, 0.0f, 115.0f);
+    Intent.HeldAngleDeg = 90.0f;
+    Intent.AllowedProfiles = { TEXT("log.station_cross") };
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    TestFalse(TEXT("The round-only cross profile rejects a half-round source"), Solution.bValid);
+    return true;
+}
+
 // Step 10: every link the kernel makes lives in the structural graph, which the
 // save coordinator stores; a board on two beams comes back on both after a load.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementSaveTest, "MyProject3.Placement.LinksSurviveSaveAndLoad", Flags)
