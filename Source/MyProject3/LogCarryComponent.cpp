@@ -52,7 +52,7 @@ namespace
         const FTransform& SourceActorWorldTransform,
         FResolvedLogSupportPair& OutPair,
         int32 ExcludedSourceIndex = INDEX_NONE,
-        float MaxContactDistanceCm = 90.0f)
+        float MaxContactDistanceCm = 45.0f)
     {
         OutPair = FResolvedLogSupportPair();
         IStructuralPieceInterface* TargetFeatureOwner = Cast<IStructuralPieceInterface>(TargetActor);
@@ -177,6 +177,52 @@ namespace
         }
 
         return !OutPair.TargetAnchorId.IsNone() && !OutPair.SourceAnchorId.IsNone();
+    }
+
+    bool TryCommitSecondarySupportByGeometry(
+        UWorldStructuralGraphSubsystem* Graph,
+        ALogBuildPiece* Child,
+        AActor* SupportActor,
+        const FTransform& ChildWorldTransform,
+        int32 ExcludedSourceIndex = INDEX_NONE,
+        float MaxContactDistanceCm = 45.0f)
+    {
+        IStructuralPieceInterface* Support = Cast<IStructuralPieceInterface>(SupportActor);
+        if (!Graph || !IsValid(Child) || !IsValid(SupportActor) ||
+            !Support || !Support->IsStructurallyPlaced())
+        {
+            return false;
+        }
+
+        const FGuid ChildId = Child->GetStructuralNodeId();
+        const FGuid SupportId = Support->GetStructuralNodeId();
+        if (!ChildId.IsValid() || !SupportId.IsValid() || ChildId == SupportId)
+            return false;
+
+        FResolvedLogSupportPair Pair;
+        if (!FindCompatibleLogSupportPair(
+            SupportActor, Child, ChildWorldTransform, Pair,
+            ExcludedSourceIndex, MaxContactDistanceCm))
+        {
+            return false;
+        }
+
+        if (!Support->SetStructuralAnchorOccupied(Pair.TargetAnchorId, true))
+            return false;
+        if (!Child->SetStructuralAnchorOccupied(Pair.SourceAnchorId, true))
+        {
+            Support->SetStructuralAnchorOccupied(Pair.TargetAnchorId, false);
+            return false;
+        }
+
+        if (!Graph->TryAddSecondarySupport(
+            ChildId, SupportId, Pair.TargetAnchorId, Pair.SourceAnchorId))
+        {
+            Child->SetStructuralAnchorOccupied(Pair.SourceAnchorId, false);
+            Support->SetStructuralAnchorOccupied(Pair.TargetAnchorId, false);
+            return false;
+        }
+        return true;
     }
 }
 
@@ -1258,14 +1304,14 @@ bool ULogCarryComponent::PlaceHeldPiece()
     }
     PieceToPlace->SetHeldState(false);
     PieceToPlace->SetPlacedState(true);
+    // A free-rest placement is not a structural socket. Structural actors are
+    // handled by snap/material-anchor placement; never invent a "Rest_<GUID>" graph anchor.
     if (const IStructuralPieceInterface* Surface = Cast<IStructuralPieceInterface>(PlacementSurfaceActor.Get()))
     {
-        UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-        const FGuid NodeId = PieceToPlace->GetStructuralNodeId();
-        if (Graph && Surface->IsStructurallyPlaced() && Graph->TryConnect(Surface->GetStructuralNodeId(),
-            FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), NodeId, TEXT("Base")))
+        if (Surface->IsStructurallyPlaced())
         {
-            PieceToPlace->AttachToActor(PlacementSurfaceActor.Get(), FAttachmentTransformRules::KeepWorldTransform);
+            if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+                Graph->SetGroundSupported(PieceToPlace->GetStructuralNodeId(), false);
         }
     }
 
@@ -3526,16 +3572,12 @@ void ULogCarryComponent::SettleHingeSwing(FSwingingLog& Swing)
     const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    if (SupportPiece && Graph && SupportPiece->IsStructurallyPlaced() && Support != Parent)
-    {
-        const FGuid NodeId = Piece->GetStructuralNodeId();
-        Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-            FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
-    }
-    else
-    {
+    const bool bSupportCommitted =
+        SupportPiece && Graph && SupportPiece->IsStructurallyPlaced() && Support != Parent &&
+        TryCommitSecondarySupportByGeometry(
+            Graph, Piece, Support, Piece->GetActorTransform(), Swing.OwnSnapIndex);
+    if (!bSupportCommitted && !bGround)
         RegisterDroopingLog(Piece, Swing.OwnSnapIndex);
-    }
     PlacementStatus = TEXT("The joint held; the free end came to rest.");
 }
 
@@ -3646,14 +3688,20 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
                 // The end already rests on something: the new post is cut to meet it and props it up.
                 const float Keep = Bottom - PostBottom;
                 const bool bPostALow = PostShape.EndA().Z <= PostShape.EndB().Z;
+                const FTransform OriginalPostTransform = Post->GetActorTransform();
                 if (Keep > 25.0f && TrimLogToRange(Post, bPostALow ? -PostShape.HalfLength : PostShape.HalfLength - Keep,
                     bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength))
                 {
-                    if (Graph)
-                        Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
-                            FName(*FString::Printf(TEXT("Prop_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("PropEnd"));
-                    PlacementStatus = FString::Printf(TEXT("Post cut to %.0f cm to fit under the beam."), Keep);
-                    ++Raised;
+                    if (TryCommitSecondarySupportByGeometry(
+                        Graph, Beam, Post, Beam->GetActorTransform()))
+                    {
+                        PlacementStatus = FString::Printf(TEXT("Post cut to %.0f cm to fit under the beam."), Keep);
+                        ++Raised;
+                    }
+                    else
+                    {
+                        Post->SetActorTransform(OriginalPostTransform, false, nullptr, ETeleportType::TeleportPhysics);
+                    }
                 }
                 break;
             }
@@ -3666,17 +3714,18 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
             FQuat Turn(Hinge, Angle);
             if (Turn.RotateVector(Arm).Z < Arm.Z)
                 Turn = FQuat(Hinge, -Angle);
-            FTransform Moved = Beam->GetActorTransform();
+            const FTransform OriginalBeamTransform = Beam->GetActorTransform();
+            FTransform Moved = OriginalBeamTransform;
             Moved.SetRotation(Turn * Moved.GetRotation());
             Moved.SetLocation(Other + Turn.RotateVector(Moved.GetLocation() - Other));
             Beam->SetActorTransform(Moved, false, nullptr, ETeleportType::TeleportPhysics);
-            if (Graph)
+            if (TryCommitSecondarySupportByGeometry(
+                Graph, Beam, Post, Beam->GetActorTransform()))
             {
-                Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Raised_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("RaisedEnd"));
+                ++Raised;
+                break;
             }
-            ++Raised;
-            break;
+            Beam->SetActorTransform(OriginalBeamTransform, false, nullptr, ETeleportType::TeleportPhysics);
         }
         if (Raised > RaisedBefore)
             continue;
@@ -3688,14 +3737,22 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
         {
             const float Keep = BeamBottom - PostBottom;
             const bool bPostALow = PostShape.EndA().Z <= PostShape.EndB().Z;
-            if (Keep < PostShape.Length() - 1.0f)
+            const FTransform OriginalPostTransform = Post->GetActorTransform();
+            if (Keep >= PostShape.Length() - 1.0f ||
                 TrimLogToRange(Post, bPostALow ? -PostShape.HalfLength : PostShape.HalfLength - Keep,
-                    bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength);
-            if (Graph)
-                Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Prop_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("PropMid"));
-            PlacementStatus = FString::Printf(TEXT("Post fitted under the beam (%.0f cm)."), Keep);
-            ++Raised;
+                    bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength))
+            {
+                if (TryCommitSecondarySupportByGeometry(
+                    Graph, Beam, Post, Beam->GetActorTransform()))
+                {
+                    PlacementStatus = FString::Printf(TEXT("Post fitted under the beam (%.0f cm)."), Keep);
+                    ++Raised;
+                }
+                else
+                {
+                    Post->SetActorTransform(OriginalPostTransform, false, nullptr, ETeleportType::TeleportPhysics);
+                }
+            }
         }
     }
     return Raised;
@@ -3726,12 +3783,8 @@ bool ULogCarryComponent::LiftDroopingEndsOnto(AActor* NewSupport)
         Piece->SetActorLocationAndRotation(Pivot + Rotation.RotateVector(Piece->GetActorLocation() - Pivot),
             Rotation * Piece->GetActorQuat(), false, nullptr, ETeleportType::TeleportPhysics);
 
-        const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(NewSupport);
-        if (!Graph || !SupportPiece || !SupportPiece->IsStructurallyPlaced() ||
-            !Graph->TryAddSecondarySupport(Piece->GetStructuralNodeId(),
-                SupportPiece->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Rest_%s"), *Piece->GetStructuralNodeId().ToString())),
-                TEXT("FarEnd")))
+        if (!TryCommitSecondarySupportByGeometry(
+            Graph, Piece, NewSupport, Piece->GetActorTransform(), DroopingLogs[Index].OwnSnapIndex))
         {
             Piece->SetActorTransform(OriginalTransform, false, nullptr, ETeleportType::TeleportPhysics);
             continue;
@@ -3788,10 +3841,9 @@ void ULogCarryComponent::CommitHeldLifts(AActor* NewSupport)
         if (!Piece)
             continue;
 
-        const FGuid NodeId = Piece->GetStructuralNodeId();
         const bool bCommitted = Graph && SupportPiece && SupportPiece->IsStructurallyPlaced() &&
-            Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
+            TryCommitSecondarySupportByGeometry(
+                Graph, Piece, NewSupport, Piece->GetActorTransform());
         if (!bCommitted)
         {
             // The preview pose is not a committed support. Restore the original
@@ -3823,24 +3875,23 @@ bool ULogCarryComponent::CommitHeldLogAt(
     ALogBuildPiece* DependentLog = Cast<ALogBuildPiece>(AdditionalDependent);
     const FGuid NodeId = Piece->GetStructuralNodeId();
 
-    // Primary placement in this routine is a wood-to-wood physical snap. Mixed
-    // materials use MaterialConnectionSubsystem, which has a distinct rule gate.
-    if ((PrimarySupport && (!Graph || !PrimaryLog || !PrimaryLog->IsStructurallyPlaced())) ||
-        (SecondarySupport && (!Graph || !SecondaryLog || !SecondaryLog->IsStructurallyPlaced())) ||
-        (AdditionalDependent && (!Graph || !DependentLog || !DependentLog->IsStructurallyPlaced())) ||
-        (SecondarySupport && (!PrimarySupport || SecondarySupport == PrimarySupport)) ||
+    // This entry point is reserved for explicit grid/brace placement on a
+    // structural log. Never fabricate an anchor or downgrade a failed support.
+    if (!Graph || !PrimaryLog || !PrimaryLog->IsStructurallyPlaced() ||
+        (SecondarySupport && (!SecondaryLog || !SecondaryLog->IsStructurallyPlaced())) ||
+        (AdditionalDependent && (!DependentLog || !DependentLog->IsStructurallyPlaced())) ||
+        (SecondarySupport && SecondarySupport == PrimarySupport) ||
         (AdditionalDependent && AdditionalDependent == Piece) ||
         !NodeId.IsValid())
     {
-        PlacementStatus = TEXT("Placement rejected: a required support or its material adapter is unavailable.");
+        PlacementStatus = TEXT("Placement rejected: a required structural support is invalid or unavailable.");
         return false;
     }
 
     FResolvedLogSupportPair PrimaryPair;
     FResolvedLogSupportPair SecondaryPair;
     FResolvedLogSupportPair DependentPair;
-    if (PrimaryLog &&
-        !FindCompatibleLogSupportPair(PrimaryLog, Piece, WorldTransform, PrimaryPair))
+    if (!FindCompatibleLogSupportPair(PrimaryLog, Piece, WorldTransform, PrimaryPair))
     {
         PlacementStatus = TEXT("Placement rejected: no compatible, unoccupied primary anchor pair fits this pose.");
         return false;
@@ -3860,15 +3911,16 @@ bool ULogCarryComponent::CommitHeldLogAt(
         return false;
     }
     if (SecondaryLog && DependentLog &&
-        SecondaryPair.SourceSnapIndex == DependentPair.SourceSnapIndex)
+        (SecondaryPair.SourceSnapIndex == DependentPair.SourceSnapIndex ||
+         SecondaryPair.TargetAnchorId == DependentPair.TargetAnchorId))
     {
-        PlacementStatus = TEXT("Placement rejected: one source anchor cannot satisfy two distinct structural relationships.");
+        PlacementStatus = TEXT("Placement rejected: one feature cannot satisfy two distinct structural relationships.");
         return false;
     }
 
     FPlacementTransactionJournal Transaction(World);
     if (!Transaction.RecordActor(Piece) ||
-        (IsValid(PrimarySupport) && !Transaction.RecordActor(PrimarySupport)) ||
+        !Transaction.RecordActor(PrimaryLog) ||
         (IsValid(SecondarySupport) && !Transaction.RecordActor(SecondarySupport)) ||
         (IsValid(AdditionalDependent) && !Transaction.RecordActor(AdditionalDependent)) ||
         !Transaction.CaptureStructuralGraph())
@@ -3882,6 +3934,17 @@ bool ULogCarryComponent::CommitHeldLogAt(
     const bool bWasStartsPlaced = Piece->bStartsPlaced;
     UWorldObjectIdentityComponent* Identity = Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
     Piece->SetActorTransform(WorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+
+    // The physical anchor and canonical primary edge are the first fallible
+    // commit. This mirrors PlaceHeldPiece and avoids marking a connected beam
+    // as a grounded root before its parent edge exists.
+    if (!PrimaryLog->TryReserveSnapPoints(
+        PrimaryPair.TargetSnapIndex, Piece, PrimaryPair.SourceSnapIndex))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("Placement rejected: the primary anchor reservation failed.");
+        return false;
+    }
 
     if (Identity)
     {
@@ -3922,14 +3985,6 @@ bool ULogCarryComponent::CommitHeldLogAt(
     Piece->SetHeldState(false);
     Piece->SetPlacedState(true);
 
-    if (PrimaryLog &&
-        !PrimaryLog->TryReserveSnapPoints(PrimaryPair.TargetSnapIndex, Piece, PrimaryPair.SourceSnapIndex))
-    {
-        Transaction.Rollback();
-        PlacementStatus = TEXT("Placement rejected: the primary anchor reservation failed.");
-        return false;
-    }
-
     if (SecondaryLog)
     {
         TWeakObjectPtr<ALogBuildPiece> WeakSupport = SecondaryLog;
@@ -3940,17 +3995,18 @@ bool ULogCarryComponent::CommitHeldLogAt(
         {
             ALogBuildPiece* StrongSupport = WeakSupport.Get();
             ALogBuildPiece* StrongPiece = WeakPiece.Get();
-            const bool bA = StrongSupport && StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false);
-            const bool bB = StrongPiece && StrongPiece->SetStructuralAnchorOccupied(OwnAnchorId, false);
-            return bA && bB;
+            return StrongSupport && StrongPiece &&
+                StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false) &&
+                StrongPiece->SetStructuralAnchorOccupied(OwnAnchorId, false);
         });
+
         if (!SecondaryLog->SetStructuralAnchorOccupied(SupportAnchorId, true) ||
             !Piece->SetStructuralAnchorOccupied(OwnAnchorId, true) ||
             !Graph->TryAddSecondarySupport(NodeId, SecondaryLog->GetStructuralNodeId(),
                 SupportAnchorId, OwnAnchorId))
         {
             Transaction.Rollback();
-            PlacementStatus = TEXT("Placement rejected: the second support failed; all changes were rolled back.");
+            PlacementStatus = TEXT("Placement rejected: the second support failed; every placement change was rolled back.");
             return false;
         }
     }
@@ -3965,9 +4021,9 @@ bool ULogCarryComponent::CommitHeldLogAt(
         {
             ALogBuildPiece* StrongSupport = WeakSupport.Get();
             ALogBuildPiece* StrongDependent = WeakDependent.Get();
-            const bool bA = StrongSupport && StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false);
-            const bool bB = StrongDependent && StrongDependent->SetStructuralAnchorOccupied(DependentAnchorId, false);
-            return bA && bB;
+            return StrongSupport && StrongDependent &&
+                StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false) &&
+                StrongDependent->SetStructuralAnchorOccupied(DependentAnchorId, false);
         });
         if (!Piece->SetStructuralAnchorOccupied(SupportAnchorId, true) ||
             !DependentLog->SetStructuralAnchorOccupied(DependentAnchorId, true) ||
