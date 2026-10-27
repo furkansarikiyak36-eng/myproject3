@@ -171,3 +171,17 @@ The operation event dispatcher is transient; do not confuse it with the durable 
 - [ ] Candidate branch reconciled with current main documentation and memory.
 - [ ] Unreal 5.8 build/UHT evidence recorded.
 - [ ] Editor/PIE operation and save/load evidence recorded.
+
+
+## 11. Machine-readable contract artifacts
+
+- GAMEPLAY_DEFINITION_CATALOG_SCHEMA.json defines the planned catalog envelope for items, materials, tools, build parts, recipes, crops and regions.
+- FEEDBACK_EVENT_CATALOG_SCHEMA.json separates committed gameplay facts (EVT_...) from their SFX/VFX/animation/music cues.
+- WOOD_PROCESSING_TRANSITIONS.json records length fraction separately from cross-section profile and defines the intended transformation prerequisites and output requirements.
+- PHASE_00_M001_M119_BASELINE.csv adds a proposed implementation-phase mapping and current-main evidence columns without rewriting the canonical registry fields.
+
+The JSON files were checked for syntactic parseability, and the baseline CSV was checked for 119 rows and 119 unique IDs. A full JSON Schema validator is not wired into this repository workflow yet, so schema conformance is not claimed. The schemas are contracts for later validation tooling, not evidence that the runtime loads the catalogs today.
+
+## 12. Canonical phase field discrepancy
+
+In the latest candidate registry JSON all 119 mechanics currently have phase=1. The separate Phase 01–14 architecture roadmap assigns implementation domains to later phases. Until a reviewed registry migration is agreed, do not use the JSON phase field as the implementation-order field. Use ProposedImplementationPhase in PHASE_00_M001_M119_BASELINE.csv as a provisional mapping and keep the original field/status untouched for traceability.
