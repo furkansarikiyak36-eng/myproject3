@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/myproject3/feedback-event-catalog.schema.json",
+  "title": "MyProject3 Gameplay and Feedback Event Catalog",
+  "description": "Separates committed gameplay facts from audio, VFX, animation and music cues. Planning schema only; no runtime loader is claimed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "events"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "kind",
+        "status",
+        "ownerSystem",
+        "descriptionKey"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "pattern": "^(EVT|SFX|VFX|ANIM|MUS)_[A-Z0-9_]+$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "gameplay_event",
+            "sfx",
+            "vfx",
+            "animation",
+            "music"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PROPOSED",
+            "PLANNED",
+            "IMPLEMENTED_UNVERIFIED",
+            "VERIFIED",
+            "DEFERRED"
+          ]
+        },
+        "ownerSystem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "descriptionKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "triggeringGameplayEventIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^EVT_[A-Z0-9_]+$"
+          }
+        },
+        "persistenceSemantics": {
+          "type": "string",
+          "enum": [
+            "transient_committed_notification",
+            "durable_state_is_saved_elsewhere",
+            "not_applicable"
+          ]
+        },
+        "importantWarning": {
+          "type": "boolean"
+        },
+        "spatialized": {
+          "type": "boolean"
+        },
+        "mixBus": {
+          "type": "string",
+          "enum": [
+            "Master",
+            "WorldAmbience",
+            "Weather",
+            "Foley",
+            "ToolsAndConstruction",
+            "Threat",
+            "UI",
+            "Music",
+            "VoiceOrRecordings",
+            "NotApplicable"
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "maxConcurrency": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cooldownSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "durationSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "loopPolicy": {
+          "type": "string",
+          "enum": [
+            "one_shot",
+            "loop_until_state_changes",
+            "adaptive_layer",
+            "not_applicable"
+          ]
+        },
+        "attachmentPolicy": {
+          "type": "string",
+          "enum": [
+            "world_position",
+            "actor_attached",
+            "screen_space",
+            "not_applicable"
+          ]
+        },
+        "doesNotReplaceGameplayState": {
+          "type": "boolean",
+          "const": true
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "gameplay_event"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "persistenceSemantics",
+              "triggeringGameplayEventIds"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "sfx"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "mixBus",
+              "spatialized",
+              "priority",
+              "maxConcurrency",
+              "loopPolicy",
+              "doesNotReplaceGameplayState"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "vfx"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "attachmentPolicy",
+              "doesNotReplaceGameplayState"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "music"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "mixBus",
+              "loopPolicy",
+              "doesNotReplaceGameplayState"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
