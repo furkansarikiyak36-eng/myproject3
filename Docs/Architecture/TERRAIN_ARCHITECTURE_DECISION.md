@@ -1,7 +1,19 @@
 # Arazi Mimarisi Karar Kaydı (7D-V01 / 7D-V02)
 
 Tarih: 26 Ekim 2026
-Durum: **Öneri — ürün sahibinin onayını bekliyor.** Prototip ve ölçümler bu karara göre ilerliyor; onay gelmezse yalnız `UVoxelTerrainChunkComponent` etkilenir.
+Durum: **İlk oynanabilir dilim için karar verildi; üretim kabulü açık.** Hibrit Landscape + sınırlı voxel cepleri ve UE motorunun yerleşik geometri araçları seçildi. Bu karar tüm araziyi voxel yapma veya oyunda kazının tamamlandığı iddiası değildir.
+
+## Karar (2026-10-28)
+
+- **7D-V01 — Hibrit arazi:** Dış dünyanın makro yüzeyi UE Landscape/heightfield olarak kalır. Smooth voxel yalnız belirlenmiş kazı cepleri, kısa tüneller, küçük yeraltı odaları, madenler ve hendek/set bölgelerinde kullanılır.
+- **7D-V02 — Projeye ait ince voxel katmanı:** `FMarchingCubes` + `UProceduralMeshComponent` ile başlanır; ilk dilim için üçüncü taraf voxel eklentisi bağımlılığı eklenmez.
+- **Kazı politikasının başlangıç profili:** Yumuşak toprak, sert toprak ve kaya ayrı alet gücü eşikleri kullanır. Kod varsayılanları sırasıyla 1 / 3 / 5'tir; bunlar tasarım verisi olarak ayarlanabilir, nihai denge değerleri sayılmaz.
+- **Çalışma sınırı:** Bir kazı küresi hem yapılandırılmış düzenlenebilir hacmin hem de mevcut chunk hacminin içinde kalmalı; kazı yarıçapı sınırlı olmalı; aynı işlem kimliği ikinci kez yoğunluğu değiştirmemelidir.
+- **Destek güvenliği:** Yapı grafiğinde zemine bağlı köklere yakın kazı ihtiyatlı biçimde reddedilir. Bu konumsal güvenlik marjı, tam zemin gerilmesi / kayan zemin simülasyonunun yerine geçmez.
+- **Kalıcılık:** SaveGame şeması v14 her etkin voxel chunk için kimlik, yoğunluk örnekleri, revizyon ve kazı makbuzlarını yazar; yükleme kayıtlı yoğunluğu doğrulayıp mesh/çarpışmayı yeniden oluşturur.
+- **Üretim kapıları:** Chunk sınırları/dikişsiz komşu yüzey, asenkron mesh üretimi, Landscape görünürlük deliği ve geçiş dikişi, navmesh yenilemesi, kazıdan kaynak öğesi üretimine atomik bağlantı ve gerçek UE/PIE testleri hâlâ açık. Bunlar tamamlanmadan performans veya oyun içi bütünlük kabul edilmiş sayılmaz.
+
+Kararın gerekçesi: kayıtlı ölçümlerde 32³ / 50 cm chunk için kazı + mesh + çarpışma 38–47 ms sürmüştür; bu tek karelik 16,7 ms bütçesinden uzundur. Bu nedenle sınırlı cepler ve asenkron üretim, tüm dünyayı eşzamanlı voxel olarak yeniden kurmaktan daha güvenli ilk adımdır.
 
 ## Soru
 
