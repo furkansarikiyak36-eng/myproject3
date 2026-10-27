@@ -400,6 +400,7 @@ private:
     float HeldYawOffset = 0.0f;
     ELogCutAction SelectedCutAction = ELogCutAction::SplitHalf;
     FTransform CurrentSnapActorTransform = FTransform::Identity;
+    FTransform CurrentSnapSourceLocalFeatureTransform = FTransform::Identity;
     FTransform CurrentSnapTargetWorldTransform = FTransform::Identity;
     TWeakObjectPtr<ALogBuildPiece> DraggedPiece;
     bool bIsDraggingLog = false;
@@ -411,6 +412,7 @@ private:
     void ClearSnapCandidate();
     void SetSnapCandidate(ALogBuildPiece* Target, int32 SourceIndex,
         int32 TargetIndex, const FTransform& DesiredActorTransform,
+        const FTransform& SourceLocalFeatureTransform,
         const FTransform& TargetWorldFeatureTransform);
     FRotator MakePlacementRotation(float ViewYaw) const;
     void ProcessAimedPieceInput();

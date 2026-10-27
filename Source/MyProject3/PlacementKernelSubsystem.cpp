@@ -314,10 +314,30 @@ bool UPlacementKernelSubsystem::SolveAnchorPair(
         return false;
     }
 
-    const FTransform DesiredActor = SourceLocalAnchor.Inverse() * TargetWorldAnchor;
+    FTransform DesiredActor = SourceLocalAnchor.Inverse() * TargetWorldAnchor;
+    const FVector ActorScale = CurrentActorWorldTransform.GetScale3D();
+    if (ActorScale.ContainsNaN() || ActorScale.IsNearlyZero())
+    {
+        OutFailureReason = TEXT("The source actor scale is invalid.");
+        return false;
+    }
+    DesiredActor.SetScale3D(ActorScale);
+    const FVector ScaledSourceLocation = SourceLocalAnchor.GetLocation() * ActorScale;
+    DesiredActor.SetLocation(
+        TargetWorldAnchor.GetLocation() - DesiredActor.GetRotation().RotateVector(ScaledSourceLocation));
     if (!IsUsableTransform(DesiredActor))
     {
         OutFailureReason = TEXT("Paired-anchor solve produced an invalid transform.");
+        return false;
+    }
+
+    const float PositionResidual = FVector::Distance(
+        (SourceLocalAnchor * DesiredActor).GetLocation(), TargetWorldAnchor.GetLocation());
+    const float AllowedPositionError = FMath::Max(Profile.TranslationToleranceCm, 0.01f);
+    if (!FMath::IsFinite(PositionResidual) || PositionResidual > AllowedPositionError)
+    {
+        OutFailureReason = FString::Printf(
+            TEXT("Paired-anchor residual %.2f cm exceeds %.2f cm."), PositionResidual, AllowedPositionError);
         return false;
     }
 
@@ -359,11 +379,11 @@ bool UPlacementKernelSubsystem::SolveTwoAnchorAlignment(
         return false;
     }
 
-    const FVector SourceVectorLocal =
-        SourceLocalAnchorB.GetLocation() - SourceLocalAnchorA.GetLocation();
+    const FVector SourceWorldA = (SourceLocalAnchorA * CurrentActorWorldTransform).GetLocation();
+    const FVector SourceWorldB = (SourceLocalAnchorB * CurrentActorWorldTransform).GetLocation();
     const FVector TargetVector =
         TargetWorldAnchorB.GetLocation() - TargetWorldAnchorA.GetLocation();
-    const float SourceSpan = SourceVectorLocal.Size() * CurrentActorWorldTransform.GetScale3D().GetAbs().GetMax();
+    const float SourceSpan = FVector::Distance(SourceWorldA, SourceWorldB);
     const float TargetSpan = TargetVector.Size();
     const float AllowedMismatch = Profile.MaxLengthMismatchCm > 0.0f
         ? Profile.MaxLengthMismatchCm : Profile.TranslationToleranceCm;
@@ -379,13 +399,23 @@ bool UPlacementKernelSubsystem::SolveTwoAnchorAlignment(
     // Anchor A fixes the full rigid transform (including roll). Anchor B is a
     // hard constraint, not another opportunity to silently bend/scale the beam.
     FTransform DesiredActor = SourceLocalAnchorA.Inverse() * TargetWorldAnchorA;
+    const FVector ActorScale = CurrentActorWorldTransform.GetScale3D();
+    if (ActorScale.ContainsNaN() || ActorScale.IsNearlyZero())
+    {
+        OutFailureReason = TEXT("The source actor scale is invalid.");
+        return false;
+    }
+    DesiredActor.SetScale3D(ActorScale);
+    const FVector ScaledSourceLocation = SourceLocalAnchorA.GetLocation() * ActorScale;
+    DesiredActor.SetLocation(
+        TargetWorldAnchorA.GetLocation() - DesiredActor.GetRotation().RotateVector(ScaledSourceLocation));
     const FVector SolvedAnchorB = (SourceLocalAnchorB * DesiredActor).GetLocation();
     const float Residual = FVector::Distance(SolvedAnchorB, TargetWorldAnchorB.GetLocation());
     const FVector SolvedAxis = SolvedAnchorB - TargetWorldAnchorA.GetLocation();
     const float AxisAngle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
         FVector::DotProduct(SolvedAxis.GetSafeNormal(), TargetVector.GetSafeNormal()), -1.0f, 1.0f)));
     if (!IsUsableTransform(DesiredActor) || Residual > AllowedMismatch ||
-        !FMath::IsFinite(AxisAngle))
+        !FMath::IsFinite(AxisAngle) || AxisAngle > Profile.AngularToleranceDeg)
     {
         OutFailureReason = FString::Printf(
             TEXT("Second anchor residual %.2f cm exceeds %.2f cm; the rigid placement does not fit both supports."),

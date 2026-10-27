@@ -705,6 +705,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
     int32 BestTargetIndex = INDEX_NONE;
     float BestScore = TNumericLimits<float>::Max();
     FTransform BestActorTransform = HeldPiece->GetActorTransform();
+    FTransform BestSourceFeatureTransform = FTransform::Identity;
     FTransform BestTargetFeatureTransform = FTransform::Identity;
 
     const TArray<FLogSnapPoint>& SourcePoints = HeldPiece->GetSnapPoints();
@@ -809,6 +810,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
                 BestSourceIndex = SourceIndex;
                 BestTargetIndex = TargetIndex;
                 BestActorTransform = Solution.ActorWorldTransform;
+                BestSourceFeatureTransform = SourceLocalFeatureTransform;
                 BestTargetFeatureTransform = DesiredAnchorWorld;
             }
         }
@@ -823,6 +825,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
             BestSourceIndex,
             BestTargetIndex,
             BestActorTransform,
+            BestSourceFeatureTransform,
             BestTargetFeatureTransform);
     }
     else
@@ -836,6 +839,7 @@ void ULogCarryComponent::SetSnapCandidate(
     int32 SourceIndex,
     int32 TargetIndex,
     const FTransform& DesiredActorTransform,
+    const FTransform& SourceLocalFeatureTransform,
     const FTransform& TargetWorldFeatureTransform)
 {
     if (!IsValid(HeldPiece) || !IsValid(Target))
@@ -853,6 +857,7 @@ void ULogCarryComponent::SetSnapCandidate(
     CurrentSourceSnapPointIndex = SourceIndex;
     CurrentTargetSnapPointIndex = TargetIndex;
     CurrentSnapActorTransform = DesiredActorTransform;
+    CurrentSnapSourceLocalFeatureTransform = SourceLocalFeatureTransform;
     CurrentSnapTargetWorldTransform = TargetWorldFeatureTransform;
     // Interlock the joint: the joined end goes into the target log (hiding its
     // end grain) and a log resting across another sinks into it.
@@ -914,6 +919,7 @@ void ULogCarryComponent::ClearSnapCandidate()
     CurrentSourceSnapPointIndex = INDEX_NONE;
     CurrentTargetSnapPointIndex = INDEX_NONE;
     CurrentSnapActorTransform = FTransform::Identity;
+    CurrentSnapSourceLocalFeatureTransform = FTransform::Identity;
     CurrentSnapTargetWorldTransform = FTransform::Identity;
 
     if (bWasSnapping)
@@ -958,8 +964,19 @@ bool ULogCarryComponent::PlaceHeldPiece()
             return false;
         }
 
+        if (!PieceToPlace->GetSnapPoints().IsValidIndex(CurrentSourceSnapPointIndex) ||
+            !IsValid(CurrentSnapTarget) ||
+            !CurrentSnapTarget->GetSnapPoints().IsValidIndex(CurrentTargetSnapPointIndex))
+        {
+            ClearSnapCandidate();
+            PlacementStatus = TEXT("The preview became stale; aim again to place.");
+            return false;
+        }
+
         FPlacementTransactionJournal Transaction(GetWorld());
-        if (!Transaction.RecordActor(PieceToPlace) || !Transaction.CaptureStructuralGraph())
+        if (!Transaction.RecordActor(PieceToPlace) ||
+            !Transaction.RecordActor(CurrentSnapTarget) ||
+            !Transaction.CaptureStructuralGraph())
         {
             PlacementStatus = TEXT("The placement transaction could not capture the current state.");
             return false;
@@ -973,12 +990,20 @@ bool ULogCarryComponent::PlaceHeldPiece()
 
         PieceToPlace->SetActorTransform(CurrentSnapActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
         {
+            const FLogSnapPoint& PreviewSourcePoint = PieceToPlace->GetSnapPoints()[CurrentSourceSnapPointIndex];
+            const FLogSnapPoint& PreviewTargetPoint = CurrentSnapTarget->GetSnapPoints()[CurrentTargetSnapPointIndex];
+            const TCHAR* PreviewProfile =
+                (PreviewSourcePoint.bRuntimeRadialFrame && PreviewTargetPoint.bRuntimeRadialFrame)
+                    ? (PlacementMode == ELogPlacementMode::Diagonal
+                        ? TEXT("log.surface_cross_angled") : TEXT("log.surface_cross_90"))
+                    : (PreviewTargetPoint.bRuntimeRadialFrame
+                        ? TEXT("log.end_to_surface_t")
+                        : (PreviewSourcePoint.bRuntimeRadialFrame
+                            ? TEXT("log.surface_to_end") : TEXT("log.end_to_end")));
             TArray<AActor*> IgnoredActors;
             IgnoredActors.Add(CurrentSnapTarget);
             FString CollisionFailure;
-            if (PlacementKernel->ProfileRequiresCollisionValidation(
-                    CurrentSnapTarget->GetSnapPoints()[CurrentTargetSnapPointIndex].bRuntimeRadialFrame
-                        ? TEXT("log.end_to_surface_t") : TEXT("log.end_to_end")) &&
+            if (PlacementKernel->ProfileRequiresCollisionValidation(PreviewProfile) &&
                 !PlacementKernel->ValidateCandidatePose(
                     PieceToPlace, CurrentSnapActorTransform, IgnoredActors, CollisionFailure))
             {
