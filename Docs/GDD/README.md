@@ -7,6 +7,15 @@ This folder defines the intended game, production catalogue, and phased implemen
 - [Master GDD](GDD_MASTER.md) — premise, pillars, gameplay loop, scope boundaries, and target vertical slice.
 - [Inventory catalogue](INVENTORY_CATALOG.md) — items, materials, processing, carrying rules, and required item data.
 - [World, VFX, animation, and audio catalogue](ASSET_VFX_AUDIO_CATALOG.md) — logical asset families and event catalogues. It does not recommend or bundle marketplace models, textures, or sound packs.
+- [Phase 00 baseline audit](../Architecture/PHASE_00_BASELINE_AUDIT.md) — main-branch evidence, registry discrepancies, and what is not yet verified.
+- [Branch integration matrix](../Architecture/PHASE_00_BRANCH_INTEGRATION_MATRIX.md) — recommended implementation branch and safe integration order.
+- [M001–M119 baseline matrix](../Architecture/PHASE_00_M001_M119_BASELINE.csv) — per-mechanic baseline evidence, registry fields, and provisional phase mapping.
+- [Shared data contracts](../Architecture/PHASE_01_SHARED_DATA_CONTRACTS.md) — identity, ownership, operations, units, events, persistence and domain state.
+- [Gameplay definition schema](../Architecture/GAMEPLAY_DEFINITION_CATALOG_SCHEMA.json) — draft schema for item/material/tool/build-part/recipe/crop/region definitions.
+- [Feedback event schema](../Architecture/FEEDBACK_EVENT_CATALOG_SCHEMA.json) — separates committed gameplay events from SFX/VFX/animation/music cues.
+- [Wood processing transitions](../Architecture/WOOD_PROCESSING_TRANSITIONS.json) — explicit length and cross-section dimensions and transition prerequisites.
+- [Canonical 119-mechanic registry](../Architecture/MECHANIC_REGISTRY_119.md) — stable M001–M119 scope; inclusion does not mean a mechanic is complete.
+
 - [Phased implementation plan](../Production/PHASED_IMPLEMENTATION_PLAN.md) — build order, dependencies, and gates.
 - [System dependencies and acceptance](../Production/SYSTEM_DEPENDENCIES_AND_ACCEPTANCE.md) — integration constraints and definition of done.
 - [Task template](../Production/TASK_TEMPLATE.md) — consistent format for implementation work.
