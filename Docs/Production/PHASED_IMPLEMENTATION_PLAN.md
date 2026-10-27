@@ -1,192 +1,184 @@
 # MyProject3 — Phase 00–14 Implementation Roadmap
 
-**Working document branch:** `planning/gdd-inventory-production-roadmap`  
-**Current default-branch snapshot:** `main` at `65faad8602d4e14e894dc2cf4e3d507ca39cbb1d`  
+**Working document branch:** planning/gdd-inventory-production-roadmap  
+**Repository:** furkansarikiyak36-eng/myproject3  
 **Engine target:** Unreal Engine 5.8  
-**Status:** Planning and source reconciliation; no new UE build/runtime claim.
+**Scope:** One audit phase (Phase 00), followed by the existing Phase 01–14 implementation stack  
+**Status:** Planning / source audit only. No Unreal build or runtime validation is claimed by this document.
 
-This roadmap is deliberately aligned with the repository's existing `Docs/Architecture/ARCHITECTURE_14_PHASE_ROADMAP.md` and stacked phase branches. Phase 00 is a new preflight. It does **not** renumber or replace the existing Phase 1–14 mechanic work. The canonical M001–M119 IDs remain unchanged.
+## Phase numbering decision
 
-## Non-negotiable rules
+The repository already has a stacked implementation sequence: Phase 01 foundation, Phase 02 core contracts, Phase 03 wood, Phase 04 stone, Phase 05 sticks, Phase 06 inventory/crafting, and a 14-phase architecture roadmap through Phase 14 integration/persistence/demo. An older foundation document says “16 development phases.” That mismatch is recorded as an unresolved documentation discrepancy in the Phase 00 audit; it is not a reason to renumber M001–M119 or invent two phases.
 
-- The current code and content on the chosen integration base are the truth about implementation; GDD/catalogue files define intended design.
-- Reuse existing phase branches and core contracts. Do not recreate item ownership, identity, world clock, event dispatcher, save coordinator, structural graph or placement kernel just because their code is not on `main`.
-- `feature/simple-intent` is a large audit candidate, not an automatically approved merge base. It has 696 commits ahead / 3 behind `main` and many changed paths; review before integration.
-- A branch-level build record is not evidence that this planning branch or a future merged candidate compiled.
-- No feature is complete because a class, schema, sample, map or registry row exists.
-- Audio, VFX, animation and UI feedback are cross-cutting and should follow accepted gameplay events; final polish belongs after state rules stabilize.
+This plan therefore adds **Phase 00** as a baseline/audit-only step and retains the existing **Phase 01–14** implementation numbering.
 
-## Phase 00 — Repository baseline and branch reconciliation
+## Implementation baseline decision
 
-**Goal:** Know exactly which code/content exists, where it exists, and what can safely be reused.
+The current default main branch is the documented legacy log prototype. Repository branch comparisons show that feature/simple-intent is a descendant of both phase-06-inventory-crafting and mechanic-detailing-pass-h-integrated-world-systems. It is the preferred candidate implementation line for review, not a verified product. It is 3 commits behind current main; those newer main commits primarily contain project memory/docs/screenshots, and those changes must be reconciled during integration.
 
-- Record `main` HEAD and compare the relevant branch histories.
-- Preserve the canonical M001–M119 registry; do not renumber or infer completion from presence in the registry.
-- Map each mechanic to candidate code symbols, caller paths, data/config, known gaps, and verification evidence.
-- Review the current main-only commits against the broad feature branch before choosing a merge base.
-- Identify conflicting systems, especially competing snap kernels, duplicate ownership authorities, parallel event/persistence systems, and similarly named but distinct fields.
+Do not merge Phase 01–06 and Phase H individually into feature/simple-intent; they are already in its ancestry. Do not assume the candidate branch builds or its save/load works simply because source files exist.
 
-**Current deliverables:** repository baseline, branch integration matrix, registry and traceability worksheet.  
-**Still required:** exact per-mechanic source/caller review, final source base decision, and target UE integration verification.  
-**Exit gate:** every M-ID has an evidence-backed status and next action; the source base is chosen intentionally. This is not a gameplay implementation phase.
+## Phase 00 — Baseline audit and scope reconciliation
 
-## Phase 01 — Shared data contracts and source reconciliation
+**Goal:** Establish what exists on main, what exists only on candidate branches, and what has evidence.
 
-**Goal:** Establish one shared vocabulary for IDs, item/material/recipe definitions, physical state, ownership, operations, anchors, feedback, and persistence.
+- Inspect main README, core log source entry points, build scripts, config and tracked content.
+- Compare phase-01-foundation-v2, phase-02-core-contracts through phase-06-inventory-crafting, mechanic-detailing-pass-h, and feature/simple-intent.
+- Preserve the canonical M001–M119 IDs. Create a separate baseline matrix that does not overwrite the registry's own verification fields.
+- Record the registry discrepancies: phase-01-v2 uses unreviewed/not_run; the latest feature/simple-intent version uses implemented_unverified, static_review=fail, UnrealBuild=pass and runtime_test=not_run for all 119; the JSON phase field is 1 for all entries.
+- Separate branch history, source presence, static review, automated tests, Unreal build, PIE behavior and save/load evidence.
+- Keep this GDD branch documentation-only.
 
-- Reuse the existing Phase 1 foundation documents and the candidate Phase 2 C++ contract layer; do not create duplicate runtime owners on the documentation branch.
-- Keep mechanic IDs, definition IDs, instance GUIDs, operation IDs, recipe/process IDs, anchor feature IDs, and feedback cue IDs separate.
-- Specify item, material, recipe, process-transition, build-part, crop, region, weather and feedback-event schemas.
-- Keep inventory stacks distinct from unique physical world items and enforce exclusive ownership transitions.
-- Separate a log's length/geometry/processing state from its held/placed/structural state. A half-length log is not the same as a split half-round.
-- Define operation success/failure, rollback, idempotent retry, event timing and save migration rules.
-- Validate schemas and representative samples; reconcile schema fields with existing C++/config before promoting them to runtime DataAssets/DataTables/JSON.
+**Deliverables:** Phase 00 audit, branch integration matrix, 119-row traceability baseline, unresolved-discrepancy list.  
+**Gate:** there is one recommended implementation line; no mechanic is marked verified without item-specific evidence; registry history/status inconsistencies are visible rather than silently normalized.
 
-**Current deliverables:** shared-contract reconciliation, contract register, design-time schemas and sample definitions.  
-**Still required:** automated JSON Schema validation, sample/reference validation, per-M traceability closeout, and an explicit runtime data-storage decision.  
-**Exit gate:** no duplicated authority, all active IDs/references resolve, invalid operations have deterministic no-partial-mutation behavior, and migrations are defined before persistent fields change.
+## Phase 01 — Shared foundation and canonical scope
 
-## Phase 02 — Core world contracts (M001–M008)
+**Goal:** Lock stable rules and scope without replacing the existing gameplay owner.
 
-**Reuse candidate files:** `GameplayCoreTypes.*`, `WorldObjectIdentityComponent.*`, `WorldObjectIdentitySubsystem.*`, `WorldCommittedEventSubsystem.*`, plus candidate operation-ledger, clock and save contracts where present.
+- Maintain the canonical M001–M119 list and schema.
+- Define domain boundaries: world/object identity, interactions, resource/material, processing/crafting, construction, terrain, traversal, survival, farming/animals, environment, threat, exploration, persistence.
+- Define stable definition IDs versus instance IDs, domain-state ownership, units, operation semantics, event semantics, asset/event naming, and compatibility constraints.
+- Preserve the existing ALogBuildPiece and ULogCarryComponent contract until all callers and editor/Blueprint dependencies are reviewed.
+- Record which rules are design-only versus code evidence.
 
-- Review stable operation result/request types, identity registration, revisions, committed event semantics, deterministic world time and persistence boundary.
-- Confirm identity/lifecycle does not replace log, crop, animal, inventory or terrain domain state.
-- Treat the operation ledger as retry/receipt support, not proof that arbitrary multi-system changes are atomic.
-- Treat the current committed-event subsystem as transient notification unless a durable event log is separately designed.
-- Add no duplicate global dispatcher or save coordinator.
+**Existing inputs:** phase-01-foundation-v2 and Phase 01 architecture records.  
+**Deliverables:** scope registry, source inventory, call-chain map, state-transition map, shared data contract, risks and acceptance rules.  
+**Gate:** no duplicate authoritative owner is introduced; the ID list remains stable; all unresolved schema/phase discrepancies are explicit.
 
-**Exit gate:** source/caller review passes, idempotency and failure paths are explicit, and engine validation is separately recorded.
+## Phase 02 — Core identity, operation and event contracts
 
-## Phase 03 — Log and wood processing (M009–M028)
+**Goal:** Provide shared request/result/identity/event contracts while keeping domain mutations in their existing owners.
 
-- Review the existing `ALogBuildPiece` / `ULogCarryComponent` lifecycle and the newer placement-kernel/provider line before changing either.
-- Reconcile cut/split/quarter/hewn/groove/trough/plank/notch/spike actions with exact valid parent states and output variants.
-- Keep full-log length, split-half-round, quarter piece, plank and pole geometry distinct.
-- Ensure custom anchors survive mesh changes; semantic anchor IDs are stable; child/parent links and reservations commit only after attachment succeeds.
-- Resolve known snap issues: preview/commit parity, deck placement, diagonal intersections, mitre cut states, manually authored NotchCradle sockets, and solve-time full-world scans.
-- Keep actions atomic; prevent invalid state transitions and protect partially processed state on save/load.
+- Review candidate GameplayCoreTypes, identity component/subsystem and committed-event subsystem.
+- Confirm stable definition and instance IDs, operation GUIDs, expected revisions, explicit unitized resource amounts, result codes and committed event schema.
+- Ensure failure does not mutate world state or report success; do not add a universal dispatcher that silently owns every game system.
+- Keep transient multicast events separate from durable receipts and save snapshots.
+- Resolve generic lifecycle versus existing log held/placed/processing states before adding adapters.
 
-**Exit gate:** each M009–M028 mechanic has its own accepted path/failure path; existing carry/place behavior and saved state remain coherent.
+**Existing inputs:** phase-02-core-contracts source/docs, later candidate branch versions and Phase 01 contracts.  
+**Gate:** API compatibility and idempotency rules are reviewed; UE 5.8 build/UHT and runtime checks still required.
 
-## Phase 04 — Stone and masonry (M029–M038)
+## Phase 03 — Wood processing and physical log lifecycle
 
-- Reuse the existing stone piece/anchor layer if the chosen code base confirms it.
-- Define stone shapes, staged fracture, placement compatibility, support and mixed-material connections through shared contracts.
-- Distinguish a stone actor's local held/placed state from the shared structure graph and inventory ownership.
-- Defer full physical simulation of each stone to a measured need; start with deterministic fracture stages.
+**Goal:** Complete the game’s most important physical-resource loop without discarding the newest placement architecture.
 
-**Exit gate:** stones can be acquired/shaped/placed with valid anchor/support rules; removal, damage and resource recovery are defined and atomic.
+- Review the wood processing changes and the feature/simple-intent cut/placement callers together.
+- Define correct transitions for whole log, measured cross-cut pieces, split half-round, quarter, hewn/squared, groove, trough, plank and pole.
+- Keep half-length logs distinct from longitudinal split halves.
+- Require the correct parent state for each operation; a groove must not be applied to a whole un-split log.
+- Add tool/hit/progress feedback later; pre-authored mesh variants are acceptable initially.
+- Resolve preview/commit parity, deck path coverage, diagonal intersections, mitre-cut scope, authored notch sockets and per-solve world-scan performance.
+- Save partial state and preserve physical ownership.
 
-## Phase 05 — Stick and primitive tools (M039–M048)
+**Existing inputs:** phase-03-wood-processing plus current feature/simple-intent implementation.  
+**Gate:** each allowed transition has a matching state/geometry; invalid transition is rejected atomically; placement preview equals the committed result; engine validation recorded before marking complete.
 
-- Reuse the existing stick actor/state/anchor layer.
-- Define gathering, sharpening, stakes, primitive tools/light, simple barriers/traps/racks and disassembly.
-- Make grounded-spike and trap arming/trigger/reset preconditions explicit.
-- Share tool, inventory, lighting and structure contracts; do not duplicate ownership or snap logic.
+## Phase 04 — Stone and masonry
 
-**Exit gate:** required states and trap prerequisites behave deterministically; inventory and connected structures cannot duplicate or lose resources on failure.
+- Use a material-specific stone provider on the shared placement kernel; do not fork a second snap system.
+- Define staged fracture, chunk yield, stone-piece dimensions, anchor compatibility and mixed wood/stone rules.
+- Add wall/corner/column/opening patterns only when the required pieces and support rules exist.
+- Defer full realistic rigid-body fracture.
+- Acceptance includes fracture-state consistency, supported placements, invalid-anchor rejection, save/load and UE 5.8 checks.
 
-## Phase 06 — Inventory and crafting (M049–M058)
+## Phase 05 — Sticks and primitive tools
 
-- Reuse the current candidate inventory stack/recipe types and transaction layer after source review.
-- Define stack limits, mass/volume, equipment/quick access, physical actor identity, transfer/split/merge, and crafting transaction behavior.
-- Preserve the distinction between small stackable resources and large world actors such as whole logs and boulders.
-- Provide capacity checks, missing-ingredient reasons, cancel/rollback behavior, and a clear world-drop/pickup ownership path.
-- Add persistence only through the chosen save authority.
+- Define stick/branch lifecycle, sharpened stakes, simple spear/bow/torch/fence/trap parts where in scope.
+- Keep trap arming prerequisites separate from trap effects.
+- Reuse item identity, ownership, placement, recipe and feedback contracts.
+- Acceptance includes safe pickup/drop/place/processing, failed-operation rollback, and integration with inventory and structures.
 
-**Exit gate:** failed pickup, transfer, craft, consume, drop or place leaves state unchanged; recipe IDs and outputs resolve; save/load is covered by an explicit contract.
+## Phase 06 — Inventory, carry, storage and crafting transactions
 
-## Phase 07 — Shared structural graph, support and damage (M059–M070)
+- Review FInventoryStack, FCraftingRecipe, UInventoryCraftingComponent, item ownership and receipt logic as a single system.
+- Keep large logs and boulders as physical world actors; small resources may be stackable.
+- Define unique world-item ownership across world, carry, inventory, storage, crafting, drop and placement.
+- Validate slot, mass and optional volume constraints; preflight outputs/by-products before consuming inputs.
+- Add recipe ID/version, preconditions, tools/stations, outputs/by-products, wear/cost, interruption and rollback behavior.
+- Acceptance requires no duplication/loss on failure, and save/load of inventory, ownership and physical items.
 
-- Unify log, stone and stick connections behind one authoritative graph and shared placement contract.
-- Represent connections with stable semantic anchor IDs, not array indices or mesh overlap.
-- Define ground-to-load support, span/overhang limits, damage ownership, repair, dismantle and deterministic dependent-piece removal/collapse.
-- Keep physics/visual collision as adapters; never let an adapter silently become the graph authority.
+## Phase 07 — Shared structural graph, support, damage and openings
 
-**Exit gate:** attach/detach/support/damage/repair/recovery update the graph and physical actors consistently; failure does not leave orphan links or duplicate salvage.
+- Confirm one authoritative structure graph and avoid parallel parent/child graph owners.
+- Define semantic anchor IDs, occupancy, support ancestry, load/span limits and safe removal behavior.
+- Add damage/repair, doors/windows/openings, floor/roof, ramps/stairs, bridges and defensive walls in bounded pieces.
+- Acceptance requires deterministic support/removal, no orphaned anchor reservations, no unsafe removal of supporting pieces, and persistence of graph links.
 
-## Phase 08 — Terrain, world state and constrained digging (M071–M080)
+## Phase 08 — Terrain state, bounded voxel digging and underground spaces
 
-**Critical technology gate before full implementation:** choose and validate a UE 5.8-compatible approach for runtime edits, terrain/chunk bounds, collision/navigation updates, save/load, memory, and interaction with supports/structures. Do not assume the presence of a logical terrain-state class means runtime voxel rendering is finished.
+**Technical decision gate at the start of this phase:** compare UE 5.8-compatible runtime-edit approaches against runtime digging, collision/navigation updates, save/load, material hardness, memory, performance, engine/plugin compatibility, maintenance and licensing. Demonstrate a small soft/hard terrain area before full implementation. No voxel technology is considered selected merely because a candidate header exists.
 
-- Target medium-depth voxel gameplay: editable layers, bounded depth, pits, horizontal tunnels and small rooms.
-- Keep per-cell edits, excavation yields, support invalidation, water/contamination and collision/navigation updates in a defined commit path.
-- Distinguish terrain-state data from renderer/collision/navigation adapters.
-- Do not let threats dig through terrain in the first scope; do not implement unbounded whole-world deformation.
-- Defer to measured limits rather than selecting a technology based on visual quality alone.
+- Define depth layers and diggable material classes; medium-depth scope only.
+- Add pits, short tunnels and small underground rooms, plus bounded support/collapse rules.
+- Keep terrain state, rendering/collision adapter, material yield and structural support contracts explicit.
+- Save terrain edits deterministically.
+- Initial raids do not dig through voxel cells; no unlimited depth or per-voxel full physics.
 
-**Exit gate:** a bounded test area can be dug, saved/loaded, and safely coexist with a structure; performance and edit limits are recorded.
+**Gate:** runtime edit, collision, support interaction and save/load pass in the agreed test region; performance limits are recorded.
 
-## Phase 09 — Farming and animal husbandry (M081–M090)
+## Phase 09 — Farming and animal husbandry
 
-- Define soil/plot states, seed/plant stages, watering, seasonal windows, harvest/by-products and seed return.
-- Define animal needs, habitat, care, growth, outputs and reproduction with bounded update steps.
-- Use the shared deterministic clock; frame rate cannot alter crop/animal output.
-- Preflight output capacity and input consumption before advancing a crop/animal state.
-- Connect contamination and restoration where specified; do not make a planting action instantly fix global atmosphere.
+- Implement land preparation, soil/water conditions, sowing, growth, harvest, seed return and a small set of distinct crops.
+- Add animal lifecycle/feed/output rules only through the same data/clock/persistence contracts.
+- Keep world-clock updates coarse and deterministic; no per-frame crop growth simulation.
+- Define season windows and the effect of contamination/restoration on crop viability.
+- Acceptance requires valid calendar transitions, understandable failed planting, deterministic results and save/load.
 
-**Exit gate:** crop and animal state, production timers and inventory transactions survive save/load without duplicate harvests/products.
+## Phase 10 — Raid director and simple threat AI
 
-## Phase 10 — Raid director and threat AI (M091–M100)
+- Define threat windows, warning signals, spawn limits, target choice, approach/attack/retreat states and bounded damage.
+- Add barriers, simple traps/alarms, repair and recovery.
+- Threats initially cannot dig through voxel terrain; no advanced coordinated siege simulation.
+- Noise/light/activity modifiers must be explainable and telegraphed.
+- Acceptance requires the player can prepare, read warning cues, defend or recover, and continue without unrecoverable loss.
 
-- Keep raids simple but meaningful: clear warning windows, bounded spawn budgets, explicit target priorities, simple approach/attack/retreat logic, traps, barriers, repair and recovery.
-- Apply structure damage through the shared damage path; do not let threat code bypass terrain or resource ownership.
-- Initially, enemies do not excavate voxel terrain.
-- Preserve opportunities to prepare and recover; failures should impose understandable costs rather than casually erase hours of progress.
+## Phase 11 — Logistics and route movement
 
-**Exit gate:** deterministic threat schedule, bounded agent count, readable cause/effect, no duplicate waves/damage on retry or load, and a recoverable failed raid path.
+- Add load/unload for physical cargo and storage, and rope-line/zipline transportation if its physical constraints can be supported.
+- Make route cost and safe shelter choices interact with weather, load and terrain.
+- Preserve ownership receipts for cargo transfers; prevent one item from being owned by two containers/actors at once.
+- Acceptance includes transfer rollback, capacity handling, route validity, and persistence.
 
-## Phase 11 — Logistics and resource movement (M101–M102)
+## Phase 12 — Primitive production and queues
 
-- Separate hauling/route queries from item definition, storage ownership, and production.
-- Define source quantity, destination capacity, transfer operation ID and blocked reasons.
-- Keep physical cargo distinct from abstract inventory/stack transfer.
-- Use route cost from valid terrain and infrastructure (roads, bridges, ropes, zipline) without making logistics own those structures.
+- Add only useful, bounded processing chains such as raw wood → prepared piece/plank/fuel, basic cooking/heat and limited production queues.
+- Define input/output/by-product, fuel, time, blocked reasons, noise/light and interruption.
+- Defer factory-scale automation, ore-to-steel industry and player-built robot production.
+- Acceptance requires valid recipe IDs, atomic resource accounting, clear blocked reasons and save/load of queue state.
 
-**Exit gate:** failed transfers leave source/destination unchanged; route and carried-item state restore safely.
+## Phase 13 — Survival simulation, exploration and regional restoration
 
-## Phase 12 — Primitive production and queues (M103–M106)
+- Add weather/season state, temperature/wetness, hunger/thirst, stamina/rest, sleep/fatigue, injury/poisoning, food quality, clothing and shelter protection.
+- Add persistent discovery and old-technology repair as exploration context.
+- Model world restoration with region-level state (contamination, water/soil quality, vegetation stage and opportunities), not a global simulation of every plant.
+- Keep daily weather, seasonal calendar, technology progression and long-term restoration on distinct time scales.
+- Acceptance requires readable warnings/countermeasures, deterministic clocks, persistent region/discovery state and meaningful local effects.
 
-- Build small, meaningful transformations: basic saw/production chain, queue state, fuel/heat/cooking, road/bridge/rope benefits.
-- Keep inputs, outputs, by-products, station tags, duration and fuel data-driven.
-- Advance queues using the shared clock and expose blocked reasons.
-- Do not introduce large factories, vehicle/machine fleets, or player-built robots into the first scope.
+## Phase 14 — Integration, persistence and vertical slice
 
-**Exit gate:** queue start/finish is atomic, blocked jobs consume no unintended resources/time, and output capacity/save-load are tested.
+- Review the full save coordinator/snapshot code and restore order; the candidate currently declares save schema version 13, but schema declaration alone is not proof of correct serialization.
+- Restore identity, terrain, physical actors, structural graph, inventory/storage, crop/animal state, production, threat, survival, clock/weather and discoveries in a deterministic order.
+- Rebuild derived collision/navigation/visual state and validate cross-references before resuming play.
+- Build one clean vertical-slice map with ground/light, resource yard, physical structure, small diggable area, one exposure hazard, one crop, one simple threat, one discovery and save/load marker.
+- Run source validation, automation, UE 5.8 build/UHT, Editor load, PIE, save/load and bounded performance checks as separate evidence.
+- Produce an M001–M119 acceptance map with setup, success path, failure path, retry/idempotency, cross-system effect, persistence and capture/log references.
 
-## Phase 13 — Survival simulation and exploration context (M107–M108, M110–M119)
+**Gate:** the integrated slice completes a useful player loop from gathering through processing/building/preparation to a persisted outcome.
 
-- Coordinate warmth, hunger/thirst, stamina, fatigue, injury/illness/poisoning, food quality, clothing, shelter and exposure through one authoritative resolver.
-- Define daily weather, seasonal calendar, technology progression and long-term regional recovery as distinct time scales.
-- Use readable preparation: respirator/filter, protected spaces, shelter, routes and supplies.
-- Keep exploration discoveries persistent and attach them to context/unlocks without requiring cinematics.
-- Regional restoration may alter soil/water quality, vegetation stage, resource availability, local hazards and ambience. These are GDD additions: cross-reference them to the registry and add approved new IDs only after overlap review; never silently renumber M001–M119.
-- Defer fungal humanoids/spore threats and advanced robot/industry systems until the core world loop is stable.
+## Cross-phase rules
 
-**Exit gate:** hazards are understandable and passable through preparation; time-driven state advances once; discoveries/restoration persist and produce functional as well as visual consequences.
+1. The newest feature/simple-intent branch is the current candidate implementation line because it already contains the stacked earlier phase histories. Review it before changing overlapping files.
+2. Do not mark a mechanic verified solely because it appears in the registry or a source file exists.
+3. Do not merge stacked branches individually into their descendant.
+4. Use project-owned placeholder geometry and simple sound/VFX placeholders while contracts and dimensions are changing; final production assets come later.
+5. Keep every item, recipe, asset/event ID and mechanic ID traceable to an owning system, source/content path, dependency and acceptance case.
+6. Code, static review, automation, Unreal build, PIE and save/load are separate status fields.
+7. Any new mechanics beyond M001–M119 need new IDs after duplicate review; never renumber existing IDs.
+8. Keep this branch documentation-only. Gameplay implementation belongs in the reviewed implementation branch and focused integration work.
 
-## Phase 14 — Cross-system integration, persistence and demo (M109 plus M001–M119 coverage)
+## Current status
 
-- Define ordered save/restore across stable IDs, terrain, physical items, structure graph, inventory/containers, farm/animals, logistics/production, raids, survival and discoveries.
-- Rebuild derived visual/collision/navigation state and validate references before simulation resumes.
-- Build a useful, uncluttered demo with distinct zones for resources, construction, bounded terrain, farmstead, raids, logistics/production and survival/exploration.
-- Test valid actions, invalid actions, retries, cross-system consequences, save/load and recovery for each mechanic.
-- Record exact UE 5.8 build/UHT result, Editor/PIE reproductions, automated results, logs and relevant screenshots. Static checks do not substitute for in-engine behavior.
-
-**Exit gate:** integrated vertical slice runs through a complete player loop and every M001–M119 has evidence or an explicit blocked/deferred decision.
-
-## Audio, VFX, animation and UI — cross-cutting track
-
-Every phase defines the logical event IDs its actions emit. Start with small placeholders; finalize timing, mixing and animation only after state transitions stabilize. Spatial SFX and ambience communicate the world; UI cues communicate status; threat/exposure warnings cannot depend on music alone. Final audio/VFX polish, accessibility, performance and content expansion are part of Phase 14.
-
-## Status vocabulary
-
-- `planned`: agreed target, not yet implemented.
-- `source_present_unreviewed`: candidate code found; exact behavior/call path not reviewed.
-- `reviewed_static`: code/source review done; not engine proof.
-- `build_verified`: named branch/build/engine result recorded.
-- `runtime_verified`: acceptance scenario run in the target editor/game and evidence recorded.
-- `blocked` / `deferred`: reason and next condition documented.
-
-The canonical registry currently records historical candidate build/test information. Never copy its status onto a different branch without re-running or explicitly citing the exact evidence source.
+- Phase 00: repository/branch audit and the initial 119-row baseline matrix are being recorded here.
+- Phase 01: shared data and lifecycle contracts are documented; full source/API/Blueprint compatibility audit and UE validation remain open.
+- Implementation status: the source layers are present on candidate branches, but this document does not claim the full game is integrated or runtime-verified.
