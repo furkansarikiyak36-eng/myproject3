@@ -53,7 +53,7 @@ The demo should test mechanics in useful, intentional locations; avoid clutter a
 
 - [x] SaveGame schema version raised to 14 with `FWorldVoxelChunkSnapshot`: actor identity, cells-per-axis, voxel size, density revision, density samples and bounded-dig receipts.
 - [x] Save capture refuses initialized voxel chunks without valid unique actor identity or a valid export.
-- [x] Load pre-validates a complete one-to-one snapshot set against initialized chunks in the current level.
+- [x] Load validates snapshot IDs against existing voxel component actors, requires every already-initialized chunk to be covered, and can hydrate an existing uninitialized chunk.
 - [x] Restoring density rebuilds the chunk mesh and collision.
 - [x] Legacy schema 13 advances to 14 without synthesizing density; it fails closed if the current level has initialized voxel chunks but the old save lacks their snapshots.
 - [ ] Missing physical actors/chunks are not reconstructed; authored level identity must match the save.
