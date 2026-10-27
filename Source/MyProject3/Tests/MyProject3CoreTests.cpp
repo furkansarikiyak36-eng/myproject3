@@ -822,6 +822,10 @@ bool FVoxelBoundedDigPolicyTest::RunTest(const FString& Parameters)
     Chunk->SoilClass = EVoxelSoilClass::HardSoil;
     Chunk->InitializeFlatGround(800.0f);
     TestTrue(TEXT("Density grid initialized"), Chunk->HasInitializedDensity());
+    Chunk->RebuildMesh();
+    FVector GroundHitBeforeDig;
+    TestTrue(TEXT("Initial collision surface exists"),
+        TraceDown(TestWorld.World, FVector(800.0f, 800.0f, 1500.0f), GroundHitBeforeDig));
     const int64 InitialRevision = Chunk->GetDensityRevision();
 
     const FGuid WeakToolOperation = FGuid::NewGuid();
@@ -846,6 +850,11 @@ bool FVoxelBoundedDigPolicyTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Successful excavation increments revision once"),
         Chunk->GetDensityRevision(), InitialRevision + 1);
     TestEqual(TEXT("Result revision matches committed revision"), ResultRevision, Chunk->GetDensityRevision());
+    FVector GroundHitAfterDig;
+    TestTrue(TEXT("Bounded dig publishes new collision immediately"),
+        TraceDown(TestWorld.World, FVector(800.0f, 800.0f, 1500.0f), GroundHitAfterDig));
+    TestTrue(TEXT("New collision surface is lower inside the pit"),
+        GroundHitAfterDig.Z < GroundHitBeforeDig.Z - 20.0f);
 
     const int64 CommittedRevision = Chunk->GetDensityRevision();
     float RetryRemoved = 0.0f;
