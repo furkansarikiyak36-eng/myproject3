@@ -17,6 +17,7 @@
 #include "StoneBuildingPiece.h"
 #include "StructuralPieceInterface.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 #include "Engine/StaticMesh.h"
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "WorldObjectIdentityComponent.h"
@@ -2192,11 +2193,7 @@ bool ULogCarryComponent::ConsumeHeldItemForReceiver(
     const bool bIsLog = Cast<ALogBuildPiece>(ExpectedPiece) != nullptr;
     if (bIsLog)
     {
-        if (!Cast<ALogBuildPiece>(ExpectedPiece)->SetHeldState(false))
-        {
-            OutFailureReason = TEXT("The held log refused to leave the carry state.");
-            return false;
-        }
+        Cast<ALogBuildPiece>(ExpectedPiece)->SetHeldState(false);
     }
     else if (!SetMaterialHeld(ExpectedPiece, false))
     {

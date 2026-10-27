@@ -5,6 +5,7 @@
 #include "HeatSourceComponent.generated.h"
 
 enum class EWorldWeatherState : uint8;
+class AActor;
 class ULogCarryComponent;
 
 USTRUCT()
