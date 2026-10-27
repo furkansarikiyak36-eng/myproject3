@@ -14,7 +14,7 @@ These JSON Schema Draft 2020-12 files define design-time catalog contracts for M
 ## Files
 
 - `item-definition.schema.json`: item family, inventory category, world representation, stack and persistence policy.
-- `material-definition.schema.json`: resource/terrain material properties.
+- `material-definition.schema.json`: resource/terrain material properties. The VXL-02 forest profile has sample fixtures for topsoil, loam, clay, gravel, stone and bedrock.
 - `recipe-definition.schema.json`: transactional input/process/output recipes.
 - `process-transition.schema.json`: state-gated physical transformations such as cut/split/groove/fracture.
 - `build-part-definition.schema.json`: scale, pivot, collision, semantic anchors and placement-provider references.
