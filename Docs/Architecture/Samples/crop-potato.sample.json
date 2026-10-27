@@ -57,6 +57,6 @@
   ],
   "failurePolicy": "Wither",
   "contaminationTolerance": 0.4,
-  "restorationStageRequired": "REGION_SOIL_RECOVERING",
+  "restorationStageRequired": "MILESTONE_LOCAL_SOIL_RECOVERED",
   "notes": "Illustrative tuning only; final growth rates require playtesting and economy review."
 }
