@@ -1,6 +1,6 @@
 # Phase 8 — Landscape Builder, Terrain World State and Constrained Digging
 
-**Status:** Partial logical state layer exists; physical Landscape/mesh integration is not implemented or engine-verified.  
+**Status (2026-10-28):** Logical terrain state plus a bounded voxel chunk source layer and v14 density snapshot path are present on `integration/phase-02-14-closure`; player-facing integration, Landscape seam/navigation, async meshing, and UE acceptance remain open.  
 **Registry scope:** M071–M080; possible Landscape-driven extensions must use existing child requirements first and append M120+ only for distinct gameplay behavior.  
 **Prerequisites:** Core identity/clock/save contracts; structural graph integration where terrain supports buildings.  
 **Detailed plan:** `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md`
@@ -11,9 +11,22 @@ Own deterministic, bounded terrain edits and durable world-state changes. The ed
 
 ## Current source baseline
 
-The H integrated branch contains `WorldTerrainStateSubsystem`, tracking edited cells, depth layers, material/excavation state, revisions, operation receipts and snapshot import/export. This is a logical state layer only. It does not modify Landscape heightmaps, render physical excavation geometry, update collision/navigation, invalidate structural support, or persist physical excavation geometry.
+`WorldTerrainStateSubsystem` tracks permitted logical cell edits, depth layers, material/excavation state, revisions, operation receipts and logical snapshot import/export. `UVoxelTerrainChunkComponent` now has a bounded, soil-strength-aware dig API, optimistic revision checks, idempotent operation receipts, explicit density snapshot validation/restore, and a conservative clearance guard around grounded roots in `WorldStructuralGraphSubsystem`. `WorldSaveCoordinatorSubsystem` captures density samples by actor identity in SaveGame schema v14 and rebuilds mesh/collision when restoring an existing chunk.
 
-Treat it as a starting contract, not as a playable digging feature.
+This is a source-layer increment, not a playable digging feature yet: no player/tool input caller binds the authoritative tool definition to `TryApplyBoundedDig`; the logical terrain-cell change and voxel density edit are not yet one cross-domain atomic operation; Landscape visibility holes/seams, adjacent chunk stitching, asynchronous generation, navigation refresh and physical item yield remain open. The save/restore path requires the same initialized voxel chunk actors and stable identities to exist in the loaded level; it does not spawn missing chunk actors.
+
+## Current implementation delta (source-level only)
+
+- [x] Soft soil / hard soil / rock have separate configurable minimum tool-strength thresholds (prototype defaults 1 / 3 / 5).
+- [x] Excavation is limited by configurable radius, editable local bounds, chunk bounds, and expected density revision.
+- [x] Replaying a matching operation ID returns its prior receipt; conflicting reuse is rejected.
+- [x] A registered grounded structure root inside the configured spatial clearance blocks the dig.
+- [x] SaveGame v14 stores per-chunk stable actor identity, dimensions, density samples, density revision and accepted dig receipts; restore regenerates mesh/collision for an already-present chunk.
+- [ ] Make the logical `WorldTerrainStateSubsystem` request and physical voxel mutation one prepare/commit/rollback operation; currently these are separate authorities.
+- [ ] Connect actual player/tool interaction to the bounded API using tool strength from trusted item/tool data.
+- [ ] Verify the support guard against foundation/post/bridge test cases and replace spatial clearance with explicit terrain-support invalidation where necessary.
+- [ ] Build/PIE test save → dig → save → alter → load → trace collision, including changed and missing chunk cases.
+- [ ] Handle neighboring chunk samples/seams, async mesh generation, Landscape visibility holes, navmesh refresh and excavation-derived item yield.
 
 ## Landscape Builder boundary
 
