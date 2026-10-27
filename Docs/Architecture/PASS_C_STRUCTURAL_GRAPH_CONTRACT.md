@@ -1,32 +1,40 @@
-# Pass C — Shared Structural Graph Contract
+# Pass C — Shared Structural Graph Contract (current source-aligned)
 
 ## Objective
 
-Introduce a world-local graph contract that can represent wood, stone, stick, foundation and terrain-anchor nodes in one support/load graph. Domain actors remain owners of their mesh geometry and authored anchors.
+A world-local graph represents structural relationships across wood, stone, sticks, foundations and terrain anchors. Domain actors remain authoritative for mesh geometry and their local connection-feature definitions; the graph owns committed support relations and aggregate-load checks.
 
-## Implemented in this first slice
+## Current implemented API surface
 
-- Node registration with a stable caller-provided GUID, domain kind, actor reference, local load, maximum supported load and damage threshold.
-- Explicit parent-child edges carrying both anchor IDs.
-- Cycle rejection and support-path validation.
-- Recursive aggregate-load calculation and parent capacity check during connection.
-- Safe-removal query that refuses a node with direct dependents.
-- Damage accumulation with a threshold signal.
-- Revision increments for graph mutations.
+- Stable-node registration, actor identity and domain kind.
+- Primary parent relation with the two endpoint anchor IDs.
+- Additional load-bearing contacts in `SecondarySupports`, added/removed through `TryAddSecondarySupport` and `TryRemoveSecondarySupport`.
+- Cycle checks, support-path queries, dependent queries, leaf-first removal order, load aggregation, damage/repair, revision increments and snapshot export/restore.
+- Log actor-local attachment reconstruction from canonical edges.
+- A secondary support is an actual graph edge, not just a note attached to a mesh.
 
-## Important boundaries
+## Limits that remain real
 
-- This subsystem is not yet wired into log, stone or stick actors. Existing domain-local attachment arrays and anchor reservations remain active until adapters migrate in a later slice.
-- It does not automatically spawn collapse physics or salvage resources when damage reaches a threshold. It reports the threshold crossing so the owning orchestration layer can resolve it.
-- It does not yet validate anchor geometry, compatibility tags or anchor occupancy; those remain the responsibility of the domain adapter until unified.
-- The graph is world-local and in-memory. Save/load and migration are not implemented here.
-- A single-parent support graph is used in this first slice. Multi-support beams/bridges require an explicit edge model in a later revision.
-- Load is a configurable scalar, not a full structural physics solver.
+- The graph is not a full structural mechanics solver. Loads are scalar configured values; sharing is simplified and does not model bending moments, stress, material fatigue or dynamic fracture.
+- The graph does not own or solve geometric contact. Placement adapters must supply valid contact geometry and reserve domain anchors before committing edges.
+- Secondary-support API presence does not make a placement atomic. Callers must check every return value and roll back the complete transaction on failure.
+- Automatic collapse, debris/salvage production and general physical-world persistence remain separate integration tasks.
+- Graph snapshots store node/edge state, but a whole-world persistence round trip still requires physical actor, transform, ownership and terrain restoration in the correct order.
 
-## Required follow-up
+## Connection invariants
 
-1. Add adapters that register existing wood/stone/stick actors and synchronize anchor commits/releases with graph edges.
-2. Define safe removal policy: reject, detach dependents in stable order, or resolve collapse.
-3. Add multi-parent support for bridge/roof/floor systems.
-4. Persist node IDs, edges, revisions and damage state through the save coordinator.
-5. Keep mechanic registry statuses unchanged until the final verification gate.
+1. Every graph mutation must validate node existence, identity, support path, anchor usage, cycle constraints, capacity and revision limits before publishing success.
+2. A two-support beam must have one primary edge and one distinct secondary support edge after the same placement transaction.
+3. If adding the secondary edge fails, callers must not keep the primary edge as a successful two-support placement.
+4. Ground rest must not create a structural edge unless the selected operation profile explicitly defines that support relation.
+5. Removing or replacing a support must remove or re-evaluate every dependent edge without leaving an orphaned anchor reservation.
+6. Failed graph restore/reconstruction is a world consistency failure; do not silently continue simulation as if rollback succeeded.
+
+## Required integration sequence
+
+1. Make profile-backed placement the only authority for new placement requests.
+2. Bridge log, stone and stick feature providers to stable IDs rather than array indices.
+3. Route multi-anchor placement through a transaction journal and check every graph API result.
+4. Define support-removal policies and explicit collapse transactions.
+5. Extend durable world save/load to restore node IDs, all primary/secondary edges, actor-local anchors and physical transforms.
+6. Keep runtime claims separate from source-level implementation evidence; no Unreal build or PIE success is implied by this contract.

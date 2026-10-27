@@ -1122,103 +1122,41 @@ void ALogBuildPiece::RegenerateAutomaticSnapPoints()
 
 void ALogBuildPiece::GenerateDefaultSideSnapPoints()
 {
-    if (!Mesh || !Mesh->GetStaticMesh() || SideSnapSpacing <= KINDA_SMALL_NUMBER)
+    if (!Mesh || !Mesh->GetStaticMesh())
     {
         return;
     }
 
+    constexpr float StationSpacingCm = 75.0f;
     const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
     const FVector Axis = GetLongitudinalAxisVector();
     const float HalfLength = FVector::DotProduct(Bounds.BoxExtent, Axis.GetAbs());
-
-    if (HalfLength <= KINDA_SMALL_NUMBER)
+    const float ActualLength = HalfLength * 2.0f;
+    if (HalfLength <= KINDA_SMALL_NUMBER || ActualLength <= KINDA_SMALL_NUMBER)
     {
         return;
     }
 
-    FVector SideAxisA;
-    FVector SideAxisB;
-    float ExtentA = 0.0f;
-    float ExtentB = 0.0f;
-
-    if (LongitudinalAxis == ELogLongitudinalAxis::X)
+    // One logical station per complete 75 cm module. Radial directions are
+    // derived from the hit at runtime; do not create one point for +/- A/B.
+    const int32 StationCount = FMath::FloorToInt((ActualLength + KINDA_SMALL_NUMBER) / StationSpacingCm);
+    for (int32 StationIndex = 0; StationIndex < StationCount; ++StationIndex)
     {
-        SideAxisA = FVector::YAxisVector;
-        SideAxisB = FVector::ZAxisVector;
-        ExtentA = Bounds.BoxExtent.Y;
-        ExtentB = Bounds.BoxExtent.Z;
+        const float AlongOffset = -HalfLength + (StationSpacingCm * 0.5f) +
+            static_cast<float>(StationIndex) * StationSpacingCm;
+        FLogSnapPoint Point;
+        Point.PointId = FName(*FString::Printf(TEXT("AutoSide_Station_%02d"), StationIndex));
+        Point.SnapTag = SideSnapTag;
+        Point.LocalTransform = FTransform(FRotator::ZeroRotator, Bounds.Origin + Axis * AlongOffset);
+        Point.bCanSource = false;
+        Point.bCanReceive = true;
+        Point.bAcceptAnyPieceType = true;
+        Point.bFlipIncomingOrientation = true;
+        Point.bOccupied = false;
+        Point.bRuntimeRadialFrame = true;
+        Point.bAllowsHinge = false;
+        SnapPoints.Add(Point);
     }
-    else if (LongitudinalAxis == ELogLongitudinalAxis::Y)
-    {
-        SideAxisA = FVector::XAxisVector;
-        SideAxisB = FVector::ZAxisVector;
-        ExtentA = Bounds.BoxExtent.X;
-        ExtentB = Bounds.BoxExtent.Z;
-    }
-    else
-    {
-        SideAxisA = FVector::XAxisVector;
-        SideAxisB = FVector::YAxisVector;
-        ExtentA = Bounds.BoxExtent.X;
-        ExtentB = Bounds.BoxExtent.Y;
-    }
-
-    TArray<float> AlongOffsets;
-    if (HalfLength * 2.0f <= SideSnapSpacing)
-    {
-        AlongOffsets.Add(0.0f);
-    }
-    else
-    {
-        const float Inset = SideSnapSpacing * 0.5f;
-        for (float Offset = -HalfLength + Inset;
-             Offset <= HalfLength - Inset + KINDA_SMALL_NUMBER;
-             Offset += SideSnapSpacing)
-        {
-            AlongOffsets.Add(Offset);
-        }
-    }
-
-    auto AddSideAnchors = [this, &Bounds, &Axis, &AlongOffsets](
-        const FVector& SideAxis, float SideExtent, const TCHAR* AxisName)
-    {
-        if (SideExtent <= KINDA_SMALL_NUMBER)
-        {
-            return;
-        }
-
-        for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
-        {
-            const float Sign = SideIndex == 0 ? -1.0f : 1.0f;
-            const FString SignName = Sign < 0.0f ? TEXT("Minus") : TEXT("Plus");
-
-            for (int32 AlongIndex = 0; AlongIndex < AlongOffsets.Num(); ++AlongIndex)
-            {
-                FLogSnapPoint Point;
-                Point.PointId = FName(*FString::Printf(
-                    TEXT("AutoSide_%s_%s_%02d"),
-                    AxisName, *SignName, AlongIndex));
-                // A side socket receives a log end. Its outward vector controls
-                // the incoming log's orientation so the beam projects away
-                // from the post/host log instead of centering through it.
-                Point.SnapTag = SideSnapTag;
-                const FVector LocalPosition = Bounds.Origin +
-                    Axis * AlongOffsets[AlongIndex] +
-                    SideAxis * (SideExtent * Sign);
-                Point.LocalTransform = FTransform(
-                    MakeOutwardRotation(SideAxis * Sign), LocalPosition);
-                Point.bCanSource = false;
-                Point.bCanReceive = true;
-                Point.bAcceptAnyPieceType = true;
-                Point.bFlipIncomingOrientation = true;
-                Point.bOccupied = false;
-                SnapPoints.Add(Point);
-            }
-        }
-    };
-
-    AddSideAnchors(SideAxisA, ExtentA, TEXT("A"));
-    AddSideAnchors(SideAxisB, ExtentB, TEXT("B"));
 }
 
 void ALogBuildPiece::GenerateDefaultEndSnapPoints()
@@ -1277,6 +1215,87 @@ FTransform ALogBuildPiece::GetSnapPointWorldTransform(int32 Index) const
 
     // Local transform followed by actor world transform.
     return SnapPoints[Index].LocalTransform * GetActorTransform();
+}
+
+FTransform ALogBuildPiece::GetSnapPointWorldTransformForAim(
+    int32 Index, const FVector& WorldHint) const
+{
+    if (!SnapPoints.IsValidIndex(Index) || !SnapPoints[Index].bRuntimeRadialFrame ||
+        !Mesh || !Mesh->GetStaticMesh() || WorldHint.ContainsNaN())
+    {
+        return GetSnapPointWorldTransform(Index);
+    }
+
+    const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+    const FVector Axis = GetLongitudinalAxisVector().GetSafeNormal();
+    const FTransform ActorWorld = GetActorTransform();
+    const FTransform& Station = SnapPoints[Index].LocalTransform;
+    FVector HintLocal = ActorWorld.InverseTransformPosition(WorldHint);
+    FVector Radial = HintLocal - Station.GetLocation();
+    Radial -= Axis * FVector::DotProduct(Radial, Axis);
+
+    FVector SideAxisA;
+    FVector SideAxisB;
+    float ExtentA = 0.0f;
+    float ExtentB = 0.0f;
+    if (LongitudinalAxis == ELogLongitudinalAxis::X)
+    {
+        SideAxisA = FVector::YAxisVector;
+        SideAxisB = FVector::ZAxisVector;
+        ExtentA = Bounds.BoxExtent.Y;
+        ExtentB = Bounds.BoxExtent.Z;
+    }
+    else if (LongitudinalAxis == ELogLongitudinalAxis::Y)
+    {
+        SideAxisA = FVector::XAxisVector;
+        SideAxisB = FVector::ZAxisVector;
+        ExtentA = Bounds.BoxExtent.X;
+        ExtentB = Bounds.BoxExtent.Z;
+    }
+    else
+    {
+        SideAxisA = FVector::XAxisVector;
+        SideAxisB = FVector::YAxisVector;
+        ExtentA = Bounds.BoxExtent.X;
+        ExtentB = Bounds.BoxExtent.Y;
+    }
+
+    if (Radial.IsNearlyZero())
+    {
+        Radial = SideAxisA;
+    }
+    Radial.Normalize();
+
+    FVector ContactLocal = Station.GetLocation();
+    FVector NormalLocal = Radial;
+    if (GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
+    {
+        // A round log uses one continuous radial frame, not four authored faces.
+        const float Radius = FMath::Min(ExtentA, ExtentB);
+        ContactLocal += Radial * Radius;
+    }
+    else
+    {
+        // Boxed/hewn forms resolve to the closest actual side face. They do not
+        // pretend to have a circular surface between their authored faces.
+        const float DotA = FVector::DotProduct(Radial, SideAxisA);
+        const float DotB = FVector::DotProduct(Radial, SideAxisB);
+        if (FMath::Abs(DotA) >= FMath::Abs(DotB))
+        {
+            const float Sign = DotA < 0.0f ? -1.0f : 1.0f;
+            ContactLocal += SideAxisA * (ExtentA * Sign);
+            NormalLocal = SideAxisA * Sign;
+        }
+        else
+        {
+            const float Sign = DotB < 0.0f ? -1.0f : 1.0f;
+            ContactLocal += SideAxisB * (ExtentB * Sign);
+            NormalLocal = SideAxisB * Sign;
+        }
+    }
+
+    const FTransform LocalFrame(MakeOutwardRotation(NormalLocal), ContactLocal);
+    return LocalFrame * ActorWorld;
 }
 
 void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)

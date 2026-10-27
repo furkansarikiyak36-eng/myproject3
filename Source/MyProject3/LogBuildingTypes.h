@@ -239,6 +239,17 @@ struct FLogSnapPoint
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Snap")
     bool bOccupied = false;
 
+    /**
+     * This is a longitudinal station, not a pre-authored radial socket.
+     * Resolve its contact frame from the hit direction at runtime.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Snap")
+    bool bRuntimeRadialFrame = false;
+
+    /** Only explicit hinge profiles may allow an unsupported one-end attachment to swing. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Snap")
+    bool bAllowsHinge = false;
+
     bool AcceptsPieceType(ELogPieceType Type) const
     {
         return bCanReceive && !bOccupied &&

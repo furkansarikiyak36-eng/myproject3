@@ -85,9 +85,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping")
     bool bAutoGenerateSideSnapPoints = true;
 
+    /**
+     * Legacy serialized setting retained for Blueprint compatibility. The global
+     * placement station convention is 75 cm; auto stations use that convention
+     * regardless of this old per-actor value.
+     */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping",
         meta = (EditCondition = "bAutoGenerateSideSnapPoints", ClampMin = "50.0"))
-    float SideSnapSpacing = 150.0f;
+    float SideSnapSpacing = 75.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping",
         meta = (EditCondition = "bAutoGenerateSideSnapPoints"))
@@ -182,6 +187,9 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Log Piece|Snapping")
     FTransform GetSnapPointWorldTransform(int32 Index) const;
+
+    /** Resolves a radial station from the player's world-space contact hint. */
+    FTransform GetSnapPointWorldTransformForAim(int32 Index, const FVector& WorldHint) const;
 
     UFUNCTION(BlueprintPure, Category = "Log Piece")
     bool CanBePickedUp() const;

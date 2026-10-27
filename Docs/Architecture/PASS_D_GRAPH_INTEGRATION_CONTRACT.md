@@ -1,28 +1,32 @@
-# Pass D — Structural Graph Integration Contract
+# Pass D — Structural Graph Integration Contract (updated)
 
 ## Scope
-Wire the shared world structural graph into the existing log, stone, and stick physical-piece actors without replacing their domain-owned mesh, anchor, carry, or processing state.
 
-## Implemented
-- Each log, stone, and stick actor owns a `UWorldObjectIdentityComponent` subobject and ensures an instance GUID before graph registration.
-- `BeginPlay` registers the actor with the world-local graph using a domain node kind and explicit initial support state.
-- Successful log snap, stone-anchor, and stick-anchor attachment attempts register the same parent/child relation in the graph after Unreal actor attachment succeeds.
-- If graph connection validation fails, the domain connection rolls back its actor attachment and anchor reservations.
-- Detachment asks the graph to disconnect the child node.
-- Ground placement updates the graph's ground-support flag for stone and stick pieces; log placement updates it for unattached roots.
-- Actor end-play detaches child links and unregisters its graph node to avoid stale weak-actor graph entries.
+Synchronize log, stone and stick actor-level attachment state with the canonical world structural graph while preserving each domain's mesh geometry, processing state and authored feature definitions.
+
+## Current integration responsibilities
+
+- Each physical piece registers a stable structural node after identity/ownership initialization.
+- Domain-local attachment APIs validate their own feature tags, occupancy and material-specific constraints.
+- Successful same-material or cross-material attachment operations register the matching canonical primary edge.
+- Failed graph insertion must undo the domain attachment and restore feature occupancy.
+- Graph detach/removal must keep domain parent/child pointers and actor attachments consistent.
+- Ground placement updates a node's root support state where appropriate; ground contact is not automatically a socket connection.
+- `SecondarySupports` and `TryAddSecondarySupport` represent additional load-bearing contacts. Callers must check the return value and must not report two-support success after a failed secondary edge.
 
 ## Authority boundaries
-- Domain actors remain authoritative for mesh geometry, authored anchor compatibility, held/placed state, and local anchor occupancy.
-- The graph is authoritative for the cross-domain single-parent support/load relation and support-path checks.
-- The current graph is single-parent. Multi-point structural constraints and multi-parent support are not modeled.
-- Load and damage values are conservative defaults (local load 1, capacity 100000, damage threshold 100); project tuning must replace these values with authored data before gameplay balancing.
-- Damage threshold crossing is reported by the graph; automatic collapse, debris spawning, salvage, and child fall simulation are not implemented here.
-- This does not add persistent graph serialization or a save/load coordinator.
 
-## Integration requirements for later passes
-1. Replace default load/capacity/damage values with data-driven per-piece profiles.
-2. Define a deliberate policy for removing a support node with dependents (block, cascade-detach, or collapse transaction).
-3. Add multi-parent/brace support only if the intended mechanics require it; do not imply it is supported by this single-parent contract.
-4. Add persistence/version migration for node IDs, parent edges, anchor reservations, damage, and support flags.
-5. Run Unreal Header Tool, compile, and targeted PIE tests at the final validation gate. No Unreal build or gameplay test was run for this source pass.
+- Domain actor/provider: actual mesh, feature geometry, material compatibility, local occupancy and piece processing state.
+- Global Placement Kernel: candidate discovery, transforms, orientation solving, profile constraints and preview selection.
+- Placement transaction: reservations, staged actor changes, graph edge commits and rollback.
+- Structural graph: durable-in-memory primary/secondary support relations, cycles, support paths, simplified aggregate load and damage state.
+- Physics adapter: settling, constraints, hinge behavior and fall/collapse outcomes.
+
+## Required migration
+
+1. Replace duplicate placement solvers gradually, not by deleting all domain APIs at once.
+2. Convert persisted actor-local array indices to stable feature IDs when writing a connection.
+3. Support two-ended beams using one candidate solution and one transaction.
+4. Ensure failed graph/ownership/lifecycle steps leave no partial attachment.
+5. Document all graph snapshots and restore limitations. Snapshot API presence alone does not prove physical-world save/load.
+6. Unreal UHT/UBT, Editor/PIE and failure-injection validation remain a separate gate; this update makes no such claim.

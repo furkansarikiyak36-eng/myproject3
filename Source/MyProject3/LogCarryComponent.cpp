@@ -7,6 +7,8 @@
 #include "HarvestableTreeActor.h"
 #include "LogAttachmentComponents.h"
 #include "LogBuildToolsComponent.h"
+#include "PlacementKernelSubsystem.h"
+#include "PlacementTransaction.h"
 #include "LogSnapCharacter.h"
 #include "ThrownImpactComponent.h"
 #include "Engine/OverlapResult.h"
@@ -540,10 +542,19 @@ void ULogCarryComponent::FindBestSnapCandidate()
         return;
     }
 
+    UPlacementKernelSubsystem* PlacementKernel =
+        GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
+    if (!PlacementKernel || !PlacementKernel->IsCatalogReady())
+    {
+        ClearSnapCandidate();
+        PlacementStatus = TEXT("Placement profiles are not loaded; snapping is unavailable.");
+        return;
+    }
+
     ALogBuildPiece* BestTarget = nullptr;
     int32 BestSourceIndex = INDEX_NONE;
     int32 BestTargetIndex = INDEX_NONE;
-    float BestDistance = SnapSearchRadius;
+    float BestScore = TNumericLimits<float>::Max();
     FTransform BestActorTransform = HeldPiece->GetActorTransform();
 
     const TArray<FLogSnapPoint>& SourcePoints = HeldPiece->GetSnapPoints();
@@ -568,37 +579,24 @@ void ULogCarryComponent::FindBestSnapCandidate()
                 continue;
             }
 
-            const FTransform SourceWorldTransform =
-                SourcePoint.LocalTransform * HeldActorTransform;
-
             for (int32 TargetIndex = 0; TargetIndex < TargetPoints.Num(); ++TargetIndex)
             {
-                if (!TargetPiece->CanSnapPointAccept(
-                    TargetIndex, HeldPiece, SourceIndex))
+                if (!TargetPiece->CanSnapPointAccept(TargetIndex, HeldPiece, SourceIndex))
                 {
                     continue;
                 }
 
                 const FLogSnapPoint& TargetPoint = TargetPoints[TargetIndex];
                 const FTransform TargetWorldTransform =
-                    TargetPiece->GetSnapPointWorldTransform(TargetIndex);
+                    TargetPiece->GetSnapPointWorldTransformForAim(TargetIndex, AimHit.ImpactPoint);
 
                 const float AnchorDistance = FVector::Distance(
-                    SourceWorldTransform.GetLocation(),
+                    (SourcePoint.LocalTransform * HeldActorTransform).GetLocation(),
                     TargetWorldTransform.GetLocation());
-
-                // The carried actor's free-preview origin may be offset from
-                // the intended socket by half a log length. Aiming directly
-                // at a target's anchor should still acquire it, then the exact
-                // source-to-target transform is computed below.
                 const float AimToAnchorDistance = FVector::Distance(
-                    AimHit.ImpactPoint,
-                    TargetWorldTransform.GetLocation());
-
-                const float CandidateDistance =
-                    FMath::Min(AnchorDistance, AimToAnchorDistance);
-
-                if (CandidateDistance > BestDistance)
+                    AimHit.ImpactPoint, TargetWorldTransform.GetLocation());
+                const float CandidateDistance = FMath::Min(AnchorDistance, AimToAnchorDistance);
+                if (CandidateDistance > SnapSearchRadius)
                 {
                     continue;
                 }
@@ -613,14 +611,42 @@ void ULogCarryComponent::FindBestSnapCandidate()
                     DesiredAnchorWorld = FlipIncoming * TargetWorldTransform;
                 }
 
-                const FTransform DesiredActorWorld =
-                    SourcePoint.LocalTransform.Inverse() * DesiredAnchorWorld;
+                const FString ProfileId = TargetPoint.bRuntimeRadialFrame
+                    ? TEXT("log.end_to_surface_t")
+                    : TEXT("log.end_to_end");
+                FPlacementSolution Solution;
+                FString SolveFailure;
+                if (!PlacementKernel->SolveAnchorPair(
+                    ProfileId, SourcePoint.LocalTransform, DesiredAnchorWorld,
+                    HeldActorTransform, Solution, SolveFailure))
+                {
+                    continue;
+                }
 
-                BestDistance = CandidateDistance;
+                if (PlacementKernel->ProfileRequiresCollisionValidation(ProfileId))
+                {
+                    TArray<AActor*> IgnoredActors;
+                    IgnoredActors.Add(TargetPiece);
+                    FString CollisionFailure;
+                    if (!PlacementKernel->ValidateCandidatePose(
+                        HeldPiece, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
+                    {
+                        continue;
+                    }
+                }
+
+                const float CandidateScore = PlacementKernel->ScoreCandidate(
+                    Solution, HeldActorTransform, AimHit.ImpactPoint, TargetWorldTransform.GetLocation());
+                if (CandidateScore >= BestScore)
+                {
+                    continue;
+                }
+
+                BestScore = CandidateScore;
                 BestTarget = TargetPiece;
                 BestSourceIndex = SourceIndex;
                 BestTargetIndex = TargetIndex;
-                BestActorTransform = DesiredActorWorld;
+                BestActorTransform = Solution.ActorWorldTransform;
             }
         }
     }
@@ -758,96 +784,134 @@ bool ULogCarryComponent::PlaceHeldPiece()
         CurrentSourceSnapPointIndex != INDEX_NONE &&
         CurrentTargetSnapPointIndex != INDEX_NONE)
     {
-        const FTransform PreviousTransform = PieceToPlace->GetActorTransform();
-        PieceToPlace->SetActorTransform(CurrentSnapActorTransform);
-
-        if (CurrentSnapTarget->TryReserveSnapPoints(
-            CurrentTargetSnapPointIndex,
-            PieceToPlace,
-            CurrentSourceSnapPointIndex))
+        UPlacementKernelSubsystem* PlacementKernel =
+            GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+        if (!PlacementKernel || !PlacementKernel->IsCatalogReady())
         {
-            if (UWorldObjectIdentityComponent* Identity =
-                PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-            {
-                if (!Identity->TryTransitionLifecycle(
-                    EWorldObjectLifecycleState::Held,
-                    EWorldObjectLifecycleState::Placed))
-                {
-                    PieceToPlace->DetachFromSnapParent();
-                    PieceToPlace->SetActorTransform(PreviousTransform);
-                    return false;
-                }
-            }
+            PlacementStatus = TEXT("Placement profiles are unavailable.");
+            return false;
+        }
 
-            FWorldOwnedItemRecord WorldRecord;
-            if (!PieceToPlace->TryTransferOwnership(EWorldItemOwnerKind::Held,
-                EWorldItemOwnerKind::World, FGuid(), PieceToPlace->GetActorLocation(), WorldRecord))
-            {
-                if (UWorldObjectIdentityComponent* Identity =
-                    PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-                {
-                    Identity->TryTransitionLifecycle(
-                        EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
-                }
-                PieceToPlace->DetachFromSnapParent();
-                PieceToPlace->SetActorTransform(PreviousTransform);
-                return false;
-            }
+        FPlacementTransactionJournal Transaction(GetWorld());
+        if (!Transaction.RecordActor(PieceToPlace) || !Transaction.CaptureStructuralGraph())
+        {
+            PlacementStatus = TEXT("The placement transaction could not capture the current state.");
+            return false;
+        }
 
-            PieceToPlace->SetHeldState(false);
-            PieceToPlace->SetPlacedState(true);
+        const bool bWasHeld = PieceToPlace->IsHeld();
+        const bool bWasPlaced = PieceToPlace->IsPlaced();
+        const bool bWasStartsPlaced = PieceToPlace->bStartsPlaced;
+        UWorldObjectIdentityComponent* Identity =
+            PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>();
 
-            const int32 OwnSnapIndex = CurrentSourceSnapPointIndex;
-            ReleaseHeldFromLoad();
-            HeldPiece = nullptr;
-            bHasPlacementSurface = false;
+        PieceToPlace->SetActorTransform(CurrentSnapActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
+
+        // Evaluate the second end before committing the first anchor or transferring ownership.
+        AActor* Support = nullptr;
+        bool bGround = false;
+        const bool bHasFarEndSupport =
+            EvaluateFarEndSupport(PieceToPlace, CurrentSourceSnapPointIndex, Support, bGround);
+        const FLogSnapPoint& SourceAnchor = PieceToPlace->GetSnapPoints()[CurrentSourceSnapPointIndex];
+        const FLogSnapPoint& TargetAnchor = CurrentSnapTarget->GetSnapPoints()[CurrentTargetSnapPointIndex];
+        const bool bExplicitHingeAllowed = SourceAnchor.bAllowsHinge || TargetAnchor.bAllowsHinge;
+        if (!bHasFarEndSupport && !bExplicitHingeAllowed)
+        {
+            Transaction.Rollback();
+            PlacementStatus = TEXT("This placement needs a valid second support; hinge placement is a separate explicit profile.");
             ClearSnapCandidate();
+            return false;
+        }
 
-            // A horizontal log joined at one end must rest on something at the
-            // other end; otherwise it tips off its joint and falls.
-            AActor* Support = nullptr;
-            bool bGround = false;
-            if (!EvaluateFarEndSupport(PieceToPlace, OwnSnapIndex, Support, bGround))
+        if (!CurrentSnapTarget->TryReserveSnapPoints(
+            CurrentTargetSnapPointIndex, PieceToPlace, CurrentSourceSnapPointIndex))
+        {
+            Transaction.Rollback();
+            ClearSnapCandidate();
+            return false;
+        }
+
+        if (Identity)
+        {
+            if (!Identity->TryTransitionLifecycle(
+                EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
             {
-                // Like a board nailed at one end: the joint holds, the free end swings down.
-                if (StartHingeSwing(PieceToPlace, OwnSnapIndex))
-                {
-                    PlacementStatus = TEXT("Placed.");
-                    return true;
-                }
-                if (UWorldObjectIdentityComponent* Identity =
-                    PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-                {
-                    Identity->TryTransitionLifecycle(
-                        EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
-                }
-                PieceToPlace->DetachFromSnapParent(true);
-                PieceToPlace->SetPlacedState(false);
-                PlacementStatus = TEXT("The other end had no support: the log fell.");
+                Transaction.Rollback();
                 return false;
             }
+            Transaction.AddUndo([Identity]()
+            {
+                return Identity->TryTransitionLifecycle(
+                    EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+            });
+        }
+
+        FWorldOwnedItemRecord WorldRecord;
+        if (!PieceToPlace->TryTransferOwnership(EWorldItemOwnerKind::Held,
+            EWorldItemOwnerKind::World, FGuid(), PieceToPlace->GetActorLocation(), WorldRecord))
+        {
+            Transaction.Rollback();
+            return false;
+        }
+        Transaction.AddUndo([PieceToPlace, CarryOwnerId = CarryOwnerId,
+            PreviousLocation = Transaction.GetRecordedWorldLocation(PieceToPlace)]()
+        {
+            FWorldOwnedItemRecord RestoredRecord;
+            return PieceToPlace->TryTransferOwnership(
+                EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held,
+                CarryOwnerId, PreviousLocation, RestoredRecord);
+        });
+
+        Transaction.AddUndo([PieceToPlace, bWasHeld, bWasPlaced, bWasStartsPlaced]()
+        {
+            PieceToPlace->SetHeldState(bWasHeld);
+            PieceToPlace->SetPlacedState(bWasPlaced);
+            PieceToPlace->bStartsPlaced = bWasStartsPlaced;
+            return true;
+        });
+        PieceToPlace->SetHeldState(false);
+        PieceToPlace->SetPlacedState(true);
+
+        UWorldStructuralGraphSubsystem* Graph =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+        if (bHasFarEndSupport && IsValid(Support))
+        {
             const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
-            UWorldStructuralGraphSubsystem* Graph =
-                GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
             if (SupportPiece && Graph && SupportPiece->IsStructurallyPlaced())
             {
                 const FGuid NodeId = PieceToPlace->GetStructuralNodeId();
-                Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
+                if (!Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
+                    FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd")))
+                {
+                    Transaction.Rollback();
+                    PlacementStatus = TEXT("The second support could not be committed; placement was rolled back.");
+                    return false;
+                }
             }
-            PlacementStatus = TEXT("Placed.");
-            ApplyEndContactSupports(PieceToPlace);
-            CommitHeldLifts(PieceToPlace);
-            LiftDroopingEndsOnto(PieceToPlace);
-            return true;
         }
 
-        // A snap candidate was explicitly attempted but its anchors failed
-        // revalidation. Do not reinterpret that failed structural operation as
-        // free placement, and do not leave the held piece at the stale snap pose.
-        PieceToPlace->SetActorTransform(PreviousTransform);
+        // A hinge is never the implicit fallback for an unsupported ordinary beam.
+        // Explicit hinge anchors are the only path that may start the swing behavior.
+        const int32 OwnSnapIndex = CurrentSourceSnapPointIndex;
+        const bool bShouldStartHinge = !bHasFarEndSupport && bExplicitHingeAllowed;
+        Transaction.Commit();
+
+        ReleaseHeldFromLoad();
+        HeldPiece = nullptr;
+        bHasPlacementSurface = false;
         ClearSnapCandidate();
-        return false;
+
+        if (bShouldStartHinge && !StartHingeSwing(PieceToPlace, OwnSnapIndex))
+        {
+            PlacementStatus = TEXT("The explicit hinge could not start its physical constraint.");
+            return false;
+        }
+
+        PlacementStatus = TEXT("Placed.");
+        ApplyEndContactSupports(PieceToPlace);
+        CommitHeldLifts(PieceToPlace);
+        LiftDroopingEndsOnto(PieceToPlace);
+        return true;
     }
 
     if (!bAllowFreePlacement ||
@@ -2620,16 +2684,9 @@ bool ULogCarryComponent::PlaceStrut()
     if (Held.Length() > Length + 10.0f && GetOwner())
         CutOffRemainder(HeldPiece, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
     ComputeStrutPlacement(HeldPiece, Post, Beam, Aim, Transform, Length, Joint);
-    ALogBuildPiece* Strut = HeldPiece;
-    if (!CommitHeldLogAt(Transform, Post, nullptr))
+    if (!CommitHeldLogAt(Transform, Post, nullptr, Beam))
         return false;
-    // The beam now also rests on the strut.
-    if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
-    {
-        Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Strut->GetStructuralNodeId(),
-            FName(*FString::Printf(TEXT("Strut_%s"), *Strut->GetStructuralNodeId().ToString())), TEXT("StrutTop"));
-    }
-    PlacementStatus = TEXT("Strut placed: the beam also rests on it.");
+    PlacementStatus = TEXT("Strut placed: post attachment and beam support committed together.");
     return true;
 }
 
@@ -2645,7 +2702,7 @@ bool ULogCarryComponent::SnapPostSpacing(const FVector& Base, FVector& OutBase, 
             continue;
         const FVector Foot = Shape.EndA().Z < Shape.EndB().Z ? Shape.EndA() : Shape.EndB();
         const float Distance = FVector::Dist2D(Foot, Base);
-        for (const float Span : { 150.0f, 300.0f, 450.0f, 600.0f })
+        for (const float Span : { 75.0f, 150.0f, 225.0f, 300.0f, 375.0f, 450.0f, 525.0f, 600.0f })
         {
             const float Error = FMath::Abs(Distance - Span);
             if (Error < BestError)
@@ -3094,16 +3151,20 @@ bool ULogCarryComponent::LiftDroopingEndsOnto(AActor* NewSupport)
         if (!ComputeDroopLift(Piece, DroopingLogs[Index].OwnSnapIndex, NewSupport, Rotation, Pivot))
             continue;
 
+        const FTransform OriginalTransform = Piece->GetActorTransform();
         // Turn the log about its joint; the joint itself stays where it is.
         Piece->SetActorLocationAndRotation(Pivot + Rotation.RotateVector(Piece->GetActorLocation() - Pivot),
             Rotation * Piece->GetActorQuat(), false, nullptr, ETeleportType::TeleportPhysics);
 
         const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(NewSupport);
-        if (Graph && SupportPiece && SupportPiece->IsStructurallyPlaced())
+        if (!Graph || !SupportPiece || !SupportPiece->IsStructurallyPlaced() ||
+            !Graph->TryAddSecondarySupport(Piece->GetStructuralNodeId(),
+                SupportPiece->GetStructuralNodeId(),
+                FName(*FString::Printf(TEXT("Rest_%s"), *Piece->GetStructuralNodeId().ToString())),
+                TEXT("FarEnd")))
         {
-            const FGuid NodeId = Piece->GetStructuralNodeId();
-            Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
+            Piece->SetActorTransform(OriginalTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            continue;
         }
         DroopingLogs.RemoveAt(Index);
         bLifted = true;
@@ -3150,67 +3211,162 @@ void ULogCarryComponent::CommitHeldLifts(AActor* NewSupport)
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
     const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(NewSupport);
+    bool bCommittedAny = false;
     for (const FHeldLift& Lift : HeldLifts)
     {
         ALogBuildPiece* Piece = Lift.Piece.Get();
         if (!Piece)
             continue;
-        if (Graph && SupportPiece && SupportPiece->IsStructurallyPlaced())
-        {
-            const FGuid NodeId = Piece->GetStructuralNodeId();
+
+        const FGuid NodeId = Piece->GetStructuralNodeId();
+        const bool bCommitted = Graph && SupportPiece && SupportPiece->IsStructurallyPlaced() &&
             Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
                 FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
+        if (!bCommitted)
+        {
+            // The preview pose is not a committed support. Restore the original
+            // beam and keep its hinge/droop registration for a later valid support.
+            Piece->SetActorTransform(Lift.Original, false, nullptr, ETeleportType::TeleportPhysics);
+            continue;
         }
+
         DroopingLogs.RemoveAll([Piece](const FDroopingLog& Droop) { return Droop.Piece.Get() == Piece; });
+        bCommittedAny = true;
     }
-    if (HeldLifts.Num() > 0)
-        PlacementStatus = TEXT("Placed; the fallen end now rests on it.");
+    if (bCommittedAny)
+        PlacementStatus = TEXT("Placed; supported beam poses committed.");
     HeldLifts.Reset();
 }
 
-bool ULogCarryComponent::CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport)
+bool ULogCarryComponent::CommitHeldLogAt(
+    const FTransform& WorldTransform, AActor* PrimarySupport,
+    AActor* SecondarySupport, AActor* AdditionalDependent)
 {
     ALogBuildPiece* Piece = HeldPiece;
-    if (!IsValid(Piece) || WorldTransform.ContainsNaN() || !GetWorld())
+    UWorld* World = GetWorld();
+    if (!IsValid(Piece) || !World || WorldTransform.ContainsNaN())
         return false;
-    const FTransform Previous = Piece->GetActorTransform();
+
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    const IStructuralPieceInterface* Primary = Cast<IStructuralPieceInterface>(PrimarySupport);
+    const IStructuralPieceInterface* Secondary = Cast<IStructuralPieceInterface>(SecondarySupport);
+    const IStructuralPieceInterface* Dependent = Cast<IStructuralPieceInterface>(AdditionalDependent);
+    const FGuid NodeId = Piece->GetStructuralNodeId();
+
+    // A named support is a hard requirement. Do not silently fall back to free placement.
+    if ((PrimarySupport && (!Graph || !Primary || !Primary->IsStructurallyPlaced())) ||
+        (SecondarySupport && (!Graph || !Secondary || !Secondary->IsStructurallyPlaced())) ||
+        (AdditionalDependent && (!Graph || !Dependent || !Dependent->IsStructurallyPlaced())) ||
+        (SecondarySupport && (!PrimarySupport || SecondarySupport == PrimarySupport)) ||
+        (AdditionalDependent && AdditionalDependent == Piece) ||
+        !NodeId.IsValid())
+    {
+        PlacementStatus = TEXT("Placement rejected: a required support is invalid or unavailable.");
+        return false;
+    }
+
+    FPlacementTransactionJournal Transaction(World);
+    if (!Transaction.RecordActor(Piece) ||
+        (IsValid(PrimarySupport) && !Transaction.RecordActor(PrimarySupport)) ||
+        (IsValid(SecondarySupport) && !Transaction.RecordActor(SecondarySupport)) ||
+        (IsValid(AdditionalDependent) && !Transaction.RecordActor(AdditionalDependent)) ||
+        !Transaction.CaptureStructuralGraph())
+    {
+        PlacementStatus = TEXT("Placement rejected: transaction snapshot could not be created.");
+        return false;
+    }
+
+    const bool bWasHeld = Piece->IsHeld();
+    const bool bWasPlaced = Piece->IsPlaced();
+    const bool bWasStartsPlaced = Piece->bStartsPlaced;
+    UWorldObjectIdentityComponent* Identity = Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
     Piece->SetActorTransform(WorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 
-    UWorldObjectIdentityComponent* Identity = Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
-    if (Identity && !Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    if (Identity)
     {
-        Piece->SetActorTransform(Previous);
-        return false;
+        if (!Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+        {
+            Transaction.Rollback();
+            return false;
+        }
+        Transaction.AddUndo([Identity]()
+        {
+            return Identity->TryTransitionLifecycle(
+                EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+        });
     }
+
     FWorldOwnedItemRecord WorldRecord;
-    if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
-        Piece->GetActorLocation(), WorldRecord))
+    if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World,
+        FGuid(), Piece->GetActorLocation(), WorldRecord))
     {
-        if (Identity)
-            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
-        Piece->SetActorTransform(Previous);
+        Transaction.Rollback();
         return false;
     }
+    Transaction.AddUndo([Piece, CarryOwnerId = CarryOwnerId,
+        PreviousLocation = Transaction.GetRecordedWorldLocation(Piece)]()
+    {
+        FWorldOwnedItemRecord RestoredRecord;
+        return Piece->TryTransferOwnership(EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held,
+            CarryOwnerId, PreviousLocation, RestoredRecord);
+    });
+
+    Transaction.AddUndo([Piece, bWasHeld, bWasPlaced, bWasStartsPlaced]()
+    {
+        Piece->SetHeldState(bWasHeld);
+        Piece->SetPlacedState(bWasPlaced);
+        Piece->bStartsPlaced = bWasStartsPlaced;
+        return true;
+    });
     Piece->SetHeldState(false);
     Piece->SetPlacedState(true);
 
-    // Rest on the supports in the structural graph; without them it stands on the ground.
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    const FGuid NodeId = Piece->GetStructuralNodeId();
-    const IStructuralPieceInterface* Primary = Cast<IStructuralPieceInterface>(PrimarySupport);
-    if (Graph && Primary && Primary->IsStructurallyPlaced() &&
-        Graph->TryConnect(Primary->GetStructuralNodeId(), FName(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString())),
-            NodeId, TEXT("DeckA")))
+    if (Primary)
     {
-        Piece->AttachToActor(PrimarySupport, FAttachmentTransformRules::KeepWorldTransform);
-        const IStructuralPieceInterface* Secondary = Cast<IStructuralPieceInterface>(SecondarySupport);
-        if (Secondary && Secondary->IsStructurallyPlaced())
+        const FName PrimaryAnchor(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString()));
+        if (!Graph->TryConnect(Primary->GetStructuralNodeId(), PrimaryAnchor, NodeId, TEXT("DeckA")))
         {
-            Graph->TryAddSecondarySupport(NodeId, Secondary->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString())), TEXT("DeckB"));
+            Transaction.Rollback();
+            PlacementStatus = TEXT("Placement rejected: the primary support could not be committed.");
+            return false;
+        }
+
+        if (!Piece->AttachToActor(PrimarySupport, FAttachmentTransformRules::KeepWorldTransform))
+        {
+            Transaction.Rollback();
+            PlacementStatus = TEXT("Placement rejected: the physical attachment failed.");
+            return false;
         }
     }
 
+    if (Secondary)
+    {
+        const FName SecondaryAnchor(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString()));
+        if (!Graph->TryAddSecondarySupport(NodeId, Secondary->GetStructuralNodeId(),
+            SecondaryAnchor, TEXT("DeckB")))
+        {
+            Transaction.Rollback();
+            PlacementStatus = TEXT("Placement rejected: the secondary support failed; all changes were rolled back.");
+            return false;
+        }
+    }
+
+    // Used by diagonal braces: the new strut is committed to the post, and the
+    // beam's secondary support edge is committed in the very same transaction.
+    if (Dependent)
+    {
+        const FGuid DependentId = Dependent->GetStructuralNodeId();
+        const FName StrutAnchor(*FString::Printf(TEXT("Strut_%s"), *NodeId.ToString()));
+        if (!DependentId.IsValid() ||
+            !Graph->TryAddSecondarySupport(DependentId, NodeId, StrutAnchor, TEXT("StrutTop")))
+        {
+            Transaction.Rollback();
+            PlacementStatus = TEXT("Placement rejected: the dependent beam could not accept the brace support.");
+            return false;
+        }
+    }
+
+    Transaction.Commit();
     ReleaseHeldFromLoad();
     HeldPiece = nullptr;
     bHasPlacementSurface = false;
