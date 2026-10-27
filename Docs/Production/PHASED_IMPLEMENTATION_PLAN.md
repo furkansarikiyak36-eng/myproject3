@@ -1,227 +1,192 @@
-# MyProject3 — Phased Implementation Plan
+# MyProject3 — Phase 00–14 Implementation Roadmap
 
-**Branch:** planning/gdd-inventory-production-roadmap  
-**Base:** main (planning/documentation only)  
+**Working document branch:** `planning/gdd-inventory-production-roadmap`  
+**Current default-branch snapshot:** `main` at `65faad8602d4e14e894dc2cf4e3d507ca39cbb1d`  
 **Engine target:** Unreal Engine 5.8  
-**Rule:** This branch defines order and contracts; it does not claim that gameplay has been implemented, compiled, or tested.
+**Status:** Planning and source reconciliation; no new UE build/runtime claim.
 
-## Repository reality to account for
+This roadmap is deliberately aligned with the repository's existing `Docs/Architecture/ARCHITECTURE_14_PHASE_ROADMAP.md` and stacked phase branches. Phase 00 is a new preflight. It does **not** renumber or replace the existing Phase 1–14 mechanic work. The canonical M001–M119 IDs remain unchanged.
 
-The checked main branch contains the first log-carry/snap prototype. Repo memory states that newer placement work exists on feature/global-snap-kernel, feature/contextual-interaction-resolver, and especially feature/simple-intent. The newer work must be reviewed and integrated deliberately; do not copy old code over it or assume it is already merged. Main is not the code baseline for declaring the latest snap work complete.
+## Non-negotiable rules
 
-No branch in this plan should modify or merge unrelated project history. Implement each phase on a focused branch and integrate through review.
+- The current code and content on the chosen integration base are the truth about implementation; GDD/catalogue files define intended design.
+- Reuse existing phase branches and core contracts. Do not recreate item ownership, identity, world clock, event dispatcher, save coordinator, structural graph or placement kernel just because their code is not on `main`.
+- `feature/simple-intent` is a large audit candidate, not an automatically approved merge base. It has 696 commits ahead / 3 behind `main` and many changed paths; review before integration.
+- A branch-level build record is not evidence that this planning branch or a future merged candidate compiled.
+- No feature is complete because a class, schema, sample, map or registry row exists.
+- Audio, VFX, animation and UI feedback are cross-cutting and should follow accepted gameplay events; final polish belongs after state rules stabilize.
 
-## Phase 0 — Baseline, inventory, and scope lock
+## Phase 00 — Repository baseline and branch reconciliation
 
-**Purpose:** Establish what exists, where it exists, and what this project is trying to build.
+**Goal:** Know exactly which code/content exists, where it exists, and what can safely be reused.
 
-- Read memory/STATE.md, newest session notes, decisions, and module docs.
-- Inspect current main and relevant snap branches; record base SHAs and branch relationships.
-- Inventory current C++ modules, config files, Unreal maps, scripts, content, and existing acceptance documents.
-- Map M001–M119 to systems and mark each as implemented, partial, design-only, missing, or deferred only with evidence.
-- Create a source-of-truth register. Keep this GDD as target design; keep code audit as current-state evidence.
+- Record `main` HEAD and compare the relevant branch histories.
+- Preserve the canonical M001–M119 registry; do not renumber or infer completion from presence in the registry.
+- Map each mechanic to candidate code symbols, caller paths, data/config, known gaps, and verification evidence.
+- Review the current main-only commits against the broad feature branch before choosing a merge base.
+- Identify conflicting systems, especially competing snap kernels, duplicate ownership authorities, parallel event/persistence systems, and similarly named but distinct fields.
 
-**Deliverables:** baseline report, mechanic traceability matrix, unresolved-decision list, branch integration map.  
-**Gate:** no feature is labelled complete from file existence alone; incompatible existing implementations are identified before new code is written.
+**Current deliverables:** repository baseline, branch integration matrix, registry and traceability worksheet.  
+**Still required:** exact per-mechanic source/caller review, final source base decision, and target UE integration verification.  
+**Exit gate:** every M-ID has an evidence-backed status and next action; the source base is chosen intentionally. This is not a gameplay implementation phase.
 
-## Phase 1 — Contracts and data models
+## Phase 01 — Shared data contracts and source reconciliation
 
-**Purpose:** Define shared identifiers and system contracts before expanding code.
+**Goal:** Establish one shared vocabulary for IDs, item/material/recipe definitions, physical state, ownership, operations, anchors, feedback, and persistence.
 
-- Define stable IDs and data schemas for items, recipes, materials, tools, build parts, anchor profiles, crop definitions, region states, audio/VFX events, and persistence.
-- Define ownership transitions for world actor ↔ carried actor ↔ inventory item ↔ placed structure.
-- Define processing-state transition graphs for wood and staged fracture for stone.
-- Define unit conventions, local axes, pivot rules, dimensions, collision expectations, and save versions.
-- Define events for interaction accepted/rejected/committed/failed.
+- Reuse the existing Phase 1 foundation documents and the candidate Phase 2 C++ contract layer; do not create duplicate runtime owners on the documentation branch.
+- Keep mechanic IDs, definition IDs, instance GUIDs, operation IDs, recipe/process IDs, anchor feature IDs, and feedback cue IDs separate.
+- Specify item, material, recipe, process-transition, build-part, crop, region, weather and feedback-event schemas.
+- Keep inventory stacks distinct from unique physical world items and enforce exclusive ownership transitions.
+- Separate a log's length/geometry/processing state from its held/placed/structural state. A half-length log is not the same as a split half-round.
+- Define operation success/failure, rollback, idempotent retry, event timing and save migration rules.
+- Validate schemas and representative samples; reconcile schema fields with existing C++/config before promoting them to runtime DataAssets/DataTables/JSON.
 
-**Deliverables:** schemas, ID registry, transition tables, event catalogues, interface contracts.  
-**Gate:** no system invents its own item identity, ownership rule, units, or duplicate save representation.
+**Current deliverables:** shared-contract reconciliation, contract register, design-time schemas and sample definitions.  
+**Still required:** automated JSON Schema validation, sample/reference validation, per-M traceability closeout, and an explicit runtime data-storage decision.  
+**Exit gate:** no duplicated authority, all active IDs/references resolve, invalid operations have deterministic no-partial-mutation behavior, and migrations are defined before persistent fields change.
 
-## Phase 2 — Voxel technology decision spike (required decision, execution later)
+## Phase 02 — Core world contracts (M001–M008)
 
-**Purpose:** Avoid committing to a terrain implementation that cannot meet runtime-edit, save, and performance requirements.
+**Reuse candidate files:** `GameplayCoreTypes.*`, `WorldObjectIdentityComponent.*`, `WorldObjectIdentitySubsystem.*`, `WorldCommittedEventSubsystem.*`, plus candidate operation-ledger, clock and save contracts where present.
 
-- Compare viable UE 5.8-compatible approaches and plugins against runtime digging, tunnels, persistence, collision, navigation, material types, licensing/maintenance, memory, multiplayer implications if any, and integration with construction.
-- Build a bounded test area with one soft material and one hard material.
-- Demonstrate dig/undo or deterministic edit, save/load of terrain changes, collision/navigation update, and coexistence with a placed support.
-- Measure edit cost and memory at the proposed chunk/region bounds.
-- Choose and document the implementation. Do not design around unlimited depth.
+- Review stable operation result/request types, identity registration, revisions, committed event semantics, deterministic world time and persistence boundary.
+- Confirm identity/lifecycle does not replace log, crop, animal, inventory or terrain domain state.
+- Treat the operation ledger as retry/receipt support, not proof that arbitrary multi-system changes are atomic.
+- Treat the current committed-event subsystem as transient notification unless a durable event log is separately designed.
+- Add no duplicate global dispatcher or save coordinator.
 
-**Deliverables:** architecture decision record, prototype, limits and fallback plan.  
-**Gate:** do not build all underground systems until this passes. This is a technical compatibility gate, not a claim that a plugin or prototype has already been validated.
+**Exit gate:** source/caller review passes, idempotency and failure paths are explicit, and engine validation is separately recorded.
 
-## Phase 3 — Wood lifecycle and snap integration
+## Phase 03 — Log and wood processing (M009–M028)
 
-**Purpose:** Consolidate the most important existing mechanic without restarting it.
+- Review the existing `ALogBuildPiece` / `ULogCarryComponent` lifecycle and the newer placement-kernel/provider line before changing either.
+- Reconcile cut/split/quarter/hewn/groove/trough/plank/notch/spike actions with exact valid parent states and output variants.
+- Keep full-log length, split-half-round, quarter piece, plank and pole geometry distinct.
+- Ensure custom anchors survive mesh changes; semantic anchor IDs are stable; child/parent links and reservations commit only after attachment succeeds.
+- Resolve known snap issues: preview/commit parity, deck placement, diagonal intersections, mitre cut states, manually authored NotchCradle sockets, and solve-time full-world scans.
+- Keep actions atomic; prevent invalid state transitions and protect partially processed state on save/load.
 
-- Reconcile feature/global-snap-kernel, feature/contextual-interaction-resolver, and feature/simple-intent with the current baseline.
-- Confirm one material-neutral placement kernel; material providers own anchor/compatibility rules and data profiles hold dimensions/spacing.
-- Resolve known risks: preview/commit parity, deck-placement path, global world scans in solve, long-file responsibilities, mirrored diagonal intersections, missing mitre end states, and authored NotchCradle sockets.
-- Formalize whole log, half-length, split half-round, quarter-round, grooved, hollowed, hewn, plank, and pole state transitions.
-- Ensure cut location, progress, valid parent state, and output geometry remain consistent. The system may use pre-authored mesh variants initially.
-- Persist partial state and structural parent/child links.
+**Exit gate:** each M009–M028 mechanic has its own accepted path/failure path; existing carry/place behavior and saved state remain coherent.
 
-**Deliverables:** one accepted wood lifecycle, provider contract, profile definitions, explicit known limitations.  
-**Gate:** no illegal state transition; preview solution equals committed solution; failed placement/cut is atomic; carried/placed ownership and save state are stable.
+## Phase 04 — Stone and masonry (M029–M038)
 
-## Phase 4 — Shared structural graph and build parts
+- Reuse the existing stone piece/anchor layer if the chosen code base confirms it.
+- Define stone shapes, staged fracture, placement compatibility, support and mixed-material connections through shared contracts.
+- Distinguish a stone actor's local held/placed state from the shared structure graph and inventory ownership.
+- Defer full physical simulation of each stone to a measured need; start with deterministic fracture stages.
 
-**Purpose:** Expand physical construction without duplicating the placement system.
+**Exit gate:** stones can be acquired/shaped/placed with valid anchor/support rules; removal, damage and resource recovery are defined and atomic.
 
-- Add build-part definitions for support, beam, floor/deck, wall, roof, ramp/stair, door, bridge and simple defense.
-- Add material providers (wood first; stone/stick later) using the same kernel and profile schema.
-- Define anchors by semantic feature IDs rather than mesh-array indices.
-- Add bounded structural support rules only to explicitly supported piece types.
-- Add repair/dismantle and parent-child/occupancy behavior.
-- Ensure placed structures can coexist with terrain edits and save/load.
+## Phase 05 — Stick and primitive tools (M039–M048)
 
-**Deliverables:** shared build-part schema, providers, example structure recipes, structural graph rules.  
-**Gate:** compatible placement commits exactly the preview; invalid placements consume nothing; removing a parent has defined behavior for children; saves recover the same graph.
+- Reuse the existing stick actor/state/anchor layer.
+- Define gathering, sharpening, stakes, primitive tools/light, simple barriers/traps/racks and disassembly.
+- Make grounded-spike and trap arming/trigger/reset preconditions explicit.
+- Share tool, inventory, lighting and structure contracts; do not duplicate ownership or snap logic.
 
-## Phase 5 — Inventory, carry, drop, and crafting transactions
+**Exit gate:** required states and trap prerequisites behave deterministically; inventory and connected structures cannot duplicate or lose resources on failure.
 
-**Purpose:** Implement one consistent ownership and resource economy.
+## Phase 06 — Inventory and crafting (M049–M058)
 
-- Implement item IDs, stack rules, mass/volume, equipment slots, durability/charges, and world representation.
-- Keep large logs/boulders physical. Small resources may stack as inventory entries.
-- Make pickup/drop/stack/split/equip/consume/craft atomic and idempotent.
-- Define recipes as data with inputs, preconditions, durations, outputs, by-products, tool wear and interruption semantics.
-- Add minimum UI feedback for capacity, state, required tool, invalid state, and recipe result.
-- Persist inventories, carried item, dropped actors, in-progress operation and recipe version.
+- Reuse the current candidate inventory stack/recipe types and transaction layer after source review.
+- Define stack limits, mass/volume, equipment/quick access, physical actor identity, transfer/split/merge, and crafting transaction behavior.
+- Preserve the distinction between small stackable resources and large world actors such as whole logs and boulders.
+- Provide capacity checks, missing-ingredient reasons, cancel/rollback behavior, and a clear world-drop/pickup ownership path.
+- Add persistence only through the chosen save authority.
 
-**Deliverables:** inventory runtime, data catalogue, initial recipes, save migration rules.  
-**Gate:** no item duplication/loss on failed operations; every active recipe references valid item IDs; world and inventory ownership is unique and save/load-safe.
+**Exit gate:** failed pickup, transfer, craft, consume, drop or place leaves state unchanged; recipe IDs and outputs resolve; save/load is covered by an explicit contract.
 
-## Phase 6 — Resource sources and transformation workflows
+## Phase 07 — Shared structural graph, support and damage (M059–M070)
 
-**Purpose:** Make the world yield resources through readable state transitions.
+- Unify log, stone and stick connections behind one authoritative graph and shared placement contract.
+- Represent connections with stable semantic anchor IDs, not array indices or mesh overlap.
+- Define ground-to-load support, span/overhang limits, damage ownership, repair, dismantle and deterministic dependent-piece removal/collapse.
+- Keep physics/visual collision as adapters; never let an adapter silently become the graph authority.
 
-- Build wood processing, staged rock fracture, soil/sand/gravel/clay gathering and basic plant-fiber collection.
-- Define yields by source type and state; avoid one inventory item per voxel.
-- Add simple work surfaces/stations only where they change outputs or safety.
-- Ensure each material has a source, acquisition operation, at least one payoff, and a competing use.
-- Add tool requirements and condition feedback; do not make tools generic unlock keys.
+**Exit gate:** attach/detach/support/damage/repair/recovery update the graph and physical actors consistently; failure does not leave orphan links or duplicate salvage.
 
-**Deliverables:** source actors, process definitions, yields, action feedback, initial resource economy.  
-**Gate:** each active resource feeds a useful recipe or progression path; no dead-end materials without a documented later phase.
+## Phase 08 — Terrain, world state and constrained digging (M071–M080)
 
-## Phase 7 — Voxel terrain and underground spaces
+**Critical technology gate before full implementation:** choose and validate a UE 5.8-compatible approach for runtime edits, terrain/chunk bounds, collision/navigation updates, save/load, memory, and interaction with supports/structures. Do not assume the presence of a logical terrain-state class means runtime voxel rendering is finished.
 
-**Purpose:** Add the bounded digging system after the technology gate.
+- Target medium-depth voxel gameplay: editable layers, bounded depth, pits, horizontal tunnels and small rooms.
+- Keep per-cell edits, excavation yields, support invalidation, water/contamination and collision/navigation updates in a defined commit path.
+- Distinguish terrain-state data from renderer/collision/navigation adapters.
+- Do not let threats dig through terrain in the first scope; do not implement unbounded whole-world deformation.
+- Defer to measured limits rather than selecting a technology based on visual quality alone.
 
-- Add diggable hardness/material definitions, depth and region bounds, edit persistence and collision updates.
-- Define excavation outputs and how edited cells map to material yield.
-- Add simple underground room/tunnel rules and limited support placement.
-- Create a small set of support-risk cases; no unlimited physically simulated collapse.
-- Establish how placed structures, foundations, water/contamination, and voxel edits interact.
-- Initially, threats do not dig, and enemies do not cause unlimited terrain destruction.
+**Exit gate:** a bounded test area can be dug, saved/loaded, and safely coexist with a structure; performance and edit limits are recorded.
 
-**Deliverables:** bounded terrain system, excavation/resource hooks, support pieces, save/load path.  
-**Gate:** edits persist; invalid operations are rejected cleanly; a supported small underground space can be created; performance budget is met in the agreed test area.
+## Phase 09 — Farming and animal husbandry (M081–M090)
 
-## Phase 8 — Survival, equipment, weather, and time
+- Define soil/plot states, seed/plant stages, watering, seasonal windows, harvest/by-products and seed return.
+- Define animal needs, habitat, care, growth, outputs and reproduction with bounded update steps.
+- Use the shared deterministic clock; frame rate cannot alter crop/animal output.
+- Preflight output capacity and input consumption before advancing a crop/animal state.
+- Connect contamination and restoration where specified; do not make a planting action instantly fix global atmosphere.
 
-**Purpose:** Make travel and preparation meaningful.
+**Exit gate:** crop and animal state, production timers and inventory transactions survive save/load without duplicate harvests/products.
 
-- Define exposure types, thresholds, rate rules, countermeasures and warning states.
-- Add respirator/filter life and protective equipment as clear data-driven items.
-- Implement weather states that change travel, visibility, sound, exposure or resource risk only where intended.
-- Separate daily weather/events, seasonal calendar, tech progression and long-term restoration.
-- Add a small number of weather events first; each must change a decision, not just visuals.
-- Define rest/sleep and time advancement without allowing repeated exploit loops.
+## Phase 10 — Raid director and threat AI (M091–M100)
 
-**Deliverables:** exposure model, weather state machine, protection data, warning UI/audio contracts.  
-**Gate:** hazards communicate danger before severe consequences where appropriate; equipment changes outcomes; weather/clock saves consistently.
+- Keep raids simple but meaningful: clear warning windows, bounded spawn budgets, explicit target priorities, simple approach/attack/retreat logic, traps, barriers, repair and recovery.
+- Apply structure damage through the shared damage path; do not let threat code bypass terrain or resource ownership.
+- Initially, enemies do not excavate voxel terrain.
+- Preserve opportunities to prepare and recover; failures should impose understandable costs rather than casually erase hours of progress.
 
-## Phase 9 — Farming and seasonal material cycles
+**Exit gate:** deterministic threat schedule, bounded agent count, readable cause/effect, no duplicate waves/damage on retry or load, and a recoverable failed raid path.
 
-**Purpose:** Make cultivation a series of visible transformations.
+## Phase 11 — Logistics and resource movement (M101–M102)
 
-- Implement soil preparation, sowing, growth stages, watering, harvest, seed return and failure/dormancy as data.
-- Define crop-specific calendar windows and conditions.
-- Use a small first crop set with distinct gameplay functions.
-- Define how contamination and regional restoration affect soil and crop yield.
-- Use coarse time-step growth; do not simulate every plant every frame.
-- Ensure harvest choices compete with seed retention, food and material needs.
+- Separate hauling/route queries from item definition, storage ownership, and production.
+- Define source quantity, destination capacity, transfer operation ID and blocked reasons.
+- Keep physical cargo distinct from abstract inventory/stack transfer.
+- Use route cost from valid terrain and infrastructure (roads, bridges, ropes, zipline) without making logistics own those structures.
 
-**Deliverables:** crop definitions, plot state, growth scheduler, harvest outputs and UI feedback.  
-**Gate:** crop state and calendar persist; valid/invalid planting conditions are understandable; growth is deterministic enough for save/load.
+**Exit gate:** failed transfers leave source/destination unchanged; route and carried-item state restore safely.
 
-## Phase 10 — Simple raids and base defense
+## Phase 12 — Primitive production and queues (M103–M106)
 
-**Purpose:** Test preparation and shelter decisions without high AI complexity.
+- Build small, meaningful transformations: basic saw/production chain, queue state, fuel/heat/cooking, road/bridge/rope benefits.
+- Keep inputs, outputs, by-products, station tags, duration and fuel data-driven.
+- Advance queues using the shared clock and expose blocked reasons.
+- Do not introduce large factories, vehicle/machine fleets, or player-built robots into the first scope.
 
-- Define threat triggers and warning windows.
-- Implement simple approach/attack/retreat state machine, a small number of target rules, and clear telegraphing.
-- Add barricade, alarm, simple trap, repair, and safe escape options.
-- Define consistent damage targets and recovery costs.
-- Limit destructive reach; raiders do not voxel-dig in the first scope.
-- Noise/light/activity may influence risk only with clear, explainable rules.
+**Exit gate:** queue start/finish is atomic, blocked jobs consume no unintended resources/time, and output capacity/save-load are tested.
 
-**Deliverables:** one end-to-end raid case, defense interactions, damage/repair rules and audio/UI signals.  
-**Gate:** a player can prepare, understand why an attack happened, defend or recover, and continue without unrecoverable progress loss.
+## Phase 13 — Survival simulation and exploration context (M107–M108, M110–M119)
 
-## Phase 11 — Exploration, story, old technology, and regional restoration
+- Coordinate warmth, hunger/thirst, stamina, fatigue, injury/illness/poisoning, food quality, clothing, shelter and exposure through one authoritative resolver.
+- Define daily weather, seasonal calendar, technology progression and long-term regional recovery as distinct time scales.
+- Use readable preparation: respirator/filter, protected spaces, shelter, routes and supplies.
+- Keep exploration discoveries persistent and attach them to context/unlocks without requiring cinematics.
+- Regional restoration may alter soil/water quality, vegetation stage, resource availability, local hazards and ambience. These are GDD additions: cross-reference them to the registry and add approved new IDs only after overlap review; never silently renumber M001–M119.
+- Defer fungal humanoids/spore threats and advanced robot/industry systems until the core world loop is stable.
 
-**Purpose:** Connect survival progression to the catastrophe mystery and recovery of the world.
+**Exit gate:** hazards are understandable and passable through preparation; time-driven state advances once; discoveries/restoration persist and produce functional as well as visual consequences.
 
-- Define region data: contamination, soil/water quality, vegetation stage, threat level, points of interest and unlocks.
-- Add inspectable records, old-world devices and environmental clues.
-- Add salvage/repair progression before complex industrial production.
-- Make regional recovery change selected resources, route conditions, ambience and opportunities.
-- Do not let a few planted seeds globally fix the atmosphere.
-- Keep advanced fungal humanoids/spore systems and deeper robot/industry mechanics deferred until the base loop is stable.
+## Phase 14 — Cross-system integration, persistence and demo (M109 plus M001–M119 coverage)
 
-**Deliverables:** region state model, discovery records, old-tech repair path, restoration milestone rules.  
-**Gate:** region states persist and produce visible/functional consequences; story findings connect to world systems without requiring long cinematics.
+- Define ordered save/restore across stable IDs, terrain, physical items, structure graph, inventory/containers, farm/animals, logistics/production, raids, survival and discoveries.
+- Rebuild derived visual/collision/navigation state and validate references before simulation resumes.
+- Build a useful, uncluttered demo with distinct zones for resources, construction, bounded terrain, farmstead, raids, logistics/production and survival/exploration.
+- Test valid actions, invalid actions, retries, cross-system consequences, save/load and recovery for each mechanic.
+- Record exact UE 5.8 build/UHT result, Editor/PIE reproductions, automated results, logs and relevant screenshots. Static checks do not substitute for in-engine behavior.
 
-## Phase 12 — Animation, VFX, SFX, music, and UI integration
+**Exit gate:** integrated vertical slice runs through a complete player loop and every M001–M119 has evidence or an explicit blocked/deferred decision.
 
-**Purpose:** Give every accepted mechanic clear feedback and the world a cohesive atmosphere.
+## Audio, VFX, animation and UI — cross-cutting track
 
-- Implement feedback events alongside mechanics, then replace placeholders in a dedicated polish pass.
-- Create required events from ASSET_VFX_AUDIO_CATALOG.md; every effect/sound has one stable ID and a trigger contract.
-- Prioritize state clarity: valid/invalid placement, cut progress, fracture stage, exposure, weather warning, raid warning, crop state, restoration.
-- Use spatial 3D audio for world sources, restrained UI sounds for menus, and layered/adaptive music states.
-- Avoid animation success cues when the authoritative action failed.
-- Add accessibility settings for ambience, SFX, music, warning mix, and visual intensity where relevant.
+Every phase defines the logical event IDs its actions emit. Start with small placeholders; finalize timing, mixing and animation only after state transitions stabilize. Spatial SFX and ambience communicate the world; UI cues communicate status; threat/exposure warnings cannot depend on music alone. Final audio/VFX polish, accessibility, performance and content expansion are part of Phase 14.
 
-**Deliverables:** event registry, placeholder pass, final cue map, mix buses and feedback checklist.  
-**Gate:** major state changes are perceivable without relying on music alone; cue concurrency and performance are controlled.
+## Status vocabulary
 
-## Phase 13 — Vertical slice assembly and integration hardening
+- `planned`: agreed target, not yet implemented.
+- `source_present_unreviewed`: candidate code found; exact behavior/call path not reviewed.
+- `reviewed_static`: code/source review done; not engine proof.
+- `build_verified`: named branch/build/engine result recorded.
+- `runtime_verified`: acceptance scenario run in the target editor/game and evidence recorded.
+- `blocked` / `deferred`: reason and next condition documented.
 
-**Purpose:** Prove one integrated piece of the intended game.
-
-- Assemble a bounded test map with simple lighting/ground, representative resource sources, one structure, a small diggable terrain zone, one hazard, one crop, one threat case, and a discovery point.
-- Keep the level free of unrelated asset galleries and decorative clutter.
-- Confirm configuration/data IDs, input mapping, save versioning, respawn/recovery, and error messages.
-- Run compile, automated tests, editor load, PIE, save/load, and bounded performance checks on the actual UE 5.8 target. Record logs and repro steps.
-- Compare results to acceptance criteria; do not infer in-game behavior from a successful Python/static check.
-
-**Deliverables:** one reproducible vertical slice, verification evidence, bug list and next iteration plan.  
-**Gate:** cross-system loop works from first resource gathering through building/preparation to a persisted outcome.
-
-## Phase 14 — Content expansion and release preparation
-
-**Purpose:** Expand only after the vertical slice is stable.
-
-- Expand region variety, recipes, crops, weather cases, points of interest, and old-tech devices using existing schemas.
-- Add creature/spore/advanced raid types only after threat and performance budgets are established.
-- Finalize art/audio, optimization, accessibility, input remapping, settings, crash recovery and user documentation.
-- Create a regression matrix for all M001–M119 mechanics and map each mechanic to source files, content, dependencies, and evidence.
-
-**Deliverables:** content backlog, regression matrix, optimized build and release checklist.  
-**Gate:** no feature is declared complete without a tested acceptance path and traceable evidence.
-
-## Parallel work rules
-
-- GDD, schemas, asset/event catalogues, and implementation task breakdown can be authored in parallel.
-- The voxel compatibility spike is a critical decision dependency before full voxel production.
-- Wood state contracts, item IDs, and ownership rules must agree before inventory/crafting integration.
-- VFX/SFX identifiers can be catalogued early, but final production assets wait until event timing/state transitions stabilize.
-- Do not run multiple agents editing the same source file or public interface without a declared owner and integration plan.
-
-## Current branch deliverable
-
-This planning branch adds and maintains documents only. It does not change gameplay C++, Unreal maps, plugin dependencies, or imported asset content. Implementation branches are created per phase after the source baseline and contracts are accepted.
+The canonical registry currently records historical candidate build/test information. Never copy its status onto a different branch without re-running or explicitly citing the exact evidence source.
