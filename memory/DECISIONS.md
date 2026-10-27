@@ -2,6 +2,8 @@
 
 Newest first. Each: the decision, then why.
 
+- **2026-10-28 · Terrain for the first playable slice is hybrid.** Native Landscape owns the macro outdoor surface; bounded smooth voxel chunks own designated dig pockets. Use UE `FMarchingCubes` + `UProceduralMeshComponent`; no third-party voxel dependency by default. **This is an architecture choice, not gameplay acceptance.** The measured 32³ synchronous rebuild cost is above a 16.7 ms frame budget, so async mesh/collision, chunk seams, navigation and Landscape transitions remain release gates.
+- **2026-10-28 · Bounded excavation must fail closed.** Radius/region, material tool-strength threshold, expected density revision, unique operation receipt and grounded-structure clearance are checked before the edit. SaveGame v14 stores voxel density and receipts by stable actor identity. Physical voxel state and logical terrain-cell state are not yet one atomic transaction; do not claim that they are integrated until that gap is closed.
 - **2026-10-27 · Shared memory in the repo (`memory/`).** All assistants read and write it.
   Why: stop re-analysing the whole repo in every chat and every account.
 - **2026-10-27 · Reference images are kept as our own text analyses (`references/`), never as files.**
