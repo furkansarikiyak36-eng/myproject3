@@ -352,7 +352,10 @@ const TCHAR* FPlacementProfileRegistry::GetBuiltInCatalogue()
       },
       "target": {
         "family": "log",
-        "kind": "Station"
+        "kind": "Station",
+        "tags": [
+          "LogRoundStation"
+        ]
       },
       "angle": {
         "policy": "Fixed",
@@ -611,7 +614,10 @@ const TCHAR* FPlacementProfileRegistry::GetBuiltInCatalogue()
         ]
       },
       "searchRadiusCm": 200,
-      "priority": 2
+      "priority": 2,
+      "params": {
+        "sourceCenterBiasWeight": 0.02
+      }
     },
     {
       "id": "log.ground_rest",
@@ -650,7 +656,10 @@ const TCHAR* FPlacementProfileRegistry::GetBuiltInCatalogue()
         ]
       },
       "searchRadiusCm": 250,
-      "priority": 1
+      "priority": 1,
+      "params": {
+        "sourceCenterBiasWeight": 0.02
+      }
     },
     {
       "id": "log.end_to_authored",
