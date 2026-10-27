@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "WORLD_HAZARD_STARTED",
+  "domainEventType": "WorldHazardStarted",
+  "producerSystem": "WORLD_ENVIRONMENT",
+  "commitTiming": "AfterAuthoritativeCommit",
+  "operationIdRequired": true,
+  "payloadFieldIds": [
+    "OPERATION_ID",
+    "HAZARD_DEFINITION_ID",
+    "REGION_ID",
+    "SEVERITY"
+  ],
+  "affectedObjectIdsIncluded": true,
+  "deliveryPolicy": "TransientNotificationWithSnapshotState",
+  "mustNotMutateOwnerState": true,
+  "notes": "Example event definition key for environmental audio/VFX cues."
+}
