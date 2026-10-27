@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/region-definition.schema.json",
+  "title": "MyProject3 Region Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "tags",
+    "initialConditions",
+    "sourceDefinitionIds"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+      "description": "Stable definition/event ID. Never use an M001-M119 mechanic ID or a display name here."
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "initialConditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contamination",
+        "soilQuality",
+        "waterQuality",
+        "vegetationStage"
+      ],
+      "properties": {
+        "contamination": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "soilQuality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "waterQuality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "vegetationStage": {
+          "enum": [
+            "Lifeless",
+            "SeverelyDamaged",
+            "Recovering",
+            "Established"
+          ]
+        },
+        "threatPressure": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "temperatureBiasC": {
+          "type": "number"
+        }
+      }
+    },
+    "sourceDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "ambientEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "weatherProfileId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "restorationMilestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "requiredCondition",
+          "effects"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "requiredCondition": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "effects": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "effectType",
+                "targetId"
+              ],
+              "properties": {
+                "effectType": {
+                  "enum": [
+                    "UnlockResource",
+                    "ChangeHazard",
+                    "ChangeAmbient",
+                    "ChangeVegetation",
+                    "UnlockDiscovery",
+                    "ChangeTraversal",
+                    "Other"
+                  ]
+                },
+                "targetId": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
