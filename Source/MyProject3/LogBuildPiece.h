@@ -87,7 +87,7 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping",
         meta = (EditCondition = "bAutoGenerateSideSnapPoints", ClampMin = "50.0"))
-    float SideSnapSpacing = 150.0f;
+    float SideSnapSpacing = 75.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Snapping",
         meta = (EditCondition = "bAutoGenerateSideSnapPoints"))
@@ -261,6 +261,14 @@ public:
 
     const TArray<FLogSnapPoint>& GetSnapPoints() const { return SnapPoints; }
 
+    /**
+     * Lays the body stations out again when the log's world length changed (a free
+     * cut scales it). Only on a log nothing is joined to, so no joint moves.
+     */
+    void RefreshStationsIfStale();
+    /** The log's length in the world, scale included. */
+    float GetWorldLengthCm() const;
+
     // IStructuralPieceInterface
     virtual EStructuralNodeKind GetStructuralKind() const override { return EStructuralNodeKind::Wood; }
     virtual FGuid GetStructuralNodeId() const override;
@@ -313,6 +321,8 @@ private:
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
     void GenerateDefaultSideSnapPoints();
+    /** World length the body stations were laid out for. */
+    float StationsBuiltForLengthCm = 0.0f;
     FVector GetLongitudinalAxisVector() const;
     FRotator MakeOutwardRotation(const FVector& Direction) const;
 

@@ -1,4 +1,5 @@
 #include "LogBuildPiece.h"
+#include "Placement/PlacementSolvers.h"
 
 #include "GameplayCoreTypes.h"
 #include "MaterialConnectionSubsystem.h"
@@ -1107,7 +1108,7 @@ void ALogBuildPiece::RegenerateAutomaticSnapPoints()
     {
         const FString Id = Point.PointId.ToString();
         return Id.StartsWith(TEXT("AutoEnd_")) ||
-            Id.StartsWith(TEXT("AutoSide_"));
+            Id.StartsWith(TEXT("AutoSide_")) || Id.StartsWith(TEXT("Station."));
     });
 
     if (bAutoGenerateEndSnapPoints)
@@ -1120,105 +1121,66 @@ void ALogBuildPiece::RegenerateAutomaticSnapPoints()
     }
 }
 
+float ALogBuildPiece::GetWorldLengthCm() const
+{
+    if (!Mesh || !Mesh->GetStaticMesh())
+        return 0.0f;
+    const FVector Axis = GetLongitudinalAxisVector();
+    const float HalfLength = FVector::DotProduct(Mesh->GetStaticMesh()->GetBounds().BoxExtent, Axis.GetAbs());
+    const float AxisScale = FVector::DotProduct(Mesh->GetComponentScale().GetAbs(), Axis.GetAbs());
+    return 2.0f * HalfLength * AxisScale;
+}
+
 void ALogBuildPiece::GenerateDefaultSideSnapPoints()
 {
+    // One body station per complete 75 cm module of the log's real length, at
+    // the module's centre (600 cm: 8 stations at 37.5, 112.5 ... 562.5). A station
+    // sits on the log's axis; the placement kernel solves which side a joint
+    // uses from where the player aims, so there is no copy per direction.
+    StationsBuiltForLengthCm = 0.0f;
     if (!Mesh || !Mesh->GetStaticMesh() || SideSnapSpacing <= KINDA_SMALL_NUMBER)
-    {
         return;
-    }
-
     const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
     const FVector Axis = GetLongitudinalAxisVector();
-    const float HalfLength = FVector::DotProduct(Bounds.BoxExtent, Axis.GetAbs());
-
-    if (HalfLength <= KINDA_SMALL_NUMBER)
-    {
+    const float AxisScale = FVector::DotProduct(Mesh->GetComponentScale().GetAbs(), Axis.GetAbs());
+    const float WorldLength = GetWorldLengthCm();
+    if (WorldLength <= KINDA_SMALL_NUMBER || AxisScale <= KINDA_SMALL_NUMBER)
         return;
-    }
+    StationsBuiltForLengthCm = WorldLength;
 
-    FVector SideAxisA;
-    FVector SideAxisB;
-    float ExtentA = 0.0f;
-    float ExtentB = 0.0f;
-
-    if (LongitudinalAxis == ELogLongitudinalAxis::X)
+    TArray<float> Offsets;
+    PlacementMath::ComputeStationOffsets(WorldLength, SideSnapSpacing, Offsets);
+    for (int32 Index = 0; Index < Offsets.Num(); ++Index)
     {
-        SideAxisA = FVector::YAxisVector;
-        SideAxisB = FVector::ZAxisVector;
-        ExtentA = Bounds.BoxExtent.Y;
-        ExtentB = Bounds.BoxExtent.Z;
+        FLogSnapPoint Point;
+        Point.PointId = FName(*FString::Printf(TEXT("Station.%02d"), Index));
+        Point.SnapTag = SideSnapTag;
+        // From the log's -axis end, in the world, back into the mesh's own units.
+        const float LocalOffset = (Offsets[Index] - 0.5f * WorldLength) / AxisScale;
+        Point.LocalTransform = FTransform(MakeOutwardRotation(Axis), Bounds.Origin + Axis * LocalOffset);
+        Point.bCanSource = false;
+        Point.bCanReceive = true;
+        Point.bAcceptAnyPieceType = true;
+        Point.bFlipIncomingOrientation = true;
+        Point.bOccupied = false;
+        SnapPoints.Add(Point);
     }
-    else if (LongitudinalAxis == ELogLongitudinalAxis::Y)
-    {
-        SideAxisA = FVector::XAxisVector;
-        SideAxisB = FVector::ZAxisVector;
-        ExtentA = Bounds.BoxExtent.X;
-        ExtentB = Bounds.BoxExtent.Z;
-    }
-    else
-    {
-        SideAxisA = FVector::XAxisVector;
-        SideAxisB = FVector::YAxisVector;
-        ExtentA = Bounds.BoxExtent.X;
-        ExtentB = Bounds.BoxExtent.Y;
-    }
+}
 
-    TArray<float> AlongOffsets;
-    if (HalfLength * 2.0f <= SideSnapSpacing)
+void ALogBuildPiece::RefreshStationsIfStale()
+{
+    if (!bAutoGenerateSideSnapPoints || FMath::IsNearlyEqual(GetWorldLengthCm(), StationsBuiltForLengthCm, 0.5f))
+        return;
+    // Joints are kept by index: a log in a structure keeps its stations as they are.
+    if (SnapParent.IsValid() || AttachedPieces.Num() > 0 ||
+        SnapPoints.ContainsByPredicate([](const FLogSnapPoint& Point) { return Point.bOccupied; }))
+        return;
+    SnapPoints.RemoveAll([](const FLogSnapPoint& Point)
     {
-        AlongOffsets.Add(0.0f);
-    }
-    else
-    {
-        const float Inset = SideSnapSpacing * 0.5f;
-        for (float Offset = -HalfLength + Inset;
-             Offset <= HalfLength - Inset + KINDA_SMALL_NUMBER;
-             Offset += SideSnapSpacing)
-        {
-            AlongOffsets.Add(Offset);
-        }
-    }
-
-    auto AddSideAnchors = [this, &Bounds, &Axis, &AlongOffsets](
-        const FVector& SideAxis, float SideExtent, const TCHAR* AxisName)
-    {
-        if (SideExtent <= KINDA_SMALL_NUMBER)
-        {
-            return;
-        }
-
-        for (int32 SideIndex = 0; SideIndex < 2; ++SideIndex)
-        {
-            const float Sign = SideIndex == 0 ? -1.0f : 1.0f;
-            const FString SignName = Sign < 0.0f ? TEXT("Minus") : TEXT("Plus");
-
-            for (int32 AlongIndex = 0; AlongIndex < AlongOffsets.Num(); ++AlongIndex)
-            {
-                FLogSnapPoint Point;
-                Point.PointId = FName(*FString::Printf(
-                    TEXT("AutoSide_%s_%s_%02d"),
-                    AxisName, *SignName, AlongIndex));
-                // A side socket receives a log end. Its outward vector controls
-                // the incoming log's orientation so the beam projects away
-                // from the post/host log instead of centering through it.
-                Point.SnapTag = SideSnapTag;
-                const FVector LocalPosition = Bounds.Origin +
-                    Axis * AlongOffsets[AlongIndex] +
-                    SideAxis * (SideExtent * Sign);
-                Point.LocalTransform = FTransform(
-                    MakeOutwardRotation(SideAxis * Sign), LocalPosition);
-                Point.bCanSource = false;
-                Point.bCanReceive = true;
-                Point.bAcceptAnyPieceType = true;
-                Point.bFlipIncomingOrientation = true;
-                Point.bOccupied = false;
-                SnapPoints.Add(Point);
-            }
-        }
-    };
-
-    AddSideAnchors(SideAxisA, ExtentA, TEXT("A"));
-    AddSideAnchors(SideAxisB, ExtentB, TEXT("B"));
+        const FString Id = Point.PointId.ToString();
+        return Id.StartsWith(TEXT("Station.")) || Id.StartsWith(TEXT("AutoSide_"));
+    });
+    GenerateDefaultSideSnapPoints();
 }
 
 void ALogBuildPiece::GenerateDefaultEndSnapPoints()
@@ -2574,7 +2536,8 @@ void ALogBuildPiece::AddCustomSnapPoint(
     const FString IdString = PointId.ToString();
     if (PointId.IsNone() ||
         IdString.StartsWith(TEXT("AutoEnd_"), ESearchCase::IgnoreCase) ||
-        IdString.StartsWith(TEXT("AutoSide_"), ESearchCase::IgnoreCase))
+        IdString.StartsWith(TEXT("AutoSide_"), ESearchCase::IgnoreCase) ||
+        IdString.StartsWith(TEXT("Station."), ESearchCase::IgnoreCase))
     {
         UE_LOG(LogTemp, Warning,
             TEXT("AddCustomSnapPoint rejected invalid/reserved PointId '%s' on '%s'."),

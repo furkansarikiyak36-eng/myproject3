@@ -292,6 +292,61 @@ bool FPlacementTwoSupportTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Step 8: a log's own joint points are one station per 75 cm module of its real
+// length (no copy per side); a cut lays them out again; a T joint takes the side
+// of the station the player aims at.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementStationsOnLogTest, "MyProject3.Placement.StationsEvery75cmAndSideFromAim", Flags)
+bool FPlacementStationsOnLogTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    ALogBuildPiece* Beam = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 600.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 600, 100), FRotator::ZeroRotator, 150.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Beam"), Beam) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+
+    auto CountStations = [](const ALogBuildPiece* Log)
+    {
+        TArray<FPlacementFeature> Features;
+        FPlacementProviderRegistry::Find(Log)->GetFeatures(Log, Features);
+        int32 Count = 0;
+        for (const FPlacementFeature& Feature : Features)
+            Count += Feature.Kind == EPlacementFeatureKind::Station ? 1 : 0;
+        return Count;
+    };
+    TestEqual(TEXT("A 600 cm log has 8 stations"), CountStations(Beam), 8);
+    TestEqual(TEXT("A 150 cm log has 2 stations"), CountStations(Held), 2);
+    int32 SidePoints = 0;
+    for (const FLogSnapPoint& Point : Beam->GetSnapPoints())
+        SidePoints += Point.PointId.ToString().StartsWith(TEXT("AutoSide")) ? 1 : 0;
+    TestEqual(TEXT("No point is copied per side any more"), SidePoints, 0);
+
+    // A cut (scale) lays the stations out again for the new length.
+    Held->SetActorScale3D(FVector(3.0f, 0.3f, 0.3f));
+    TestEqual(TEXT("Cut to 300 cm it has 4 stations"), CountStations(Held), 4);
+
+    // T joint: aim at the beam's side, then at its top, at the same station.
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Beam;
+    Intent.AllowedProfiles = { TEXT("log.end_to_station") };
+    Intent.AimPoint = FVector(37.5f, -15.0f, 100.0f); // The -Y side.
+    FPlacementSolution Side = Kernel->Solve(Intent);
+    Intent.AimPoint = FVector(37.5f, 0.0f, 115.0f); // The top.
+    FPlacementSolution Top = Kernel->Solve(Intent);
+    if (!TestTrue(TEXT("A side joint is found"), Side.bValid) || !TestTrue(TEXT("A top joint is found"), Top.bValid))
+        return false;
+    TestTrue(FString::Printf(TEXT("The side joint is on the -Y face (%s)"), *Side.MarkerPoint.ToString()),
+        FMath::IsNearlyEqual(Side.MarkerPoint.Y, -15.0f, 1.0f) && FMath::IsNearlyEqual(Side.MarkerPoint.Z, 100.0f, 1.0f));
+    TestTrue(FString::Printf(TEXT("The top joint is on the top face (%s)"), *Top.MarkerPoint.ToString()),
+        FMath::IsNearlyEqual(Top.MarkerPoint.Z, 115.0f, 1.0f));
+    const FVector SideAxis = Side.PieceTransform.GetUnitAxis(EAxis::X);
+    TestTrue(TEXT("The side joint holds the log out sideways"), FMath::Abs(SideAxis.Y) > 0.99f);
+    TestEqual(TEXT("Both use the same station"), Side.Links[0].Target.FeatureId, Top.Links[0].Target.FeatureId);
+    return true;
+}
+
 // Modularity: the kernel and its math never name a material. New materials come
 // in as providers and profiles; if this test fails, a material rule leaked in.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementKernelNeutralTest, "MyProject3.Placement.KernelNamesNoMaterial", Flags)

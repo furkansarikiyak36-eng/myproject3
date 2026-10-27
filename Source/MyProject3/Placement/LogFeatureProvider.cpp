@@ -17,7 +17,7 @@ namespace
     /** Old snap points: automatic side points are body stations, other end tags are ends. */
     EPlacementFeatureKind ClassifyLegacyPoint(const ALogBuildPiece* Log, const FLogSnapPoint& Point)
     {
-        if (Point.PointId.ToString().StartsWith(TEXT("AutoSide")))
+        if (Point.PointId.ToString().StartsWith(TEXT("Station.")))
             return EPlacementFeatureKind::Station;
         MyProject3Construction::FLogGeometry Shape;
         if (Point.SnapTag == TEXT("LogEnd") && MyProject3Construction::GetLogGeometry(Log, Shape) && Shape.HalfLength > KINDA_SMALL_NUMBER)
@@ -62,6 +62,10 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
     const ALogBuildPiece* Log = AsLog(Piece);
     if (!Log)
         return;
+    // A log shortened by scale since its stations were laid out gets them again.
+    const_cast<ALogBuildPiece*>(Log)->RefreshStationsIfStale();
+    MyProject3Construction::FLogGeometry Shape;
+    const bool bHasShape = MyProject3Construction::GetLogGeometry(Log, Shape);
     const TArray<FLogSnapPoint>& Points = Log->GetSnapPoints();
     for (int32 Index = 0; Index < Points.Num(); ++Index)
     {
@@ -77,6 +81,11 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
         Feature.bCanReceive = Point.bCanReceive;
         Feature.bOccupied = Point.bOccupied;
         Feature.LegacyIndex = Index;
+        if (Feature.Kind == EPlacementFeatureKind::Station)
+        {
+            Feature.bRadialFree = true;
+            Feature.RadiusCm = bHasShape ? Shape.Radius : 0.0f;
+        }
         OutFeatures.Add(Feature);
     }
 }

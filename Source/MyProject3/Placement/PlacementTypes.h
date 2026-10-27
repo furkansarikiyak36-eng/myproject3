@@ -98,6 +98,12 @@ struct FPlacementFeature
     bool bOccupied = false;
     /** Index into the material's own anchor list, for adapters over older code. */
     int32 LegacyIndex = INDEX_NONE;
+    /**
+     * A station on a body: the frame lies on the body's axis (X along it) and the
+     * side a joint uses is solved from where the player aims, RadiusCm out.
+     */
+    bool bRadialFree = false;
+    float RadiusCm = 0.0f;
 };
 
 /** A long piece seen as a line with a thickness: logs, planks, sticks, ropes. */

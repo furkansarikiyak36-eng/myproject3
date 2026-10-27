@@ -99,6 +99,9 @@ public:
 
     static const TCHAR* DamagedReason();
 
+    /** The world frame a joint uses at Feature: a station's side is the one facing Toward, rounded to StepDeg. */
+    static FTransform ResolveFeatureFrame(const FPlacementFeature& Feature, const FVector& Toward, float StepDeg);
+
 private:
     FPlacementProfileRegistry Profiles;
 

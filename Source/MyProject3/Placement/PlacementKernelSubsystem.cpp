@@ -42,6 +42,28 @@ namespace
     }
 }
 
+FTransform UPlacementKernelSubsystem::ResolveFeatureFrame(const FPlacementFeature& Feature, const FVector& Toward, float StepDeg)
+{
+    if (!Feature.bRadialFree)
+        return Feature.WorldFrame;
+    // The side of the body that faces Toward, rounded to StepDeg around the axis;
+    // 0 degrees is the top (or world X for a standing body).
+    const FVector Centre = Feature.WorldFrame.GetLocation();
+    const FVector Axis = Feature.WorldFrame.GetUnitAxis(EAxis::X);
+    FVector Reference = FVector::VectorPlaneProject(FVector::UpVector, Axis);
+    if (!Reference.Normalize())
+        Reference = FVector::VectorPlaneProject(FVector::XAxisVector, Axis).GetSafeNormal();
+    FVector Direction = FVector::VectorPlaneProject(Toward - Centre, Axis);
+    if (!Direction.Normalize())
+        Direction = Reference;
+    float Angle = FMath::RadiansToDegrees(FMath::Atan2(
+        FVector::DotProduct(Direction, FVector::CrossProduct(Axis, Reference)), FVector::DotProduct(Direction, Reference)));
+    if (StepDeg > KINDA_SMALL_NUMBER)
+        Angle = FMath::RoundToFloat(Angle / StepDeg) * StepDeg;
+    const FVector Out = FQuat(Axis, FMath::DegreesToRadians(Angle)).RotateVector(Reference);
+    return FTransform(FRotationMatrix::MakeFromX(Out).ToQuat(), Centre + Out * Feature.RadiusCm);
+}
+
 const TCHAR* UPlacementKernelSubsystem::DamagedReason()
 {
     return TEXT("This piece is damaged: repair it before building on it (LMB with the axe).");
@@ -317,7 +339,10 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
             {
                 if (!TargetProvider->CanLink(Target, TargetFeature, Intent.Held, SourceFeature))
                     continue;
-                const FVector TargetPoint = TargetFeature.WorldFrame.GetLocation();
+                // A station's side faces where the player aims.
+                const FTransform TargetFrame = ResolveFeatureFrame(TargetFeature, Intent.AimPoint,
+                    GetParam(Profile, Intent, TEXT("radialStepDeg"), 90.0f));
+                const FVector TargetPoint = TargetFrame.GetLocation();
                 const FVector SourcePoint = (SourceFeature.LocalFrame * HeldTransform).GetLocation();
                 // The held piece's free preview may be half a log away from the joint;
                 // aiming straight at the target feature still finds it.
@@ -338,8 +363,9 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
                 Candidate.ProfileId = Profile.Id;
                 Candidate.Score = Distance - Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f);
                 Candidate.PieceTransform = PlacementMath::AlignOne(SourceFeature.LocalFrame, HeldTransform.GetScale3D(),
-                    TargetFeature.WorldFrame, TargetFeature.bFlipIncoming, Angle);
+                    TargetFrame, TargetFeature.bFlipIncoming, Angle);
                 Candidate.AngleDeg = Angle;
+                Candidate.MarkerPoint = TargetPoint;
                 FPlacementLink Link;
                 Link.Role = EPlacementLinkRole::Primary;
                 Link.Source.Piece = Intent.Held;
@@ -405,7 +431,9 @@ void UPlacementKernelSubsystem::SolveAnchor(const FPlacementProfile& Profile, co
     {
         if (!TargetFeature.bCanReceive || TargetFeature.bOccupied || !Profile.Target.Matches(TargetFamily, TargetFeature))
             continue;
-        const FVector Point = TargetFeature.WorldFrame.GetLocation();
+        // A piece rests on the top side of a station.
+        const FVector Point = ResolveFeatureFrame(TargetFeature, TargetFeature.WorldFrame.GetLocation() + FVector::UpVector * 1000.0f,
+            GetParam(Profile, Intent, TEXT("radialStepDeg"), 90.0f)).GetLocation();
         if (Point.Z < Origin.Z - 1.0f)
             continue; // A point on the underside cannot hold a piece resting on it.
         bAnyPoint = true;
@@ -431,6 +459,7 @@ void UPlacementKernelSubsystem::SolveAnchor(const FPlacementProfile& Profile, co
         Candidate.ProfileId = Profile.Id;
         Candidate.Score = Distance;
         Candidate.AngleDeg = Tilt;
+        Candidate.MarkerPoint = Point;
         Candidate.PieceTransform = FTransform(Rotation,
             Point + FVector::UpVector * RaiseCm - Rotation.RotateVector(Source->LocalFrame.GetLocation() * Scale), Scale);
         FPlacementLink Link;

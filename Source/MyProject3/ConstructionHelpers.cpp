@@ -142,6 +142,7 @@ ALogBuildPiece* SpawnLogCopy(ALogBuildPiece* Source, const FTransform& Transform
     Copy->SetPieceStaticMesh(SourceMesh->GetStaticMesh());
     Copy->FinishSpawning(Transform);
     Copy->SetActorScale3D(Transform.GetScale3D());
+    Copy->RefreshStationsIfStale();
     if (UMaterialInterface* Material = SourceMesh->GetMaterial(0))
         Copy->GetLogMesh()->SetMaterial(0, Material);
     return Copy;
@@ -166,6 +167,7 @@ bool TrimLogToRange(ALogBuildPiece* Log, float FromAlong, float ToAlong)
     const FQuat Rotation = Log->GetActorQuat();
     const FVector Origin = Log->GetLogMesh()->GetStaticMesh()->GetBounds().Origin;
     Log->SetActorScale3D(Scale);
+    Log->RefreshStationsIfStale();
     Log->SetActorLocation(NewCentre - Rotation.RotateVector(Origin * Scale), false, nullptr,
         ETeleportType::TeleportPhysics);
     return true;

@@ -201,9 +201,8 @@ void ULogCarryComponent::TickComponent(
     if (bHasValidSnap && IsValid(CurrentSnapTarget) &&
         CurrentTargetSnapPointIndex != INDEX_NONE)
     {
-        const FVector MarkerLocation =
-            CurrentSnapTarget->GetSnapPointWorldTransform(
-                CurrentTargetSnapPointIndex).GetLocation();
+        const FVector MarkerLocation = CurrentSolution.bValid ? CurrentSolution.MarkerPoint
+            : CurrentSnapTarget->GetSnapPointWorldTransform(CurrentTargetSnapPointIndex).GetLocation();
 
         DrawDebugSphere(GetWorld(), MarkerLocation, 20.0f, 12,
             FColor::Green, false, 0.10f, 0, 2.0f);
@@ -625,8 +624,9 @@ void ULogCarryComponent::SetSnapCandidate(
     UStaticMeshComponent* HeldMesh = HeldPiece->GetLogMesh();
     if (TargetMesh && HeldMesh && HeldMesh->GetStaticMesh() && (EndInsetFraction > 0.0f || SnapInsetFraction > 0.0f))
     {
-        const FVector TargetPoint =
-            (Target->GetSnapPointLocalTransform(TargetIndex) * Target->GetActorTransform()).GetLocation();
+        // Where the joint is (a station's side is solved, not stored).
+        const FVector TargetPoint = CurrentSolution.bValid ? CurrentSolution.MarkerPoint
+            : (Target->GetSnapPointLocalTransform(TargetIndex) * Target->GetActorTransform()).GetLocation();
         const FVector TargetCentre = TargetMesh->Bounds.Origin;
         const FVector TargetAxis = TargetMesh->GetComponentTransform()
             .TransformVectorNoScale(LocalAxisVector(Target->LongitudinalAxis)).GetSafeNormal();
@@ -2488,8 +2488,9 @@ bool ULogCarryComponent::BuildPlacementPreviewSegments(TArray<FVector>& OutOutli
     }
     else if (bHasValidSnap && IsValid(CurrentSnapTarget) && CurrentTargetSnapPointIndex != INDEX_NONE)
     {
-        Joint = (CurrentSnapTarget->GetSnapPointLocalTransform(CurrentTargetSnapPointIndex) *
-            CurrentSnapTarget->GetActorTransform()).GetLocation();
+        Joint = CurrentSolution.bValid ? CurrentSolution.MarkerPoint
+            : (CurrentSnapTarget->GetSnapPointLocalTransform(CurrentTargetSnapPointIndex) *
+                CurrentSnapTarget->GetActorTransform()).GetLocation();
         bJoint = true;
     }
     if (!bJoint)
