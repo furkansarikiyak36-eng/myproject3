@@ -14,6 +14,7 @@ This folder defines the intended game, production catalogue, and phased implemen
 - [Branch integration matrix (CSV)](../Architecture/PHASE_00_BRANCH_INTEGRATION_MATRIX.csv) — branch-to-branch comparison and integration evidence.
 - [Shared data contracts](../Architecture/PHASE_01_SHARED_DATA_CONTRACTS.md) — identity, ownership, operations, units, events, persistence and domain state.
 - [Shared contract source reconciliation](../Architecture/PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md) — candidate API inspection, ownership/operation gaps, and terrain-state integration risks.
+- [Core API and caller audit](../Architecture/PHASE_01_CORE_API_CALLER_AUDIT.md) — targeted function-level map for identity, operation receipts, inventory transfers, structural graph, voxel edits and save/load.
 - [Phase 01 acceptance checklist](../Architecture/PHASE_01_ACCEPTANCE_CHECKLIST.md) — schema CI evidence and remaining source/engine gates.
 - [Gameplay definition schema](../Architecture/GAMEPLAY_DEFINITION_CATALOG_SCHEMA.json) — draft schema for item/material/tool/build-part/recipe/crop/region definitions.
 - [Feedback event schema](../Architecture/FEEDBACK_EVENT_CATALOG_SCHEMA.json) — separates committed gameplay events from SFX/VFX/animation/music cues.
