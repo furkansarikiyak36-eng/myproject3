@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "ASSET_LOG_WHOLE_300",
+  "displayNameKey": "asset.log.whole_300",
+  "assetKind": "StaticMesh",
+  "productionStatus": "LogicalRequirement",
+  "sourcePolicy": "ExistingProjectAsset",
+  "dimensionsCm": {
+    "x": 300,
+    "y": 25,
+    "z": 25
+  },
+  "localForwardAxis": "X",
+  "pivotPolicy": "BaseCenter",
+  "collisionPolicy": "Simple",
+  "interactionType": "PHYSICAL_RESOURCE",
+  "meshVariantSetId": "MSH_LOG_300_WHOLE",
+  "feedbackEventIds": [
+    "SFX_WOOD_CUT"
+  ],
+  "lodPolicy": "StandardStatic",
+  "persistencePolicy": "SaveWhenInWorld",
+  "notes": "Logical record for the existing whole 300-length log mesh family mentioned by the repository README; actual bounds/pivot/collision need measurement."
+}
