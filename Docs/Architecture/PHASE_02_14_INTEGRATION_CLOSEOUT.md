@@ -7,7 +7,7 @@
 
 ## Bu turda gerçekten değiştirilen kaynak
 
-- `VoxelTerrainChunkComponent.h/.cpp`: bounded dig, zemin sınıfı/a let gücü eşikleri, izinli alan/yarıçap, revizyon koruması, tekrar işlem makbuzu, yapı kökü yakınında korumacı red ve yoğunluk snapshot API'si.
+- `VoxelTerrainChunkComponent.h/.cpp`: bounded dig, zemin sınıfı/alet gücü eşikleri, izinli alan/yarıçap, revizyon koruması, tekrar işlem makbuzu, yapı kökü yakınında korumacı red, başarılı işlemde mesh/çarpışmayı otomatik yenileme ve yoğunluk snapshot API'si.
 - `WorldSimulationSaveGame.h`: şema 14 ve `FWorldVoxelChunkSnapshot` verisi.
 - `WorldSaveCoordinatorSubsystem.cpp`: voxel chunk'larının kararlı actor kimliğiyle kaydedilmesi, kayıt seti doğrulaması, yüklemede yoğunluk geri yüklenmesi ve mesh/çarpışmanın yeniden kurulması; v13'ten v14'e fail-closed geçiş.
 - `MyProject3CoreTests.cpp`: sınırlı kazı/alet gücü/revizyon, yapı kökü koruması ve yoğunluk snapshot round-trip için üç otomasyon testi kaynağı.
