@@ -7,8 +7,8 @@
 - [x] Mechanic IDs are treated as separate from item/material/recipe/asset IDs.
 - [x] Instance ID, definition ID, operation ID and anchor feature ID namespaces are documented.
 - [x] Existing candidate C++ contracts and their branches are identified.
-- [x] Targeted static inspection of core result/request types, identity, ownership, inventory, log split, structural graph, terrain state and save coordinator recorded in [the reconciliation review](PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md).
-- [ ] Every M001–M119 row is checked against exact owning functions and caller chains; domain-level paths are not sufficient for closeout.
+- [x] Targeted static inspection of core result/request types, identity, ownership, inventory, log split, structural graph, terrain state and save coordinator recorded in [the reconciliation review](PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md) and [core API/caller audit](PHASE_01_CORE_API_CALLER_AUDIT.md).
+- [ ] Every M001–M119 row is checked against exact owning functions and caller chains; the core API/caller audit is a targeted subset and does not close this all-mechanic gate.
 - [ ] Replace generic acceptance criteria with mechanic-specific preconditions, state changes, rejection cases, retry rules, persistence expectations and evidence steps.
 
 ## B. Data definition schemas
@@ -30,6 +30,7 @@
 - [x] No new identity registry or inventory ownership subsystem is defined by this branch.
 - [x] Generic lifecycle is distinguished from item ownership and domain-specific processing state.
 - [x] Operation ledger is not incorrectly described as a complete transaction coordinator.
+- [x] Static callsite scan checked 17 candidate domain implementation files for generic operation-ledger entry-point calls; no such calls were found in that inspected set. This is not a full repository-wide compiler/call-graph proof.
 - [x] Committed events are defined as post-commit notifications, not durable persistence.
 - [ ] Test idempotent retries for the same operation ID in each domain.
 - [ ] Test expected-revision conflicts and verify failure has no partial mutation.
