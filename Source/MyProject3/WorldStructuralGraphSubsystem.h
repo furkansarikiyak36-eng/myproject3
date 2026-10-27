@@ -69,6 +69,10 @@ struct FWorldStructuralNodeSnapshot
     UPROPERTY(SaveGame)
     bool bGroundSupported = false;
 
+    /** A child node whose second physical contact rests directly on ground. */
+    UPROPERTY(SaveGame)
+    bool bHasGroundContact = false;
+
     UPROPERTY(SaveGame)
     float Damage = 0.0f;
 
@@ -114,6 +118,10 @@ struct FStructuralNodeRecord
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
     bool bGroundSupported = false;
+
+    /** Direct ground contact at an additional support point; valid for a node with a primary parent. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
+    bool bHasGroundContact = false;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
     float Damage = 0.0f;
@@ -167,6 +175,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool SetGroundSupported(FGuid NodeId, bool bGroundSupported);
+
+    /** Records a second-end ground contact for a child node; unlike root support this may coexist with a parent edge. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool SetGroundContact(FGuid NodeId, bool bHasGroundContact);
 
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool HasValidSupportPath(FGuid NodeId) const;

@@ -37,6 +37,7 @@ bool UWorldStructuralGraphSubsystem::ExportSnapshot(
         State.LocalLoad = Node.LocalLoad;
         State.MaxSupportedLoad = Node.MaxSupportedLoad;
         State.bGroundSupported = Node.bGroundSupported;
+        State.bHasGroundContact = Node.bHasGroundContact;
         State.Damage = Node.Damage;
         State.DamageThreshold = Node.DamageThreshold;
         State.Revision = Node.Revision;
@@ -95,7 +96,7 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
             (State.ParentNodeId.IsValid() &&
                 (State.ParentAnchorId.IsNone() || State.OwnAnchorId.IsNone() || State.bGroundSupported)) ||
             (!State.ParentNodeId.IsValid() &&
-                (!State.ParentAnchorId.IsNone() || !State.OwnAnchorId.IsNone())))
+                (!State.ParentAnchorId.IsNone() || !State.OwnAnchorId.IsNone() || State.bHasGroundContact)))
         {
             return false;
         }
@@ -142,6 +143,7 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
         Node.LocalLoad = State.LocalLoad;
         Node.MaxSupportedLoad = State.MaxSupportedLoad;
         Node.bGroundSupported = State.bGroundSupported;
+        Node.bHasGroundContact = State.bHasGroundContact;
         Node.Damage = State.Damage;
         Node.DamageThreshold = State.DamageThreshold;
         Node.Revision = State.Revision;
@@ -376,6 +378,7 @@ bool UWorldStructuralGraphSubsystem::RegisterNode(
     Record.Actor = Actor;
     Record.Kind = Kind;
     Record.bGroundSupported = bGroundSupported;
+    Record.bHasGroundContact = false;
     Record.LocalLoad = LocalLoad;
     Record.MaxSupportedLoad = MaxSupportedLoad;
     Record.DamageThreshold = DamageThreshold;
@@ -443,6 +446,14 @@ bool UWorldStructuralGraphSubsystem::UnregisterNode(
                 Child->OwnAnchorId = NAME_None;
             }
             Child->bGroundSupported = false;
+            // If the removed parent was the only structural parent and this
+            // node still has real ground contact, promote that physical contact
+            // to the graph's root-support state instead of inventing support.
+            if (!Child->ParentNodeId.IsValid() && Child->bHasGroundContact)
+            {
+                Child->bGroundSupported = true;
+                Child->bHasGroundContact = false;
+            }
             ++Child->Revision;
         }
     }
@@ -501,10 +512,12 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
     }
 
     const bool bPreviousGroundSupported = Child->bGroundSupported;
+    const bool bPreviousGroundContact = Child->bHasGroundContact;
     Child->ParentNodeId = ParentNodeId;
     Child->ParentAnchorId = ParentAnchorId;
     Child->OwnAnchorId = OwnAnchorId;
     Child->bGroundSupported = false;
+    Child->bHasGroundContact = false;
 
     // Validate the full aggregate load chain before advancing any revision.
     for (const FGuid& Id : AncestorIds)
@@ -516,6 +529,7 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
             Child->ParentAnchorId = NAME_None;
             Child->OwnAnchorId = NAME_None;
             Child->bGroundSupported = bPreviousGroundSupported;
+            Child->bHasGroundContact = bPreviousGroundContact;
             return false;
         }
         TSet<FGuid> Visiting;
@@ -527,6 +541,7 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
             Child->ParentAnchorId = NAME_None;
             Child->OwnAnchorId = NAME_None;
             Child->bGroundSupported = bPreviousGroundSupported;
+            Child->bHasGroundContact = bPreviousGroundContact;
             return false;
         }
     }
@@ -576,6 +591,7 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
     Child->ParentAnchorId = NAME_None;
     Child->OwnAnchorId = NAME_None;
     Child->bGroundSupported = false;
+    Child->bHasGroundContact = false;
     ++Child->Revision;
     for (const FGuid& Id : AncestorIds)
     {
@@ -694,6 +710,25 @@ bool UWorldStructuralGraphSubsystem::SetGroundSupported(FGuid NodeId, bool bGrou
     return true;
 }
 
+bool UWorldStructuralGraphSubsystem::SetGroundContact(FGuid NodeId, bool bHasGroundContact)
+{
+    FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+    if (!Node || Node->Revision == MAX_int64 ||
+        (bHasGroundContact && !Node->ParentNodeId.IsValid()))
+    {
+        // Root pieces use bGroundSupported; bHasGroundContact is reserved for
+        // a second contact on a child which already has a primary attachment.
+        return false;
+    }
+
+    if (Node->bHasGroundContact != bHasGroundContact)
+    {
+        Node->bHasGroundContact = bHasGroundContact;
+        ++Node->Revision;
+    }
+    return true;
+}
+
 bool UWorldStructuralGraphSubsystem::HasValidSupportPath(FGuid NodeId) const
 {
     TSet<FGuid> Visiting;
@@ -709,7 +744,7 @@ bool UWorldStructuralGraphSubsystem::HasValidSupportPathInternal(
     {
         return false;
     }
-    if (Current->bGroundSupported)
+    if (Current->bGroundSupported || Current->bHasGroundContact)
         return true;
 
     Visiting.Add(NodeId);
