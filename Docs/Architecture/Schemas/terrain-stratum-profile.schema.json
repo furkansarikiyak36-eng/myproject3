@@ -12,6 +12,7 @@
     "referenceSurface",
     "profileDepthCm",
     "boundaryVariationCm",
+    "boundaryVariationScaleCm",
     "regionTags",
     "strata"
   ],
