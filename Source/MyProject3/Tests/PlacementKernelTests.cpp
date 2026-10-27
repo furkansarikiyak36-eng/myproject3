@@ -126,7 +126,9 @@ bool FPlacementProfilesTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Every mechanic has its profile"),
         Project.Find(TEXT("log.parallel_stack")) && Project.Find(TEXT("log.deck")) && Project.Find(TEXT("log.stairs")) &&
         Project.Find(TEXT("log.step")) && Project.Find(TEXT("log.gable")) && Project.Find(TEXT("log.strut")) &&
-        Project.Find(TEXT("log.post_on_ground")) && Project.Find(TEXT("stone.on_anchor")) && Project.Find(TEXT("stick.on_anchor")));
+        Project.Find(TEXT("log.post_on_ground")) && Project.Find(TEXT("stone.on_anchor")) && Project.Find(TEXT("stick.on_anchor")) &&
+        Project.Find(TEXT("log.station_to_end")) && Project.Find(TEXT("log.station_cross")) &&
+        Project.Find(TEXT("log.end_to_authored")) && Project.Find(TEXT("log.authored_to_end")));
 
     FPlacementProfileRegistry Bad;
     Bad.LoadFromString(TEXT(R"({ "schemaVersion": 1, "profiles": [
@@ -354,6 +356,80 @@ bool FPlacementStationsOnLogTest::RunTest(const FString& Parameters)
     const FVector SideAxis = Side.PieceTransform.GetUnitAxis(EAxis::X);
     TestTrue(TEXT("The side joint holds the log out sideways"), FMath::Abs(SideAxis.Y) > 0.99f);
     TestEqual(TEXT("Both use the same station"), Side.Links[0].Target.FeatureId, Top.Links[0].Target.FeatureId);
+    return true;
+}
+
+// Complement A: a round station on the held log can be the source and connect to a target end.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementStationToEndTest, "MyProject3.Placement.RoundStationToEnd", Flags)
+bool FPlacementStationToEndTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    ALogBuildPiece* Target = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 500, 100), FRotator::ZeroRotator, 150.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Target"), Target) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Target;
+    Intent.AimPoint = FVector(150, 0, 100);
+    Intent.AllowedProfiles = { TEXT("log.station_to_end") };
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    if (!TestTrue(FString::Printf(TEXT("Station-to-end solution is valid (%s)"), *Solution.Reason), Solution.bValid))
+        return false;
+
+    TestEqual(TEXT("The complementary profile is used"), Solution.ProfileId, FName(TEXT("log.station_to_end")));
+    TestTrue(TEXT("The held feature is a station"), Solution.Links[0].Source.FeatureId.ToString().StartsWith(TEXT("Station.")));
+    TestTrue(TEXT("The target feature is an end"), Solution.Links[0].Target.FeatureId.ToString().StartsWith(TEXT("End.")));
+
+    FPlacementFeature SourceFeature, TargetFeature;
+    TestTrue(TEXT("Source station exists"), FPlacementProviderRegistry::FindFeature(Held, Solution.Links[0].Source.FeatureId, SourceFeature));
+    TestTrue(TEXT("Target end exists"), FPlacementProviderRegistry::FindFeature(Target, Solution.Links[0].Target.FeatureId, TargetFeature));
+    const FVector SourceCentreAfter = Solution.PieceTransform.TransformPosition(SourceFeature.LocalFrame.GetLocation());
+    TestTrue(TEXT("The source station centre stays one radius behind the target end"),
+        FMath::IsNearlyEqual(FVector::Distance(SourceCentreAfter, TargetFeature.WorldFrame.GetLocation()), SourceFeature.RadiusCm, 1.0f));
+    TestTrue(TEXT("The side-to-end log is perpendicular to the target log"),
+        FMath::Abs(FVector::DotProduct(Solution.PieceTransform.GetUnitAxis(EAxis::X), Target->GetActorTransform().GetUnitAxis(EAxis::X))) < 0.1f);
+    return true;
+}
+
+// Complement B: round stations can form a 90-degree tangent cross-contact; angled joinery remains explicit.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementStationCrossTest, "MyProject3.Placement.RoundStationCross90", Flags)
+bool FPlacementStationCrossTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    ALogBuildPiece* Target = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 400, 100), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Target"), Target) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Target;
+    Intent.AimPoint = FVector(37.5f, 0, 115);
+    Intent.HeldAngleDeg = 90.0f;
+    Intent.AllowedProfiles = { TEXT("log.station_cross") };
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    if (!TestTrue(FString::Printf(TEXT("Station-cross solution is valid (%s)"), *Solution.Reason), Solution.bValid))
+        return false;
+
+    TestEqual(TEXT("The round-only cross profile is used"), Solution.ProfileId, FName(TEXT("log.station_cross")));
+    TestTrue(TEXT("Both ends of the link are stations"),
+        Solution.Links[0].Source.FeatureId.ToString().StartsWith(TEXT("Station.")) &&
+        Solution.Links[0].Target.FeatureId.ToString().StartsWith(TEXT("Station.")));
+    FPlacementFeature SourceFeature, TargetFeature;
+    TestTrue(TEXT("Source station exists"), FPlacementProviderRegistry::FindFeature(Held, Solution.Links[0].Source.FeatureId, SourceFeature));
+    TestTrue(TEXT("Target station exists"), FPlacementProviderRegistry::FindFeature(Target, Solution.Links[0].Target.FeatureId, TargetFeature));
+    const FVector SourceCentreAfter = Solution.PieceTransform.TransformPosition(SourceFeature.LocalFrame.GetLocation());
+    TestTrue(TEXT("The two surface stations are tangent rather than centreline-overlapped"),
+        FMath::IsNearlyEqual(FVector::Distance(SourceCentreAfter, TargetFeature.WorldFrame.GetLocation()),
+            SourceFeature.RadiusCm + TargetFeature.RadiusCm, 1.5f));
+    TestTrue(TEXT("The crossed logs have perpendicular longitudinal axes"),
+        FMath::Abs(FVector::DotProduct(Solution.PieceTransform.GetUnitAxis(EAxis::X), Target->GetActorTransform().GetUnitAxis(EAxis::X))) < 0.15f);
     return true;
 }
 
