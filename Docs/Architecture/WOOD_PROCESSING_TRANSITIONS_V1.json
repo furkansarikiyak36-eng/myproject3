@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "domain_id": "WOOD_PROCESSING",
+  "status": "proposed",
+  "note": "Logical transition catalogue only. IDs and asset keys are proposals; they do not assert that every tool, mesh variant, or operation exists in current main.",
+  "state_ids": [
+    "WHOLE_LOG",
+    "HALF_LENGTH_LOG",
+    "SPLIT_HALF_LOG",
+    "QUARTER_LOG",
+    "HEWN_LOG",
+    "SQUARED_BEAM",
+    "GUTTER_LOG",
+    "TROUGH_LOG",
+    "PLANK",
+    "NOTCHED_LOG",
+    "JOINT_PIECE"
+  ],
+  "transitions": [
+    {
+      "transition_id": "WOOD_SPLIT_HALF",
+      "from_state": "WHOLE_LOG",
+      "to_state": "SPLIT_HALF_LOG",
+      "operation_id": "PROCESS_SPLIT_HALF",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_SPLIT_HALF",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_QUARTER",
+      "from_state": "SPLIT_HALF_LOG",
+      "to_state": "QUARTER_LOG",
+      "operation_id": "PROCESS_QUARTER",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_QUARTER",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_HEW",
+      "from_state": "WHOLE_LOG",
+      "to_state": "HEWN_LOG",
+      "operation_id": "PROCESS_HEW",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_HEWN",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_SQUARE",
+      "from_state": "WHOLE_LOG",
+      "to_state": "SQUARED_BEAM",
+      "operation_id": "PROCESS_KALAS",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_SQUARED_BEAM",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_GROOVE",
+      "from_state": "SPLIT_HALF_LOG",
+      "to_state": "GUTTER_LOG",
+      "operation_id": "PROCESS_GUTTER",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_GROOVED_HALF",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_TROUGH",
+      "from_state": "SPLIT_HALF_LOG",
+      "to_state": "TROUGH_LOG",
+      "operation_id": "PROCESS_TROUGH",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_TROUGH",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_PLANK",
+      "from_state": "SPLIT_HALF_LOG",
+      "to_state": "PLANK",
+      "operation_id": "PROCESS_PLANK",
+      "required_tool_ids": [
+        "TOOL_AXE"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_PLANK",
+      "status": "planned"
+    },
+    {
+      "transition_id": "WOOD_CROSSCUT_LENGTH",
+      "from_state": "WHOLE_LOG",
+      "to_state": "HALF_LENGTH_LOG",
+      "operation_id": "PROCESS_CROSSCUT",
+      "required_tool_ids": [
+        "TOOL_SAW"
+      ],
+      "required_piece_condition": [
+        "World",
+        "NotHeld",
+        "NotPlaced",
+        "NoAttachedChildren"
+      ],
+      "required_output_asset_id": "LOG_HALF_LENGTH",
+      "status": "proposed"
+    }
+  ]
+}
