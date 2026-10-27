@@ -4,29 +4,32 @@
 
 Introduce a world-local graph contract that can represent wood, stone, stick, foundation and terrain-anchor nodes in one support/load graph. Domain actors remain owners of their mesh geometry and authored anchors.
 
-## Implemented in this first slice
+## Implemented
 
 - Node registration with a stable caller-provided GUID, domain kind, actor reference, local load, maximum supported load and damage threshold.
 - Explicit parent-child edges carrying both anchor IDs.
-- Cycle rejection and support-path validation.
-- Recursive aggregate-load calculation and parent capacity check during connection.
-- Safe-removal query that refuses a node with direct dependents.
-- Damage accumulation with a threshold signal.
+- Secondary supports (`TryAddSecondarySupport`, `TryRemoveSecondarySupport`): a node keeps one primary parent and any number of extra load-bearing contacts. A node stands while any support path reaches the ground. Floors, beams on two posts, struts and props use this.
+- Cycle rejection and support-path validation over primary and secondary links.
+- Recursive aggregate-load calculation; a connection or secondary support that overloads any node is rejected.
+- Safe-removal query (`CanSafelyRemove`) and a leaf-first removal order (`BuildDependentRemovalOrder`).
+- Damage accumulation with a threshold signal, and `RepairDamage`.
 - Revision increments for graph mutations.
+- Persistence: `ExportSnapshot` / `RestoreSnapshot` store node IDs, primary edges, secondary supports, damage and revisions. The save coordinator saves and loads them. `RebuildLogActorAttachmentsFromSnapshot` rebuilds log actor attachments from the restored edges.
+
+## Who writes edges
+
+- **Placement kernel** (`Source/MyProject3/Placement`, see `GLOBAL_SNAP_SYSTEM_PLAN.md`): every placement by the player, the helper or a plan slot goes through `UPlacementKernelSubsystem::CommitPlacement`. It adds the primary edge, secondary supports and "carried" links (a beam resting on a new strut) in one transaction. If any one is refused, all are undone.
+- **Material joints**: log snap points (`ALogBuildPiece::TryReserveSnapPoints`), stone and stick anchors (`TryConnectToAnchor`) and cross-material joints (`UMaterialConnectionSubsystem`) add their own edges. The kernel calls them through its feature providers.
+- **Follow-up reactions** after a placement (end contacts, beams raised onto a new post, lifted ends) add secondary supports from `ULogCarryComponent::HandlePlacementCommitted`. These are best-effort: a refused contact does not undo the placement.
 
 ## Important boundaries
 
-- This subsystem is not yet wired into log, stone or stick actors. Existing domain-local attachment arrays and anchor reservations remain active until adapters migrate in a later slice.
 - It does not automatically spawn collapse physics or salvage resources when damage reaches a threshold. It reports the threshold crossing so the owning orchestration layer can resolve it.
-- It does not yet validate anchor geometry, compatibility tags or anchor occupancy; those remain the responsibility of the domain adapter until unified.
-- The graph is world-local and in-memory. Save/load and migration are not implemented here.
-- A single-parent support graph is used in this first slice. Multi-support beams/bridges require an explicit edge model in a later revision.
-- Load is a configurable scalar, not a full structural physics solver.
+- Anchor geometry, compatibility tags and anchor occupancy are validated by the domain adapters and the placement kernel, not by the graph.
+- Load is a configurable scalar, not a structural physics solver: there is no stress, bending or load sharing between supports.
 
 ## Required follow-up
 
-1. Add adapters that register existing wood/stone/stick actors and synchronize anchor commits/releases with graph edges.
-2. Define safe removal policy: reject, detach dependents in stable order, or resolve collapse.
-3. Add multi-parent support for bridge/roof/floor systems.
-4. Persist node IDs, edges, revisions and damage state through the save coordinator.
-5. Keep mechanic registry statuses unchanged until the final verification gate.
+1. Define the removal policy beyond "refuse": detach dependents in stable order, or resolve collapse.
+2. Tune load and damage values against gameplay.
+3. Keep mechanic registry statuses unchanged until the final verification gate.

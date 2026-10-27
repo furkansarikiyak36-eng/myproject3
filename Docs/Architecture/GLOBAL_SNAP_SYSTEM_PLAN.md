@@ -1,17 +1,36 @@
 # Global Snap Sistemi — Uygulama Planı
 
-**Durum:** Adım 0–2 uygulandı, adım 3'ün bir kısmı yapıldı (aşağıdaki tablo). Derleme ve 53/53 otomasyon testi geçiyor; PIE ile denenmedi.
+**Durum:** Adım 0–10 uygulandı. Ateş ve voxel ("sonra") yapılmadı. Derleme ve 57/57 otomasyon testi geçiyor. **PIE (oyun içi) ile denenmedi.**
 **Dal:** `feature/global-snap-kernel` (`sotf-wood-core-integration` üzerinden).
 
 ### İlerleme
 
-| Adım | Durum | Not |
+| Adım | Durum | Ne yapıldı |
 |---|---|---|
-| 0 | Yapıldı | `CommitHeldLogAt` artık hep-ya-hiç: birincil destek, ikinci destek ve "bu parçaya yaslanan" parça (payandadaki kiriş) tek işlemde; biri başarısızsa kütük elde kalır. Test: `Placement.TwoSupportsOrNothing`. |
-| 1 | Yapıldı | `Source/MyProject3/Placement/`: tipler, sağlayıcı arayüzü + kayıt, profil kataloğu (`Config/Placement/PlacementProfiles.json`) + doğrulama, açı ızgarası ve titreme önleme, `FPlacementTransaction`, `UPlacementKernelSubsystem`, kütük sağlayıcısı (75 cm modüler özellikler dahil). Sunum katmanı henüz ayrı dosya değil; HUD mevcut önizlemeyi çiziyor. |
-| 2 | Yapıldı | Oyuncunun uç-uca / T snap'i çekirdekten geliyor (`FindBestSnapCandidate` eski döngüsü silindi). E basınca aynı çözüm transaction ile commit ediliyor; uzak ucun desteği de bu işlemin parçası. Snap artık tutulan kütüğün ölçeğini koruyor (eskiden hedefin ölçeğini alıyordu). |
-| 3 | Kısmen | Payanda ve iki destekli tahta hep-ya-hiç commit kullanıyor. Çözüm hesabı (`SpanTwo`) hâlâ eski fonksiyonlarda. |
-| 4–10 | Bekliyor | |
+| 0 | Yapıldı | İki destekli yerleşim hep-ya-hiç: bir destek tutmazsa parça elde kalır, grafikte yarım bağlantı kalmaz. Test: `Placement.TwoSupportsOrNothing`. |
+| 1 | Yapıldı | `Source/MyProject3/Placement/`: tipler, sağlayıcı arayüzü ve kaydı, profil kataloğu ve doğrulaması, açı ızgarası ve titreme önleme, `FPlacementTransaction`, `UPlacementKernelSubsystem`. |
+| 2 | Yapıldı | Uç-uca ve T snap çekirdekte (`SolveSnap`); E aynı çözümü commit eder; tutulan kütük kendi ölçeğini korur. |
+| 3 | Yapıldı | Payanda `SpanTwo` (strut): direğe dayanır, kiriş üstüne biner; ikisi tek işlemde. İki destekli tahta `deck` ile. |
+| 4 | Yapıldı | `AlignParallel`: istif (`stack`), döşeme ve merdiven (`deck`), tek basamak (`step`), üçgen dolgu (`gable`). Eski hesaplar `PlacementBodyMath`'e taşındı; bileşenlerde yalnız çağrı kaldı. |
+| 5 | Yapıldı | Direk aralığı `RestOnSurface` (`post`); serbest yerleştirme `piece.free_place` ile aynı commit'ten geçer. |
+| 6 | Yapıldı | Plan slotları ve yardımcı karakter `CommitPlacement` kullanır. Test: `Placement.EveryPlacerUsesOneCommit`. |
+| 7 | Yapıldı | Her yerleşim `OnPlacementCommitted` olayını yayar. Uç temasları, kirişin yeni direğe kalkması ve düşen ucun kalkması bu olaydan çalışır (yardımcının yerleştirdikleri dahil). |
+| 8 | Yapıldı | Kütükte her 75 cm modüle bir istasyon (600 cm: 8), gerçek (ölçekli) uzunluktan; yön kopyası yok. Hangi yüze bağlanılacağı nişandan çözülür (`radialStepDeg`, şimdilik 90). Kesimden sonra istasyonlar yenilenir. Test: `Placement.StationsEvery75cmAndSideFromAim`. |
+| 9 | Yapıldı | Taş ve çubuk sağlayıcıları (`MaterialFeatureProviders.cpp`) ve ip sağlayıcısı. Taş/çubuk yerleşimi çekirdekten (`stone.on_anchor`, `stick.on_anchor`). Çekirdek dosyaları hiçbir malzeme adı içermez. Test: `Placement.KernelNamesNoMaterial`. |
+| 10 | Yapıldı | Bütün bağlantılar yapısal grafikte; grafik kayıtla saklanıp geri yükleniyor. Test: `Placement.LinksSurviveSaveAndLoad`. |
+| sonra | Yapılmadı | Ateş yeri ve voxel. |
+
+### Plandan sapmalar ve bilinen sınırlar
+
+- **Sunum katmanı ayrı sınıf olmadı.** HUD (`LogSnapHUD`) ve `ULogCarryComponent::Build*Segments` yalnızca çözümü okuyup çizer; hesap yapmazlar. Önizlenen ile yerleşen aynı `FPlacementSolution`'dır.
+- **Düşen uç (menteşe).** Kütük tek ucundan bağlanıp diğer ucunun altında bir şey yoksa uç aşağı sallanır. Bu davranış istendiği için korundu; ayrı bir "hinge" profiliyle seçilmiyor.
+- **Uzak uç taraması** (`EvaluateFarEndSupport`) hâlâ `ULogCarryComponent`'te. Bulduğu destek, snap çözümüne ikinci bağlantı olarak eklenir ve aynı commit'e girer.
+- **Kirişi direğe kaldırma ve sarkan uç** yeniden çözülmüyor. Bunlar olaydan tetiklenen kütük tepkileri olarak `ULogCarryComponent` içinde duruyor.
+- **İstasyon yüzü 90° adımla seçiliyor.** Bu eski dört yönü korur. Yuvarlak kütükte daha ince açı için `log.end_to_station` profilinde `radialStepDeg` değeri değiştirilir.
+- **Tek istasyona tek bağlantı.** Eskiden aynı noktada dört yöne ayrı bağlantı kurulabiliyordu, artık bir istasyon bir bağlantı alıyor (plan 9. bölüm).
+- **Daha katı kurallar.** Grafik bir desteği reddederse yerleşim olmaz: tahta, payanda, plan parçası, serbest yerleşim ve yardımcının parçası için de geçerli. Eskiden sessizce yarım yerleşiyordu.
+- **Paketli oyun.** `Config/Placement` klasörü paketle gelmeyebilir. Kataloğun derlenmiş kopyası `UnrealEditorScripts/SyncPlacementCatalogue.py` ile üretilir; test iki kopyanın aynı olduğunu denetler.
+
 **İlgili:** `Config/Placement/SnapVariationLibrary.json` (PR #34, taslak katalog), `Docs/Architecture/GLOBAL_PLACEMENT_SNAP_VARIATION_LIBRARY.md`.
 
 ## 1. Amaç

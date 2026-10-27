@@ -347,6 +347,42 @@ bool FPlacementStationsOnLogTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Step 10: every link the kernel makes lives in the structural graph, which the
+// save coordinator stores; a board on two beams comes back on both after a load.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementSaveTest, "MyProject3.Placement.LinksSurviveSaveAndLoad", Flags)
+bool FPlacementSaveTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    ALogBuildPiece* BeamA = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 400.0f, 30.0f, true);
+    ALogBuildPiece* BeamB = SpawnCubeLog(World, FVector(0, 150, 100), FRotator::ZeroRotator, 400.0f, 30.0f, true);
+    ALogBuildPiece* Board = SpawnCubeLog(World, FVector(0, -300, 30), FRotator::ZeroRotator, 230.0f, 20.0f, false);
+    AActor* Player = World->SpawnActor<AActor>(FVector(0, -400, 100), FRotator::ZeroRotator);
+    ULogCarryComponent* Carry = NewObject<ULogCarryComponent>(Player);
+    Carry->RegisterComponent();
+    if (!TestNotNull(TEXT("Graph"), Graph) || !TestTrue(TEXT("Pick up"), Carry->TryPickupPiece(Board)))
+        return false;
+    TestTrue(FString::Printf(TEXT("Board on two beams (%s)"), *Carry->GetPlacementStatus()),
+        Carry->CommitHeldLogAt(FTransform(FRotator(0, 90, 0), FVector(0, 75, 125), Board->GetActorScale3D()), BeamA, BeamB));
+
+    TArray<FWorldStructuralNodeSnapshot> Saved;
+    TestTrue(TEXT("The graph is saved"), Graph->ExportSnapshot(Saved));
+    // Lose the links (as a fresh load would start without them) ...
+    Graph->TryRemoveSecondarySupport(Board->GetStructuralNodeId(), BeamB->GetStructuralNodeId());
+    Graph->TryDisconnect(Board->GetStructuralNodeId());
+    FStructuralNodeRecord Node;
+    Graph->GetNode(Board->GetStructuralNodeId(), Node);
+    TestFalse(TEXT("Links are gone before the load"), Node.ParentNodeId.IsValid());
+    // ... and load them back.
+    TestTrue(TEXT("The graph loads"), Graph->RestoreSnapshot(Saved));
+    Graph->GetNode(Board->GetStructuralNodeId(), Node);
+    TestEqual(TEXT("It rests on the first beam again"), Node.ParentNodeId, BeamA->GetStructuralNodeId());
+    TestTrue(TEXT("And on the second beam"), Node.SecondarySupports.Num() == 1 &&
+        Node.SecondarySupports[0].SupportNodeId == BeamB->GetStructuralNodeId());
+    return true;
+}
+
 // Modularity: the kernel and its math never name a material. New materials come
 // in as providers and profiles; if this test fails, a material rule leaked in.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementKernelNeutralTest, "MyProject3.Placement.KernelNamesNoMaterial", Flags)
