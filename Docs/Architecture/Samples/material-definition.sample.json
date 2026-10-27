@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_WOOD",
+  "displayNameKey": "material.wood",
+  "family": "Wood",
+  "hardnessClass": "Medium",
+  "hardnessValue": 0.45,
+  "densityKgPerM3": 550,
+  "diggable": false,
+  "requiredToolTags": [
+    "TOOL_AXE"
+  ],
+  "yieldItemDefinitionIds": [
+    "ITEM_LOG_WHOLE_600"
+  ],
+  "processingTransitionIds": [
+    "PROC_LOG_SPLIT"
+  ],
+  "surfaceSfxEventIds": [
+    "SFX_WOOD_SPLIT"
+  ],
+  "terrainTags": [
+    "ORGANIC"
+  ]
+}
