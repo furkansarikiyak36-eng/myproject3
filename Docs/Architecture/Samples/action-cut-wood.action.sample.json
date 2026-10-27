@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_CUT_WOOD",
+  "displayNameKey": "action.cut_wood",
+  "ownerSystem": "WOOD_PROCESSING",
+  "targetKinds": [
+    "PhysicalItem"
+  ],
+  "targetFamilies": [
+    "Wood"
+  ],
+  "allowedTargetStateIds": [
+    "STATE_WOOD_WHOLE"
+  ],
+  "requiredToolDefinitionIds": [
+    "TOOL_AXE_BASIC"
+  ],
+  "operationMode": "HoldProgress",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "OBJECT_PROCESSED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "MissingTool",
+    "InvalidState",
+    "PrerequisiteNotMet",
+    "MissingConfiguration",
+    "InsufficientResources",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresGroundContact": false,
+  "requiresLooseTarget": true,
+  "minimumRangeCm": 0,
+  "maximumRangeCm": 220,
+  "progressResumePolicy": "KeepProgress",
+  "noiseLevel": 0.35,
+  "lightLevel": 0,
+  "feedbackEventIds": [
+    "SFX_WOOD_SPLIT",
+    "VFX_WOOD_CHIP"
+  ],
+  "notes": "Shared action ID; actual cut geometry and hit-location rules remain owned by the wood domain."
+}
