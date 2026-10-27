@@ -875,6 +875,26 @@ bool FVoxelBoundedDigPolicyTest::RunTest(const FString& Parameters)
         Chunk->TryApplyBoundedDig(StaleOperation, FVector(800.0f), 100.0f,
             3.0f, InitialRevision, RetryRemoved, RetryRevision));
     TestEqual(TEXT("Rejected retries preserve committed revision"), Chunk->GetDensityRevision(), CommittedRevision);
+
+    Chunk->SoilClass = EVoxelSoilClass::SoftSoil;
+    const int64 SoftSoilRevision = Chunk->GetDensityRevision();
+    TestFalse(TEXT("Tool below the soft-soil threshold is rejected"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(500.0f, 800.0f, 800.0f), 100.0f,
+            0.5f, SoftSoilRevision, RetryRemoved, RetryRevision));
+    TestEqual(TEXT("Rejected soft-soil attempt preserves revision"), Chunk->GetDensityRevision(), SoftSoilRevision);
+    TestTrue(TEXT("Tool at the soft-soil threshold is accepted"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(500.0f, 800.0f, 800.0f), 100.0f,
+            1.0f, SoftSoilRevision, RetryRemoved, RetryRevision));
+
+    Chunk->SoilClass = EVoxelSoilClass::Rock;
+    const int64 RockRevision = Chunk->GetDensityRevision();
+    TestFalse(TEXT("Hard-soil strength is insufficient for rock"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(1200.0f, 800.0f, 800.0f), 100.0f,
+            3.0f, RockRevision, RetryRemoved, RetryRevision));
+    TestEqual(TEXT("Rejected rock attempt preserves revision"), Chunk->GetDensityRevision(), RockRevision);
+    TestTrue(TEXT("Tool at the rock threshold is accepted"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(1200.0f, 800.0f, 800.0f), 100.0f,
+            5.0f, RockRevision, RetryRemoved, RetryRevision));
     return true;
 }
 
