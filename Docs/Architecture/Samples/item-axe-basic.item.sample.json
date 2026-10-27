@@ -25,7 +25,8 @@
   ],
   "tags": [
     "TOOL",
-    "WOODWORKING"
+    "WOODWORKING",
+    "TOOL_AXE"
   ],
   "persistencePolicy": "SaveWhenInWorld",
   "notes": "Example definition for schema tests; not a claim that the in-game axe actor is fully integrated."
