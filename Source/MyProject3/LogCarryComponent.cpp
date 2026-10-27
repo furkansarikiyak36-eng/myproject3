@@ -1922,60 +1922,97 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
 
     AActor* Target = Hit.GetActor();
     const IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
+    const IStructuralPieceInterface* HeldStructural = Cast<IStructuralPieceInterface>(Piece);
+    UPlacementKernelSubsystem* Kernel = GetWorld()
+        ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!Kernel || !Kernel->IsCatalogReady() || !HeldStructural)
+    {
+        Piece->SetActorLocation(ViewLocation + ViewRotation.Vector() * CarryDistance);
+        PlacementStatus = TEXT("Placement profiles are not loaded.");
+        return;
+    }
+
     if (TargetPiece && TargetPiece->IsStructurallyPlaced())
     {
-        // Choose the free, upward-facing receiving anchor nearest to the crosshair.
         EnsureMaterialAnchors(Target);
         TArray<FName> AnchorIds;
         TargetPiece->GetStructuralAnchorIds(AnchorIds);
-        FVector Origin, Extent;
-        Target->GetActorBounds(true, Origin, Extent);
-        const bool bSameKind = Cast<IStructuralPieceInterface>(Piece)->GetStructuralKind() == TargetPiece->GetStructuralKind();
-        UMaterialConnectionSubsystem* Connections = GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>();
+        UMaterialConnectionSubsystem* Connections =
+            GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>();
 
-        float BestDistance = 120.0f;
+        float BestScore = TNumericLimits<float>::Max();
+        FTransform BestTransform = Piece->GetActorTransform();
+        FName BestAnchorId = NAME_None;
         for (const FName& AnchorId : AnchorIds)
         {
-            FStructuralAnchorView Anchor;
-            if (!TargetPiece->GetStructuralAnchor(AnchorId, Anchor) || !Anchor.bCanReceive || Anchor.bOccupied)
+            FStructuralAnchorView TargetAnchor;
+            FStructuralAnchorView SourceAnchor;
+            if (!TargetPiece->GetStructuralAnchor(AnchorId, TargetAnchor) ||
+                !HeldStructural->GetStructuralAnchor(TEXT("AutoBottom"), SourceAnchor) ||
+                !TargetAnchor.bCanReceive || TargetAnchor.bOccupied ||
+                !SourceAnchor.bCanConnect || SourceAnchor.bOccupied)
+            {
                 continue;
-            const FVector AnchorWorld = (Anchor.LocalTransform * Target->GetActorTransform()).GetLocation();
-            if (AnchorWorld.Z < Origin.Z - 1.0f)
-                continue; // Bottom anchors cannot hold a piece resting on them.
+            }
+
+            const EStructuralNodeKind SourceKind = HeldStructural->GetStructuralKind();
+            const EStructuralNodeKind TargetKind = TargetPiece->GetStructuralKind();
+            const FString ProfileId = ResolveMaterialPlacementProfile(SourceKind, TargetKind);
+            FPlacementProfileDefinition Profile;
+            if (ProfileId.IsEmpty() || !Kernel->GetProfile(ProfileId, Profile))
+                continue;
+
             FString Reason;
-            if (!bSameKind && (!Connections || !Connections->CanConnect(Target, AnchorId, Piece, TEXT("AutoBottom"), Reason)))
+            if (SourceKind != TargetKind &&
+                (!Connections || !Connections->CanConnect(Target, AnchorId, Piece, TEXT("AutoBottom"), Reason)))
                 continue;
-            const float Distance = FVector::Dist(AnchorWorld, Hit.ImpactPoint);
-            if (Distance >= BestDistance)
+            if (SourceKind == TargetKind && SourceAnchor.Tag != TargetAnchor.Tag)
                 continue;
-            BestDistance = Distance;
-            MaterialSnapTarget = Target;
-            MaterialSnapAnchor = AnchorId;
-            MaterialPreviewTransform = MakeUprightTransform(Piece, AnchorWorld);
-            if (bSameKind && Cast<AStickPrimitivePiece>(Piece) && GetStickTiltDegrees() > 0.0f)
+
+            const FTransform TargetWorldFeature = TargetAnchor.LocalTransform * Target->GetActorTransform();
+            const FVector AnchorWorld = TargetWorldFeature.GetLocation();
+            FVector Origin, Extent;
+            Target->GetActorBounds(true, Origin, Extent);
+            if (AnchorWorld.Z < Origin.Z - 1.0f ||
+                FVector::Dist(AnchorWorld, Hit.ImpactPoint) > 150.0f)
+                continue;
+
+            FPlacementSolution Solution;
+            FString SolveFailure;
+            if (!Kernel->SolveAnchorPair(ProfileId, SourceAnchor.LocalTransform,
+                TargetWorldFeature, Piece->GetActorTransform(), Solution, SolveFailure))
+                continue;
+
+            if (Profile.bRequiresCollisionValidation)
             {
-                // Stick on stick: the preview leans like the placed stick will.
-                MaterialPreviewTransform = MakeUprightTransform(Piece, AnchorWorld);
+                TArray<AActor*> IgnoredActors;
+                IgnoredActors.Add(Target);
+                FString CollisionFailure;
+                if (!Kernel->ValidateCandidatePose(Piece, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
+                    continue;
             }
-            else if (bSameKind)
-            {
-                // Same-material stacks keep the lower piece's orientation.
-                FStructuralAnchorView Bottom;
-                Cast<IStructuralPieceInterface>(Piece)->GetStructuralAnchor(TEXT("AutoBottom"), Bottom);
-                const FQuat Rotation = Target->GetActorQuat();
-                const FVector Scale = Piece->GetActorScale3D();
-                MaterialPreviewTransform = FTransform(Rotation,
-                    AnchorWorld - Rotation.RotateVector(Bottom.LocalTransform.GetLocation() * Scale), Scale);
-            }
+
+            const float Score = Kernel->ScoreCandidate(
+                Solution, Piece->GetActorTransform(), Hit.ImpactPoint, AnchorWorld);
+            if (Score >= BestScore)
+                continue;
+            BestScore = Score;
+            BestTransform = Solution.ActorWorldTransform;
+            BestAnchorId = AnchorId;
         }
-        if (MaterialSnapTarget)
+
+        if (!BestAnchorId.IsNone())
         {
+            MaterialSnapTarget = Target;
+            MaterialSnapAnchor = BestAnchorId;
+            MaterialPreviewTransform = BestTransform;
             Piece->SetActorTransform(MaterialPreviewTransform);
             PlacementStatus = FString::Printf(TEXT("Snap to %s: E to place."), *MaterialSnapAnchor.ToString());
             return;
         }
+
         Piece->SetActorLocation(ViewLocation + ViewRotation.Vector() * CarryDistance);
-        PlacementStatus = TEXT("No free top anchor here for this material.");
+        PlacementStatus = TEXT("No compatible free anchor here for this material.");
         return;
     }
 
@@ -1986,80 +2023,214 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
         return;
     }
 
+    const EStructuralNodeKind Kind = HeldStructural->GetStructuralKind();
+    const FString GroundProfile = Kind == EStructuralNodeKind::Stone
+        ? TEXT("stone.ground_rest")
+        : (Kind == EStructuralNodeKind::Stick ? TEXT("stick.ground_stake") : TEXT(""));
+    FPlacementProfileDefinition SurfaceProfile;
+    if (GroundProfile.IsEmpty() || !Kernel->GetProfile(GroundProfile, SurfaceProfile))
+    {
+        Piece->SetActorLocation(ViewLocation + ViewRotation.Vector() * CarryDistance);
+        PlacementStatus = TEXT("No surface-placement profile is configured for this material.");
+        return;
+    }
+
     bMaterialGroundPreview = true;
-    MaterialPreviewTransform = MakeUprightTransform(Piece, Hit.ImpactPoint);
+    const FTransform Proposed = MakeUprightTransform(Piece, Hit.ImpactPoint);
+    const FTransform SurfaceFrame(Proposed.GetRotation(), Hit.ImpactPoint, FVector::OneVector);
+    FStructuralAnchorView Bottom;
+    FPlacementSolution Solution;
+    FString SolveFailure;
+    if (!HeldStructural->GetStructuralAnchor(TEXT("AutoBottom"), Bottom) ||
+        !Kernel->SolveAnchorPair(GroundProfile, Bottom.LocalTransform, SurfaceFrame,
+            Piece->GetActorTransform(), Solution, SolveFailure))
+    {
+        bMaterialGroundPreview = false;
+        Piece->SetActorLocation(ViewLocation + ViewRotation.Vector() * CarryDistance);
+        PlacementStatus = TEXT("The ground placement could not be solved.");
+        return;
+    }
+    MaterialPreviewTransform = Solution.ActorWorldTransform;
     Piece->SetActorTransform(MaterialPreviewTransform);
     PlacementStatus = TEXT("E to place on the ground.");
 }
 
-void ULogCarryComponent::FinishMaterialPlacement(AActor* Piece)
+bool ULogCarryComponent::FinishMaterialPlacement(AActor* Piece, bool bOwnershipAlreadyTransferred)
 {
-    TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
+    if (!IsValid(Piece))
+        return false;
+    if (!bOwnershipAlreadyTransferred &&
+        !TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
+            EWorldItemOwnerKind::World, Piece->GetActorLocation()))
+    {
+        PlacementStatus = TEXT("Placement was rejected because ownership transfer failed.");
+        return false;
+    }
+
     Piece->SetActorEnableCollision(true);
     if (UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
         Load->UnregisterCarried(Piece);
     HeldMaterialPiece = nullptr;
     MaterialSnapTarget = nullptr;
     MaterialSnapAnchor = NAME_None;
+    return true;
 }
 
 bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnchorId)
 {
     AActor* Piece = HeldMaterialPiece;
-    const IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
-    const IStructuralPieceInterface* HeldStructural = Cast<IStructuralPieceInterface>(Piece);
-    if (!Piece || !TargetPiece || !HeldStructural || Target == Piece)
+    IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
+    IStructuralPieceInterface* HeldStructural = Cast<IStructuralPieceInterface>(Piece);
+    if (!IsValid(Piece) || !IsValid(Target) || Target == Piece || !TargetPiece || !HeldStructural)
         return false;
+
     EnsureMaterialAnchors(Target);
+    UPlacementKernelSubsystem* Kernel = GetWorld()
+        ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!Kernel || !Kernel->IsCatalogReady())
+    {
+        PlacementStatus = TEXT("Placement profiles are not loaded; material placement is unavailable.");
+        return false;
+    }
+
+    FStructuralAnchorView TargetAnchor;
+    FStructuralAnchorView SourceAnchor;
+    if (!TargetPiece->GetStructuralAnchor(TargetAnchorId, TargetAnchor) ||
+        !HeldStructural->GetStructuralAnchor(TEXT("AutoBottom"), SourceAnchor) ||
+        !TargetAnchor.bCanReceive || TargetAnchor.bOccupied ||
+        !SourceAnchor.bCanConnect || SourceAnchor.bOccupied)
+    {
+        PlacementStatus = TEXT("Placement rejected: a required feature is missing, occupied or disallowed.");
+        return false;
+    }
+
+    const EStructuralNodeKind SourceKind = HeldStructural->GetStructuralKind();
+    const EStructuralNodeKind TargetKind = TargetPiece->GetStructuralKind();
+    const FString ProfileId = ResolveMaterialPlacementProfile(SourceKind, TargetKind);
+    FPlacementProfileDefinition Profile;
+    if (ProfileId.IsEmpty() || !Kernel->GetProfile(ProfileId, Profile) || !Profile.IsConnection())
+    {
+        PlacementStatus = TEXT("No global placement profile allows this material pair.");
+        return false;
+    }
+
+    UMaterialConnectionSubsystem* Connections =
+        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+    FString Reason;
+    if (SourceKind != TargetKind)
+    {
+        if (!Connections ||
+            !Connections->CanConnect(Target, TargetAnchorId, Piece, TEXT("AutoBottom"), Reason))
+        {
+            PlacementStatus = FString::Printf(TEXT("No explicit material rule permits this joint: %s"), *Reason);
+            return false;
+        }
+    }
+    else if (SourceAnchor.Tag != TargetAnchor.Tag)
+    {
+        PlacementStatus = TEXT("The same-material anchors are not compatible.");
+        return false;
+    }
+
+    const FTransform TargetWorldFeature = TargetAnchor.LocalTransform * Target->GetActorTransform();
+    FPlacementSolution Solution;
+    FString SolveFailure;
+    if (!Kernel->SolveAnchorPair(ProfileId, SourceAnchor.LocalTransform,
+        TargetWorldFeature, Piece->GetActorTransform(), Solution, SolveFailure))
+    {
+        PlacementStatus = FString::Printf(TEXT("Cannot solve this placement: %s"), *SolveFailure);
+        return false;
+    }
+
+    if (Profile.bRequiresCollisionValidation)
+    {
+        TArray<AActor*> IgnoredActors;
+        IgnoredActors.Add(Target);
+        FString CollisionFailure;
+        if (!Kernel->ValidateCandidatePose(Piece, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
+        {
+            PlacementStatus = TEXT("The material placement is blocked by another object.");
+            return false;
+        }
+    }
+
+    // Move the unique item record before committing its physical/graph relation.
+    // Every failure path must restore this same record to Held.
+    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
+        EWorldItemOwnerKind::World, Solution.ActorWorldTransform.GetLocation()))
+    {
+        PlacementStatus = TEXT("The ownership ledger rejected the material placement.");
+        return false;
+    }
 
     bool bConnected = false;
-    FString Reason;
-    if (HeldStructural->GetStructuralKind() != TargetPiece->GetStructuralKind())
+    if (SourceKind != TargetKind)
     {
-        FStructuralAnchorView Anchor;
-        UMaterialConnectionSubsystem* Connections = GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>();
-        if (Connections && TargetPiece->GetStructuralAnchor(TargetAnchorId, Anchor))
-        {
-            const FVector AnchorWorld = (Anchor.LocalTransform * Target->GetActorTransform()).GetLocation();
-            bConnected = Connections->TryConnectAt(Target, TargetAnchorId, Piece, TEXT("AutoBottom"),
-                MakeUprightTransform(Piece, AnchorWorld), Reason);
-        }
+        if (Connections)
+            bConnected = Connections->TryConnectAt(
+                Target, TargetAnchorId, Piece, TEXT("AutoBottom"),
+                Solution.ActorWorldTransform, Reason);
     }
     else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
     {
-        bConnected = Stone->TryConnectToAnchor(Cast<AStoneBuildingPiece>(Target), TargetAnchorId, TEXT("AutoBottom"));
-        Reason = TEXT("The stone anchor is taken or does not match.");
+        bConnected = Stone->TryConnectToAnchorAt(
+            Cast<AStoneBuildingPiece>(Target), TargetAnchorId, TEXT("AutoBottom"),
+            Solution.ActorWorldTransform);
+        if (!bConnected)
+            Reason = TEXT("The stone anchors are incompatible or the attachment failed.");
     }
     else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
     {
-        // Stick joints take a loose stick; keep physics off so it can attach.
         Stick->SetHeldState(false);
-        if (UStaticMeshComponent* Mesh = Stick->FindComponentByClass<UStaticMeshComponent>())
+        if (UStaticMeshComponent* Mesh = Piece->FindComponentByClass<UStaticMeshComponent>())
             Mesh->SetSimulatePhysics(false);
-        bConnected = Stick->TryConnectToAnchor(Cast<AStickPrimitivePiece>(Target), TargetAnchorId, TEXT("AutoBottom"));
+        bConnected = Stick->TryConnectToAnchorAt(
+            Cast<AStickPrimitivePiece>(Target), TargetAnchorId, TEXT("AutoBottom"),
+            Solution.ActorWorldTransform);
         if (!bConnected)
-        {
-            Stick->SetHeldState(true);
-        }
-        else if (const float Tilt = GetStickTiltDegrees(); Tilt > 0.0f)
-        {
-            // Lean the new stick about its joint (45 degrees or lying across).
-            FStructuralAnchorView Bottom;
-            Stick->GetStructuralAnchor(TEXT("AutoBottom"), Bottom);
-            const FVector Pivot = (Bottom.LocalTransform * Stick->GetActorTransform()).GetLocation();
-            const FQuat Lean = MakeTiltAroundView(Tilt);
-            Stick->SetActorLocationAndRotation(Pivot + Lean.RotateVector(Stick->GetActorLocation() - Pivot),
-                Lean * Stick->GetActorQuat(), false, nullptr, ETeleportType::TeleportPhysics);
-        }
-        Reason = TEXT("The stick anchor is taken or does not match.");
+            Reason = TEXT("The stick anchors are incompatible or the attachment failed.");
     }
 
     if (!bConnected)
     {
+        const bool bOwnershipRestored = TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        SetMaterialHeld(Piece, true);
+        if (!bOwnershipRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error,
+                TEXT("Material placement rollback could not restore ownership for %s."),
+                *GetNameSafe(Piece));
+        }
         PlacementStatus = FString::Printf(TEXT("Cannot place here: %s"), *Reason);
         return false;
     }
-    FinishMaterialPlacement(Piece);
+
+    if (!FinishMaterialPlacement(Piece, true))
+    {
+        if (SourceKind != TargetKind && Connections)
+            Connections->TryDisconnect(Piece);
+        else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
+            Stone->RemoveConnection();
+        else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
+            Stick->RemoveConnection();
+
+        const bool bOwnershipRestored = TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        SetMaterialHeld(Piece, true);
+        if (!bOwnershipRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error,
+                TEXT("Material finalization rollback could not restore ownership for %s."),
+                *GetNameSafe(Piece));
+        }
+        return false;
+    }
+
     PlacementStatus = TEXT("Placed.");
     LiftDroopingEndsOnto(Piece);
     return true;
@@ -2068,20 +2239,108 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
 bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
 {
     AActor* Piece = HeldMaterialPiece;
-    if (!Piece || GroundPoint.ContainsNaN())
+    IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
+    if (!IsValid(Piece) || !Structural || GroundPoint.ContainsNaN() || !GetWorld())
         return false;
-    const FTransform Upright = MakeUprightTransform(Piece, GroundPoint);
+
+    UPlacementKernelSubsystem* Kernel = GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
+    if (!Kernel || !Kernel->IsCatalogReady())
+    {
+        PlacementStatus = TEXT("Placement profiles are not loaded; surface placement is unavailable.");
+        return false;
+    }
+
+    const EStructuralNodeKind Kind = Structural->GetStructuralKind();
+    const FString ProfileId = Kind == EStructuralNodeKind::Stone
+        ? TEXT("stone.ground_rest")
+        : (Kind == EStructuralNodeKind::Stick ? TEXT("stick.ground_stake") : TEXT(""));
+    FPlacementProfileDefinition Profile;
+    if (ProfileId.IsEmpty() || !Kernel->GetProfile(ProfileId, Profile) ||
+        Profile.OperationKindText != TEXT("surface_placement"))
+    {
+        PlacementStatus = TEXT("No surface-placement profile is configured for this material.");
+        return false;
+    }
+
+    FHitResult SurfaceHit;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(MaterialGroundPlacement), false, Piece);
+    if (GetOwner())
+        Params.AddIgnoredActor(GetOwner());
+    const FVector Start = GroundPoint + FVector::UpVector * 100.0f;
+    const FVector End = GroundPoint - FVector::UpVector * 250.0f;
+    if (!GetWorld()->LineTraceSingleByChannel(SurfaceHit, Start, End, ECC_Visibility, Params) ||
+        !SurfaceHit.bBlockingHit || Cast<IStructuralPieceInterface>(SurfaceHit.GetActor()))
+    {
+        PlacementStatus = TEXT("The selected point is not a valid ground surface.");
+        return false;
+    }
+
+    EnsureMaterialAnchors(Piece);
+    FStructuralAnchorView Bottom;
+    if (!Structural->GetStructuralAnchor(TEXT("AutoBottom"), Bottom))
+    {
+        PlacementStatus = TEXT("The material has no valid bottom feature.");
+        return false;
+    }
+
+    const FTransform Proposed = MakeUprightTransform(Piece, SurfaceHit.ImpactPoint);
+    const FTransform SurfaceFrame(Proposed.GetRotation(), SurfaceHit.ImpactPoint, FVector::OneVector);
+    FPlacementSolution Solution;
+    FString SolveFailure;
+    if (!Kernel->SolveAnchorPair(ProfileId, Bottom.LocalTransform, SurfaceFrame,
+        Piece->GetActorTransform(), Solution, SolveFailure))
+    {
+        PlacementStatus = FString::Printf(TEXT("Surface placement cannot be solved: %s"), *SolveFailure);
+        return false;
+    }
+
+    TArray<AActor*> IgnoredActors;
+    IgnoredActors.Add(SurfaceHit.GetActor());
+    FString CollisionFailure;
+    if (Profile.bRequiresCollisionValidation &&
+        !Kernel->ValidateCandidatePose(Piece, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
+    {
+        PlacementStatus = TEXT("The ground placement is blocked by another object.");
+        return false;
+    }
+
+    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
+        EWorldItemOwnerKind::World, Solution.ActorWorldTransform.GetLocation()))
+    {
+        PlacementStatus = TEXT("The ownership ledger rejected the ground placement.");
+        return false;
+    }
+
     bool bPlaced = false;
     if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
-        bPlaced = Stone->TryCommitGroundPlacement(Upright.GetLocation(), Upright.Rotator());
+        bPlaced = Stone->TryCommitGroundPlacement(
+            Solution.ActorWorldTransform.GetLocation(), Solution.ActorWorldTransform.Rotator());
     else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
-        bPlaced = Stick->TryCommitGroundPlacement(Upright.GetLocation(), Upright.Rotator());
+        bPlaced = Stick->TryCommitGroundPlacement(
+            Solution.ActorWorldTransform.GetLocation(), Solution.ActorWorldTransform.Rotator());
+
     if (!bPlaced)
     {
+        const bool bOwnershipRestored = TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        if (!bOwnershipRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error,
+                TEXT("Ground placement rollback could not restore ownership for %s."),
+                *GetNameSafe(Piece));
+        }
         PlacementStatus = TEXT("Cannot place on the ground here.");
         return false;
     }
-    FinishMaterialPlacement(Piece);
+
+    if (!FinishMaterialPlacement(Piece, true))
+    {
+        PlacementStatus = TEXT("Ground placement was committed but carry finalization failed.");
+        return false;
+    }
+
     PlacementStatus = TEXT("Placed on the ground.");
     LiftDroopingEndsOnto(Piece);
     return true;
