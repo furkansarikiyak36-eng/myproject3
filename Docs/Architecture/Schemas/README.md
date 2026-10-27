@@ -20,6 +20,7 @@ These JSON Schema Draft 2020-12 files define design-time catalog contracts for M
 - `build-part-definition.schema.json`: scale, pivot, collision, semantic anchors and placement-provider references.
 - `region-definition.schema.json`: data-driven region starting conditions and recovery milestones.
 - `feedback-event-definition.schema.json`: logical SFX/VFX/animation/UI/music/ambience cue catalogue.
+- `terrain-stratum-profile.schema.json`: depth intervals, blended material composition, tool gates, excavation resistance and support risk for smooth voxel strata. The example profile lives in `Samples/terrain-stratum-profile-forest-foothills.sample.json`.
 
 ## Runtime choice
 
@@ -28,7 +29,7 @@ Do not require the game to read these JSON files at runtime yet. First validate 
 ## Phase 1 acceptance
 
 1. Validate each schema with a Draft 2020-12 validator.
-2. Validate sample definitions against schemas and check unique IDs/references across all catalogue files.
+2. Validate sample definitions against schemas and check unique IDs/references across all catalogue files. Terrain-profile validation additionally enforces contiguous, non-overlapping strata and material blend weights that sum to 1.0.
 3. Check definitions against existing C++ types without introducing duplicate authorities.
 4. Document migrations before changing any persisted field/type.
 5. Keep Unreal build, Editor/PIE and save/load verification as separate gates.
