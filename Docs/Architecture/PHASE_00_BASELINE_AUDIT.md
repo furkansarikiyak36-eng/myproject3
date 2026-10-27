@@ -51,9 +51,13 @@ No M001–M119 item is marked VERIFIED by this audit. Everything else is marked 
 
 ## 3. Canonical M001–M119 registry
 
-The existing registry files were found in phase-01-foundation-v2 and the same registry revision is present on feature/simple-intent. There are exactly 119 unique IDs, from M001 to M119, and the registry records all items as unreviewed, with static review, automated test, Unreal build and runtime test all not_run.
+There are two materially different registry revisions in the branch history, so their status fields must not be blended:
 
-**Important provenance limit:** the registry itself states that the historical “119 passed” report did not provide the exact historical 119 names in the reviewed materials. The current registry therefore locks a declared 119-item scope; it does not claim to reconstruct that older list. Do not turn historical counts into current passing-test claims.
+- The phase-01-foundation-v2 / phase-06 / Phase H revision (CSV blob ea1e3cc) has 119 unique IDs and marks all 119 unreviewed with static review, automation, build and runtime fields set to not_run.
+- The newer feature/simple-intent revision (CSV blob 04fe4e0; current candidate version in this planning branch) contains the same 119 IDs but marks 90 as implemented_unverified and 29 as unreviewed; all 119 have static_review=fail; automated_test is pass for 17 and not_run for 102; unreal_build is pass for 90 and not_run for 29; runtime_test is not_run for all 119. The JSON records evidence strings, including a UE 5.8.4 editor build on integration/canonical-log-model dated 2026-10-26 and selected automation test names. These are useful evidence pointers, but the single build result does not independently prove every listed mechanic's acceptance criteria. Static review is explicitly not passing and no runtime test is recorded.
+- All 119 JSON entries currently have phase=1. The field therefore does not distinguish the implementation phases described by the separate 14-phase roadmap. The companion baseline CSV keeps CanonicalRegistryPhaseField and ProposedImplementationPhase in separate columns rather than silently rewriting the canonical registry.
+
+**Important provenance limit:** the registry itself states that the historical “119 passed” report did not provide the exact historical 119 names in the reviewed materials. The current registry therefore locks a declared 119-item scope; it does not claim to reconstruct that older list. Do not turn historical counts or a shared build entry into current per-mechanic passing claims.
 
 Canonical files in this branch:
 - MECHANIC_REGISTRY_119.json — machine-readable registry.
