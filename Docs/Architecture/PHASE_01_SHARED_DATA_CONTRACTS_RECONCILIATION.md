@@ -102,15 +102,26 @@ The first two dimensions overlap in words but answer different questions. Define
 
 ## 7. Persistence contract boundary
 
-The candidate `UWorldSimulationSaveGame` is versioned (the source declares schema version 2) and contains logical-domain snapshot types. The H–Q status report explicitly says full save/load does not yet restore all physical actor instances/transforms, structural graph links, world-partition state and terrain mesh/collision data; migration and cross-domain rollback also require more work.
+The candidate `UWorldSimulationSaveGame` currently declares **schema version 13** in `Source/MyProject3/WorldSimulationSaveGame.h` at candidate source revision `29e2667277d7f6d41bf88e338b72334761f6d835`. The save model contains logical-domain snapshots, identity-bound physical actor records (including transforms/component physics), item transfer/split receipts, structural graph state, terrain cell records, inventories and other simulation-domain snapshots. `WorldSaveCoordinatorSubsystem.cpp` has migrations through v13, and captures/restores the actor/graph/domain snapshots in a defined order.
 
-Phase 1 therefore defines stable keys and ownership/revision expectations but does not declare persistence complete. Before marking the contract integrated, confirm:
-- instance/definition IDs and expected revisions survive save/load;
-- actor records map to exactly one world/held/inventory/storage owner;
-- structural graph edges and actor attachments agree after restore;
-- terrain cell edits rebuild mesh/collision/navigation;
-- failed restore leaves a recoverable state and logs the failed domain;
-- schema migration is versioned and tested.
+That is stronger than a purely logical-state stub, but it is **not yet a fully verified world round-trip**:
+
+- Physical actor restore validates the snapshot against actors already present in the loaded world. A missing or class/component-mismatched actor causes the load to fail; the coordinator does not generally respawn arbitrary missing physical actors from the snapshot.
+- The save includes `FWorldTerrainCellState` entries, not the density arrays in `UVoxelTerrainChunkComponent`. The inspected chunk component applies sphere edits to a local density field and rebuilds mesh/collision independently; no adapter from the terrain-cell ledger to that density field was found in the inspected files.
+- `UWorldTerrainStateSubsystem` stores idempotency receipts in a `Transient` map. Its `ExportSnapshot` exports cells only, and `RestoreSnapshot` clears those receipts. A replay after load therefore cannot recover the original terrain-edit receipt by operation ID, although revision/precondition checks may still reject a stale replay.
+- Saves are refused while physical items remain in the `Held` ownership state, because held/carry-component state is not included as a complete durable representation.
+- The load path captures the pre-load state and attempts a rollback if applying the candidate save fails, but the coordinator itself reports that rollback may also fail and fault the simulation. This has not been tested with failure injection or in Unreal.
+- World-partition streaming, actor recreation, Blueprint/component compatibility, visual/collision/navigation regeneration for edited terrain, and cross-domain save migration remain engine-level acceptance tasks.
+
+Before marking persistence integrated, confirm:
+- [ ] Instance/definition IDs and expected revisions survive a target-engine save/load.
+- [ ] Physical actor snapshots have a deliberate missing-actor policy: fail closed, deterministic respawn, or level-owned actor reconciliation.
+- [ ] Actor records map to exactly one world/held/inventory/storage owner.
+- [ ] Structural graph edges and actor attachments agree after restore.
+- [ ] Logical terrain cell records reproduce voxel density, mesh and collision, and any navigation representation.
+- [ ] Terrain operation receipt behavior is documented and tested across save/load.
+- [ ] Failed restore leaves a recoverable state and logs the failed domain.
+- [ ] Schema migration and version rejection are tested against actual saved fixtures.
 
 ## 8. Decisions for the next implementation branch
 
