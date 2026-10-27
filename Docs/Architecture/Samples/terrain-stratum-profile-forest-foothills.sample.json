@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "PROFILE_FOREST_FOOTHILLS",
+  "displayNameKey": "terrain.profile.forest_foothills",
+  "referenceSurface": "OriginalBaseSurface",
+  "profileDepthCm": 400,
+  "boundaryVariationCm": 20,
+  "boundaryVariationScaleCm": 500,
+  "regionTags": [
+    "BIOME_TEMPERATE_FOREST",
+    "REGION_FOREST_FOOTHILLS"
+  ],
+  "strata": [
+    {
+      "id": "STRATUM_TOPSOIL",
+      "minDepthCm": 0,
+      "maxDepthCm": 40,
+      "materialBlend": [
+        { "materialId": "MAT_TOPSOIL", "weight": 0.85 },
+        { "materialId": "MAT_CLAY", "weight": 0.15 }
+      ],
+      "digPermission": "Allowed",
+      "requiredToolTags": ["TOOL_SHOVEL"],
+      "excavationResistance": 0.15,
+      "digTimeMultiplier": 1.0,
+      "supportRisk": "Low",
+      "resourceYieldProfileId": "YIELD_TOPSOIL",
+      "visualTransitionWidthCm": 8
+    },
+    {
+      "id": "STRATUM_LOAM",
+      "minDepthCm": 40,
+      "maxDepthCm": 140,
+      "materialBlend": [
+        { "materialId": "MAT_LOAM", "weight": 0.8 },
+        { "materialId": "MAT_CLAY", "weight": 0.2 }
+      ],
+      "digPermission": "Allowed",
+      "requiredToolTags": ["TOOL_SHOVEL"],
+      "excavationResistance": 0.28,
+      "digTimeMultiplier": 1.5,
+      "supportRisk": "Medium",
+      "resourceYieldProfileId": "YIELD_LOAM",
+      "visualTransitionWidthCm": 12
+    },
+    {
+      "id": "STRATUM_COMPACTED",
+      "minDepthCm": 140,
+      "maxDepthCm": 260,
+      "materialBlend": [
+        { "materialId": "MAT_CLAY", "weight": 0.55 },
+        { "materialId": "MAT_GRAVEL", "weight": 0.3 },
+        { "materialId": "MAT_STONE", "weight": 0.15 }
+      ],
+      "digPermission": "ToolGated",
+      "requiredToolTags": ["TOOL_PICKAXE_BASIC"],
+      "excavationResistance": 0.62,
+      "digTimeMultiplier": 2.4,
+      "supportRisk": "High",
+      "resourceYieldProfileId": "YIELD_COMPACTED",
+      "visualTransitionWidthCm": 15
+    },
+    {
+      "id": "STRATUM_STONE_RICH",
+      "minDepthCm": 260,
+      "maxDepthCm": 360,
+      "materialBlend": [
+        { "materialId": "MAT_STONE", "weight": 0.8 },
+        { "materialId": "MAT_GRAVEL", "weight": 0.2 }
+      ],
+      "digPermission": "ToolGated",
+      "requiredToolTags": ["TOOL_PICKAXE_ADVANCED"],
+      "excavationResistance": 0.9,
+      "digTimeMultiplier": 4.5,
+      "supportRisk": "Critical",
+      "resourceYieldProfileId": "YIELD_STONE_RICH",
+      "visualTransitionWidthCm": 8
+    },
+    {
+      "id": "STRATUM_BEDROCK",
+      "minDepthCm": 360,
+      "maxDepthCm": 400,
+      "materialBlend": [
+        { "materialId": "MAT_BEDROCK", "weight": 1.0 }
+      ],
+      "digPermission": "Blocked",
+      "requiredToolTags": [],
+      "excavationResistance": 1.0,
+      "digTimeMultiplier": 1.0,
+      "supportRisk": "Critical",
+      "visualTransitionWidthCm": 0,
+      "notes": "Blocked in the first playable scope even if future tool definitions exist."
+    }
+  ],
+  "notes": "Provisional test values only. The policy query is measured from the original surface and cannot reset its layers after a pit or tunnel is carved."
+}
