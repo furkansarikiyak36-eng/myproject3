@@ -697,6 +697,33 @@
       "failurePolicy": "reject_and_restore",
       "atomicCommit": true,
       "allowsPhysicsFallback": false
+    },
+    {
+      "id": "log.to_stone",
+      "family": "log",
+      "operationKind": "connection",
+      "geometry": "cross_material_log_to_stone",
+      "description": "Connect a held log end or side station to a permitted stone face/edge. The source frame belongs to the log, the target frame belongs to the stone, and explicit material rules remain authoritative.",
+      "sourceFeatures": [
+        "log.end",
+        "log.surface_station"
+      ],
+      "targetFeatures": [
+        "stone.face",
+        "stone.edge"
+      ],
+      "solver": "feature_frame_alignment",
+      "orientationPolicy": "geometry_derived",
+      "translationToleranceCm": 3,
+      "angularToleranceDeg": 8,
+      "minRequiredConnections": 1,
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "structural_support",
+      "failurePolicy": "reject_and_restore",
+      "atomicCommit": true,
+      "allowsPhysicsFallback": false,
+      "requiresMaterialCompatibility": true
     }
   ],
   "surfacePlacementProfiles": [

@@ -1052,8 +1052,8 @@ bool ULogCarryComponent::TryPlaceHeldLogOnStructuralSurface(ALogBuildPiece* Piec
     }
     else if (TargetKind == EStructuralNodeKind::Stone && SourceKind == EStructuralNodeKind::Wood)
     {
-        // The catalog profile describes the permitted stone-support/log-child joint.
-        ProfileId = TEXT("stone.to_log");
+        // Source is the held log feature; target is the placed stone feature.
+        ProfileId = TEXT("log.to_stone");
     }
     else
     {
@@ -2321,7 +2321,10 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
 
     bMaterialGroundPreview = true;
     const FTransform Proposed = MakeUprightTransform(Piece, Hit.ImpactPoint);
-    const FTransform SurfaceFrame(Proposed.GetRotation(), Hit.ImpactPoint, FVector::OneVector);
+    const FVector SurfaceNormal = Hit.ImpactNormal.GetSafeNormal(FVector::UpVector);
+    const FQuat NormalAlignment = FQuat::FindBetweenVectors(FVector::UpVector, SurfaceNormal);
+    const FQuat SurfaceRotation = (NormalAlignment * Proposed.GetRotation()).GetNormalized();
+    const FTransform SurfaceFrame(SurfaceRotation, Hit.ImpactPoint, FVector::OneVector);
     FStructuralAnchorView Bottom;
     FPlacementSolution Solution;
     FString SolveFailure;
@@ -2593,7 +2596,10 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
     }
 
     const FTransform Proposed = MakeUprightTransform(Piece, SurfaceHit.ImpactPoint);
-    const FTransform SurfaceFrame(Proposed.GetRotation(), SurfaceHit.ImpactPoint, FVector::OneVector);
+    const FVector SurfaceNormal = SurfaceHit.ImpactNormal.GetSafeNormal(FVector::UpVector);
+    const FQuat NormalAlignment = FQuat::FindBetweenVectors(FVector::UpVector, SurfaceNormal);
+    const FQuat SurfaceRotation = (NormalAlignment * Proposed.GetRotation()).GetNormalized();
+    const FTransform SurfaceFrame(SurfaceRotation, SurfaceHit.ImpactPoint, FVector::OneVector);
     FPlacementSolution Solution;
     FString SolveFailure;
     if (!Kernel->SolveAnchorPair(ProfileId, Bottom.LocalTransform, SurfaceFrame,
