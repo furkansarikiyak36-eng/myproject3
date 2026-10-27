@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_SHOVEL_BASIC",
+  "displayNameKey": "item.shovel_basic",
+  "inventoryCategory": "Tool",
+  "family": "Tool",
+  "representation": "PhysicalActor",
+  "unitMassKg": 1.4,
+  "unitVolumeLiters": 2.3,
+  "maxStack": 1,
+  "requiresUniqueInstance": true,
+  "durability": {
+    "model": "Durability",
+    "maximum": 100,
+    "defaultValue": 100,
+    "unit": "condition_percent"
+  },
+  "stateModel": "ToolWear",
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Equip",
+    "Use",
+    "Repair"
+  ],
+  "tags": [
+    "TOOL",
+    "TOOL_SHOVEL",
+    "DIGGING"
+  ],
+  "persistencePolicy": "SaveWhenInWorld",
+  "notes": "Example physical shovel definition for the terrain/resource contract."
+}
