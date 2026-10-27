@@ -62,7 +62,7 @@ FTransform UPlacementKernelSubsystem::ResolveFeatureFrame(const FPlacementFeatur
     if (StepDeg > KINDA_SMALL_NUMBER)
         Angle = FMath::RoundToFloat(Angle / StepDeg) * StepDeg;
     const FVector Out = FQuat(Axis, FMath::DegreesToRadians(Angle)).RotateVector(Reference);
-    return FTransform(FRotationMatrix::MakeFromXZ(Out, Axis).ToQuat(), Centre + Out * Feature.RadiusCm);
+    return FTransform(FRotationMatrix::MakeFromXY(Out, Axis).ToQuat(), Centre + Out * Feature.RadiusCm);
 }
 
 // Resolves the moving station in the held actor's local space. Unlike resolving a
@@ -100,7 +100,7 @@ FTransform ResolveLocalFeatureFrame(
     const float WorldPerLocalUnit = ActorWorldTransform.TransformVector(Out).Size();
     const float LocalRadius = WorldPerLocalUnit > KINDA_SMALL_NUMBER
         ? Feature.RadiusCm / WorldPerLocalUnit : Feature.RadiusCm;
-    return FTransform(FRotationMatrix::MakeFromXZ(Out, Axis).ToQuat(), Centre + Out * LocalRadius);
+    return FTransform(FRotationMatrix::MakeFromXY(Out, Axis).ToQuat(), Centre + Out * LocalRadius);
 }
 
 const TCHAR* UPlacementKernelSubsystem::DamagedReason()
