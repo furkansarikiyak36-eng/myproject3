@@ -46,10 +46,11 @@ FTransform UPlacementKernelSubsystem::ResolveFeatureFrame(const FPlacementFeatur
 {
     if (!Feature.bRadialFree)
         return Feature.WorldFrame;
-    // The side of the body that faces Toward, rounded to StepDeg around the axis;
-    // 0 degrees is the top (or world X for a standing body).
+    // Resolve one logical station into a surface contact frame. The radial normal
+    // is selected from the aim point; the body's longitudinal axis remains the
+    // frame's tangent so cross-joint angles have a stable, geometry-aware meaning.
     const FVector Centre = Feature.WorldFrame.GetLocation();
-    const FVector Axis = Feature.WorldFrame.GetUnitAxis(EAxis::X);
+    const FVector Axis = Feature.WorldFrame.GetUnitAxis(EAxis::X).GetSafeNormal();
     FVector Reference = FVector::VectorPlaneProject(FVector::UpVector, Axis);
     if (!Reference.Normalize())
         Reference = FVector::VectorPlaneProject(FVector::XAxisVector, Axis).GetSafeNormal();
@@ -61,7 +62,45 @@ FTransform UPlacementKernelSubsystem::ResolveFeatureFrame(const FPlacementFeatur
     if (StepDeg > KINDA_SMALL_NUMBER)
         Angle = FMath::RoundToFloat(Angle / StepDeg) * StepDeg;
     const FVector Out = FQuat(Axis, FMath::DegreesToRadians(Angle)).RotateVector(Reference);
-    return FTransform(FRotationMatrix::MakeFromX(Out).ToQuat(), Centre + Out * Feature.RadiusCm);
+    return FTransform(FRotationMatrix::MakeFromXZ(Out, Axis).ToQuat(), Centre + Out * Feature.RadiusCm);
+}
+
+// Resolves the moving station in the held actor's local space. Unlike resolving a
+// target station alone, the source frame must be local to the moving log so the
+// solved actor transform preserves its actual length and cross-section.
+FTransform ResolveLocalFeatureFrame(
+    const FPlacementFeature& Feature,
+    const FTransform& ActorWorldTransform,
+    const FVector& TowardWorld,
+    float StepDeg)
+{
+    if (!Feature.bRadialFree)
+        return Feature.LocalFrame;
+
+    const FVector Centre = Feature.LocalFrame.GetLocation();
+    const FVector Axis = Feature.LocalFrame.GetUnitAxis(EAxis::X).GetSafeNormal();
+    const FVector TowardLocal = ActorWorldTransform.InverseTransformPosition(TowardWorld);
+    FVector Reference = FVector::VectorPlaneProject(FVector::UpVector, Axis);
+    if (!Reference.Normalize())
+        Reference = FVector::VectorPlaneProject(FVector::XAxisVector, Axis);
+    if (!Reference.Normalize())
+        Reference = FVector::VectorPlaneProject(FVector::YAxisVector, Axis).GetSafeNormal();
+
+    FVector Direction = FVector::VectorPlaneProject(TowardLocal - Centre, Axis);
+    if (!Direction.Normalize())
+        Direction = Reference;
+
+    float Angle = FMath::RadiansToDegrees(FMath::Atan2(
+        FVector::DotProduct(Direction, FVector::CrossProduct(Axis, Reference)),
+        FVector::DotProduct(Direction, Reference)));
+    if (StepDeg > KINDA_SMALL_NUMBER)
+        Angle = FMath::RoundToFloat(Angle / StepDeg) * StepDeg;
+    const FVector Out = FQuat(Axis, FMath::DegreesToRadians(Angle)).RotateVector(Reference);
+
+    const float WorldPerLocalUnit = ActorWorldTransform.TransformVector(Out).Size();
+    const float LocalRadius = WorldPerLocalUnit > KINDA_SMALL_NUMBER
+        ? Feature.RadiusCm / WorldPerLocalUnit : Feature.RadiusCm;
+    return FTransform(FRotationMatrix::MakeFromXZ(Out, Axis).ToQuat(), Centre + Out * LocalRadius);
 }
 
 const TCHAR* UPlacementKernelSubsystem::DamagedReason()
@@ -339,11 +378,15 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
             {
                 if (!TargetProvider->CanLink(Target, TargetFeature, Intent.Held, SourceFeature))
                     continue;
-                // A station's side faces where the player aims.
+                // A target station resolves its contact side from the aim; a moving
+                // station resolves its own local contact face toward that same contact.
                 const FTransform TargetFrame = ResolveFeatureFrame(TargetFeature, Intent.AimPoint,
-                    GetParam(Profile, Intent, TEXT("radialStepDeg"), 90.0f));
+                    GetParam(Profile, Intent, TEXT("radialStepDeg"), TargetFeature.RadialStepDeg));
                 const FVector TargetPoint = TargetFrame.GetLocation();
                 const FVector SourcePoint = (SourceFeature.LocalFrame * HeldTransform).GetLocation();
+                const FTransform SourceLocalFrame = ResolveLocalFeatureFrame(
+                    SourceFeature, HeldTransform, TargetPoint,
+                    GetParam(Profile, Intent, TEXT("sourceRadialStepDeg"), SourceFeature.RadialStepDeg));
                 // The held piece's free preview may be half a log away from the joint;
                 // aiming straight at the target feature still finds it.
                 const float Distance = FMath::Min(FVector::Distance(SourcePoint, TargetPoint),
@@ -362,7 +405,7 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
                 Candidate.bValid = true;
                 Candidate.ProfileId = Profile.Id;
                 Candidate.Score = Distance - Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f);
-                Candidate.PieceTransform = PlacementMath::AlignOne(SourceFeature.LocalFrame, HeldTransform.GetScale3D(),
+                Candidate.PieceTransform = PlacementMath::AlignOne(SourceLocalFrame, HeldTransform.GetScale3D(),
                     TargetFrame, TargetFeature.bFlipIncoming, Angle);
                 Candidate.AngleDeg = Angle;
                 Candidate.MarkerPoint = TargetPoint;
