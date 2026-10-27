@@ -5,6 +5,9 @@ This folder defines the intended game, production catalogue, and phased implemen
 ## Documents
 
 - [Master GDD](GDD_MASTER.md) — premise, pillars, gameplay loop, scope boundaries, and target vertical slice.
+- [Selective smooth-voxel decision](../Architecture/VOXEL_TERRAIN_DECISION.md) — original-surface depth bands, dig policy, material composition, limits, and technology gate.
+- [DeepSeek implementation task packet](../Architecture/VXL_02A_DEEPSEEK_TASK_PACKET.md) — first bounded code task for a pure terrain-stratum policy query.
+- [Coding-model workflow](../Production/DEEPSEEK_TASK_WORKFLOW.md) — task boundaries, review rules and integration gate.
 - [Inventory catalogue](INVENTORY_CATALOG.md) — items, materials, processing, carrying rules, and required item data.
 - [World, VFX, animation, and audio catalogue](ASSET_VFX_AUDIO_CATALOG.md) — logical asset families and event catalogues. It does not recommend or bundle marketplace models, textures, or sound packs.
 - [Phase 00 baseline audit](../Architecture/PHASE_00_BASELINE_AUDIT.md) — main-branch evidence, registry discrepancies, and what is not yet verified.
