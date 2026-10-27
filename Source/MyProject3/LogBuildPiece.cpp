@@ -3000,6 +3000,42 @@ void ALogBuildPiece::ResetActorLocalSnapStateForGraphRestore()
     bIsPlaced = false;
 }
 
+void ALogBuildPiece::ResetActorLocalStructureForGraphRestore()
+{
+    if (CrossMaterialParent.IsValid())
+    {
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        ClearCrossMaterialAttachment();
+    }
+    ResetActorLocalSnapStateForGraphRestore();
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+}
+
+bool ALogBuildPiece::RestoreActorLocalConnectionFromGraph(
+    AActor* Parent, FName ParentAnchorId, FName OwnAnchorId)
+{
+    return RestoreActorLocalSnapLinkFromGraph(
+        Cast<ALogBuildPiece>(Parent), ParentAnchorId, OwnAnchorId, true);
+}
+
+void ALogBuildPiece::ApplyGraphPlacementState(bool bPlaced)
+{
+    bIsPlaced = bPlaced;
+    bStartsPlaced = bPlaced;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(!bPlaced && !bIsHeld);
+        Mesh->SetCollisionProfileName(bPlaced ? TEXT("BlockAll") : TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(bIsHeld
+            ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+    }
+}
+
 bool ALogBuildPiece::RestoreActorLocalSnapLinkFromGraph(
     ALogBuildPiece* Parent, FName ParentAnchorId, FName OwnAnchorId, bool bPlaced)
 {
@@ -3042,6 +3078,14 @@ bool ALogBuildPiece::RestoreActorLocalSnapLinkFromGraph(
     SnapPoints[OwnIndex].bOccupied = true;
     Parent->RegisterAttachedPiece(this);
     bIsPlaced = bPlaced;
+    bStartsPlaced = bPlaced;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(!bPlaced && !bIsHeld);
+        Mesh->SetCollisionProfileName(bPlaced ? TEXT("BlockAll") : TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(bIsHeld
+            ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+    }
     return true;
 }
 

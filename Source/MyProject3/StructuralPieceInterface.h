@@ -37,6 +37,15 @@ public:
     virtual bool GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const = 0;
     virtual void GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const = 0;
     virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) = 0;
+
+    /** Clears only actor-local anchor/parent state before canonical graph rehydration. */
+    virtual void ResetActorLocalStructureForGraphRestore() = 0;
+    /** Rebuilds one same-material primary connection without mutating the canonical graph. */
+    virtual bool RestoreActorLocalConnectionFromGraph(
+        AActor* Parent, FName ParentAnchorId, FName OwnAnchorId) = 0;
+    /** Applies the canonical root placement state to local physics/flags without mutating the graph. */
+    virtual void ApplyGraphPlacementState(bool bPlaced) = 0;
+
     virtual bool IsStructurallyPlaced() const = 0;
 
     /** True for a loose piece with no parent, no children and no cross-material parent. */

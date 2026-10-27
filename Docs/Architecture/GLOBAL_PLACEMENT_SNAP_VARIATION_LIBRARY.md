@@ -26,7 +26,7 @@ Cut boundaries are not station centers. The 75 cm modular cut and existing 25 cm
 
 `UPlacementKernelSubsystem` loads `Config/Placement/SnapVariationLibrary.json` from the project config folder, rejects duplicate profile IDs, checks required profile fields and performs paired-anchor and rigid two-anchor transform solves. Candidate scoring is run only after hard constraints. A conservative broad-phase bounds query is available to profiles requiring collision validation.
 
-`FPlacementTransactionJournal` captures actor transforms/attachments and the structural graph snapshot, records explicit undo actions for lifecycle/ownership mutations, and rolls back on scope exit unless committed. If graph/actor/ownership restoration fails, it marks the world simulation faulted. This journal is a coordinated rollback mechanism; it does not make every Unreal physics side effect inherently reversible, so callers must use it around staged operations and revalidate after commit.
+`FPlacementTransactionJournal` captures actor transforms/attachments and the structural graph snapshot, records explicit undo actions for lifecycle/ownership mutations, and rolls back on scope exit unless committed. Canonical graph rehydration now uses a domain-neutral `IStructuralPieceInterface` adapter to clear and rebuild primary same-material links, cross-material links, secondary anchor occupancy and root physics state for logs, stones and sticks. If graph/actor/ownership restoration fails, it marks the world simulation faulted. This journal is a coordinated rollback mechanism; it does not make every Unreal physics side effect inherently reversible, so callers must use it around staged operations and revalidate after commit.
 
 ## Multi-support and failure policy
 
@@ -50,7 +50,7 @@ The catalog includes the initial planned families and variation profiles. Some o
 
 ## Migration boundaries
 
-Existing primary log snap now uses the kernel's paired-anchor solver, profile selection and runtime station transform. Existing stack placement remains a domain-specific grid strategy using the 75 cm modular span set; its commit path uses the transaction journal rather than pretending the preview grid is a pre-authored socket. Strut-to-post plus beam-secondary-support commits are grouped under one transaction. Remaining secondary-support lift helpers and material-specific connection APIs must finish migrating to provider-supplied feature frames before runtime integration can be called complete.
+Existing primary log snap now uses the kernel's paired-anchor solver, profile selection and runtime station transform. Existing stack placement remains a domain-specific grid strategy using the 75 cm modular span set; its commit path uses the transaction journal rather than pretending the preview grid is a pre-authored socket. Strut-to-post plus beam-secondary-support commits are grouped under one transaction. Material-specific primary links remain implemented by their domain providers, but graph snapshot restore now shares the same adapter lifecycle for log/stone/stick. Fire receivers and voxel mutation still need their world-operation adapters; the catalog alone does not implement those domain actions.
 
 ## Explicit verification status
 

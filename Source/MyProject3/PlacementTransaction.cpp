@@ -117,7 +117,7 @@ bool FPlacementTransactionJournal::Rollback()
         {
             bSuccess = false;
         }
-        else if (!Graph->RebuildLogActorAttachmentsFromSnapshot())
+        else if (!Graph->RebuildActorAttachmentsFromSnapshot())
         {
             bSuccess = false;
         }

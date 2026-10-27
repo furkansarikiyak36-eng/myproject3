@@ -3,6 +3,8 @@
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "LogBuildPiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StructuralPieceInterface.h"
 #include "EngineUtils.h"
@@ -191,66 +193,82 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
 }
 
 
-bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
+bool UWorldStructuralGraphSubsystem::RebuildActorAttachmentsFromSnapshot()
 {
-    // Preflight all edges before mutating any local attachment. Cross-domain
-    // edges need their own actor adapter; do not detach a log from a stone or
-    // foundation and then silently leave the canonical edge without a local link.
+    // Preflight the complete primary + secondary topology before clearing any
+    // actor-local state. The canonical graph is the source of truth on restore.
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
         const FStructuralNodeRecord& ChildNode = Pair.Value;
-        if (!ChildNode.ParentNodeId.IsValid())
-            continue;
-        const FStructuralNodeRecord* ParentNode = Nodes.Find(ChildNode.ParentNodeId);
-        if (!ParentNode)
+        IStructuralPieceInterface* ChildPiece =
+            Cast<IStructuralPieceInterface>(ChildNode.Actor.Get());
+        if (!ChildPiece)
             return false;
-        const bool bChildIsLog = Cast<ALogBuildPiece>(ChildNode.Actor.Get()) != nullptr;
-        const bool bParentIsLog = Cast<ALogBuildPiece>(ParentNode->Actor.Get()) != nullptr;
-        const bool bMixedMaterial = ChildNode.Kind != ParentNode->Kind;
-        if (bMixedMaterial &&
-            (!Cast<IStructuralPieceInterface>(ChildNode.Actor.Get()) ||
-             !Cast<IStructuralPieceInterface>(ParentNode->Actor.Get())))
+
+        if (ChildNode.ParentNodeId.IsValid())
         {
-            UE_LOG(LogTemp, Error,
-                TEXT("Cannot restore mixed-material edge without structural adapters on both actors (child %s)."),
-                *Pair.Key.ToString());
-            return false;
+            const FStructuralNodeRecord* ParentNode = Nodes.Find(ChildNode.ParentNodeId);
+            IStructuralPieceInterface* ParentPiece = ParentNode
+                ? Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()) : nullptr;
+            FStructuralAnchorView ParentAnchor;
+            FStructuralAnchorView OwnAnchor;
+            if (!ParentNode || !ParentPiece ||
+                !ParentPiece->GetStructuralAnchor(ChildNode.ParentAnchorId, ParentAnchor) ||
+                !ChildPiece->GetStructuralAnchor(ChildNode.OwnAnchorId, OwnAnchor) ||
+                !ParentAnchor.bCanReceive || !OwnAnchor.bCanConnect)
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Cannot restore primary support features for structural node %s."),
+                    *Pair.Key.ToString());
+                return false;
+            }
+
+            const bool bMixedMaterial = ChildNode.Kind != ParentNode->Kind;
+            const bool bChildIsLog = Cast<ALogBuildPiece>(ChildNode.Actor.Get()) != nullptr;
+            const bool bParentIsLog = Cast<ALogBuildPiece>(ParentNode->Actor.Get()) != nullptr;
+            if (bMixedMaterial && (!ChildPiece || !ParentPiece))
+                return false;
+            if (!bMixedMaterial && bChildIsLog != bParentIsLog &&
+                !(Cast<AStoneBuildingPiece>(ChildNode.Actor.Get()) &&
+                  Cast<AStoneBuildingPiece>(ParentNode->Actor.Get())) &&
+                !(Cast<AStickPrimitivePiece>(ChildNode.Actor.Get()) &&
+                  Cast<AStickPrimitivePiece>(ParentNode->Actor.Get())))
+            {
+                return false;
+            }
         }
-        if (!bMixedMaterial && bChildIsLog != bParentIsLog)
-            return false;
+
+        for (const FStructuralSupportLink& Link : ChildNode.SecondarySupports)
+        {
+            const FStructuralNodeRecord* SupportNode = Nodes.Find(Link.SupportNodeId);
+            IStructuralPieceInterface* SupportPiece = SupportNode
+                ? Cast<IStructuralPieceInterface>(SupportNode->Actor.Get()) : nullptr;
+            FStructuralAnchorView SupportAnchor;
+            FStructuralAnchorView OwnAnchor;
+            if (!SupportNode || !SupportPiece ||
+                !SupportPiece->GetStructuralAnchor(Link.SupportAnchorId, SupportAnchor) ||
+                !ChildPiece->GetStructuralAnchor(Link.OwnAnchorId, OwnAnchor) ||
+                !SupportAnchor.bCanReceive || !OwnAnchor.bCanConnect)
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Cannot restore secondary support features for structural node %s."),
+                    *Pair.Key.ToString());
+                return false;
+            }
+        }
     }
 
     UMaterialConnectionSubsystem* Connections =
         GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
 
-    // First clear stale actor-local pointers/reservations. The canonical graph
-    // remains untouched and is the only authority for parent/anchor relations.
+    // Each domain clears only its local parent/anchor state; no graph mutations occur.
     for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
-        AActor* Actor = Pair.Value.Actor.Get();
-        if (IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
+        if (IStructuralPieceInterface* Piece =
+            Cast<IStructuralPieceInterface>(Pair.Value.Actor.Get()))
         {
-            if (Piece->GetCrossMaterialParent())
-            {
-                Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
-                Piece->ClearCrossMaterialAttachment();
-            }
-            // Release both anchors of a mixed-material edge so the rebuild can
-            // reserve them again from the canonical record.
-            const FStructuralNodeRecord* ParentNode = Pair.Value.ParentNodeId.IsValid()
-                ? Nodes.Find(Pair.Value.ParentNodeId) : nullptr;
-            if (ParentNode && ParentNode->Kind != Pair.Value.Kind)
-            {
-                Piece->SetStructuralAnchorOccupied(Pair.Value.OwnAnchorId, false);
-                if (IStructuralPieceInterface* ParentPiece =
-                    Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()))
-                {
-                    ParentPiece->SetStructuralAnchorOccupied(Pair.Value.ParentAnchorId, false);
-                }
-            }
+            Piece->ResetActorLocalStructureForGraphRestore();
         }
-        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
-            Log->ResetActorLocalSnapStateForGraphRestore();
     }
 
     TArray<FGuid> OrderedIds;
@@ -260,6 +278,7 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
         return A.ToString() < B.ToString();
     });
 
+    // Restore primary edges without reinserting them into the canonical graph.
     for (const FGuid& NodeId : OrderedIds)
     {
         const FStructuralNodeRecord* ChildNode = Nodes.Find(NodeId);
@@ -267,47 +286,74 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
             continue;
 
         const FStructuralNodeRecord* ParentNode = Nodes.Find(ChildNode->ParentNodeId);
-        if (ParentNode && ParentNode->Kind != ChildNode->Kind)
+        if (!ParentNode)
+            return false;
+
+        AActor* ParentActor = ParentNode->Actor.Get();
+        AActor* ChildActor = ChildNode->Actor.Get();
+        if (ParentNode->Kind != ChildNode->Kind)
         {
-            // Cross-material joints are rebuilt by the material connection adapter.
-            if (!Connections || !Connections->RestoreLinkFromGraph(ParentNode->Actor.Get(),
-                ChildNode->ParentAnchorId, ChildNode->Actor.Get(), ChildNode->OwnAnchorId))
+            if (!Connections || !Connections->RestoreLinkFromGraph(
+                ParentActor, ChildNode->ParentAnchorId, ChildActor, ChildNode->OwnAnchorId))
             {
                 UE_LOG(LogTemp, Error,
-                    TEXT("Structural graph restored but cross-material anchor reconstruction failed for node %s."),
+                    TEXT("Cross-material graph restore failed for structural node %s."),
                     *NodeId.ToString());
                 return false;
             }
             continue;
         }
 
-        ALogBuildPiece* Child = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
-        ALogBuildPiece* Parent = ParentNode
-            ? Cast<ALogBuildPiece>(ParentNode->Actor.Get()) : nullptr;
-
-        // Non-log structural adapters own their own local anchor bookkeeping.
-        // Do not fabricate a log-only link for a cross-domain edge.
-        if (!Child || !Parent)
-            continue;
-
-        if (!Child->RestoreActorLocalSnapLinkFromGraph(
-            Parent, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId, true))
+        IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(ChildActor);
+        if (!ChildPiece || !ChildPiece->RestoreActorLocalConnectionFromGraph(
+            ParentActor, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId))
         {
             UE_LOG(LogTemp, Error,
-                TEXT("Structural graph restored but log-local anchor reconstruction failed for node %s."),
+                TEXT("Same-material actor-link restore failed for structural node %s."),
                 *NodeId.ToString());
             return false;
         }
     }
 
-    // A root log is considered placed only if the canonical graph says it is
-    // ground-supported; loose logs remain available for physics/carry actions.
+    // Secondary support relationships occupy real anchor IDs on both pieces.
+    for (const FGuid& NodeId : OrderedIds)
+    {
+        const FStructuralNodeRecord* ChildNode = Nodes.Find(NodeId);
+        if (!ChildNode)
+            return false;
+        IStructuralPieceInterface* ChildPiece =
+            Cast<IStructuralPieceInterface>(ChildNode->Actor.Get());
+        if (!ChildPiece)
+            return false;
+
+        for (const FStructuralSupportLink& Link : ChildNode->SecondarySupports)
+        {
+            const FStructuralNodeRecord* SupportNode = Nodes.Find(Link.SupportNodeId);
+            IStructuralPieceInterface* SupportPiece = SupportNode
+                ? Cast<IStructuralPieceInterface>(SupportNode->Actor.Get()) : nullptr;
+            if (!SupportPiece ||
+                !SupportPiece->SetStructuralAnchorOccupied(Link.SupportAnchorId, true) ||
+                !ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, true))
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Secondary support feature reconstruction failed for node %s."),
+                    *NodeId.ToString());
+                return false;
+            }
+        }
+    }
+
+    // Roots are either grounded/placed or loose. Child nodes get their placed
+    // state from their reconstructed primary edge above.
     for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
-        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Pair.Value.Actor.Get()))
+        if (!Pair.Value.ParentNodeId.IsValid())
         {
-            if (!Pair.Value.ParentNodeId.IsValid())
-                Log->SetPlacedState(Pair.Value.bGroundSupported);
+            if (IStructuralPieceInterface* Piece =
+                Cast<IStructuralPieceInterface>(Pair.Value.Actor.Get()))
+            {
+                Piece->ApplyGraphPlacementState(Pair.Value.bGroundSupported);
+            }
         }
     }
     return true;

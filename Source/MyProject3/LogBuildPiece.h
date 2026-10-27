@@ -277,6 +277,10 @@ public:
     virtual bool GetStructuralAnchor(FName AnchorId, FStructuralAnchorView& OutAnchor) const override;
     virtual void GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const override;
     virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) override;
+    virtual void ResetActorLocalStructureForGraphRestore() override;
+    virtual bool RestoreActorLocalConnectionFromGraph(
+        AActor* Parent, FName ParentAnchorId, FName OwnAnchorId) override;
+    virtual void ApplyGraphPlacementState(bool bPlaced) override;
     virtual bool IsStructurallyPlaced() const override { return bIsPlaced; }
     virtual bool CanAttachAsCrossMaterialChild() const override;
     virtual void ApplyCrossMaterialAttachment(AActor* Parent) override;
