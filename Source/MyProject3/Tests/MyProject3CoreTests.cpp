@@ -886,9 +886,9 @@ bool FVoxelStructureSupportGuardTest::RunTest(const FString& Parameters)
     UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(SupportActor);
     if (!TestNotNull(TEXT("Support identity component"), Identity))
         return false;
+    Identity->InstanceId = FGuid::NewGuid();
     SupportActor->AddInstanceComponent(Identity);
     Identity->RegisterComponent();
-    Identity->InstanceId = FGuid::NewGuid();
 
     UWorldStructuralGraphSubsystem* Graph =
         TestWorld.World->GetSubsystem<UWorldStructuralGraphSubsystem>();
