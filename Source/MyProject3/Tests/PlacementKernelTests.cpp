@@ -618,6 +618,43 @@ bool FPlacementBasicJointsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// The context candidate list is authoritative for search: even when AimActor is
+// not the best target, the solver must compare all candidates and choose the closest
+// valid feature to the aim point.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementContextCandidatesTest,
+    "MyProject3.Placement.ContextCandidatesChooseBestFeature", Flags)
+bool FPlacementContextCandidatesTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World ? World->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    ALogBuildPiece* NearPost = SpawnCubeLog(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* DirectButFarPost = SpawnCubeLog(World, FVector(0, 100, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 600, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Near post"), NearPost) ||
+        !TestNotNull(TEXT("Direct target"), DirectButFarPost) || !TestNotNull(TEXT("Held log"), Held))
+        return false;
+
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = DirectButFarPost; // The direct hit is deliberately not the best feature.
+    Intent.AimPoint = FVector(0, 0, 200);
+    Intent.Candidates = { DirectButFarPost, NearPost };
+    Intent.AllowedProfiles = { TEXT("log.station_to_end") };
+
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    if (!TestTrue(FString::Printf(TEXT("A contextual solution is found (%s)"), *Solution.Reason), Solution.bValid))
+        return false;
+
+    const FPlacementLink* Link = Solution.GetPrimaryLink();
+    TestNotNull(TEXT("The solution has a primary link"), Link);
+    if (!Link)
+        return false;
+    TestTrue(TEXT("The nearer target is selected, not AimActor"), Link->Target.Piece.Get() == NearPost);
+    TestTrue(TEXT("The source is a log station"), Link->Source.FeatureId.ToString().StartsWith(TEXT("Station.")));
+    return true;
+}
+
 // Real notched joints come from the imported joinery meshes: the cross-lap
 // pieces carry a NotchCradle socket, a log made with one has that joint point,
 // and two of them cross notch in notch, the upper one turned over and across.
