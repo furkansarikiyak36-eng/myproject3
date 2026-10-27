@@ -107,6 +107,8 @@ Do not merge Phase 01–06 and Phase H individually into feature/simple-intent; 
 
 ## Phase 08 — Terrain state, bounded voxel digging and underground spaces
 
+**Design authority:** [VXL-02 selective smooth-voxel terrain decision](../Architecture/VOXEL_TERRAIN_DECISION.md). For the first coding-model task, use [VXL-02A task packet](../Architecture/VXL_02A_DEEPSEEK_TASK_PACKET.md). This cross-cutting workstream does not renumber repository Phase 02, which remains core identity/operation/event contracts.
+
 **Technical decision gate at the start of this phase:** compare UE 5.8-compatible runtime-edit approaches against runtime digging, collision/navigation updates, save/load, material hardness, memory, performance, engine/plugin compatibility, maintenance and licensing. Demonstrate a small soft/hard terrain area before full implementation. No voxel technology is considered selected merely because a candidate header exists.
 
 - Define depth layers and diggable material classes; medium-depth scope only.
