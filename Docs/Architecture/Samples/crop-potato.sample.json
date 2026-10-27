@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "id": "CROP_POTATO",
+  "displayNameKey": "crop.potato",
+  "seedItemDefinitionId": "ITEM_SEED_POTATO",
+  "allowedSeasonIds": [
+    "SEASON_SPRING",
+    "SEASON_SUMMER"
+  ],
+  "growthStages": [
+    {
+      "stateId": "STATE_CROP_SEED",
+      "durationSeconds": 60,
+      "nextStateId": "STATE_CROP_SPROUT"
+    },
+    {
+      "stateId": "STATE_CROP_SPROUT",
+      "durationSeconds": 120,
+      "nextStateId": "STATE_CROP_GROWING"
+    },
+    {
+      "stateId": "STATE_CROP_GROWING",
+      "durationSeconds": 240,
+      "nextStateId": "STATE_CROP_MATURE"
+    },
+    {
+      "stateId": "STATE_CROP_MATURE",
+      "durationSeconds": 0
+    },
+    {
+      "stateId": "STATE_CROP_WITHERED",
+      "durationSeconds": 0
+    }
+  ],
+  "soilRequirements": {
+    "minimumQuality": 0.35,
+    "maximumContamination": 0.4,
+    "minimumMoisture": 0.25,
+    "maximumMoisture": 0.8,
+    "requiredSoilTags": [
+      "SOIL_PLANTABLE"
+    ]
+  },
+  "waterConsumptionPerDay": 0.25,
+  "seasonGrowthMultipliers": {
+    "SEASON_SPRING": 1,
+    "SEASON_SUMMER": 0.8
+  },
+  "harvestOutputs": [
+    {
+      "itemDefinitionId": "ITEM_POTATO",
+      "minimumQuantity": 1,
+      "maximumQuantity": 4,
+      "seedReturnItemDefinitionId": "ITEM_SEED_POTATO",
+      "seedReturnChance": 0.25
+    }
+  ],
+  "failurePolicy": "Wither",
+  "contaminationTolerance": 0.4,
+  "restorationStageRequired": "REGION_SOIL_RECOVERING",
+  "notes": "Illustrative tuning only; final growth rates require playtesting and economy review."
+}
