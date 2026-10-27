@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/feedback-event-definition.schema.json",
+  "title": "MyProject3 Feedback Event Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "eventType",
+    "triggerId",
+    "priority",
+    "fallbackPolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+      "description": "Stable definition/event ID. Never use an M001-M119 mechanic ID or a display name here."
+    },
+    "eventType": {
+      "enum": [
+        "SFX",
+        "VFX",
+        "Animation",
+        "UI",
+        "MusicCue",
+        "Ambience"
+      ]
+    },
+    "triggerId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "assetRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional project-owned asset path/reference; never a marketplace dependency ID."
+    },
+    "spatialization": {
+      "enum": [
+        "World3D",
+        "UI2D",
+        "MusicBus",
+        "AmbientBed",
+        "NotApplicable"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "concurrencyGroup": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "maxConcurrentInstances": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "mixBus": {
+      "enum": [
+        "Master",
+        "WorldAmbience",
+        "Weather",
+        "Foley",
+        "ToolsAndConstruction",
+        "Threat",
+        "UI",
+        "Music",
+        "VoiceOrRecordings"
+      ]
+    },
+    "intensityParameter": {
+      "type": "string"
+    },
+    "fallbackPolicy": {
+      "enum": [
+        "Silent",
+        "GenericPlaceholder",
+        "UIOnly",
+        "AudioOnly",
+        "VisualOnly",
+        "NoFallbackAllowed"
+      ]
+    },
+    "accessibilitySignal": {
+      "enum": [
+        "None",
+        "Text",
+        "Icon",
+        "ColorAndShape",
+        "AudioAndVisual"
+      ]
+    },
+    "mustNotMaskThreatAudio": {
+      "type": "boolean",
+      "default": false
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
