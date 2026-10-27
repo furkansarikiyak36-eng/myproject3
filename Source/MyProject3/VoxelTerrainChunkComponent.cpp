@@ -209,6 +209,30 @@ void UVoxelTerrainChunkComponent::RememberEditReceipt(
 float UVoxelTerrainChunkComponent::ApplySphereEditInternal(
     FVector LocalCenter, float RadiusCm, bool bAdd)
 {
+    const float VolumeBefore = GetSolidVolumeCubicMetres();
+    const int32 N = PointsPerAxis();
+    const int32 MinX = FMath::Max(0, FMath::FloorToInt((LocalCenter.X - RadiusCm) / VoxelSizeCm) - 1);
+    const int32 MaxX = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.X + RadiusCm) / VoxelSizeCm) + 1);
+    const int32 MinY = FMath::Max(0, FMath::FloorToInt((LocalCenter.Y - RadiusCm) / VoxelSizeCm) - 1);
+    const int32 MaxY = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.Y + RadiusCm) / VoxelSizeCm) + 1);
+    const int32 MinZ = FMath::Max(0, FMath::FloorToInt((LocalCenter.Z - RadiusCm) / VoxelSizeCm) - 1);
+    const int32 MaxZ = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.Z + RadiusCm) / VoxelSizeCm) + 1);
+
+    for (int32 Z = MinZ; Z <= MaxZ; ++Z)
+    {
+        for (int32 Y = MinY; Y <= MaxY; ++Y)
+        {
+            for (int32 X = MinX; X <= MaxX; ++X)
+            {
+                const FVector Point(X * VoxelSizeCm, Y * VoxelSizeCm, Z * VoxelSizeCm);
+                const float Sphere = static_cast<float>(FVector::Dist(Point, LocalCenter)) - RadiusCm;
+                float& Value = Density[PointIndex(X, Y, Z)];
+                Value = AvoidIsoValue(bAdd ? FMath::Min(Value, Sphere) : FMath::Max(Value, -Sphere));
+            }
+        }
+    }
+    return GetSolidVolumeCubicMetres() - VolumeBefore;
+}
 
 float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
 {
