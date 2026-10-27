@@ -68,7 +68,7 @@ FTransform UPlacementKernelSubsystem::ResolveFeatureFrame(const FPlacementFeatur
 // Resolves the moving station in the held actor's local space. Unlike resolving a
 // target station alone, the source frame must be local to the moving log so the
 // solved actor transform preserves its actual length and cross-section.
-FTransform ResolveLocalFeatureFrame(
+static FTransform ResolveLocalFeatureFrame(
     const FPlacementFeature& Feature,
     const FTransform& ActorWorldTransform,
     const FVector& TowardWorld,
@@ -404,7 +404,23 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
                 FPlacementSolution Candidate;
                 Candidate.bValid = true;
                 Candidate.ProfileId = Profile.Id;
-                Candidate.Score = Distance - Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f);
+                // If several logical source stations are equally reachable, prefer the
+                // station closest to the held body's centre. This avoids arbitrary
+                // first-in-array selection for station-to-end and station-cross snaps.
+                float SourceStationBias = 0.0f;
+                if (SourceFeature.Kind == EPlacementFeatureKind::Station)
+                {
+                    FPlacementBody HeldBody;
+                    if (HeldProvider->GetBody(Intent.Held, HeldBody))
+                    {
+                        const float AlongFromCentre = FMath::Abs(
+                            FVector::DotProduct(SourcePoint - HeldBody.Centre, HeldBody.Axis));
+                        SourceStationBias = AlongFromCentre *
+                            GetParam(Profile, Intent, TEXT("sourceCenterBiasWeight"), 0.02f);
+                    }
+                }
+                Candidate.Score = Distance + SourceStationBias -
+                    Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f);
                 Candidate.PieceTransform = PlacementMath::AlignOne(SourceLocalFrame, HeldTransform.GetScale3D(),
                     TargetFrame, TargetFeature.bFlipIncoming, Angle);
                 Candidate.AngleDeg = Angle;
