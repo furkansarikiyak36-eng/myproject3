@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MyProject3 Structural Anchor",
+  "$comment": "Design-time contract for MyProject3. It is not a claim that the corresponding Unreal runtime adapter is implemented or verified.",
+  "type": "object",
+  "required": [
+    "anchor_id",
+    "host_instance_id",
+    "role",
+    "local_location",
+    "local_rotation",
+    "accepted_definition_ids",
+    "compatible_tags",
+    "occupied"
+  ],
+  "properties": {
+    "anchor_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "host_instance_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "role": {
+      "enum": [
+        "SOURCE",
+        "RECEIVER",
+        "BIDIRECTIONAL"
+      ]
+    },
+    "local_location": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false
+    },
+    "local_rotation": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3,
+      "items": false
+    },
+    "accepted_definition_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+      },
+      "uniqueItems": true
+    },
+    "compatible_tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+      },
+      "uniqueItems": true
+    },
+    "occupied": {
+      "type": "boolean"
+    },
+    "reserved_by_instance_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "supported_connection_kinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+      },
+      "uniqueItems": true
+    },
+    "profile_revision": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "occupied": {
+            "const": true
+          }
+        },
+        "required": [
+          "occupied"
+        ]
+      },
+      "then": {
+        "required": [
+          "reserved_by_instance_id"
+        ],
+        "properties": {
+          "reserved_by_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}
