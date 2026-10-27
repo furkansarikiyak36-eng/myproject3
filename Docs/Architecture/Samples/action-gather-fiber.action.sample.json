@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_GATHER_FIBER",
+  "displayNameKey": "action.gather_fiber",
+  "ownerSystem": "RESOURCE_SOURCE",
+  "targetKinds": [
+    "ResourceSource"
+  ],
+  "targetFamilies": [
+    "PlantFiber"
+  ],
+  "sourceDefinitionIds": [
+    "SRC_SEEDLING"
+  ],
+  "outputItemDefinitionIds": [
+    "ITEM_PLANT_FIBER"
+  ],
+  "requiredToolTags": [
+    "HAND_GATHER"
+  ],
+  "operationMode": "Instant",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "OBJECT_PROCESSED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "InvalidState",
+    "PrerequisiteNotMet",
+    "MissingConfiguration",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresLooseTarget": false,
+  "maximumRangeCm": 180,
+  "noiseLevel": 0.02,
+  "lightLevel": 0,
+  "feedbackEventIds": [],
+  "notes": "Example resource-gathering contract."
+}
