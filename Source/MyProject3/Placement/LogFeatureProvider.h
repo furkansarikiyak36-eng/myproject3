@@ -17,13 +17,14 @@ class MYPROJECT3_API FLogFeatureProvider : public IPlacementFeatureProvider
 public:
     virtual bool Supports(const AActor* Piece) const override;
     virtual FName GetFamily(const AActor* Piece) const override;
+    virtual FName GetSection(const AActor* Piece) const override;
     virtual uint32 GetGeometryRevision(const AActor* Piece) const override;
     virtual void GetFeatures(const AActor* Piece, TArray<FPlacementFeature>& OutFeatures) const override;
     virtual bool CanLink(const AActor* Target, const FPlacementFeature& TargetFeature,
         const AActor* Source, const FPlacementFeature& SourceFeature) const override;
     virtual bool CommitLink(AActor* Target, const FPlacementFeature& TargetFeature,
         AActor* Source, const FPlacementFeature& SourceFeature) const override;
-    virtual void RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
+    virtual bool RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
         AActor* Source, const FPlacementFeature& SourceFeature) const override;
     virtual bool IsPlaced(const AActor* Piece) const override;
     virtual bool GetBody(const AActor* Piece, FPlacementBody& OutBody) const override;

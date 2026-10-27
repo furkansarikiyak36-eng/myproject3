@@ -102,6 +102,11 @@ struct FPlacementFeature
      */
     bool bRadialFree = false;
     float RadiusCm = 0.0f;
+    /**
+     * When the station itself joins something (station to end): the frame on the
+     * piece's underside at the station, X out of the side, Z along the piece.
+     */
+    FTransform SideLocalFrame = FTransform::Identity;
 };
 
 /** A long piece seen as a line with a thickness: logs, planks, sticks, ropes. */
@@ -170,6 +175,8 @@ struct FPlacementIntent
     bool bUpright = false;
     /** Pieces to consider; empty means AimActor only. */
     TArray<AActor*> Candidates;
+    /** The one placing (the player pawn, the helper); never a support or an obstacle. */
+    AActor* Placer = nullptr;
     /** Only these profiles; empty means every enabled Connect profile. */
     TArray<FName> AllowedProfiles;
     /** Per-call values that win over the profile's params (designer tuning on a component). */
@@ -198,6 +205,11 @@ struct FPlacementSolution
     float SpanCm = 0.0f;
     /** A point of interest for the preview (where a strut meets the beam, a post's partner). */
     FVector MarkerPoint = FVector::ZeroVector;
+    /**
+     * Joined at one end with nothing under the other: the free end swings down
+     * after the commit. Only a profile with physics Hinge gives such a solution.
+     */
+    bool bFreeEndHangs = false;
 
     const FPlacementLink* GetPrimaryLink() const { return FindLink(EPlacementLinkRole::Primary); }
     const FPlacementLink* FindLink(EPlacementLinkRole Role) const

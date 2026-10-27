@@ -6,14 +6,20 @@
 /** One side of a profile: which feature of which material it accepts. */
 struct FPlacementFeatureFilter
 {
-    /** NAME_None accepts any family. */
+    /** NAME_None accepts any family (unless Families lists some). */
     FName Family = NAME_None;
+    /** More than one family ("families" in the JSON); empty means Family alone decides. */
+    TArray<FName> Families;
+    /** Cross-sections the piece may have (Round, Hewn ...); empty accepts any. */
+    TArray<FName> Sections;
     bool bAnyKind = true;
     EPlacementFeatureKind Kind = EPlacementFeatureKind::Authored;
     /** Empty accepts any tag. */
     TArray<FName> Tags;
 
     bool Matches(FName PieceFamily, const FPlacementFeature& Feature) const;
+    bool AllowsFamily(FName PieceFamily) const;
+    bool AllowsSection(FName PieceSection) const;
 };
 
 /** A placement rule from data: what joins what, how it is solved and what it leaves behind. */

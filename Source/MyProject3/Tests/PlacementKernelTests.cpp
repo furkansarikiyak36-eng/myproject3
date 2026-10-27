@@ -11,6 +11,7 @@
 #include "Placement/PlacementProfiles.h"
 #include "Placement/PlacementSolvers.h"
 #include "Placement/PlacementTransaction.h"
+#include "StoneBuildingPiece.h"
 #include "VerticalSliceCWorldActor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
@@ -332,8 +333,13 @@ bool FPlacementStationsOnLogTest::RunTest(const FString& Parameters)
         SidePoints += Point.PointId.ToString().StartsWith(TEXT("AutoSide")) ? 1 : 0;
     TestEqual(TEXT("No point is copied per side any more"), SidePoints, 0);
 
-    // A cut (scale) lays the stations out again for the new length.
+    // A change of length makes old solutions stale at once; the cut lays the
+    // stations out again as its own step (a query never changes the log).
+    const uint32 Before = FPlacementProviderRegistry::Find(Held)->GetGeometryRevision(Held);
     Held->SetActorScale3D(FVector(3.0f, 0.3f, 0.3f));
+    TestNotEqual(TEXT("The new length is a new geometry revision"), FPlacementProviderRegistry::Find(Held)->GetGeometryRevision(Held), Before);
+    TestEqual(TEXT("A query alone does not lay stations out"), CountStations(Held), 2);
+    Held->RefreshStationsIfStale();
     TestEqual(TEXT("Cut to 300 cm it has 4 stations"), CountStations(Held), 4);
 
     // T joint: aim at the beam's side, then at its top, at the same station.
@@ -466,6 +472,149 @@ bool FPlacementSceneTest::RunTest(const FString& Parameters)
     }
     // 12 short logs cross 2 long ones each, and 10 long logs (rows 2-6) cross 2 short ones each.
     TestEqual(TEXT("Every log above the first row crosses the two under it"), Crossings, 12 * 2 + 10 * 2);
+    return true;
+}
+
+// An undo that fails is reported, so the kernel can stop trusting the world
+// instead of calling a half-undone placement a clean refusal.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementRollbackTest, "MyProject3.Placement.FailedUndoIsReported", Flags)
+bool FPlacementRollbackTest::RunTest(const FString& Parameters)
+{
+    TArray<FString> Undone;
+    {
+        FPlacementTransaction Tx;
+        Tx.Step(TEXT("A"), [] { return true; }, [&Undone] { Undone.Add(TEXT("A")); return true; });
+        Tx.Step(TEXT("B"), [] { return true; }, [&Undone] { Undone.Add(TEXT("B")); return false; });
+        TestFalse(TEXT("Step C fails"), Tx.Step(TEXT("C"), [] { return false; }));
+        TestTrue(TEXT("The transaction failed at C"), Tx.Failed() && Tx.GetFailedStep() == TEXT("C"));
+        TestTrue(TEXT("The failed undo is reported"), Tx.RollbackFailed() && Tx.GetFailedUndo() == TEXT("B"));
+    }
+    TestTrue(TEXT("Undone in reverse order, all of them"), Undone.Num() == 2 && Undone[0] == TEXT("B") && Undone[1] == TEXT("A"));
+
+    FPlacementTransaction Clean;
+    Clean.Step(TEXT("A"), [] { return true; }, [] { return true; });
+    Clean.Fail(TEXT("Check"));
+    TestFalse(TEXT("A clean rollback is not a failed one"), Clean.RollbackFailed());
+    return true;
+}
+
+// The ledger is checked before anything changes: a piece the ledger does not
+// hold where expected is not set on the ground at all.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementGroundLedgerTest, "MyProject3.Placement.GroundPlacementNeedsTheLedger", Flags)
+bool FPlacementGroundLedgerTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    AStoneBuildingPiece* Stone = World->SpawnActor<AStoneBuildingPiece>(FVector(0, 0, 50), FRotator::ZeroRotator);
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Stone"), Stone) || !TestNotNull(TEXT("Cube"), Cube))
+        return false;
+    Stone->Mesh->SetStaticMesh(Cube);
+    // Lifted by the piece itself but still world-owned in the ledger: placing it "from the hands" must not happen.
+    TestTrue(TEXT("Lifted"), Stone->SetHeldState(true));
+    FString Reason;
+    TestFalse(TEXT("Not placed from the hands"), Kernel->CommitGroundPlacement(Stone,
+        FTransform(FVector(0, 0, 50)), FPlacementCommitOptions(), Reason));
+    TestFalse(FString::Printf(TEXT("Nothing changed (%s)"), *Reason), Stone->IsPlaced());
+    // From where the ledger really has it, it is placed.
+    FPlacementCommitOptions FromWorld;
+    FromWorld.FromOwner = EWorldItemOwnerKind::World;
+    FromWorld.FromLifecycle = EWorldObjectLifecycleState::World;
+    TestTrue(FString::Printf(TEXT("Placed from the world (%s)"), *Reason),
+        Kernel->CommitGroundPlacement(Stone, FTransform(FVector(0, 0, 50)), FromWorld, Reason));
+    TestTrue(TEXT("Now on the ground"), Stone->IsPlaced());
+    return true;
+}
+
+// A log joined at one end: what its other end rests on is decided in the same
+// solution. Over nothing it may hang (the snap profiles are hinges); over a
+// built log, that log becomes its second support.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementFreeEndTest, "MyProject3.Placement.FreeEndInTheSolution", Flags)
+bool FPlacementFreeEndTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    ALogBuildPiece* Beam = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 600, 100), FRotator::ZeroRotator, 150.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Beam;
+    Intent.AimPoint = FVector(150, 0, 100);
+    Intent.AllowedProfiles = { TEXT("log.end_to_end") };
+    FPlacementSolution Hanging = Kernel->Solve(Intent);
+    TestTrue(TEXT("Over nothing it is a hinge joint"), Hanging.bValid && Hanging.bFreeEndHangs);
+    TestEqual(TEXT("With one link"), Hanging.Links.Num(), 1);
+
+    // A built log under where the far end will be (x 300).
+    SpawnCubeLog(World, FVector(300, 0, 70), FRotator(0, 90, 0), 200.0f, 30.0f, true);
+    FPlacementSolution Resting = Kernel->Solve(Intent);
+    TestTrue(TEXT("Over a log it does not hang"), Resting.bValid && !Resting.bFreeEndHangs);
+    TestTrue(TEXT("That log is its second support"), Resting.FindLink(EPlacementLinkRole::Secondary) != nullptr);
+    return true;
+}
+
+// The three basic log joints pick the right features, only wall logs take them,
+// and a committed piece ends exactly where the solution put it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementBasicJointsTest, "MyProject3.Placement.BasicJointsSectionsAndExactCommit", Flags)
+bool FPlacementBasicJointsTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    // A post standing at the origin, top at z 200; a beam to hold.
+    ALogBuildPiece* Post = SpawnCubeLog(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 600, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Post"), Post) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+
+    // C: station to end: the held log lies on the post top with one of its stations.
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Post;
+    Intent.AimPoint = FVector(0, 0, 200);
+    Intent.AllowedProfiles = { TEXT("log.station_to_end") };
+    const FPlacementSolution OnPost = Kernel->Solve(Intent);
+    if (!TestTrue(FString::Printf(TEXT("Station to end is found (%s)"), *OnPost.Reason), OnPost.bValid))
+        return false;
+    TestTrue(TEXT("It joins a station of the held log"), OnPost.Links[0].Source.FeatureId.ToString().StartsWith(TEXT("Station.")));
+    TestTrue(TEXT("To the post's top end"), OnPost.Links[0].Target.FeatureId == TEXT("End.B") || OnPost.Links[0].Target.FeatureId == TEXT("End.A"));
+    const FVector Axis = OnPost.PieceTransform.GetUnitAxis(EAxis::X);
+    TestTrue(TEXT("The held log lies flat"), FMath::Abs(Axis.Z) < 0.05f);
+    TestTrue(FString::Printf(TEXT("On top of the post (z %.1f)"), OnPost.PieceTransform.GetLocation().Z),
+        OnPost.PieceTransform.GetLocation().Z > 200.0f && OnPost.PieceTransform.GetLocation().Z < 215.0f + 1.0f);
+
+    // Commit: the piece ends exactly where the solution put it, no second correction.
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
+    FString Reason;
+    TestTrue(FString::Printf(TEXT("Committed (%s)"), *Reason), Kernel->CommitPlacement(Held, OnPost, Options, Reason));
+    TestTrue(TEXT("Exactly the solved transform"), Held->GetActorTransform().Equals(OnPost.PieceTransform, 0.01f));
+
+    // A plank is no wall log: it takes no end joint.
+    ALogBuildPiece* Plank = SpawnCubeLog(World, FVector(0, -600, 300), FRotator::ZeroRotator, 150.0f, 10.0f, false);
+    TArray<FPlacementFeature> Unused;
+    FPlacementFeatureFilter Wall;
+    Wall.Sections = { TEXT("Round"), TEXT("Hewn"), TEXT("HewnTwoFaces"), TEXT("SquareBeam") };
+    TestTrue(TEXT("A round log is a wall log"), Wall.AllowsSection(FPlacementProviderRegistry::Find(Held)->GetSection(Held)));
+    TestFalse(TEXT("A plank is not"), Wall.AllowsSection(TEXT("Plank")));
+    TestFalse(TEXT("A half log is not"), Wall.AllowsSection(TEXT("HalfRound")));
+
+    // Authored points: an end joins a hand-made point, and only End -> Authored or Authored -> any.
+    Plank->AddCustomSnapPoint(TEXT("Notch"), TEXT("LogEnd"), FTransform(FVector(0, 0, 50)), false, true, true, true);
+    const FPlacementProfile* Authored = Kernel->GetProfiles().Find(TEXT("log.authored"));
+    const FPlacementProfile* EndToAuthored = Kernel->GetProfiles().Find(TEXT("log.end_to_authored"));
+    TestTrue(TEXT("log.authored starts from an authored point only"), Authored && !Authored->Source.bAnyKind &&
+        Authored->Source.Kind == EPlacementFeatureKind::Authored);
+    TestTrue(TEXT("log.end_to_authored ends on an authored point"), EndToAuthored && !EndToAuthored->Target.bAnyKind &&
+        EndToAuthored->Target.Kind == EPlacementFeatureKind::Authored);
+    FPlacementFeature Notch;
+    TestTrue(TEXT("The notch is an authored feature"),
+        FPlacementProviderRegistry::FindFeature(Plank, TEXT("Notch"), Notch) && Notch.Kind == EPlacementFeatureKind::Authored);
     return true;
 }
 

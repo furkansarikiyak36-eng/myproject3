@@ -35,6 +35,13 @@ FName FLogFeatureProvider::GetFamily(const AActor* Piece) const
     return Family;
 }
 
+FName FLogFeatureProvider::GetSection(const AActor* Piece) const
+{
+    const ALogBuildPiece* Log = AsLog(Piece);
+    return Log ? FName(*StaticEnum<ELogCrossSectionProfile>()->GetNameStringByValue(static_cast<int64>(Log->GetCrossSectionProfile())))
+               : FName(NAME_None);
+}
+
 uint32 FLogFeatureProvider::GetGeometryRevision(const AActor* Piece) const
 {
     const ALogBuildPiece* Log = AsLog(Piece);
@@ -56,8 +63,8 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
     const ALogBuildPiece* Log = AsLog(Piece);
     if (!Log)
         return;
-    // A log shortened by scale since its stations were laid out gets them again.
-    const_cast<ALogBuildPiece*>(Log)->RefreshStationsIfStale();
+    // A query only: stations are laid out again by the cut that changes the log
+    // (RefreshStationsIfStale), never here; a stale preview is caught by the revision.
     MyProject3Construction::FLogGeometry Shape;
     const bool bHasShape = MyProject3Construction::GetLogGeometry(Log, Shape);
     const TArray<FLogSnapPoint>& Points = Log->GetSnapPoints();
@@ -71,13 +78,21 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
         Feature.LocalFrame = Point.LocalTransform;
         Feature.WorldFrame = Log->GetSnapPointWorldTransform(Index);
         Feature.bFlipIncoming = Point.bFlipIncomingOrientation;
-        Feature.bCanSource = Point.bCanSource;
+        Feature.bCanSource = Point.bCanSource || Feature.Kind == EPlacementFeatureKind::Station;
         Feature.bCanReceive = Point.bCanReceive;
         Feature.bOccupied = Point.bOccupied;
         if (Feature.Kind == EPlacementFeatureKind::Station)
         {
             Feature.bRadialFree = true;
             Feature.RadiusCm = bHasShape ? Shape.Radius : 0.0f;
+            // As a source (station to end) the station joins with the piece's underside.
+            const FVector Along = MyProject3Construction::AxisVector(Log->LongitudinalAxis);
+            const FVector Down = Log->LongitudinalAxis == ELogLongitudinalAxis::Z ? -FVector::XAxisVector : -FVector::ZAxisVector;
+            const UStaticMeshComponent* Mesh = Log->GetLogMesh();
+            const float LocalRadius = Mesh && Mesh->GetStaticMesh()
+                ? FVector::DotProduct(Mesh->GetStaticMesh()->GetBounds().BoxExtent, Down.GetAbs()) : 0.0f;
+            Feature.SideLocalFrame = FTransform(FRotationMatrix::MakeFromXZ(Down, Along).ToQuat(),
+                Point.LocalTransform.GetLocation() + Down * LocalRadius);
         }
         OutFeatures.Add(Feature);
     }
@@ -102,14 +117,12 @@ bool FLogFeatureProvider::CommitLink(AActor* Target, const FPlacementFeature& Ta
     return TargetLog && SourceLog && TargetLog->TryJoinById(TargetFeature.Id, SourceLog, SourceFeature.Id);
 }
 
-void FLogFeatureProvider::RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
+bool FLogFeatureProvider::RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
     AActor* Source, const FPlacementFeature& SourceFeature) const
 {
-    if (ALogBuildPiece* SourceLog = Cast<ALogBuildPiece>(Source))
-    {
-        if (!SourceLog->DetachFromSnapParent())
-            SourceLog->DetachFromSnapParent(true);
-    }
+    ALogBuildPiece* SourceLog = Cast<ALogBuildPiece>(Source);
+    // The graph edge and the actor link go together; a forced local cleanup counts as not undone.
+    return SourceLog && SourceLog->DetachFromSnapParent();
 }
 
 bool FLogFeatureProvider::IsPlaced(const AActor* Piece) const

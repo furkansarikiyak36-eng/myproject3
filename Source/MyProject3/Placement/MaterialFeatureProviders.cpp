@@ -36,11 +36,10 @@ namespace
         virtual void GetFeatures(const AActor* Piece, TArray<FPlacementFeature>& OutFeatures) const override
         {
             OutFeatures.Reset();
-            TPiece* Typed = const_cast<TPiece*>(Cast<TPiece>(Piece));
+            const TPiece* Typed = Cast<TPiece>(Piece);
             if (!Typed)
                 return;
-            // The top and bottom anchors exist once the piece has a mesh; adding them is idempotent.
-            Typed->EnsureAutomaticAnchors();
+            // A query only: the piece adds its top and bottom anchors itself (BeginPlay, pickup).
             TArray<FName> Ids;
             Typed->GetStructuralAnchorIds(Ids);
             for (const FName& Id : Ids)
@@ -85,15 +84,15 @@ namespace
             return true;
         }
 
-        virtual void RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
+        virtual bool RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
             AActor* Source, const FPlacementFeature& SourceFeature) const override
         {
-            if (TPiece* SourcePiece = Cast<TPiece>(Source))
-            {
-                if (!SourcePiece->RemoveConnection())
-                    SourcePiece->RemoveConnection(true);
-                SourcePiece->SetHeldState(true);
-            }
+            TPiece* SourcePiece = Cast<TPiece>(Source);
+            // The graph edge and the anchors go together; then the piece is back in the hands.
+            if (!SourcePiece || !SourcePiece->RemoveConnection())
+                return false;
+            SourcePiece->SetHeldState(true);
+            return true;
         }
 
         virtual bool IsPlaced(const AActor* Piece) const override

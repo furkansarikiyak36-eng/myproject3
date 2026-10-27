@@ -9,6 +9,7 @@
 #include "Placement/PlacementSolvers.h"
 #include "Placement/PlacementTransaction.h"
 #include "StructuralPieceInterface.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 
 namespace
@@ -24,9 +25,11 @@ namespace
         return Provider ? Provider->GetFamily(Piece) : NAME_None;
     }
 
+    /** The piece's family and cross-section both fit the filter. */
     bool FamilyAllowed(const FPlacementFeatureFilter& Filter, const AActor* Piece)
     {
-        return Filter.Family.IsNone() || Filter.Family == FamilyOf(Piece);
+        const IPlacementFeatureProvider* Provider = ProviderOf(Piece);
+        return Provider && Filter.AllowsFamily(Provider->GetFamily(Piece)) && Filter.AllowsSection(Provider->GetSection(Piece));
     }
 
     FGuid NodeOf(const AActor* Piece)
@@ -290,7 +293,103 @@ FPlacementSolution UPlacementKernelSubsystem::Solve(const FPlacementIntent& Inte
     }
     if (!HeldProvider && !Best.bValid && Best.Reason.IsEmpty())
         Best.Reason = TEXT("Nothing placeable is held.");
+    // A joint at one end: what the other end rests on is part of the same solution.
+    const FPlacementProfile* Chosen = Best.bValid ? Profiles.Find(Best.ProfileId) : nullptr;
+    if (Chosen && Chosen->Solver == EPlacementSolver::AlignOne && Chosen->Mode == TEXT("snap"))
+        ResolveFreeEnd(*Chosen, Intent, Best);
     return Best;
+}
+
+FTransform UPlacementKernelSubsystem::ApplyJointInset(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
+    const AActor* Target, const FPlacementFeature& SourceFeature, const FVector& TargetPoint, const FTransform& PieceTransform) const
+{
+    const float EndInset = GetParam(Profile, Intent, TEXT("endInset"), 0.0f);
+    const float CrossInset = GetParam(Profile, Intent, TEXT("crossInset"), 0.0f);
+    FPlacementBody TargetBody, HeldBody;
+    if ((EndInset <= 0.0f && CrossInset <= 0.0f) || !FPlacementProviderRegistry::GetBody(Target, TargetBody) ||
+        !FPlacementProviderRegistry::GetBody(Intent.Held, HeldBody))
+        return PieceTransform;
+    // The held body where the solution puts it.
+    const FTransform Now = Intent.Held->GetActorTransform();
+    const FVector HeldCentre = PieceTransform.TransformPosition(Now.InverseTransformPosition(HeldBody.Centre));
+    const FVector HeldAxis = PieceTransform.TransformVectorNoScale(Now.InverseTransformVectorNoScale(HeldBody.Axis)).GetSafeNormal();
+    const FVector HeldJoint = (SourceFeature.LocalFrame * PieceTransform).GetLocation();
+    const float JointAlong = FVector::DotProduct(HeldJoint - HeldCentre, HeldAxis);
+    const FVector OnTargetAxis = TargetBody.Centre + TargetBody.Axis * FVector::DotProduct(TargetPoint - TargetBody.Centre, TargetBody.Axis);
+    const FVector ToTargetAxis = OnTargetAxis - TargetPoint;
+
+    FVector Offset = FVector::ZeroVector;
+    FVector Across = ToTargetAxis;
+    if (HeldBody.HalfLength > KINDA_SMALL_NUMBER && FMath::Abs(JointAlong) > 0.5f * HeldBody.HalfLength)
+    {
+        // Joined by an end: it slides along its own length into the target, hiding the end grain.
+        const FVector EndDirection = HeldAxis * FMath::Sign(JointAlong);
+        const float Depth = FVector::DotProduct(ToTargetAxis, EndDirection);
+        if (Depth > 0.0f)
+        {
+            Offset += EndDirection * Depth * EndInset;
+            Across -= EndDirection * Depth;
+        }
+    }
+    // Lying across: it sinks into the target.
+    Offset += Across * CrossInset;
+    FTransform Result = PieceTransform;
+    Result.AddToTranslation(Offset);
+    return Result;
+}
+
+void UPlacementKernelSubsystem::ResolveFreeEnd(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
+    FPlacementSolution& InOutSolution) const
+{
+    const FPlacementLink* Joint = InOutSolution.GetPrimaryLink();
+    FPlacementBody Body;
+    FPlacementFeature Source;
+    if (!Joint || !GetWorld() || !FPlacementProviderRegistry::GetBody(Intent.Held, Body) ||
+        !FPlacementProviderRegistry::FindFeature(Intent.Held, Joint->Source.FeatureId, Source))
+        return;
+    const FTransform Now = Intent.Held->GetActorTransform();
+    const FTransform& At = InOutSolution.PieceTransform;
+    const FVector Centre = At.TransformPosition(Now.InverseTransformPosition(Body.Centre));
+    const FVector Axis = At.TransformVectorNoScale(Now.InverseTransformVectorNoScale(Body.Axis)).GetSafeNormal();
+    if (FMath::Abs(Axis.Z) > 0.7f)
+        return; // A post stands on its joint.
+    const float JointAlong = FVector::DotProduct((Source.LocalFrame * At).GetLocation() - Centre, Axis);
+    if (FMath::Abs(JointAlong) < 0.3f * Body.HalfLength)
+        return; // Joined near the middle: balanced on its support.
+
+    const FVector FarEnd = Centre - Axis * FMath::Sign(JointAlong) * Body.HalfLength;
+    FHitResult Hit;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(PlacementFreeEnd), false, Intent.Held);
+    if (Intent.Placer)
+        Params.AddIgnoredActor(Intent.Placer);
+    const float Probe = GetParam(Profile, Intent, TEXT("freeEndProbeCm"), 30.0f);
+    if (!GetWorld()->LineTraceSingleByChannel(Hit, FarEnd + FVector::UpVector * 5.0f,
+        FarEnd - FVector::UpVector * (Body.Radius + Probe), ECC_Visibility, Params))
+    {
+        // Nothing under the far end: only a hinge joint lets it hang and swing down.
+        if (Profile.Physics == EPlacementPhysics::Hinge)
+        {
+            InOutSolution.bFreeEndHangs = true;
+            return;
+        }
+        InOutSolution.bValid = false;
+        InOutSolution.Reason = TEXT("The other end needs something under it.");
+        return;
+    }
+    AActor* Support = Hit.GetActor();
+    if (Support && Support != Joint->Target.Piece.Get() && ProviderOf(Support) && IsStructurallyPlaced(Support))
+        InOutSolution.Links.Add(MakeBodyLink(Intent.Held, Support, EPlacementLinkRole::Secondary));
+}
+
+void UPlacementKernelSubsystem::ReportRollback(const FPlacementTransaction& Tx, const AActor* Piece) const
+{
+    if (!Tx.RollbackFailed())
+        return;
+    const FString Reason = FString::Printf(TEXT("Placement of %s failed at '%s' and could not undo '%s'."),
+        *GetNameSafe(Piece), *Tx.GetFailedStep(), *Tx.GetFailedUndo());
+    UE_LOG(LogTemp, Error, TEXT("%s"), *Reason);
+    if (UWorldSimulationCoordinatorSubsystem* Coordinator = GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr)
+        Coordinator->MarkSimulationFaulted(Reason);
 }
 
 void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
@@ -343,7 +442,9 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
                 const FTransform TargetFrame = ResolveFeatureFrame(TargetFeature, Intent.AimPoint,
                     GetParam(Profile, Intent, TEXT("radialStepDeg"), 90.0f));
                 const FVector TargetPoint = TargetFrame.GetLocation();
-                const FVector SourcePoint = (SourceFeature.LocalFrame * HeldTransform).GetLocation();
+                // A station joins with the held piece's side; an end or authored point with its own frame.
+                const FTransform& SourceFrame = SourceFeature.bRadialFree ? SourceFeature.SideLocalFrame : SourceFeature.LocalFrame;
+                const FVector SourcePoint = (SourceFrame * HeldTransform).GetLocation();
                 // The held piece's free preview may be half a log away from the joint;
                 // aiming straight at the target feature still finds it.
                 const float Distance = FMath::Min(FVector::Distance(SourcePoint, TargetPoint),
@@ -361,9 +462,12 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
                 FPlacementSolution Candidate;
                 Candidate.bValid = true;
                 Candidate.ProfileId = Profile.Id;
-                Candidate.Score = Distance - Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f);
-                Candidate.PieceTransform = PlacementMath::AlignOne(SourceFeature.LocalFrame, HeldTransform.GetScale3D(),
-                    TargetFrame, TargetFeature.bFlipIncoming, Angle);
+                // Ties (several points under the crosshair) go to the point of the held
+                // piece nearest the target: the one the player is bringing in.
+                Candidate.Score = Distance - Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f) +
+                    0.001f * FVector::Distance(SourcePoint, TargetPoint);
+                Candidate.PieceTransform = ApplyJointInset(Profile, Intent, Target, SourceFeature, TargetPoint,
+                    PlacementMath::AlignOne(SourceFrame, HeldTransform.GetScale3D(), TargetFrame, TargetFeature.bFlipIncoming, Angle));
                 Candidate.AngleDeg = Angle;
                 Candidate.MarkerPoint = TargetPoint;
                 FPlacementLink Link;
@@ -941,7 +1045,7 @@ bool UPlacementKernelSubsystem::CommitLinks(const FPlacementSolution& Solution, 
                 [&] { return TargetProvider->CommitLink(Target, TargetFeature, Source, SourceFeature); },
                 [TargetProvider, Target, TargetFeature, Source, SourceFeature]
                 {
-                    TargetProvider->RevertLink(Target, TargetFeature, Source, SourceFeature);
+                    return TargetProvider->RevertLink(Target, TargetFeature, Source, SourceFeature);
                 });
         }
         else
@@ -954,7 +1058,7 @@ bool UPlacementKernelSubsystem::CommitLinks(const FPlacementSolution& Solution, 
                     FString Reason;
                     return Connections && Connections->TryConnectAt(Target, TargetFeature.Id, Source, SourceFeature.Id, At, Reason);
                 },
-                [Connections, Source] { if (Connections) Connections->TryDisconnect(Source); });
+                [Connections, Source] { return Connections && Connections->TryDisconnect(Source); });
         }
         if (!bMade)
         {
@@ -987,6 +1091,12 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
             return false;
         }
     }
+    // Ownership is the one step without an undo: make sure it will succeed before anything changes.
+    if (Options.FromOwner != EWorldItemOwnerKind::World && !Provider->CanTransferToWorld(Piece, Options.FromOwner))
+    {
+        OutReason = TEXT("The ownership ledger does not hold this piece where expected.");
+        return false;
+    }
     UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
     const FGuid NodeId = NodeOf(Piece);
 
@@ -995,11 +1105,14 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
     const FTransform Wanted = Solution.PieceTransform;
     Tx.Step(TEXT("Transform"),
         [&] { Piece->SetActorTransform(Wanted, false, nullptr, ETeleportType::TeleportPhysics); return true; },
-        [Piece, Previous] { Piece->SetActorTransform(Previous, false, nullptr, ETeleportType::TeleportPhysics); });
+        [Piece, Previous] { Piece->SetActorTransform(Previous, false, nullptr, ETeleportType::TeleportPhysics); return true; });
 
     // Joints at features (snap points, anchors): the material makes them and their graph edges.
     if (!CommitLinks(Solution, Tx, OutReason))
+    {
+        ReportRollback(Tx, Piece);
         return false;
+    }
 
     // Whole-body links: only the structural graph.
     AActor* PrimaryTarget = nullptr;
@@ -1018,14 +1131,14 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
         case EPlacementLinkRole::Primary:
             Tx.Step(TEXT("Support"),
                 [&] { return Graph->TryConnect(TargetId, Joint, NodeId, TEXT("Base")); },
-                [Graph, NodeId] { Graph->TryDisconnect(NodeId); });
+                [Graph, NodeId] { return Graph->TryDisconnect(NodeId); });
             break;
         case EPlacementLinkRole::Secondary:
         {
             const FName Own(*FString::Printf(TEXT("Rest%d"), ++RestIndex));
             Tx.Step(TEXT("Second support"),
                 [&] { return Graph->TryAddSecondarySupport(NodeId, TargetId, Joint, Own); },
-                [Graph, NodeId, TargetId] { Graph->TryRemoveSecondarySupport(NodeId, TargetId); });
+                [Graph, NodeId, TargetId] { return Graph->TryRemoveSecondarySupport(NodeId, TargetId); });
             break;
         }
         case EPlacementLinkRole::Carries:
@@ -1034,7 +1147,7 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
             const FName Own(*FString::Printf(TEXT("RestsOn_%s"), *NodeId.ToString()));
             Tx.Step(TEXT("Carried piece"),
                 [&] { return Graph->TryAddSecondarySupport(TargetId, NodeId, Carry, Own); },
-                [Graph, TargetId, NodeId] { Graph->TryRemoveSecondarySupport(TargetId, NodeId); });
+                [Graph, TargetId, NodeId] { return Graph->TryRemoveSecondarySupport(TargetId, NodeId); });
             break;
         }
         }
@@ -1048,7 +1161,7 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
             const EWorldObjectLifecycleState From = Options.FromLifecycle;
             Tx.Step(TEXT("Lifecycle"),
                 [&] { return Identity->TryTransitionLifecycle(From, EWorldObjectLifecycleState::Placed); },
-                [Identity, From] { Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, From); });
+                [Identity, From] { return Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, From); });
         }
     }
     // Ownership goes last: it is the one step without an undo.
@@ -1057,6 +1170,7 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
 
     if (Tx.Failed())
     {
+        ReportRollback(Tx, Piece);
         if (OutReason.IsEmpty())
             OutReason = FString::Printf(TEXT("Cannot place here (%s)."), *Tx.GetFailedStep().ToLower());
         return false;
@@ -1105,7 +1219,7 @@ bool UPlacementKernelSubsystem::CommitReseat(AActor* Piece, const FTransform& Ne
     const FTransform Previous = Piece->GetActorTransform();
     Tx.Step(TEXT("Transform"),
         [&] { Piece->SetActorTransform(NewTransform, false, nullptr, ETeleportType::TeleportPhysics); return true; },
-        [Piece, Previous] { Piece->SetActorTransform(Previous, false, nullptr, ETeleportType::TeleportPhysics); });
+        [Piece, Previous] { Piece->SetActorTransform(Previous, false, nullptr, ETeleportType::TeleportPhysics); return true; });
     FStructuralNodeRecord Node;
     if (Graph && NewSupport && NewSupport != Piece && IsStructurallyPlaced(NewSupport) && Graph->GetNode(NodeId, Node))
     {
@@ -1118,18 +1232,19 @@ bool UPlacementKernelSubsystem::CommitReseat(AActor* Piece, const FTransform& Ne
             const FName Own(*FString::Printf(TEXT("RestOn_%s"), *SupportId.ToString()));
             Tx.Step(TEXT("New support"),
                 [&] { return Graph->TryAddSecondarySupport(NodeId, SupportId, Joint, Own); },
-                [Graph, NodeId, SupportId] { Graph->TryRemoveSecondarySupport(NodeId, SupportId); });
+                [Graph, NodeId, SupportId] { return Graph->TryRemoveSecondarySupport(NodeId, SupportId); });
         }
         else if (!bAlready)
         {
             const FName Joint(*FString::Printf(TEXT("Joint_%s"), *NodeId.ToString()));
             Tx.Step(TEXT("New support"),
                 [&] { return Graph->TryConnect(SupportId, Joint, NodeId, TEXT("Base")); },
-                [Graph, NodeId] { Graph->TryDisconnect(NodeId); });
+                [Graph, NodeId] { return Graph->TryDisconnect(NodeId); });
         }
     }
     if (Tx.Failed())
     {
+        ReportRollback(Tx, Piece);
         OutReason = FString::Printf(TEXT("Cannot rest it there (%s)."), *Tx.GetFailedStep().ToLower());
         return false;
     }
@@ -1203,13 +1318,25 @@ bool UPlacementKernelSubsystem::CommitGroundPlacement(AActor* Piece, const FTran
     }
     if (!Provider->HasOwnGroundPlacement())
         return CommitPlacement(Piece, MakeDirectSolution(Piece, Transform, TEXT("piece.free_place"), nullptr), Options, OutReason);
+    // The material's own ground placement has no undo, so the ledger is checked first.
+    if (Options.FromOwner != EWorldItemOwnerKind::World && !Provider->CanTransferToWorld(Piece, Options.FromOwner))
+    {
+        OutReason = TEXT("The ownership ledger does not hold this piece where expected.");
+        return false;
+    }
     if (!Provider->CommitGroundPlacement(Piece, Transform))
     {
         OutReason = TEXT("Cannot place on the ground here.");
         return false;
     }
     if (Options.FromOwner != EWorldItemOwnerKind::World && !Provider->TransferToWorld(Piece, Options.FromOwner))
-        UE_LOG(LogTemp, Warning, TEXT("Placement: %s is on the ground but its ledger owner did not change."), *GetNameSafe(Piece));
+    {
+        // Checked a moment ago, so this is not a normal refusal: the world is not trusted any more.
+        OutReason = TEXT("The piece is on the ground but its ownership could not change.");
+        if (UWorldSimulationCoordinatorSubsystem* Coordinator = GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            Coordinator->MarkSimulationFaulted(FString::Printf(TEXT("Placement of %s: %s"), *GetNameSafe(Piece), *OutReason));
+        return false;
+    }
     FPlacementSolution Solution = MakeDirectSolution(Piece, Transform, TEXT("piece.free_place"), nullptr);
     OnPlacementCommitted.Broadcast(Piece, Solution);
     return true;

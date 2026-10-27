@@ -61,10 +61,16 @@ namespace
             OutError = FString::Printf(TEXT("unknown feature kind '%s'"), *Kind);
             return false;
         }
-        const TArray<TSharedPtr<FJsonValue>>* Tags = nullptr;
-        if (Object->TryGetArrayField(TEXT("tags"), Tags))
-            for (const TSharedPtr<FJsonValue>& Tag : *Tags)
-                Out.Tags.Add(FName(*Tag->AsString()));
+        auto ReadNames = [&Object](const TCHAR* Field, TArray<FName>& OutNames)
+        {
+            const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+            if (Object->TryGetArrayField(Field, Values))
+                for (const TSharedPtr<FJsonValue>& Value : *Values)
+                    OutNames.Add(FName(*Value->AsString()));
+        };
+        ReadNames(TEXT("tags"), Out.Tags);
+        ReadNames(TEXT("families"), Out.Families);
+        ReadNames(TEXT("sections"), Out.Sections);
         return true;
     }
 
@@ -166,9 +172,21 @@ namespace
     }
 }
 
+bool FPlacementFeatureFilter::AllowsFamily(FName PieceFamily) const
+{
+    if (Families.Num() > 0)
+        return Families.Contains(PieceFamily);
+    return Family.IsNone() || Family == PieceFamily;
+}
+
+bool FPlacementFeatureFilter::AllowsSection(FName PieceSection) const
+{
+    return Sections.Num() == 0 || Sections.Contains(PieceSection);
+}
+
 bool FPlacementFeatureFilter::Matches(FName PieceFamily, const FPlacementFeature& Feature) const
 {
-    if (!Family.IsNone() && Family != PieceFamily)
+    if (!AllowsFamily(PieceFamily))
         return false;
     if (!bAnyKind && Kind != Feature.Kind)
         return false;
@@ -312,24 +330,38 @@ const TCHAR* FPlacementProfileRegistry::GetBuiltInCatalogue()
     "Plan: Docs/Architecture/GLOBAL_SNAP_SYSTEM_PLAN.md. Units: cm and degrees.",
     "A copy is compiled in (FPlacementProfileRegistry::GetBuiltInCatalogue) for packaged builds; the test Placement.BuiltInCatalogueMatchesProjectFile keeps the two equal.",
     "Feature kinds: End, Station, Face, Edge, Authored, Any. Solvers and modes: AlignOne snap|anchor, AlignParallel stack|deck|step|gable, SpanTwo strut, RestOnSurface post|free.",
+    "source/target filters: family or families, kind, tags, sections (cross-sections the piece may have). Wall joints take Round, Hewn, HewnTwoFaces and SquareBeam logs only.",
+    "Crossings at 90 degrees are the stack solver's across mode (station on station); log.station_cross stays off until angled joints have rules. Notched joints (saddle, V, cross-lap) need meshes with authored points.",
     "enabled=false marks a profile that is designed but not yet used by the game."
   ],
   "profiles": [
     { "id": "log.end_to_end", "solver": "AlignOne", "mode": "snap",
-      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
-      "target": { "family": "log", "kind": "End" },
-      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 2 },
+      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"], "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
+      "target": { "family": "log", "kind": "End", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 2,
+      "physics": "Hinge", "params": { "endInset": 1.0, "crossInset": 0.5, "freeEndProbeCm": 30 } },
     { "id": "log.end_to_station", "solver": "AlignOne", "mode": "snap",
-      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
-      "target": { "family": "log", "kind": "Station" },
+      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"], "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
+      "target": { "family": "log", "kind": "Station", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
       "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 1,
-      "params": { "radialStepDeg": 90 } },
+      "physics": "Hinge", "params": { "radialStepDeg": 90, "endInset": 1.0, "crossInset": 0.5, "freeEndProbeCm": 30 } },
+    { "id": "log.station_to_end", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "Station", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
+      "target": { "family": "log", "kind": "End", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
+      "angle": { "policy": "Grid", "values": [0, 90, 180, 270] }, "searchRadiusCm": 250, "priority": 0,
+      "params": { "crossInset": 0.5 } },
     { "id": "log.authored", "solver": "AlignOne", "mode": "snap",
-      "source": { "family": "log", "kind": "Any" },
+      "source": { "family": "log", "kind": "Authored" },
       "target": { "family": "log", "kind": "Any" },
-      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 0 },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 0,
+      "physics": "Hinge", "params": { "endInset": 1.0, "crossInset": 0.5, "freeEndProbeCm": 30 } },
+    { "id": "log.end_to_authored", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
+      "target": { "family": "log", "kind": "Authored" },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 0,
+      "physics": "Hinge", "params": { "endInset": 1.0, "crossInset": 0.5, "freeEndProbeCm": 30 } },
     { "id": "log.parallel_stack", "solver": "AlignParallel", "mode": "stack",
-      "source": { "family": "log" }, "target": { "family": "log" },
+      "source": { "family": "log", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] }, "target": { "family": "log", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
       "angle": { "policy": "Grid", "values": [0, 90] },
       "params": { "moduleCm": 75, "interlock": 0.82, "postSeat": 0.6, "maxRows": 6, "slotRadiusShare": 0.5 } },
     { "id": "log.deck", "solver": "AlignParallel", "mode": "deck",
@@ -345,11 +377,11 @@ const TCHAR* FPlacementProfileRegistry::GetBuiltInCatalogue()
       "angle": { "policy": "Fixed", "values": [0] },
       "params": { "lengthCm": 150, "gapCm": 25, "dropCm": 25 } },
     { "id": "log.gable", "solver": "AlignParallel", "mode": "gable",
-      "source": { "family": "log" }, "target": { "family": "log" },
+      "source": { "family": "log", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] }, "target": { "family": "log" },
       "angle": { "policy": "Fixed", "values": [0] },
       "params": { "minLengthCm": 40, "maxRows": 24, "minSlope": 0.15, "maxSlope": 0.9 } },
     { "id": "log.strut", "solver": "SpanTwo", "mode": "strut",
-      "source": { "family": "log" }, "target": { "family": "log" },
+      "source": { "family": "log", "sections": ["Round", "HalfRound"] }, "target": { "family": "log", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
       "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250,
       "params": { "legCm": 75, "moduleCm": 75, "minLengthCm": 40 } },
     { "id": "log.post_on_ground", "operation": "SurfacePlace", "solver": "RestOnSurface", "mode": "post",
@@ -358,11 +390,11 @@ const TCHAR* FPlacementProfileRegistry::GetBuiltInCatalogue()
     { "id": "piece.free_place", "operation": "SurfacePlace", "solver": "RestOnSurface", "mode": "free",
       "structural": true },
     { "id": "stone.on_anchor", "solver": "AlignOne", "mode": "anchor",
-      "source": { "family": "stone", "kind": "Authored" }, "target": { "kind": "Any" },
+      "source": { "family": "stone", "kind": "Authored" }, "target": { "families": ["stone", "log", "stick"], "kind": "Any" },
       "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 120,
       "params": { "keepTargetRotation": 1 } },
     { "id": "stick.on_anchor", "solver": "AlignOne", "mode": "anchor",
-      "source": { "family": "stick", "kind": "Authored" }, "target": { "kind": "Any" },
+      "source": { "family": "stick", "kind": "Authored" }, "target": { "families": ["stick", "log", "stone"], "kind": "Any" },
       "angle": { "policy": "Grid", "values": [0, 45, 90] }, "searchRadiusCm": 120 },
     { "id": "log.station_cross", "enabled": false, "solver": "AlignOne", "mode": "snap",
       "source": { "family": "log", "kind": "Station" }, "target": { "family": "log", "kind": "Station" },

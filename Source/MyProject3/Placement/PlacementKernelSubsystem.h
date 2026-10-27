@@ -128,6 +128,14 @@ private:
 
     float GetParam(const FPlacementProfile& Profile, const FPlacementIntent& Intent, FName Name, float Default) const;
 
+    /** A joined end sits into the piece it meets and a crossing log sinks into the one below (profile endInset, crossInset). */
+    FTransform ApplyJointInset(const FPlacementProfile& Profile, const FPlacementIntent& Intent, const AActor* Target,
+        const FPlacementFeature& SourceFeature, const FVector& TargetPoint, const FTransform& PieceTransform) const;
+    /** What a log joined at one end rests on at its other end: a support link, nothing (hangs), or the ground. */
+    void ResolveFreeEnd(const FPlacementProfile& Profile, const FPlacementIntent& Intent, FPlacementSolution& InOutSolution) const;
+    /** After a failed transaction whose undo also failed: the world is not trusted any more. */
+    void ReportRollback(const FPlacementTransaction& Tx, const AActor* Piece) const;
+
     void SolveSnap(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
         const FPlacementSolution* Previous, FPlacementSolution& InOutBest) const;
     void SolveAnchor(const FPlacementProfile& Profile, const FPlacementIntent& Intent, FPlacementSolution& InOutBest) const;

@@ -23,6 +23,8 @@ AStoneBuildingPiece::AStoneBuildingPiece()
 void AStoneBuildingPiece::BeginPlay()
 {
     Super::BeginPlay();
+    // Its top and bottom joints exist from the start; placement queries never add them.
+    EnsureAutomaticAnchors();
 
     bIsPlaced = bStartsPlaced;
     if (!StructuralIdentity || !GetWorld())

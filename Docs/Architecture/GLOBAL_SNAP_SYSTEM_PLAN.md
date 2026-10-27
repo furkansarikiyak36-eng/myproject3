@@ -20,6 +20,17 @@
 | 10 | Yapıldı | Bütün bağlantılar yapısal grafikte; grafik kayıtla saklanıp geri yükleniyor. Test: `Placement.LinksSurviveSaveAndLoad`. |
 | sonra | Yapılmadı | Ateş yeri ve voxel. |
 
+### Denetim ve birleştirme planı sonrası (2026-10-27)
+
+- **Tek çekirdek:** bu daldaki `Source/MyProject3/Placement/` çekirdeği esastır. PR #34'teki ikinci `UPlacementKernelSubsystem` (`Source/MyProject3/PlacementKernelSubsystem.*`) bu dala alınmadı; aynı sınıf adıyla birlikte derlenemez. O daldaki fikirler sağlayıcı/profil olarak taşınacak.
+- **Önizleme = yerleşim:** iç içe geçme (`endInset`, `crossInset`) ve uzak uç desteği çözümün içinde; oyuncu bileşeni çözümü değiştirmeden uygular. Test: `BasicJointsSectionsAndExactCommit`.
+- **Menteşe açık:** yalnızca `physics: Hinge` profilli snap'ler havada kalan uca izin verir; başkaları reddedilir. Test: `FreeEndInTheSolution`.
+- **Sorgu geometriyi değiştirmez:** istasyonları kesim yeniler; taş/çubuk noktaları BeginPlay'de eklenir.
+- **Temel üç bağlantı:** uç→uç, uç→istasyon, istasyon→uç (`log.station_to_end`). `log.authored` yalnız özel noktadan başlar; `log.end_to_authored` uçtan özel noktaya.
+- **Kesit uyumu:** duvar bağlantıları (uç, istasyon, istif, üçgen) yalnız Round / Hewn / HewnTwoFaces / SquareBeam; payanda Round / HalfRound. Döşeme, merdiven, basamak her kesiti alır.
+- **Çapraz bağlantı:** 90° kesişme istif çözücüsünün çapraz modudur (istasyon üstüne istasyon). `log.station_cross` (açılı) kapalı kalır. Gerçek çentik (saddle, V, cross-lap) için özel noktalı mesh gerekir; şu an içerikte yok.
+- **İşlem güvenliği:** geri alma sonucu bildirir; başarısız geri alma ve zemine koymadan sonra başarısız sahiplik simülasyonu arızalı işaretler. Sahiplik her işlemden önce denetlenir. Testler: `FailedUndoIsReported`, `GroundPlacementNeedsTheLedger`.
+
 ### Plandan sapmalar ve bilinen sınırlar
 
 - **Sunum katmanı ayrı sınıf olmadı.** HUD (`LogSnapHUD`) ve `ULogCarryComponent::Build*Segments` yalnızca çözümü okuyup çizer; hesap yapmazlar. Önizlenen ile yerleşen aynı `FPlacementSolution`'dır.

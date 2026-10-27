@@ -24,7 +24,7 @@ public:
     virtual void GetFeatures(const AActor* Piece, TArray<FPlacementFeature>& OutFeatures) const override { OutFeatures.Reset(); }
     virtual bool CanLink(const AActor*, const FPlacementFeature&, const AActor*, const FPlacementFeature&) const override { return false; }
     virtual bool CommitLink(AActor*, const FPlacementFeature&, AActor*, const FPlacementFeature&) const override { return false; }
-    virtual void RevertLink(AActor*, const FPlacementFeature&, AActor*, const FPlacementFeature&) const override {}
+    virtual bool RevertLink(AActor*, const FPlacementFeature&, AActor*, const FPlacementFeature&) const override { return true; }
 
     virtual bool IsPlaced(const AActor* Piece) const override
     {

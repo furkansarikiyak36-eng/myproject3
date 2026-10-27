@@ -21,10 +21,13 @@ public:
     /** Material family used by profiles ("log", "stone", "stick", "rope"). */
     virtual FName GetFamily(const AActor* Piece) const = 0;
 
+    /** Cross-section of the piece for profile "sections" (Round, Hewn, Plank ...); none when it has no such idea. */
+    virtual FName GetSection(const AActor* Piece) const { return NAME_None; }
+
     /** Changes whenever the piece's shape changes (cut, new mesh, rescale). */
     virtual uint32 GetGeometryRevision(const AActor* Piece) const = 0;
 
-    /** Every feature of the piece, in world space. */
+    /** Every feature of the piece, in world space. A query: it never changes the piece. */
     virtual void GetFeatures(const AActor* Piece, TArray<FPlacementFeature>& OutFeatures) const = 0;
 
     /** True when Target can take Source's feature right now (rules owned by the material). */
@@ -35,8 +38,8 @@ public:
     virtual bool CommitLink(AActor* Target, const FPlacementFeature& TargetFeature,
         AActor* Source, const FPlacementFeature& SourceFeature) const = 0;
 
-    /** Undoes a link made by CommitLink. */
-    virtual void RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
+    /** Undoes a link made by CommitLink; false when it could not be undone. */
+    virtual bool RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
         AActor* Source, const FPlacementFeature& SourceFeature) const = 0;
 
     /** True when the piece is built in (other pieces may rest on it). */
@@ -53,6 +56,8 @@ public:
 
     /** Moves the piece to the world in the ownership ledger; the last step of a commit. */
     virtual bool TransferToWorld(AActor* Piece, EWorldItemOwnerKind From) const;
+    /** True when the ledger holds the piece with owner From, so TransferToWorld can succeed. Checked before anything changes. */
+    virtual bool CanTransferToWorld(const AActor* Piece, EWorldItemOwnerKind From) const;
 
     /** After a commit: the piece's own placed flags and its attachment to Parent (may be null). */
     virtual void ApplyPlacedState(AActor* Piece, AActor* Parent) const {}

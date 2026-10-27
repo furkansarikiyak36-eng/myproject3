@@ -22,6 +22,8 @@ AStickPrimitivePiece::AStickPrimitivePiece()
 void AStickPrimitivePiece::BeginPlay()
 {
     Super::BeginPlay();
+    // Its top and bottom joints exist from the start; placement queries never add them.
+    EnsureAutomaticAnchors();
 
     if (!StructuralIdentity || !GetWorld())
         return;

@@ -581,6 +581,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
     Intent.AimPoint = AimHit.ImpactPoint;
     Intent.ViewDirection = ViewRotation.Vector();
     Intent.HeldAngleDeg = HeldYawOffset;
+    Intent.Placer = GetOwner();
     const FPlacementSolution Solution = Kernel->Solve(Intent, bHasValidSnap ? &CurrentSolution : nullptr);
     const FPlacementLink* Link = Solution.GetPrimaryLink();
     FPlacementFeature SourceFeature;
@@ -618,50 +619,8 @@ void ULogCarryComponent::SetSnapCandidate(
     CurrentSnapTarget = Target;
     CurrentSourceSnapPointIndex = SourceIndex;
     CurrentTargetSnapPointIndex = TargetIndex;
+    // The kernel's solution as it is: the joint inset is part of it (profile endInset, crossInset).
     CurrentSnapActorTransform = DesiredActorTransform;
-    // Interlock the joint: the joined end goes into the target log (hiding its
-    // end grain) and a log resting across another sinks into it.
-    UStaticMeshComponent* TargetMesh = Target->GetLogMesh();
-    UStaticMeshComponent* HeldMesh = HeldPiece->GetLogMesh();
-    if (TargetMesh && HeldMesh && HeldMesh->GetStaticMesh() && (EndInsetFraction > 0.0f || SnapInsetFraction > 0.0f))
-    {
-        // Where the joint is (a station's side is solved, not stored).
-        const FVector TargetPoint = CurrentSolution.bValid ? CurrentSolution.MarkerPoint
-            : (Target->GetSnapPointLocalTransform(TargetIndex) * Target->GetActorTransform()).GetLocation();
-        const FVector TargetCentre = TargetMesh->Bounds.Origin;
-        const FVector TargetAxis = TargetMesh->GetComponentTransform()
-            .TransformVectorNoScale(LocalAxisVector(Target->LongitudinalAxis)).GetSafeNormal();
-        const FVector OnTargetAxis =
-            TargetCentre + TargetAxis * FVector::DotProduct(TargetPoint - TargetCentre, TargetAxis);
-        const FVector ToTargetAxis = OnTargetAxis - TargetPoint;
-
-        const FVector HeldAxis = CurrentSnapActorTransform
-            .TransformVectorNoScale(LocalAxisVector(HeldPiece->LongitudinalAxis)).GetSafeNormal();
-        const FVector HeldCentre = CurrentSnapActorTransform.TransformPosition(
-            HeldMesh->GetStaticMesh()->GetBounds().Origin);
-        const FVector HeldJoint =
-            (HeldPiece->GetSnapPointLocalTransform(SourceIndex) * CurrentSnapActorTransform).GetLocation();
-        const float JointAlong = FVector::DotProduct(HeldJoint - HeldCentre, HeldAxis);
-        const float HalfLength = FVector::DotProduct(
-            HeldMesh->GetStaticMesh()->GetBounds().BoxExtent * CurrentSnapActorTransform.GetScale3D().GetAbs(),
-            LocalAxisVector(HeldPiece->LongitudinalAxis).GetAbs());
-
-        FVector Offset = FVector::ZeroVector;
-        FVector Across = ToTargetAxis;
-        if (HalfLength > KINDA_SMALL_NUMBER && FMath::Abs(JointAlong) > 0.5f * HalfLength)
-        {
-            // Joined by an end: slide along its own length into the target.
-            const FVector EndDirection = HeldAxis * FMath::Sign(JointAlong);
-            const float Depth = FVector::DotProduct(ToTargetAxis, EndDirection);
-            if (Depth > 0.0f)
-            {
-                Offset += EndDirection * Depth * EndInsetFraction;
-                Across -= EndDirection * Depth;
-            }
-        }
-        Offset += Across * SnapInsetFraction;
-        CurrentSnapActorTransform.AddToTranslation(Offset);
-    }
     bHasValidSnap = true;
 
     HeldPiece->SetActorTransform(CurrentSnapActorTransform);
@@ -712,20 +671,10 @@ bool ULogCarryComponent::PlaceHeldPiece()
     ALogBuildPiece* PieceToPlace = HeldPiece;
     if (bHasValidSnap && IsValid(CurrentSnapTarget) && CurrentSolution.bValid)
     {
-        // The joint the preview shows, plus what the far end rests on: one commit.
+        // Exactly the solution the preview shows, far-end support included.
         const int32 OwnSnapIndex = CurrentSourceSnapPointIndex;
-        FPlacementSolution Solution = CurrentSolution;
-        Solution.PieceTransform = CurrentSnapActorTransform;
-        PieceToPlace->SetActorTransform(CurrentSnapActorTransform);
-        AActor* Support = nullptr;
-        bool bGround = false;
-        const bool bFarEndHeld = EvaluateFarEndSupport(PieceToPlace, OwnSnapIndex, Support, bGround);
-        const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
-        if (Support && Support != CurrentSnapTarget && FPlacementProviderRegistry::Find(Support) &&
-            SupportPiece && SupportPiece->IsStructurallyPlaced())
-        {
-            Solution.Links.Add(UPlacementKernelSubsystem::MakeBodyLink(PieceToPlace, Support, EPlacementLinkRole::Secondary));
-        }
+        const FPlacementSolution Solution = CurrentSolution;
+        const bool bFarEndHeld = !Solution.bFreeEndHangs;
         if (!CommitHeldSolution(Solution))
         {
             // Never reinterpret a failed joint as a free placement.

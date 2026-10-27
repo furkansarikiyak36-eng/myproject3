@@ -1158,7 +1158,8 @@ void ALogBuildPiece::GenerateDefaultSideSnapPoints()
         // From the log's -axis end, in the world, back into the mesh's own units.
         const float LocalOffset = (Offsets[Index] - 0.5f * WorldLength) / AxisScale;
         Point.LocalTransform = FTransform(MakeOutwardRotation(Axis), Bounds.Origin + Axis * LocalOffset);
-        Point.bCanSource = false;
+        // A station receives ends (T joints) and joins ends itself (station to end); profiles decide which.
+        Point.bCanSource = true;
         Point.bCanReceive = true;
         Point.bAcceptAnyPieceType = true;
         Point.bFlipIncomingOrientation = true;

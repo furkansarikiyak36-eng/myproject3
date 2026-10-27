@@ -1,6 +1,7 @@
 #include "Placement/PlacementFeatureProvider.h"
 
 #include "ConstructionHelpers.h"
+#include "StructuralPieceInterface.h"
 #include "WorldItemOwnershipSubsystem.h"
 
 namespace
@@ -23,6 +24,14 @@ bool IPlacementFeatureProvider::TransferToWorld(AActor* Piece, EWorldItemOwnerKi
 {
     return MyProject3Construction::TransferPiece(Piece, EWorldItemOwnerKind::World, FGuid(),
         Piece ? Piece->GetActorLocation() : FVector::ZeroVector);
+}
+
+bool IPlacementFeatureProvider::CanTransferToWorld(const AActor* Piece, EWorldItemOwnerKind From) const
+{
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    UWorldItemOwnershipSubsystem* Ownership = Piece && Piece->GetWorld() ? Piece->GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord Item;
+    return Structural && Ownership && Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) && Item.OwnerKind == From;
 }
 
 void FPlacementProviderRegistry::Register(TSharedRef<IPlacementFeatureProvider> Provider)
