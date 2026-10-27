@@ -179,6 +179,6 @@ Do not merge Phase 01–06 and Phase H individually into feature/simple-intent; 
 
 ## Current status
 
-- Phase 00: initial repository/branch audit and 119-row baseline matrix are published; full per-mechanic source review, public API/Blueprint compatibility review and engine validation remain open.
-- Phase 01: shared data/lifecycle contracts, definition/event schemas and wood transition contract are published; runtime catalog loading, source/API integration review and UE validation remain open.
+- Phase 00: repository/branch audit and 119-row baseline matrix are published; catalogue CI passed for 14 schemas, 119 registry IDs and 45 sample records. Full per-mechanic source review, public API/Blueprint compatibility review and engine validation remain open.
+- Phase 01: shared data/lifecycle contracts, definition/event schemas and wood transition contract are published; schema/sample validation is CI-verified. Full cross-reference audit, source/API integration review, runtime catalog-loading decision and UE validation remain open.
 - Implementation status: the source layers are present on candidate branches, but this document does not claim the full game is integrated or runtime-verified.
