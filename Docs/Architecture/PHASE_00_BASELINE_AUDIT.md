@@ -101,7 +101,23 @@ The comparisons establish that:
 3. The full world save snapshot and subsystem classes appear on the accumulated Phase H / simple-intent line; source presence does not prove that restore ordering, migration, or in-editor persistence works.
 4. The newer snap kernel and the original prototype use different architecture paths. Code integration must preserve one authoritative placement system, not keep parallel kernels active.
 
-## 7. Acceptance state
+## 7. Candidate scope gaps beyond M001–M119
+
+The current GDD also calls for gradual regional recovery after a toxic global catastrophe. Existing M001–M119 mechanics include adjacent survival, soil, weather, terrain, discovery and threat concepts, but the reviewed registry does not clearly give each of the following a dedicated, end-to-end acceptance case.
+
+| Candidate gap | Intended player-visible result | Existing IDs to cross-check first |
+|---|---|---|
+| Regional contamination and recovery levels | A region's contamination, safety, ecology and opportunities persistently improve through player/world actions | M071–M080, M107, M110–M119 |
+| Local soil and water remediation | Cleaning/repairing an area has a cost and changes crop viability, safe routes or resource outputs | M072, M078, M082–M085, M107, M115, M118 |
+| Air-quality monitoring and safe-zone infrastructure | Filters, sealed shelters and old-world devices provide layered protection before large-scale cleanup | M107, M117, M118 |
+| Regional ecology return | Recovery unlocks selected plants/resources and changes ambience and local conditions, without globally simulating every plant | M080, M082–M090, M119 |
+| Repair of old-world environmental systems | Late progression improves a region by restoring infrastructure, not by making a few planted seeds cleanse the atmosphere | M080, M101–M108, M119 |
+| Spore exposure and future fungal threats | A distinct later content system with exposure, warning, protective countermeasures and threat behavior | M091–M100, M111, M115, M117 |
+| Restoration milestone feedback | Meaningful recovery changes audio, resources, route options and region state rather than only changing foliage visuals | M005, M080, M108, M110, M119 |
+
+These are **candidate gaps**, not approved new mechanics. Before appending M120+, compare the full canonical registry and the current source/caller matrix, then define a distinct outcome, state owner, prerequisites, failure/retry behavior, dependencies, persistence and acceptance case. Never renumber or reuse M001–M119. Keep the advanced fungal/spore system deferred until the foundational survival, threat and regional-state loops are integrated.
+
+## 8. Acceptance state
 
 - [x] Correct repository and current main SHA recorded.
 - [x] Current main README and key log source headers inspected.
@@ -113,7 +129,7 @@ The comparisons establish that:
 - [ ] UE 5.8 build/UHT, editor load, PIE and save/load validation.
 
 
-## 8. Catalogue validation evidence added after initial audit
+## 9. Catalogue validation evidence added after initial audit
 
 - GitHub Actions run [40583305901](https://github.com/furkansarikiyak36-eng/myproject3/actions/runs/40583305901), commit `cdaf57753b27898f091a85ced9fac1befb570d9b`, completed successfully on 2026-10-27.
 - The validator reports: 14 JSON Schema Draft 2020-12 schemas pass meta-schema validation; the M001–M119 registry contains 119 unique IDs with valid entries and resolved mechanic dependencies; 45 sample definitions validate; sample IDs are unique within each schema family.
@@ -122,7 +138,7 @@ The comparisons establish that:
 
 The Phase 00 audit remains open until the per-mechanic source/caller review and the target-engine verification gates are completed.
 
-## 9. Follow-up — 2026-10-28
+## 10. Follow-up — 2026-10-28
 
 - The canonical Phase 00/01 reference set is under `Docs/Architecture/`, the GDD/catalogue under `Docs/GDD/`, and the roadmap/task documents under `Docs/Production/`. Duplicate lower-case `docs/PRODUCTION/` copies were removed because they repeated the same concepts and included a stale M001–M119 status snapshot. Use the linked canonical files only.
 - The detailed source-symbol/candidate-gap matrix is [`PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv`](PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv); the separate [`PHASE_00_M001_M119_BASELINE.csv`](PHASE_00_M001_M119_BASELINE.csv) preserves current-main evidence separately from the proposed implementation-phase mapping.
