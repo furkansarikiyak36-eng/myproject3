@@ -756,6 +756,67 @@ bool FPlacementNotchTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// The game decides from where the player looks, with no mode: on a post top a
+// log lies across; on a wall top it is the next row; at a side a T, at an end it
+// continues; on the ground it lies, looking steeply down it stands; beside a
+// post under a beam it is a strut. Aiming at the ground near a log is still the ground.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementContextTest, "MyProject3.Placement.ContextChoosesWhatTheAimMeans", Flags)
+bool FPlacementContextTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Post = SpawnCubeLog(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Wall = SpawnCubeLog(World, FVector(600, 0, 100), FRotator::ZeroRotator, 600.0f, 30.0f, true);
+    ALogBuildPiece* PostB = SpawnCubeLog(World, FVector(0, 800, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    SpawnCubeLog(World, FVector(0, 800, 215), FRotator::ZeroRotator, 300.0f, 30.0f, true); // A beam on PostB.
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, -300, 50), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    AActor* Player = World->SpawnActor<AActor>(FVector(0, -400, 100), FRotator::ZeroRotator);
+    ULogCarryComponent* Carry = NewObject<ULogCarryComponent>(Player);
+    Carry->RegisterComponent();
+    if (!TestNotNull(TEXT("Held"), Held) || !TestTrue(TEXT("Pick up"), Carry->TryPickupPiece(Held)))
+        return false;
+
+    auto Ask = [&](AActor* Actor, const FVector& Point, float Pitch)
+    {
+        FLogContextAim Aim;
+        Aim.AimActor = Actor;
+        Aim.AimPoint = Point;
+        Aim.ViewPitchDeg = Pitch;
+        Aim.ViewDirection = FRotator(Pitch, 90.0f, 0.0f).Vector();
+        Aim.CarryYawDeg = 90.0f;
+        return Carry->ResolveContext(Aim);
+    };
+    auto Profile = [](const FLogContextResult& Result) { return Result.Solution.ProfileId.ToString(); };
+
+    const FLogContextResult OnPost = Ask(Post, FVector(0, 0, 200), -20.0f);
+    TestTrue(FString::Printf(TEXT("Post top: a joint (%s, %s)"), *Profile(OnPost), *OnPost.Reason), OnPost.Action == ELogContextAction::Snap);
+    TestEqual(TEXT("Post top: it lies across"), Profile(OnPost), FString(TEXT("log.station_to_end")));
+    TestTrue(TEXT("Post top: flat"), FMath::Abs(OnPost.Solution.PieceTransform.GetUnitAxis(EAxis::X).Z) < 0.05f);
+
+    const FLogContextResult Extend = Ask(Post, FVector(0, 0, 200), -75.0f);
+    TestEqual(TEXT("Post top looking down: it continues the post"), Profile(Extend), FString(TEXT("log.end_to_end")));
+
+    const FLogContextResult OnWall = Ask(Wall, FVector(600, 0, 115), -20.0f);
+    TestTrue(FString::Printf(TEXT("Wall top: the next row (%s)"), *OnWall.Reason), OnWall.Action == ELogContextAction::Stack);
+
+    const FLogContextResult AtSide = Ask(Wall, FVector(600, -15, 100), -10.0f);
+    TestTrue(FString::Printf(TEXT("Wall side: a T joint (%s, %s)"), *Profile(AtSide), *AtSide.Reason),
+        AtSide.Action == ELogContextAction::Snap && Profile(AtSide) == TEXT("log.end_to_station"));
+
+    const FLogContextResult AtEnd = Ask(Wall, FVector(900, 0, 100), -10.0f);
+    TestTrue(FString::Printf(TEXT("Wall end: end on end (%s)"), *Profile(AtEnd)),
+        AtEnd.Action == ELogContextAction::Snap && Profile(AtEnd) == TEXT("log.end_to_end"));
+
+    TestTrue(TEXT("Ground: it lies"), Ask(nullptr, FVector(0, -600, 0), -30.0f).Action == ELogContextAction::Ground);
+    const FLogContextResult Standing = Ask(nullptr, FVector(0, -600, 0), -70.0f);
+    TestTrue(TEXT("Ground looking down: a post"), Standing.Action == ELogContextAction::Post && Standing.bUpright);
+    TestTrue(TEXT("Ground beside a log is still the ground"), Ask(Wall, FVector(600, -150, 0), -30.0f).Action == ELogContextAction::Ground);
+
+    const FLogContextResult Strut = Ask(PostB, FVector(15, 800, 120), -10.0f);
+    TestTrue(FString::Printf(TEXT("Post side under a beam: a strut (%s)"), *Strut.Reason), Strut.Action == ELogContextAction::Strut);
+    return true;
+}
+
 // Modularity: the kernel and its math never name a material. New materials come
 // in as providers and profiles; if this test fails, a material rule leaked in.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementKernelNeutralTest, "MyProject3.Placement.KernelNamesNoMaterial", Flags)

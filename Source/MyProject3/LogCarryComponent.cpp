@@ -130,8 +130,15 @@ void ULogCarryComponent::TickComponent(
     }
 
     // A split piece cannot stand: say so while it is held upright.
-    if (PlacementMode == ELogPlacementMode::Vertical && !CanStandAsPost(HeldPiece))
+    if (bManualPlacementMode && PlacementMode == ELogPlacementMode::Vertical && !CanStandAsPost(HeldPiece))
         PlacementStatus = TEXT("Split pieces cannot stand as posts: use a round or hewn log.");
+
+    // The game decides from where the player looks; the old modes only after the mode key.
+    if (bContextualPlacement && !bManualPlacementMode)
+    {
+        UpdateContextPlacement(DeltaTime);
+        return;
+    }
 
     // A strut between a post and its beam takes over in diagonal mode.
     UpdateStrutPlacement();
@@ -198,33 +205,6 @@ void ULogCarryComponent::TickComponent(
             PlacementStatus += TEXT("  The fallen end rests on this log: E to set it down here.");
     }
 
-    // Lightweight prototype feedback: a green marker indicates the currently
-    // selected target anchor. A proper mesh-based ghost preview can replace it.
-    if (bHasValidSnap && IsValid(CurrentSnapTarget) &&
-        CurrentTargetSnapPointIndex != INDEX_NONE)
-    {
-        const FVector MarkerLocation = CurrentSolution.bValid ? CurrentSolution.MarkerPoint
-            : CurrentSnapTarget->GetSnapPointWorldTransform(CurrentTargetSnapPointIndex).GetLocation();
-
-        DrawDebugSphere(GetWorld(), MarkerLocation, 20.0f, 12,
-            FColor::Green, false, 0.10f, 0, 2.0f);
-        DrawDebugLine(GetWorld(), MarkerLocation,
-            MarkerLocation + FVector::UpVector * 70.0f,
-            FColor::Green, false, 0.10f, 0, 2.0f);
-
-        const TArray<FLogSnapPoint>& TargetPoints = CurrentSnapTarget->GetSnapPoints();
-        if (TargetPoints.IsValidIndex(CurrentTargetSnapPointIndex))
-        {
-            DrawDebugString(
-                GetWorld(),
-                MarkerLocation + FVector::UpVector * 80.0f,
-                TargetPoints[CurrentTargetSnapPointIndex].PointId.ToString(),
-                CurrentSnapTarget,
-                FColor::Green,
-                0.10f,
-                true);
-        }
-    }
 }
 
 void ULogCarryComponent::BindDefaultInput(UInputComponent* InputComponent)
@@ -351,6 +331,8 @@ bool ULogCarryComponent::TryPickupTarget()
 
 bool ULogCarryComponent::TryPickupPiece(AActor* Target)
 {
+    bManualPlacementMode = false;
+    LastContextAction = ELogContextAction::None;
     if (IsValid(HeldPiece) || IsValid(HeldMaterialPiece))
     {
         return false;
@@ -740,6 +722,13 @@ void ULogCarryComponent::ClearSnapCandidate()
 
 bool ULogCarryComponent::PlaceHeldPiece()
 {
+    if (bHasDeckPlacement && IsValid(HeldPiece))
+    {
+        bHasDeckPlacement = false;
+        if (ULogBuildToolsComponent* Tools = GetOwner() ? GetOwner()->FindComponentByClass<ULogBuildToolsComponent>() : nullptr)
+            Tools->TryPlaceDeck(DeckSupport.Get(), DeckAim, DeckView, false);
+        return !IsValid(HeldPiece);
+    }
     if (bHasStrutPlacement && IsValid(HeldPiece))
         return PlaceStrut();
     if (IsValid(HeldPiece) && MyProject3Construction::IsVerticalLog(HeldPiece) && !CanStandAsPost(HeldPiece))
@@ -863,6 +852,8 @@ void ULogCarryComponent::RotateHeldPiece()
 
 void ULogCarryComponent::CyclePlacementMode()
 {
+    // A manual override of the contextual choice, until the log is put down.
+    bManualPlacementMode = true;
     switch (PlacementMode)
     {
     case ELogPlacementMode::Horizontal:
@@ -1790,6 +1781,21 @@ bool ULogCarryComponent::ResolveCutChoice(const ALogBuildPiece* Log, const FVect
         {
             Out.Kind = ELogCutKind::Sharpen;
             Out.Share = bEndALowTop ? 1.0f : 0.0f;
+            return true;
+        }
+    }
+    if (bContextualCut && IsLengthCut(SelectedCutAction) && !Log->IsPlaced())
+    {
+        // On the end face (near an end and inside the rim): split along its length.
+        const FVector Along = Shape.Axis.GetSafeNormal();
+        const float FromCentre = FMath::Abs(FVector::DotProduct(WorldPoint - Shape.Centre, Along));
+        const FVector Radial = (WorldPoint - Shape.Centre) - Along * FVector::DotProduct(WorldPoint - Shape.Centre, Along);
+        if (FromCentre >= Shape.HalfLength - 8.0f && Radial.Size() <= 0.85f * Shape.Radius &&
+            Log->CanApplyCutAction(ELogCutAction::SplitHalf))
+        {
+            Out.Action = ELogCutAction::SplitHalf;
+            Out.Share = -1.0f;
+            Out.Kind = ELogCutKind::Recipe;
             return true;
         }
     }
@@ -2929,6 +2935,9 @@ bool ULogCarryComponent::CommitHeldSolution(const FPlacementSolution& Solution)
     bHasPlacementSurface = false;
     bHasStackPlacement = false;
     bHasStrutPlacement = false;
+    bHasDeckPlacement = false;
+    bManualPlacementMode = false;
+    LastContextAction = ELogContextAction::None;
     StackSolution = FPlacementSolution();
     StrutSolution = FPlacementSolution();
     ClearSnapCandidate();
@@ -3038,6 +3047,205 @@ FQuat ULogCarryComponent::MakeTiltAroundView(float Degrees) const
     const float Yaw = GetViewPoint(ViewLocation, ViewRotation) ? ViewRotation.Yaw : 0.0f;
     const FVector Right = FRotator(0.0f, Yaw + HeldYawOffset + 90.0f, 0.0f).Vector();
     return FQuat(Right, FMath::DegreesToRadians(Degrees));
+}
+
+FLogContextResult ULogCarryComponent::ResolveContext(const FLogContextAim& Aim) const
+{
+    FLogContextResult Result;
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!IsValid(HeldPiece) || !Kernel)
+        return Result;
+    // Looking steeply down stands the log up (a post); otherwise it lies.
+    const bool bWantsUpright = Aim.ViewPitchDeg <= -PostLookDownDeg && CanStandAsPost(HeldPiece);
+
+    // A placed log is meant only when the aim is on or right by it.
+    ALogBuildPiece* Target = Cast<ALogBuildPiece>(Aim.AimActor);
+    FPlacementBody Body;
+    const bool bOnPiece = IsValid(Target) && Target != HeldPiece && Target->IsPlaced() && !Target->IsHeld() &&
+        FPlacementProviderRegistry::GetBody(Target, Body) &&
+        FVector::Dist(Aim.AimPoint, FMath::ClosestPointOnSegment(Aim.AimPoint, Body.EndA(), Body.EndB())) <= Body.Radius + ContextReachCm;
+    if (!bOnPiece)
+    {
+        Result.Action = bWantsUpright ? ELogContextAction::Post : ELogContextAction::Ground;
+        Result.bUpright = bWantsUpright;
+        return Result;
+    }
+
+    FPlacementIntent Base;
+    Base.Held = HeldPiece;
+    Base.AimActor = Target;
+    Base.AimPoint = Aim.AimPoint;
+    Base.ViewDirection = Aim.ViewDirection;
+    Base.CarryYawDeg = Aim.CarryYawDeg;
+    Base.HeldAngleDeg = HeldYawOffset;
+    Base.Placer = GetOwner();
+    Base.PlacerLocation = GetOwner() ? GetOwner()->GetActorLocation() : FVector::ZeroVector;
+    auto Try = [&](ELogContextAction Action, const TArray<FName>& Profiles, bool bUpright, const TArray<AActor*>& Candidates)
+    {
+        FPlacementIntent Intent = Base;
+        Intent.AllowedProfiles = Profiles;
+        Intent.bUpright = bUpright;
+        Intent.Candidates = Candidates;
+        FPlacementSolution Solution = Kernel->Solve(Intent,
+            Action == ELogContextAction::Snap && bHasValidSnap ? &CurrentSolution : nullptr);
+        if (!Solution.bValid)
+        {
+            if (Result.Reason.IsEmpty())
+                Result.Reason = Solution.Reason;
+            return false;
+        }
+        Result.Action = Action;
+        Result.Solution = MoveTemp(Solution);
+        Result.bUpright = bUpright;
+        return true;
+    };
+    const TArray<AActor*> AimedOnly;
+    const TArray<FName> AnyJoint;
+
+    if (Body.IsUpright())
+    {
+        // On the side of a post that carries a beam, below its top: a strut.
+        if (Aim.AimPoint.Z < Body.Top().Z - Body.Radius - 20.0f && Try(ELogContextAction::Strut, { TEXT("log.strut") }, false, AimedOnly))
+            return Result;
+        // At the top a lying log goes across it (Sons of the Forest); looking steeply
+        // down continues the post upwards, end on end.
+        if (bWantsUpright)
+        {
+            Try(ELogContextAction::Snap, { TEXT("log.end_to_end") }, false, AimedOnly);
+            return Result;
+        }
+        if (Try(ELogContextAction::Snap, { TEXT("log.station_to_end"), TEXT("log.station_in_notch") }, false, AimedOnly))
+            return Result;
+        Try(ELogContextAction::Snap, AnyJoint, false, Aim.Candidates);
+        return Result;
+    }
+
+    // A lying log: aimed at its top it goes on top, aimed at its side or end it joins there.
+    const FVector OnAxis = FMath::ClosestPointOnSegment(Aim.AimPoint, Body.EndA(), Body.EndB());
+    const bool bWasOnTop = Aim.PreviousAction == ELogContextAction::Stack || Aim.PreviousAction == ELogContextAction::Deck;
+    const float TopBand = FMath::Max(2.0f, Body.Radius * (bWasOnTop ? 0.15f : 0.35f));
+    if (Aim.AimPoint.Z >= OnAxis.Z + TopBand)
+    {
+        // A split piece is a board: across two beams it is a floor.
+        if (!CanStandAsPost(HeldPiece) && Try(ELogContextAction::Deck, { TEXT("log.deck") }, false, AimedOnly))
+            return Result;
+        if (Try(ELogContextAction::Stack, { TEXT("log.parallel_stack") }, bWantsUpright, AimedOnly))
+            return Result;
+    }
+    Try(ELogContextAction::Snap, AnyJoint, false, Aim.Candidates);
+    return Result;
+}
+
+void ULogCarryComponent::UpdateContextPlacement(float DeltaTime)
+{
+    // Solved a few times a second; in between a joined log stays where it was solved.
+    TimeUntilSnapRefresh -= DeltaTime;
+    const bool bJoined = LastContextAction != ELogContextAction::None && LastContextAction != ELogContextAction::Ground &&
+        LastContextAction != ELogContextAction::Post;
+    if (TimeUntilSnapRefresh > 0.0f)
+    {
+        if (bJoined)
+            HeldPiece->SetActorTransform(LastContextTransform);
+        else
+            UpdateHeldPreview();
+        return;
+    }
+    TimeUntilSnapRefresh = FMath::Max(0.01f, SnapRefreshInterval);
+
+    FVector ViewLocation;
+    FRotator ViewRotation;
+    if (!GetViewPoint(ViewLocation, ViewRotation))
+        return;
+    FLogContextAim Aim;
+    Aim.ViewDirection = ViewRotation.Vector();
+    Aim.ViewPitchDeg = FRotator::NormalizeAxis(ViewRotation.Pitch);
+    Aim.CarryYawDeg = ViewRotation.Yaw + HeldYawOffset;
+    Aim.PreviousAction = LastContextAction;
+    FHitResult Hit;
+    if (TraceFromView(PlacementTraceDistance, Hit))
+    {
+        Aim.AimPoint = Hit.ImpactPoint;
+        ALogBuildPiece* Preferred = nullptr;
+        GatherContextualSnapCandidates(Hit.ImpactPoint, Hit.GetActor(), Aim.Candidates, Preferred);
+        Aim.AimActor = Cast<ALogBuildPiece>(Hit.GetActor()) ? Hit.GetActor() : (Preferred ? Preferred : Hit.GetActor());
+    }
+    else
+    {
+        Aim.AimPoint = ViewLocation + Aim.ViewDirection * CarryDistance;
+    }
+    ApplyContextResult(ResolveContext(Aim));
+}
+
+void ULogCarryComponent::ApplyContextResult(const FLogContextResult& Result)
+{
+    bHasStackPlacement = false;
+    StackTarget.Reset();
+    StackSolution = FPlacementSolution();
+    bHasStrutPlacement = false;
+    StrutSolution = FPlacementSolution();
+    bHasDeckPlacement = false;
+    DeckSolution = FPlacementSolution();
+    const FPlacementSolution& Solution = Result.Solution;
+    AActor* Primary = Solution.GetTarget(EPlacementLinkRole::Primary);
+    switch (Result.Action)
+    {
+    case ELogContextAction::Snap:
+    {
+        const FPlacementLink* Link = Solution.GetPrimaryLink();
+        ALogBuildPiece* Target = Cast<ALogBuildPiece>(Primary);
+        if (!Link || !Target)
+            break;
+        CurrentSolution = Solution;
+        SetSnapCandidate(Target, HeldPiece->FindSnapPointIndex(Link->Source.FeatureId),
+            Target->FindSnapPointIndex(Link->Target.FeatureId), Solution.PieceTransform);
+        break;
+    }
+    case ELogContextAction::Stack:
+        ClearSnapCandidate();
+        bHasStackPlacement = true;
+        StackTarget = Cast<ALogBuildPiece>(Primary);
+        StackSolution = Solution;
+        StackTransform = Solution.PieceTransform;
+        HeldPiece->SetActorTransform(StackTransform);
+        break;
+    case ELogContextAction::Deck:
+        ClearSnapCandidate();
+        bHasDeckPlacement = true;
+        DeckSolution = Solution;
+        DeckSupport = Primary;
+        HeldPiece->SetActorTransform(Solution.PieceTransform);
+        break;
+    case ELogContextAction::Strut:
+        ClearSnapCandidate();
+        bHasStrutPlacement = true;
+        StrutSolution = Solution;
+        StrutTransform = Solution.PieceTransform;
+        StrutLength = Solution.RequiredLengthCm;
+        StrutJoint = Solution.MarkerPoint;
+        StrutPost = Cast<ALogBuildPiece>(Primary);
+        StrutBeam = Cast<ALogBuildPiece>(Solution.GetTarget(EPlacementLinkRole::Carries));
+        HeldPiece->SetActorTransform(StrutTransform);
+        break;
+    default:
+        // On the ground: lying, or standing as a post.
+        ClearSnapCandidate();
+        PlacementMode = Result.bUpright ? ELogPlacementMode::Vertical : ELogPlacementMode::Horizontal;
+        UpdateHeldPreview();
+        break;
+    }
+    if (bHasDeckPlacement)
+    {
+        FVector ViewLocation;
+        FRotator ViewRotation;
+        GetViewPoint(ViewLocation, ViewRotation);
+        DeckView = ViewRotation.Vector();
+        DeckAim = Solution.PieceTransform.GetLocation();
+    }
+    LastContextAction = Result.Action;
+    LastContextTransform = HeldPiece->GetActorTransform();
+    // Words only when something does not fit; a fitting place speaks for itself.
+    PlacementStatus = Result.Action == ELogContextAction::None ? Result.Reason : FString();
+    UpdateHeldLifts();
 }
 
 FPlacementSolution ULogCarryComponent::SolveStackOn(ALogBuildPiece* Held, ALogBuildPiece* Target, const FVector& AimPoint,

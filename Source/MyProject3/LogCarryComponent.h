@@ -34,6 +34,49 @@ struct FLogCutChoice
     ELogCutKind Kind = ELogCutKind::Recipe;
 };
 
+/** What the carried log will do where the player looks; chosen by ResolveContext, never by a mode. */
+enum class ELogContextAction : uint8
+{
+    None,
+    /** A joint: end to end, end to a station (T), a station on an end (across a post top), notches. */
+    Snap,
+    /** On top of a lying log: the next row of a wall, a corner, or a post on it. */
+    Stack,
+    /** A board across two parallel beams. */
+    Deck,
+    /** Between a post and the beam on it. */
+    Strut,
+    /** Lying on the ground. */
+    Ground,
+    /** Standing on the ground as a post (the player looks steeply down). */
+    Post
+};
+
+/** Where the player looks, as ResolveContext needs it; filled from the camera in play, by hand in tests. */
+struct FLogContextAim
+{
+    AActor* AimActor = nullptr;
+    FVector AimPoint = FVector::ZeroVector;
+    FVector ViewDirection = FVector::ForwardVector;
+    /** Camera pitch in degrees; negative looks down. */
+    float ViewPitchDeg = 0.0f;
+    float CarryYawDeg = 0.0f;
+    /** Placed pieces near the aim (the other contextual candidates). */
+    TArray<AActor*> Candidates;
+    /** The previous choice, so the preview does not flicker between two of them. */
+    ELogContextAction PreviousAction = ELogContextAction::None;
+};
+
+struct FLogContextResult
+{
+    ELogContextAction Action = ELogContextAction::None;
+    /** The kernel's solution for Snap, Stack, Deck and Strut (Ground and Post rest on the surface). */
+    FPlacementSolution Solution;
+    bool bUpright = false;
+    /** Why nothing fits, in a few words, when Action is None. */
+    FString Reason;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
     FLogSnapStateChanged, bool, bHasValidSnap);
 
@@ -100,6 +143,33 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement")
     ELogPlacementMode PlacementMode = ELogPlacementMode::Horizontal;
+
+    /**
+     * The game chooses how the log goes from where the player looks (ResolveContext).
+     * The mode key (right mouse) still switches to the old modes as a manual override
+     * until the log is put down.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement")
+    bool bContextualPlacement = true;
+
+    /** Looking down steeper than this (degrees) stands the log up as a post. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "20.0", ClampMax = "89.0"))
+    float PostLookDownDeg = 55.0f;
+
+    /** How close (cm, from a log's surface) the aim must be for that log to be meant. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.0"))
+    float ContextReachCm = 40.0f;
+
+    /** The axe chooses the cut from where it lands: an end face splits, the side cuts across. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Processing")
+    bool bContextualCut = true;
+
+    /** What the carried log does where the player looks. Camera free, so tests can ask it directly. */
+    FLogContextResult ResolveContext(const FLogContextAim& Aim) const;
+
+    /** True after the mode key: the old modes decide until the log is put down. */
+    bool IsManualPlacementMode() const { return bManualPlacementMode; }
+    ELogContextAction GetContextAction() const { return LastContextAction; }
 
     UPROPERTY(BlueprintAssignable, Category = "Log Carry|Events")
     FLogSnapStateChanged OnSnapStateChanged;
@@ -408,6 +478,16 @@ private:
     FTransform CurrentSnapActorTransform = FTransform::Identity;
     /** The placement kernel's answer shown now; E commits exactly this. */
     FPlacementSolution CurrentSolution;
+    bool bManualPlacementMode = false;
+    ELogContextAction LastContextAction = ELogContextAction::None;
+    FTransform LastContextTransform = FTransform::Identity;
+    bool bHasDeckPlacement = false;
+    FPlacementSolution DeckSolution;
+    TWeakObjectPtr<AActor> DeckSupport;
+    FVector DeckAim = FVector::ZeroVector;
+    FVector DeckView = FVector::ForwardVector;
+    void UpdateContextPlacement(float DeltaTime);
+    void ApplyContextResult(const FLogContextResult& Result);
     FPlacementSolution StackSolution;
     FPlacementSolution StrutSolution;
     FPlacementSolution MaterialSolution;

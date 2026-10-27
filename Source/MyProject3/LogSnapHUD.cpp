@@ -74,52 +74,28 @@ void ALogSnapHUD::DrawHUD()
             if (bLines)
                 DrawWorldSegments(Points, Colour, bArmed ? 3.0f : 2.0f);
 
-            const FString ActionName = bResolved ? Carry->DescribeCut(Log, Choice) : FString();
-            FString Label;
-            if (!bResolved)
-                Label = TEXT("Too short to cut again  [C: change]");
-            else if (!bAllowed)
-                Label = FString::Printf(TEXT("%s - %s  [C: change]"), *ActionName, *Reason);
-            else if (bArmed)
-                Label = FString::Printf(TEXT("%s  [LMB/F: cut with the axe, C: cancel]"), *ActionName);
-            else if (Choice.Kind == ELogCutKind::Sharpen)
-                Label = FString::Printf(TEXT("%s  [LMB/F: mark, then swing]"), *ActionName);
-            else if (Choice.Share >= 0.0f)
-                Label = FString::Printf(TEXT("%s  [look along the log to move the cut, LMB/F: mark]"), *ActionName);
-            else
-                Label = FString::Printf(TEXT("%s  [LMB/F: mark the cut, C: change]"), *ActionName);
-            float W = 0.0f, H = 0.0f;
-            GetTextSize(Label, W, H, Font);
-            DrawText(Label, Colour, CentreX - W * 0.5f, TextY, Font);
-            TextY += H + 4.0f;
+            // The dashed line says where the axe goes; words only when it cannot cut there.
+            const FString Label = !bResolved ? FString(TEXT("Too short to cut again")) : (!bAllowed ? Reason : FString());
+            if (!Label.IsEmpty())
+            {
+                float W = 0.0f, H = 0.0f;
+                GetTextSize(Label, W, H, Font);
+                DrawText(Label, Colour, CentreX - W * 0.5f, TextY, Font);
+                TextY += H + 4.0f;
+            }
         }
     }
     else if (Carry->IsCarryingLog())
     {
-        // White dashes where the log will lie; an arrow when it joins another piece.
-        TArray<FVector> Outline, Arrow, Ground;
+        // One white dashed outline where the log will go; nothing else.
+        TArray<FVector> Outline, Arrow;
         if (Carry->BuildPlacementPreviewSegments(Outline, Arrow))
-        {
             DrawWorldSegments(Outline, PlacementColor, 1.5f);
-            DrawWorldSegments(Arrow, PlacementColor, 3.0f);
-        }
-        // On the ground: a rectangle under a lying log, a circle under a post.
-        if (Carry->BuildGroundMarkerSegments(Ground))
-            DrawWorldSegments(Ground, PlacementColor, 2.0f);
-        const ALogBuildPiece* Partner = nullptr;
-        float Span = 0.0f;
-        if (Carry->GetPostSpan(Partner, Span))
-        {
-            const FString SpanText = FString::Printf(TEXT("In line with a post: %.0f cm apart, a %.0f cm log spans it"), Span, Span);
-            float W = 0.0f, H = 0.0f;
-            GetTextSize(SpanText, W, H, Font);
-            DrawText(SpanText, PlacementColor, CentreX - W * 0.5f, TextY, Font);
-            TextY += H + 4.0f;
-        }
     }
 
     const FString Status = Carry->GetPlacementStatus();
-    if (!Status.IsEmpty() && (Carry->IsCarryingLog() || Carry->IsHoldingMaterialPiece() || !Status.StartsWith(TEXT("Aim"))))
+    if (!Status.IsEmpty() && Status != TEXT("Placed.") &&
+        (Carry->IsCarryingLog() || Carry->IsHoldingMaterialPiece() || !Status.StartsWith(TEXT("Aim"))))
     {
         float W = 0.0f, H = 0.0f;
         GetTextSize(Status, W, H, Font);
@@ -141,7 +117,8 @@ void ALogSnapHUD::DrawHUD()
         Corner += FString::Printf(TEXT("Health %.0f   "), Health->Health);
     if (const UShelterSensorComponent* Shelter = Pawn->FindComponentByClass<UShelterSensorComponent>())
         Corner += FString::Printf(TEXT("Shelter %.0f%%   "), Shelter->GetShelterProtection() * 100.0f);
-    if (const UEnum* ModeEnum = StaticEnum<ELogPlacementMode>())
+    // The mode only shows when the player chose one by hand.
+    if (const UEnum* ModeEnum = StaticEnum<ELogPlacementMode>(); ModeEnum && Carry->IsManualPlacementMode())
         Corner += FString::Printf(TEXT("Mode: %s   "), *ModeEnum->GetDisplayNameTextByValue(static_cast<int64>(Carry->PlacementMode)).ToString());
     if (Tools)
         Corner += FString::Printf(TEXT("Plan: %s   F1 help"), *ABuildPlanActor::GetPlanName(Tools->GetSelectedPlan()));

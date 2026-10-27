@@ -1570,6 +1570,27 @@ bool FAimedLengthCutTest::RunTest(const FString& Parameters)
     TArray<FVector> Ring;
     TestTrue(TEXT("Red ring preview"), Player.Carry->BuildCutRingSegments(Log, 0.25f, Ring) && Ring.Num() > 10);
 
+    // The end face means "split it along its length"; the bark beside it is still a length cut.
+    FLogCutChoice EndFace;
+    const FVector EndPoint = Shape.Centre + Shape.Axis.GetSafeNormal() * (Shape.HalfLength - 2.0f);
+    const bool bEndResolves = Player.Carry->ResolveCutChoice(Log, EndPoint, EndFace);
+    if (Log->CanApplyCutAction(ELogCutAction::SplitHalf))
+    {
+        TestTrue(TEXT("End face resolves"), bEndResolves);
+        TestEqual(TEXT("End face splits along the length"), EndFace.Action, ELogCutAction::SplitHalf);
+        TestTrue(TEXT("The split is a recipe"), EndFace.Kind == ELogCutKind::Recipe);
+    }
+    else
+    {
+        TestTrue(TEXT("Without a split mesh the end face is a length cut"), EndFace.Action != ELogCutAction::SplitHalf);
+    }
+    FLogCutChoice Bark;
+    const FVector Up = FVector::CrossProduct(Shape.Axis.GetSafeNormal(), FVector::RightVector).GetSafeNormal();
+    const FVector Side = Up.IsNearlyZero() ? FVector::UpVector : Up;
+    TestTrue(TEXT("Bark near the end resolves"),
+        Player.Carry->ResolveCutChoice(Log, EndPoint + Side * Shape.Radius, Bark));
+    TestTrue(TEXT("Bark near the end is not a split"), Bark.Action != ELogCutAction::SplitHalf);
+
     TestTrue(FString::Printf(TEXT("3/4 cut allowed (%s)"), *Log->GetCutActionBlockReason(ELogCutAction::SplitLengthThreeQuarter)),
         Log->CanApplyCutAction(ELogCutAction::SplitLengthThreeQuarter));
     TestTrue(TEXT("3/4 cut applies"), Log->ApplyCutAction(ELogCutAction::SplitLengthThreeQuarter));
