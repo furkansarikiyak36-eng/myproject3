@@ -112,17 +112,38 @@ bool UMaterialConnectionSubsystem::CanConnect(
 bool UMaterialConnectionSubsystem::TryConnect(
     AActor* Parent, FName ParentAnchorId, AActor* Child, FName ChildAnchorId, FString& OutReason)
 {
+    IStructuralPieceInterface* ParentPiece = AsPiece(Parent);
+    IStructuralPieceInterface* ChildPiece = AsPiece(Child);
+    FStructuralAnchorView ParentAnchor;
+    FStructuralAnchorView ChildAnchor;
+    if (!ParentPiece || !ChildPiece ||
+        !ParentPiece->GetStructuralAnchor(ParentAnchorId, ParentAnchor) ||
+        !ChildPiece->GetStructuralAnchor(ChildAnchorId, ChildAnchor))
+    {
+        OutReason = TEXT("A requested anchor does not exist.");
+        return false;
+    }
+    // Default placement: the child anchor coincides with the parent anchor.
+    const FTransform ParentAnchorWorld = ParentAnchor.LocalTransform * Parent->GetActorTransform();
+    return TryConnectAt(Parent, ParentAnchorId, Child, ChildAnchorId,
+        ChildAnchor.LocalTransform.Inverse() * ParentAnchorWorld, OutReason);
+}
+
+bool UMaterialConnectionSubsystem::TryConnectAt(
+    AActor* Parent, FName ParentAnchorId, AActor* Child, FName ChildAnchorId,
+    const FTransform& ChildWorldTransform, FString& OutReason)
+{
     if (!CanConnect(Parent, ParentAnchorId, Child, ChildAnchorId, OutReason))
         return false;
+    if (ChildWorldTransform.ContainsNaN())
+    {
+        OutReason = TEXT("The requested placement transform is invalid.");
+        return false;
+    }
 
     IStructuralPieceInterface* ParentPiece = AsPiece(Parent);
     IStructuralPieceInterface* ChildPiece = AsPiece(Child);
     UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-
-    FStructuralAnchorView ParentAnchor;
-    FStructuralAnchorView ChildAnchor;
-    ParentPiece->GetStructuralAnchor(ParentAnchorId, ParentAnchor);
-    ChildPiece->GetStructuralAnchor(ChildAnchorId, ChildAnchor);
 
     // The graph edge is the fallible authoritative step; commit it first.
     if (!Graph->TryConnect(ParentPiece->GetStructuralNodeId(), ParentAnchorId,
@@ -133,11 +154,9 @@ bool UMaterialConnectionSubsystem::TryConnect(
     }
 
     const FTransform PreviousTransform = Child->GetActorTransform();
-    const FTransform ParentAnchorWorld = ParentAnchor.LocalTransform * Parent->GetActorTransform();
-    const FTransform DesiredChildTransform = ChildAnchor.LocalTransform.Inverse() * ParentAnchorWorld;
     // A simulating body cannot be attached; stop physics before attaching.
     ChildPiece->ApplyCrossMaterialAttachment(Parent);
-    Child->SetActorTransform(DesiredChildTransform, false, nullptr, ETeleportType::TeleportPhysics);
+    Child->SetActorTransform(ChildWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
     if (!Child->AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
     {
         ChildPiece->ClearCrossMaterialAttachment();

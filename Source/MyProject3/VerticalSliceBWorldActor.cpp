@@ -3,6 +3,9 @@
 #include "CarryLoadComponent.h"
 #include "HarvestableTreeActor.h"
 #include "HeatSourceComponent.h"
+#include "LogContainerActor.h"
+#include "RopeLineActor.h"
+#include "WildlifeActor.h"
 #include "LogBuildPiece.h"
 #include "LogCarryComponent.h"
 #include "MaterialConnectionSubsystem.h"
@@ -161,6 +164,7 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     BuildStoneYard();
     BuildConstructionYard(Family);
     BuildFutureZones();
+    BuildConstructionFeatures(Family);
 
     LastActionMessage = TEXT("VerticalSlice_B ready. Follow the marked trail: camp -> timber -> wood yard -> build yard.");
     return true;
@@ -523,12 +527,21 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily() const
         FLogLengthCutVariant Cut;
         Cut.Action = Action;
         Cut.SourceLengthFraction = Source;
-        Cut.CrossSectionProfile = ELogCrossSectionProfile::Round;
         Cut.FirstOutputLengthFraction = First;
         Cut.SecondOutputLengthFraction = Second;
         Cut.FirstOutputCenterOffsetLocal = FVector(FirstX, 0.0f, 0.0f);
         Cut.SecondOutputCenterOffsetLocal = FVector(SecondX, 0.0f, 0.0f);
-        Family.LengthCutVariants.Add(Cut);
+        // Split and hewn pieces (planks, half and quarter logs...) are cut to
+        // length the same way as round logs; each output needs its own mesh.
+        for (const ELogCrossSectionProfile Profile : { ELogCrossSectionProfile::Round,
+            ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::QuarterRound,
+            ELogCrossSectionProfile::Hewn, ELogCrossSectionProfile::HewnTwoFaces,
+            ELogCrossSectionProfile::SquareBeam, ELogCrossSectionProfile::Plank,
+            ELogCrossSectionProfile::GroovedHalfRound, ELogCrossSectionProfile::Trough })
+        {
+            Cut.CrossSectionProfile = Profile;
+            Family.LengthCutVariants.Add(Cut);
+        }
     };
 
     AddCut(ELogCutAction::SplitLengthHalf, ELogLengthFraction::FullLength,
@@ -1197,4 +1210,76 @@ void AVerticalSliceBWorldActor::DrawStatus() const
     GEngine->AddOnScreenDebugMessage(Key++, 0.0f, FColor::Yellow, LastActionMessage);
     GEngine->AddOnScreenDebugMessage(Key++, 0.0f, FColor::Silver,
         TEXT("WASD + Mouse | E log pick/place | G drop | C action | F process | V chop | X dig | Z fill | T stow | Y drop stowed | H fire"));
+}
+
+void AVerticalSliceBWorldActor::BuildConstructionFeatures(const FLogProcessingMeshSet& Family)
+{
+    UWorld* World = GetWorld();
+    if (!World)
+        return;
+
+    // Storage zone: racks, a firewood store and two sleds to load and pull.
+    const FVector2D Store = Zones[6].Centre;
+    const float StoreH = GetTerrainHeightAt(Store.X, Store.Y);
+    const struct { ELogContainerKind Kind; FVector2D Offset; } Containers[] =
+    {
+        { ELogContainerKind::SmallLogStorage, FVector2D(-700.0, 450.0) },
+        { ELogContainerKind::LargeLogStorage, FVector2D(0.0, 600.0) },
+        { ELogContainerKind::FirewoodStorage, FVector2D(700.0, 450.0) },
+        { ELogContainerKind::BasicSled, FVector2D(-500.0, -800.0) },
+        { ELogContainerKind::AdvancedSled, FVector2D(500.0, -800.0) },
+    };
+    for (const auto& Entry : Containers)
+    {
+        const FVector Location(Store.X + Entry.Offset.X, Store.Y + Entry.Offset.Y,
+            GetTerrainHeightAt(Store.X + Entry.Offset.X, Store.Y + Entry.Offset.Y) + 12.0f);
+        ALogContainerActor* Container = World->SpawnActorDeferred<ALogContainerActor>(
+            ALogContainerActor::StaticClass(), FTransform(Location), this);
+        if (!Container)
+            continue;
+        Container->ConfigureKind(Entry.Kind);
+        Container->FinishSpawning(FTransform(FRotator::ZeroRotator, Location, Container->GetActorScale3D()));
+    }
+
+    // A zipline from a tall post down to the storage yard.
+    if (Family.BaseRoundMesh)
+    {
+        const FVector PostBase(Store.X - 1600.0f, Store.Y, GetTerrainHeightAt(Store.X - 1600.0f, Store.Y));
+        if (ALogBuildPiece* Post = SpawnLog(Family, PostBase + FVector(0, 0, 160.0f), FRotator(90.0f, 0.0f, 0.0f)))
+        {
+            Post->GetLogMesh()->SetSimulatePhysics(false);
+            Post->SetPlacedState(true);
+            FVector Origin, Extent;
+            Post->GetActorBounds(true, Origin, Extent);
+            const FVector Top(Origin.X, Origin.Y, Origin.Z + Extent.Z - 10.0f);
+            const FVector Bottom(Store.X - 200.0f, Store.Y + 150.0f, StoreH + 60.0f);
+            if (ARopeLineActor* Rope = World->SpawnActor<ARopeLineActor>(0.5f * (Top + Bottom), FRotator::ZeroRotator))
+                Rope->InitializeRope(Top, Post, Bottom, nullptr);
+        }
+    }
+
+    // Defence zone: things to throw logs at.
+    const FVector2D Defence = Zones[7].Centre;
+    const struct { EWildlifeKind Kind; FVector2D Offset; } Targets[] =
+    {
+        { EWildlifeKind::SmallAnimal, FVector2D(-600.0, 700.0) },
+        { EWildlifeKind::SmallAnimal, FVector2D(300.0, 900.0) },
+        { EWildlifeKind::SmallAnimal, FVector2D(800.0, 600.0) },
+        { EWildlifeKind::Enemy, FVector2D(0.0, 1400.0) },
+        { EWildlifeKind::Plant, FVector2D(-300.0, 500.0) },
+        { EWildlifeKind::Plant, FVector2D(200.0, 450.0) },
+        { EWildlifeKind::Plant, FVector2D(600.0, 300.0) },
+    };
+    for (const auto& Entry : Targets)
+    {
+        const float X = Defence.X + Entry.Offset.X;
+        const float Y = Defence.Y + Entry.Offset.Y;
+        const FVector Location(X, Y, GetTerrainHeightAt(X, Y) + 45.0f);
+        AWildlifeActor* Target = World->SpawnActorDeferred<AWildlifeActor>(AWildlifeActor::StaticClass(),
+            FTransform(Location), this);
+        if (!Target)
+            continue;
+        Target->ConfigureKind(Entry.Kind);
+        Target->FinishSpawning(FTransform(FRotator::ZeroRotator, Location, Target->GetActorScale3D()));
+    }
 }

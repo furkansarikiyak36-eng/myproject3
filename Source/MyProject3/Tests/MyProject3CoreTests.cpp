@@ -8,6 +8,19 @@
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
 #include "LogBuildPiece.h"
+#include "LogCarryComponent.h"
+#include "BuildPlanActor.h"
+#include "ConstructionHelpers.h"
+#include "ConstructionOpeningActor.h"
+#include "LogAttachmentComponents.h"
+#include "LogBuildToolsComponent.h"
+#include "LogContainerActor.h"
+#include "PhysicalHealthComponent.h"
+#include "RopeLineActor.h"
+#include "ShelterSensorComponent.h"
+#include "ThrownImpactComponent.h"
+#include "WildlifeActor.h"
+#include "StickPrimitivePiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StoneBuildingPiece.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -835,6 +848,499 @@ bool FVerticalSliceDemoTest::RunTest(const FString& Parameters)
     TestTrue(FString::Printf(TEXT("Half-length log splits into half-rounds: %s"), *Split.Message.ToString()), Split.IsSuccess());
     TestTrue(TEXT("Split piece uses the real 300 cm half-round mesh"),
         Log->GetLogMesh()->GetStaticMesh() && Log->GetLogMesh()->GetStaticMesh()->GetName() == TEXT("SM_RawLog_300_Half"));
+    return true;
+}
+
+
+// SOTF-M01/M02: stones and sticks go into the hands, stack on placed pieces
+// through automatic top/bottom anchors, join across materials and stake into
+// the ground; a placed piece cannot be lifted out of a structure.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHandHeldMaterialPlacementTest,
+    "MyProject3.Carry.Materials.StoneAndStickPickUpStackAndStake", TestFlags)
+bool FHandHeldMaterialPlacementTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    UStaticMesh* Cylinder = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    if (!TestNotNull(TEXT("Ownership"), Ownership) || !TestNotNull(TEXT("Cube"), Cube) ||
+        !TestNotNull(TEXT("Cylinder"), Cylinder))
+        return false;
+
+    AActor* Player = World->SpawnActor<AActor>();
+    ULogCarryComponent* Carry = NewObject<ULogCarryComponent>(Player);
+    Carry->RegisterComponent();
+
+    AStoneBuildingPiece* Base = World->SpawnActor<AStoneBuildingPiece>(FVector(0.0, 0.0, 50.0), FRotator::ZeroRotator);
+    AStoneBuildingPiece* Upper = World->SpawnActor<AStoneBuildingPiece>(FVector(300.0, 0.0, 50.0), FRotator::ZeroRotator);
+    AStickPrimitivePiece* Post = World->SpawnActor<AStickPrimitivePiece>(FVector(600.0, 0.0, 50.0), FRotator::ZeroRotator);
+    AStickPrimitivePiece* Stake = World->SpawnActor<AStickPrimitivePiece>(FVector(900.0, 0.0, 50.0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Base"), Base) || !TestNotNull(TEXT("Upper"), Upper) ||
+        !TestNotNull(TEXT("Post"), Post) || !TestNotNull(TEXT("Stake"), Stake))
+        return false;
+    Base->Mesh->SetStaticMesh(Cube);
+    Upper->Mesh->SetStaticMesh(Cube);
+    Post->Mesh->SetStaticMesh(Cylinder);
+    Stake->Mesh->SetStaticMesh(Cylinder);
+    TestTrue(TEXT("Base lifted"), Base->SetHeldState(true));
+    TestTrue(TEXT("Base on the ground"), Base->TryCommitGroundPlacement(FVector(0.0, 0.0, 50.0), FRotator::ZeroRotator));
+
+    TestTrue(TEXT("Stone picked into the hands"), Carry->TryPickupMaterialPiece(Upper));
+    FWorldOwnedItemRecord Item;
+    Ownership->TryGetItem(Upper->GetStructuralNodeId(), Item);
+    TestEqual(TEXT("Held stone is held in the ledger"), Item.OwnerKind, EWorldItemOwnerKind::Held);
+    TestFalse(TEXT("Only one piece in the hands"), Carry->TryPickupMaterialPiece(Post));
+
+    TestTrue(FString::Printf(TEXT("Stone stacks on stone (%s)"), *Carry->GetPlacementStatus()),
+        Carry->TryPlaceHeldMaterialOn(Base, TEXT("AutoTop")));
+    TestTrue(TEXT("Upper stone is placed"), Upper->IsStructurallyPlaced());
+    TestTrue(TEXT("Hands are empty"), !Carry->IsHoldingMaterialPiece());
+    Ownership->TryGetItem(Upper->GetStructuralNodeId(), Item);
+    TestEqual(TEXT("Placed stone is world-owned"), Item.OwnerKind, EWorldItemOwnerKind::World);
+    TestTrue(TEXT("Upper stone sits above the base"), Upper->GetActorLocation().Z > Base->GetActorLocation().Z + 50.0);
+    TestFalse(TEXT("A stone inside a structure cannot be lifted"), Carry->TryPickupMaterialPiece(Base));
+
+    TestTrue(TEXT("Stick picked up"), Carry->TryPickupMaterialPiece(Post));
+    TestFalse(TEXT("Occupied top is rejected"), Carry->TryPlaceHeldMaterialOn(Base, TEXT("AutoTop")));
+    TestTrue(TEXT("A rejected placement keeps the stick in the hands"), Carry->IsHoldingMaterialPiece());
+    TestTrue(FString::Printf(TEXT("Stick stands on the stone stack (%s)"), *Carry->GetPlacementStatus()),
+        Carry->TryPlaceHeldMaterialOn(Upper, TEXT("AutoTop")));
+    TestTrue(TEXT("Stick joined to the stone"), Post->GetCrossMaterialParent() == Upper);
+
+    TestTrue(TEXT("Second stick picked up"), Carry->TryPickupMaterialPiece(Stake));
+    TestTrue(TEXT("Stick staked into the ground"), Carry->TryPlaceHeldMaterialOnGround(FVector(900.0, 0.0, 0.0)));
+    TestTrue(TEXT("Stake is placed"), Stake->IsStructurallyPlaced());
+    return true;
+}
+
+// A horizontal log joined at one end needs something under the other end;
+// the cut preview draws dashed segments for the selected cut.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogFarEndAndCutPreviewTest,
+    "MyProject3.Carry.Logs.FarEndSupportAndCutPreview", TestFlags)
+bool FLogFarEndAndCutPreviewTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    ALogBuildPiece* Log = SpawnConfiguredLog(World, true);
+    if (!TestNotNull(TEXT("Log"), Log) || !TestNotNull(TEXT("Cube"), Cube))
+        return false;
+
+    AActor* Player = World->SpawnActor<AActor>();
+    ULogCarryComponent* Carry = NewObject<ULogCarryComponent>(Player);
+    Carry->RegisterComponent();
+
+    // A 4 m beam along X, held at 5 m with its joint at the -X end.
+    Log->SetPieceStaticMesh(Cube);
+    Log->LongitudinalAxis = ELogLongitudinalAxis::X;
+    Log->SetActorTransform(FTransform(FRotator::ZeroRotator, FVector(0.0, 0.0, 500.0), FVector(4.0, 1.0, 1.0)));
+    Log->GetLogMesh()->SetSimulatePhysics(false);
+    Log->AddCustomSnapPoint(TEXT("EndJoint"), TEXT("LogEnd"), FTransform(FVector(-50.0, 0.0, 0.0)), true, false, true, false);
+    int32 JointIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Log->GetSnapPoints().Num(); ++Index)
+    {
+        if (Log->GetSnapPoints()[Index].PointId == TEXT("EndJoint"))
+            JointIndex = Index;
+    }
+    if (!TestTrue(TEXT("Joint snap point exists"), JointIndex != INDEX_NONE))
+        return false;
+
+    AActor* Support = nullptr;
+    bool bGround = false;
+    TestFalse(TEXT("Nothing under the free end"), Carry->EvaluateFarEndSupport(Log, JointIndex, Support, bGround));
+
+    AStoneBuildingPiece* Rest = World->SpawnActor<AStoneBuildingPiece>(FVector(200.0, 0.0, 420.0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Rest stone"), Rest))
+        return false;
+    Rest->Mesh->SetStaticMesh(Cube);
+    Rest->Mesh->SetSimulatePhysics(false);
+    Rest->Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+    TestTrue(TEXT("A stone under the free end holds it"), Carry->EvaluateFarEndSupport(Log, JointIndex, Support, bGround));
+    TestTrue(TEXT("The support is the stone"), Support == Rest);
+
+    TArray<FVector> Points;
+    TestTrue(TEXT("Split preview"), Carry->BuildCutPreviewSegments(Log, ELogCutAction::SplitHalf, Points));
+    TestTrue(TEXT("Split preview has dashes"), Points.Num() >= 4 && Points.Num() % 2 == 0);
+    TestTrue(TEXT("Length cut preview"), Carry->BuildCutPreviewSegments(Log, ELogCutAction::SplitLengthHalf, Points));
+    bool bAllNearMiddle = Points.Num() > 0;
+    for (const FVector& Point : Points)
+        bAllNearMiddle &= FMath::Abs(Point.X) < 1.0;
+    TestTrue(TEXT("Half-length ring sits at the middle of the beam"), bAllNearMiddle);
+    return true;
+}
+
+
+// A log hanging from one joint with its free end down is turned back up about
+// the joint when a piece is placed under that end; the joint does not move.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDroopingLogLiftTest,
+    "MyProject3.Carry.Logs.DroopingEndLiftsOntoNewSupport", TestFlags)
+bool FDroopingLogLiftTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    ALogBuildPiece* Log = SpawnConfiguredLog(World, true);
+    if (!TestNotNull(TEXT("Log"), Log) || !TestNotNull(TEXT("Cube"), Cube))
+        return false;
+    AActor* Player = World->SpawnActor<AActor>();
+    ULogCarryComponent* Carry = NewObject<ULogCarryComponent>(Player);
+    Carry->RegisterComponent();
+
+    // A 4 m beam, joint at its -X end 200 cm up, tilted 30 degrees down.
+    Log->SetPieceStaticMesh(Cube);
+    Log->LongitudinalAxis = ELogLongitudinalAxis::X;
+    Log->GetLogMesh()->SetSimulatePhysics(false);
+    Log->AddCustomSnapPoint(TEXT("EndJoint"), TEXT("LogEnd"), FTransform(FVector(-50.0, 0.0, 0.0)), true, false, true, false);
+    const FQuat Tilt = FRotator(-30.0f, 0.0f, 0.0f).Quaternion();
+    const FVector Joint(0.0, 0.0, 200.0);
+    Log->SetActorTransform(FTransform(Tilt, Joint - Tilt.RotateVector(FVector(-200.0, 0.0, 0.0)), FVector(4.0, 1.0, 1.0)));
+    Log->SetPlacedState(true);
+    int32 JointIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Log->GetSnapPoints().Num(); ++Index)
+    {
+        if (Log->GetSnapPoints()[Index].PointId == TEXT("EndJoint"))
+            JointIndex = Index;
+    }
+    FVector FreeEnd, Pivot;
+    float Radius = 0.0f;
+    if (!TestTrue(TEXT("Free end found"), Carry->GetLogFreeEnd(Log, JointIndex, FreeEnd, Pivot, Radius)))
+        return false;
+    TestTrue(TEXT("Joint is at the expected place"), Pivot.Equals(Joint, 1.0));
+    TestTrue(TEXT("Free end hangs low"), FreeEnd.Z < 20.0);
+    Carry->RegisterDroopingLog(Log, JointIndex);
+
+    AStoneBuildingPiece* Far = World->SpawnActor<AStoneBuildingPiece>(FVector(-600.0, 0.0, 50.0), FRotator::ZeroRotator);
+    AStoneBuildingPiece* Under = World->SpawnActor<AStoneBuildingPiece>(FVector(FreeEnd.X, 0.0, 50.0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Stones"), Far) || !TestNotNull(TEXT("Stones"), Under))
+        return false;
+    Far->Mesh->SetStaticMesh(Cube);
+    Under->Mesh->SetStaticMesh(Cube);
+    TestFalse(TEXT("A piece elsewhere lifts nothing"), Carry->LiftDroopingEndsOnto(Far));
+    TestTrue(TEXT("A piece under the end lifts it"), Carry->LiftDroopingEndsOnto(Under));
+    Carry->GetLogFreeEnd(Log, JointIndex, FreeEnd, Pivot, Radius);
+    TestTrue(TEXT("Joint did not move"), Pivot.Equals(Joint, 1.0));
+    TestTrue(FString::Printf(TEXT("Free end rests on the stone top (z=%.1f)"), FreeEnd.Z),
+        FMath::IsNearlyEqual(FreeEnd.Z, 100.0 + Radius, 2.0));
+    TestEqual(TEXT("Nothing left drooping"), Carry->GetDroopingLogCount(), 0);
+    return true;
+}
+
+
+namespace MyProject3Tests
+{
+    /** A cube "log" along X with the given size (cm); placed pieces stand still in the graph. */
+    ALogBuildPiece* SpawnBeam(UWorld* World, const FVector& Centre, const FRotator& Rotation,
+        float Length, float Thickness, bool bPlaced)
+    {
+        ALogBuildPiece* Log = SpawnConfiguredLog(World, true);
+        UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+        if (!Log || !Cube)
+            return nullptr;
+        Log->SetPieceStaticMesh(Cube);
+        Log->LongitudinalAxis = ELogLongitudinalAxis::X;
+        Log->GetLogMesh()->SetSimulatePhysics(false);
+        Log->SetActorTransform(FTransform(Rotation, Centre, FVector(Length / 100.0f, Thickness / 100.0f, Thickness / 100.0f)));
+        if (bPlaced)
+        {
+            if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
+                Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Placed);
+            Log->SetPlacedState(true);
+        }
+        return Log;
+    }
+
+    struct FPlayerTools
+    {
+        AActor* Player = nullptr;
+        ULogCarryComponent* Carry = nullptr;
+        ULogBuildToolsComponent* Tools = nullptr;
+
+        explicit FPlayerTools(UWorld* World)
+        {
+            Player = World->SpawnActor<AActor>(FVector(0, -400, 100), FRotator::ZeroRotator);
+            Carry = NewObject<ULogCarryComponent>(Player);
+            Carry->RegisterComponent();
+            Tools = NewObject<ULogBuildToolsComponent>(Player);
+            Tools->RegisterComponent();
+        }
+    };
+}
+
+// Throwing (SOTF throw): a fast log kills a small animal, flattens a bush and
+// staggers an enemy; a slow bump does nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FThrownLogImpactTest,
+    "MyProject3.Construction.ThrowImpactDamagesAnimalsPlantsEnemies", TestFlags)
+bool FThrownLogImpactTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Log = SpawnBeam(World, FVector(0, 0, 100), FRotator::ZeroRotator, 200.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Log"), Log))
+        return false;
+    auto SpawnTarget = [World](EWildlifeKind Kind, const FVector& Location)
+    {
+        AWildlifeActor* Target = World->SpawnActorDeferred<AWildlifeActor>(AWildlifeActor::StaticClass(), FTransform(Location));
+        Target->ConfigureKind(Kind);
+        Target->FinishSpawning(FTransform(Location));
+        return Target;
+    };
+    AWildlifeActor* Rabbit = SpawnTarget(EWildlifeKind::SmallAnimal, FVector(500, 0, 50));
+    AWildlifeActor* Bush = SpawnTarget(EWildlifeKind::Plant, FVector(800, 0, 50));
+    AWildlifeActor* Enemy = SpawnTarget(EWildlifeKind::Enemy, FVector(1100, 0, 90));
+    UThrownImpactComponent* Impact = NewObject<UThrownImpactComponent>(Log);
+    Impact->RegisterComponent();
+    Impact->Arm(nullptr, MyProject3Construction::EstimateMassKg(Log));
+
+    TestEqual(TEXT("A slow bump does no damage"), Impact->ApplyImpactTo(Rabbit, 100.0f, FVector::XAxisVector), 0.0f);
+    TestTrue(TEXT("A fast hit hurts"), Impact->ApplyImpactTo(Rabbit, 1500.0f, FVector::XAxisVector) > 0.0f);
+    TestTrue(TEXT("The small animal is hunted"), Rabbit->Health->IsDead());
+    Impact->ApplyImpactTo(Bush, 1500.0f, FVector::XAxisVector);
+    TestTrue(TEXT("The bush is flattened"), Bush->IsHidden());
+    Impact->ApplyImpactTo(Enemy, 900.0f, FVector::XAxisVector);
+    TestTrue(TEXT("The enemy is hurt"), Enemy->Health->Health < Enemy->Health->MaxHealth);
+    TestTrue(TEXT("The enemy staggers"), Enemy->Health->IsStaggered());
+    TestEqual(TEXT("Each target is hit once per throw"), Impact->ApplyImpactTo(Enemy, 1500.0f, FVector::XAxisVector), 0.0f);
+    return true;
+}
+
+// Log storage and firewood (SOTF log holders): pieces are owned by the store,
+// capacity is enforced, firewood stores only take small pieces.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogStorageTest,
+    "MyProject3.Construction.StorageStoresTakesAndFilters", TestFlags)
+bool FLogStorageTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    auto SpawnContainer = [World](ELogContainerKind Kind, const FVector& Location)
+    {
+        ALogContainerActor* Container = World->SpawnActorDeferred<ALogContainerActor>(ALogContainerActor::StaticClass(), FTransform(Location));
+        Container->ConfigureKind(Kind);
+        Container->FinishSpawning(FTransform(FRotator::ZeroRotator, Location, Container->GetActorScale3D()));
+        Container->bAutoCollect = false;
+        return Container;
+    };
+    ALogContainerActor* Rack = SpawnContainer(ELogContainerKind::SmallLogStorage, FVector(0, 0, 10));
+    ALogContainerActor* Firewood = SpawnContainer(ELogContainerKind::FirewoodStorage, FVector(0, 600, 10));
+    ALogBuildPiece* LogA = SpawnBeam(World, FVector(0, -400, 50), FRotator::ZeroRotator, 400.0f, 30.0f, false);
+    ALogBuildPiece* LogB = SpawnBeam(World, FVector(0, -500, 50), FRotator::ZeroRotator, 400.0f, 30.0f, false);
+    ALogBuildPiece* Split = SpawnBeam(World, FVector(0, -600, 50), FRotator::ZeroRotator, 70.0f, 15.0f, false);
+    if (!TestNotNull(TEXT("Logs"), LogB) || !TestNotNull(TEXT("Small piece"), Split))
+        return false;
+
+    TestTrue(TEXT("Rack stores a log"), Rack->TryStore(LogA));
+    TestTrue(TEXT("Rack stores a second log"), Rack->TryStore(LogB));
+    TestEqual(TEXT("Two stored"), Rack->GetStoredCount(), 2);
+    EWorldItemOwnerKind Owner = EWorldItemOwnerKind::World;
+    MyProject3Construction::GetPieceOwnerKind(LogA, Owner);
+    TestEqual(TEXT("Stored log is owned by storage"), Owner, EWorldItemOwnerKind::Storage);
+    FString Reason;
+    TestFalse(TEXT("A full log is too big for firewood"), Firewood->CanAccept(LogA, Reason));
+    TestTrue(TEXT("A small piece fits the firewood store"), Firewood->TryStore(Split));
+
+    AActor* Taken = Rack->TakeOne(FVector(0, -300, 100));
+    TestTrue(TEXT("The top log comes out"), Taken == LogB);
+    MyProject3Construction::GetPieceOwnerKind(LogB, Owner);
+    TestEqual(TEXT("Taken log is back in the world"), Owner, EWorldItemOwnerKind::World);
+    TestEqual(TEXT("One left"), Rack->GetStoredCount(), 1);
+    return true;
+}
+
+// Auto-cut to length: cutting keeps the requested length and drops the rest
+// as a separate loose piece; nothing is lost.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogTrimTest,
+    "MyProject3.Construction.CutToLengthKeepsRemainder", TestFlags)
+bool FLogTrimTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    ALogBuildPiece* Log = SpawnBeam(TestWorld.World, FVector(0, 0, 100), FRotator::ZeroRotator, 400.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Log"), Log))
+        return false;
+    using namespace MyProject3Construction;
+    ALogBuildPiece* Rest = CutOffRemainder(Log, 150.0f, FVector(0, 300, 100));
+    FLogGeometry Kept, Remainder;
+    TestTrue(TEXT("Remainder exists"), Rest && GetLogGeometry(Rest, Remainder));
+    GetLogGeometry(Log, Kept);
+    TestTrue(FString::Printf(TEXT("Kept piece is 150 cm (%.1f)"), Kept.Length()), FMath::IsNearlyEqual(Kept.Length(), 150.0f, 1.0f));
+    TestTrue(FString::Printf(TEXT("Remainder is 250 cm (%.1f)"), Remainder.Length()), FMath::IsNearlyEqual(Remainder.Length(), 250.0f, 1.0f));
+    TestTrue(TEXT("Kept piece stays at the -X end"), FMath::IsNearlyEqual(Kept.EndA().X, -200.0f, 1.0f));
+    return true;
+}
+
+// Floors, roofs and bridges: a board spans two parallel supports, joins both
+// in the structural graph, and a taken spot is refused.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDeckPlacementTest,
+    "MyProject3.Construction.FloorBoardSpansTwoSupports", TestFlags)
+bool FDeckPlacementTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    ALogBuildPiece* BeamA = SpawnBeam(World, FVector(0, 0, 100), FRotator::ZeroRotator, 400.0f, 30.0f, true);
+    ALogBuildPiece* BeamB = SpawnBeam(World, FVector(0, 150, 100), FRotator::ZeroRotator, 400.0f, 30.0f, true);
+    ALogBuildPiece* Board = SpawnBeam(World, FVector(0, -300, 30), FRotator::ZeroRotator, 230.0f, 20.0f, false);
+    FPlayerTools Player(World);
+    if (!TestNotNull(TEXT("Board"), Board) || !TestNotNull(TEXT("Beam"), BeamB))
+        return false;
+
+    FTransform Transform;
+    AActor* Second = nullptr;
+    float Span = 0.0f;
+    FString Reason;
+    TestTrue(FString::Printf(TEXT("Board fits (%s)"), *Reason), Player.Tools->ComputeDeckPlacement(Board, BeamA,
+        FVector(0, 0, 115), FVector(0, 1, 0), false, Transform, Second, Span, Reason));
+    TestTrue(TEXT("Second support is the parallel beam"), Second == BeamB);
+    TestTrue(FString::Printf(TEXT("Span is 150 cm (%.1f)"), Span), FMath::IsNearlyEqual(Span, 150.0f, 2.0f));
+
+    TestTrue(TEXT("Pick up the board"), Player.Carry->TryPickupPiece(Board));
+    TestTrue(TEXT("Board placed"), Player.Carry->CommitHeldLogAt(Transform, BeamA, BeamB));
+    FStructuralNodeRecord Node;
+    Graph->GetNode(Board->GetStructuralNodeId(), Node);
+    TestEqual(TEXT("Board rests on the first beam"), Node.ParentNodeId, BeamA->GetStructuralNodeId());
+    TestEqual(TEXT("And on the second beam"), Node.SecondarySupports.Num(), 1);
+    TestTrue(TEXT("Board lies between the beams"), FMath::IsNearlyEqual(Board->GetLogMesh()->Bounds.Origin.Y, 75.0f, 3.0f));
+
+    ALogBuildPiece* Another = SpawnBeam(World, FVector(0, -500, 30), FRotator::ZeroRotator, 230.0f, 20.0f, false);
+    TestFalse(TEXT("The same spot is taken"), Player.Tools->ComputeDeckPlacement(Another, BeamA,
+        FVector(0, 0, 115), FVector(0, 1, 0), false, Transform, Second, Span, Reason));
+    TestTrue(TEXT("The next spot is free"), Player.Tools->ComputeDeckPlacement(Another, BeamA,
+        FVector(25, 0, 115), FVector(0, 1, 0), false, Transform, Second, Span, Reason));
+    return true;
+}
+
+// Removing a temporary support: allowed when what it carried has another
+// support (the beam moves onto it), refused when it is the only one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDismantleSupportTest,
+    "MyProject3.Construction.RemoveSupportOnlyWhenRedundant", TestFlags)
+bool FDismantleSupportTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    ALogBuildPiece* PostA = SpawnBeam(World, FVector(-150, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* PostB = SpawnBeam(World, FVector(150, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Beam = SpawnBeam(World, FVector(0, 0, 220), FRotator::ZeroRotator, 340.0f, 30.0f, true);
+    FPlayerTools Player(World);
+    if (!TestNotNull(TEXT("Beam"), Beam))
+        return false;
+    TestTrue(TEXT("Beam on post A"), Graph->TryConnect(PostA->GetStructuralNodeId(), TEXT("Top"), Beam->GetStructuralNodeId(), TEXT("EndA")));
+    TestFalse(TEXT("Post A alone carries the beam"), Player.Tools->DismantlePiece(PostA));
+    TestTrue(TEXT("Beam also on post B"), Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), PostB->GetStructuralNodeId(), TEXT("Top"), TEXT("EndB")));
+    TestTrue(TEXT("Now post A can go"), Player.Tools->DismantlePiece(PostA));
+    FStructuralNodeRecord Node;
+    Graph->GetNode(Beam->GetStructuralNodeId(), Node);
+    TestEqual(TEXT("The beam now rests on post B"), Node.ParentNodeId, PostB->GetStructuralNodeId());
+    TestTrue(TEXT("The beam still stands"), Graph->HasValidSupportPath(Beam->GetStructuralNodeId()));
+    TestFalse(TEXT("Post A is loose"), PostA->IsPlaced());
+    return true;
+}
+
+// Door opening: wall logs are cut around the opening, the cut-outs drop, and
+// a door cannot be opened or locked before it is built from boards.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDoorOpeningTest,
+    "MyProject3.Construction.DoorOpeningCutsWallLogs", TestFlags)
+bool FDoorOpeningTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    TArray<ALogBuildPiece*> Wall;
+    for (int32 Row = 0; Row < 3; ++Row)
+        Wall.Add(SpawnBeam(World, FVector(0, 0, 20 + Row * 40), FRotator::ZeroRotator, 400.0f, 40.0f, true));
+    FPlayerTools Player(World);
+    const int32 Before = CountLogs(World);
+    AConstructionOpeningActor* Opening = nullptr;
+    TestTrue(TEXT("Door opening cut"), Player.Tools->CutOpening(Wall[1], FVector(0, -20, 60),
+        EConstructionOpeningKind::Door, Opening));
+    if (!TestNotNull(TEXT("Opening"), Opening))
+        return false;
+    TestEqual(TEXT("Each wall log became a left part, a right part and an offcut"), CountLogs(World), Before + 6);
+    MyProject3Construction::FLogGeometry Left;
+    MyProject3Construction::GetLogGeometry(Wall[0], Left);
+    TestTrue(FString::Printf(TEXT("Left part ends at the opening (%.1f)"), Left.EndB().X), FMath::IsNearlyEqual(Left.EndB().X, -50.0f, 1.5f));
+    FString Reason;
+    TestFalse(TEXT("No door yet to open"), Opening->ToggleOpen(FVector(0, -200, 100), Reason));
+    TestFalse(TEXT("No door yet to lock"), Opening->ToggleLock(FVector(0, -200, 100), Reason));
+    TestEqual(TEXT("A 1 m door takes four boards"), Opening->GetRequiredBoards(), 4);
+    return true;
+}
+
+// Zipline: a sloped rope carries a log from its top to its bottom, where it is
+// world-owned again.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FZiplineTest,
+    "MyProject3.Construction.ZiplineCarriesLogDownhill", TestFlags)
+bool FZiplineTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ARopeLineActor* Rope = World->SpawnActor<ARopeLineActor>(FVector(500, 0, 300), FRotator::ZeroRotator);
+    ARopeLineActor* Level = World->SpawnActor<ARopeLineActor>(FVector(0, 500, 300), FRotator::ZeroRotator);
+    ALogBuildPiece* Log = SpawnBeam(World, FVector(0, -300, 50), FRotator::ZeroRotator, 200.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Rope"), Rope) || !TestNotNull(TEXT("Log"), Log))
+        return false;
+    Rope->InitializeRope(FVector(0, 0, 600), nullptr, FVector(1500, 0, 100), nullptr);
+    Level->InitializeRope(FVector(0, 500, 300), nullptr, FVector(800, 500, 310), nullptr);
+    TestTrue(TEXT("Sloped rope is a zipline"), Rope->IsZipline());
+    TestFalse(TEXT("Level rope is a bridge rope"), Level->IsZipline());
+    TestTrue(TEXT("Rope is a structural support"), Rope->IsStructurallyPlaced());
+    TestTrue(TEXT("Log sent"), Rope->TrySendAlong(Log));
+    for (int32 Step = 0; Step < 400 && Rope->GetRidingCount() > 0; ++Step)
+        Rope->Tick(0.05f);
+    TestEqual(TEXT("Arrived"), Rope->GetRidingCount(), 0);
+    TestTrue(TEXT("Log is at the lower end"), FVector::Dist2D(Log->GetActorLocation(), FVector(1500, 0, 0)) < 150.0f);
+    EWorldItemOwnerKind Owner = EWorldItemOwnerKind::InTransit;
+    MyProject3Construction::GetPieceOwnerKind(Log, Owner);
+    TestEqual(TEXT("Log is world-owned after the ride"), Owner, EWorldItemOwnerKind::World);
+    return true;
+}
+
+// Building plans and stakes: a plan slot takes a carried log cut to length;
+// standing logs can be sharpened, lying ones cannot.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlanAndStakeTest,
+    "MyProject3.Construction.PlanSlotCutsAndStakesSharpen", TestFlags)
+bool FPlanAndStakeTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    FPlayerTools Player(World);
+    ABuildPlanActor* Plan = Player.Tools->PlacePlan(EBuildPlanKind::LogWall, FVector(0, 300, 0), 0.0f);
+    ALogBuildPiece* Log = SpawnBeam(World, FVector(0, -300, 30), FRotator::ZeroRotator, 600.0f, 36.0f, false);
+    if (!TestNotNull(TEXT("Plan"), Plan) || !TestNotNull(TEXT("Log"), Log))
+        return false;
+    TestEqual(TEXT("A wall plan has five rows"), Plan->GetSlotCount(), 5);
+    FString Reason;
+    TestFalse(TEXT("Upper rows wait for the lower ones"), Plan->CanFillSlot(1, Reason));
+    const int32 Before = CountLogs(World);
+    TestTrue(TEXT("Pick up"), Player.Carry->TryPickupPiece(Log));
+    TestTrue(TEXT("Fill the first row"), Player.Tools->TryFillPlanSlot(Plan, 0));
+    TestTrue(TEXT("Row is built"), Plan->GetSlot(0).bFilled && Log->IsPlaced());
+    MyProject3Construction::FLogGeometry Shape;
+    MyProject3Construction::GetLogGeometry(Log, Shape);
+    TestTrue(FString::Printf(TEXT("Cut to the plan length (%.0f)"), Shape.Length()), FMath::IsNearlyEqual(Shape.Length(), 300.0f, 2.0f));
+    TestEqual(TEXT("The offcut is a new loose log"), CountLogs(World), Before + 1);
+    TestTrue(TEXT("Second row can follow"), Plan->CanFillSlot(1, Reason));
+
+    ALogBuildPiece* Stake = SpawnBeam(World, FVector(600, 0, 150), FRotator(90, 0, 0), 300.0f, 30.0f, true);
+    ALogBuildPiece* Lying = SpawnBeam(World, FVector(900, 0, 20), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    TestTrue(TEXT("Standing log sharpened"), Player.Tools->SharpenLog(Stake));
+    TestNotNull(TEXT("It has a point"), Stake->FindComponentByClass<USharpenedTipComponent>());
+    TestFalse(TEXT("A lying log is not sharpened"), Player.Tools->SharpenLog(Lying));
+    TestFalse(TEXT("Not twice"), Player.Tools->SharpenLog(Stake));
+    return true;
+}
+
+// Shelter: built pieces overhead and around raise weather protection.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FShelterCoverTest,
+    "MyProject3.Construction.RoofAndWallsGiveShelter", TestFlags)
+bool FShelterCoverTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    float Roof = 0.0f, Walls = 0.0f;
+    UShelterSensorComponent::MeasureAt(World, FVector(0, 0, 100), nullptr, Roof, Walls);
+    TestEqual(TEXT("Open sky"), Roof, 0.0f);
+    SpawnBeam(World, FVector(0, 0, 300), FRotator::ZeroRotator, 2000.0f, 2000.0f, true)->SetActorScale3D(FVector(20.0f, 20.0f, 0.2f));
+    UShelterSensorComponent::MeasureAt(World, FVector(0, 0, 100), nullptr, Roof, Walls);
+    TestTrue(FString::Printf(TEXT("Under a roof (%.2f)"), Roof), Roof > 0.8f);
     return true;
 }
 

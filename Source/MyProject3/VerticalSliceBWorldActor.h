@@ -124,6 +124,7 @@ private:
     void BuildStoneYard();
     void BuildConstructionYard(const FLogProcessingMeshSet& Family);
     void BuildFutureZones();
+    void BuildConstructionFeatures(const FLogProcessingMeshSet& Family);
     void BuildFire();
     void TryConnectFooting();
 

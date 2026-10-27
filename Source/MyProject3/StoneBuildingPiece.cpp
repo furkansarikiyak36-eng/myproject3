@@ -549,3 +549,21 @@ void AStoneBuildingPiece::ClearCrossMaterialAttachment()
         Mesh->SetSimulatePhysics(true);
     }
 }
+
+void AStoneBuildingPiece::GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const
+{
+    OutAnchorIds.Reset();
+    for (const FStoneSnapAnchor& Anchor : Anchors)
+        OutAnchorIds.Add(Anchor.AnchorId);
+}
+
+void AStoneBuildingPiece::EnsureAutomaticAnchors()
+{
+    if (!Mesh || !Mesh->GetStaticMesh() || FindAnchorIndex(TEXT("AutoTop")) != INDEX_NONE)
+        return;
+    const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+    const FVector Top = Bounds.Origin + FVector(0.0, 0.0, Bounds.BoxExtent.Z);
+    const FVector Bottom = Bounds.Origin - FVector(0.0, 0.0, Bounds.BoxExtent.Z);
+    AddCustomAnchor(TEXT("AutoTop"), TEXT("Stone"), FTransform(Top), true, false);
+    AddCustomAnchor(TEXT("AutoBottom"), TEXT("Stone"), FTransform(Bottom), false, true);
+}

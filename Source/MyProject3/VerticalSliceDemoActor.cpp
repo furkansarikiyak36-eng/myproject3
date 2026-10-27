@@ -198,12 +198,21 @@ FLogProcessingMeshSet AVerticalSliceDemoActor::BuildLogMeshFamily() const
         FLogLengthCutVariant Cut;
         Cut.Action = Action;
         Cut.SourceLengthFraction = Source;
-        Cut.CrossSectionProfile = ELogCrossSectionProfile::Round;
         Cut.FirstOutputLengthFraction = First;
         Cut.SecondOutputLengthFraction = Second;
         Cut.FirstOutputCenterOffsetLocal = FVector(FirstX, 0.0, 0.0);
         Cut.SecondOutputCenterOffsetLocal = FVector(SecondX, 0.0, 0.0);
-        Family.LengthCutVariants.Add(Cut);
+        // Split and hewn pieces (planks, half and quarter logs...) are cut to
+        // length the same way as round logs; each output needs its own mesh.
+        for (const ELogCrossSectionProfile Profile : { ELogCrossSectionProfile::Round,
+            ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::QuarterRound,
+            ELogCrossSectionProfile::Hewn, ELogCrossSectionProfile::HewnTwoFaces,
+            ELogCrossSectionProfile::SquareBeam, ELogCrossSectionProfile::Plank,
+            ELogCrossSectionProfile::GroovedHalfRound, ELogCrossSectionProfile::Trough })
+        {
+            Cut.CrossSectionProfile = Profile;
+            Family.LengthCutVariants.Add(Cut);
+        }
     };
     AddCut(ELogCutAction::SplitLengthHalf, ELogLengthFraction::FullLength,
         ELogLengthFraction::HalfLength, ELogLengthFraction::HalfLength, -152.0f, 152.0f);
