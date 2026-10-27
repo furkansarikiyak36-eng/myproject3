@@ -32,6 +32,155 @@
 #include "GameFramework/Pawn.h"
 #include "InputCoreTypes.h"
 
+
+namespace
+{
+    struct FResolvedLogSupportPair
+    {
+        FName TargetAnchorId = NAME_None;
+        FName SourceAnchorId = NAME_None;
+        int32 TargetSnapIndex = INDEX_NONE;
+        int32 SourceSnapIndex = INDEX_NONE;
+        FTransform TargetWorldTransform = FTransform::Identity;
+        FTransform SourceWorldTransform = FTransform::Identity;
+        float ContactDistanceCm = TNumericLimits<float>::Max();
+    };
+
+    bool FindCompatibleLogSupportPair(
+        AActor* TargetActor,
+        ALogBuildPiece* SourceLog,
+        const FTransform& SourceActorWorldTransform,
+        FResolvedLogSupportPair& OutPair,
+        int32 ExcludedSourceIndex = INDEX_NONE,
+        float MaxContactDistanceCm = 90.0f)
+    {
+        OutPair = FResolvedLogSupportPair();
+        IStructuralPieceInterface* TargetFeatureOwner = Cast<IStructuralPieceInterface>(TargetActor);
+        const IStructuralPieceInterface* SourceFeatureOwner = Cast<IStructuralPieceInterface>(SourceLog);
+        if (!IsValid(TargetActor) || !IsValid(SourceLog) ||
+            !TargetFeatureOwner || !SourceFeatureOwner || TargetActor == SourceLog ||
+            SourceActorWorldTransform.ContainsNaN())
+        {
+            return false;
+        }
+
+        TArray<FName> TargetAnchorIds;
+        TargetFeatureOwner->GetStructuralAnchorIds(TargetAnchorIds);
+        const TArray<FLogSnapPoint>& SourcePoints = SourceLog->GetSnapPoints();
+        const EStructuralNodeKind TargetKind = TargetFeatureOwner->GetStructuralKind();
+        const EStructuralNodeKind SourceKind = SourceFeatureOwner->GetStructuralKind();
+        UMaterialConnectionSubsystem* MaterialConnections =
+            TargetActor->GetWorld()
+                ? TargetActor->GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+        ALogBuildPiece* TargetLog = Cast<ALogBuildPiece>(TargetActor);
+
+        float BestScore = TNumericLimits<float>::Max();
+        for (const FName TargetAnchorId : TargetAnchorIds)
+        {
+            FStructuralAnchorView TargetView;
+            if (!TargetFeatureOwner->GetStructuralAnchor(TargetAnchorId, TargetView) ||
+                !TargetView.bCanReceive || TargetView.bOccupied)
+            {
+                continue;
+            }
+
+            int32 TargetIndex = INDEX_NONE;
+            if (TargetLog)
+            {
+                for (int32 Index = 0; Index < TargetLog->GetSnapPoints().Num(); ++Index)
+                {
+                    if (TargetLog->GetSnapPoints()[Index].PointId == TargetAnchorId)
+                    {
+                        TargetIndex = Index;
+                        break;
+                    }
+                }
+                if (TargetIndex == INDEX_NONE)
+                    continue;
+            }
+
+            for (int32 SourceIndex = 0; SourceIndex < SourcePoints.Num(); ++SourceIndex)
+            {
+                if (SourceIndex == ExcludedSourceIndex)
+                    continue;
+                const FLogSnapPoint& SourcePoint = SourcePoints[SourceIndex];
+                if (!SourcePoint.bCanSource || SourcePoint.bOccupied)
+                    continue;
+
+                if (TargetKind == SourceKind)
+                {
+                    bool bTagsMatch = TargetView.Tag == SourcePoint.SnapTag;
+                    if (TargetLog && TargetIndex != INDEX_NONE)
+                    {
+                        const FLogSnapPoint& TargetPoint = TargetLog->GetSnapPoints()[TargetIndex];
+                        bTagsMatch = TargetPoint.AcceptsSnapTag(SourcePoint.SnapTag) &&
+                            TargetPoint.AcceptsPieceType(SourceLog->PieceType);
+                    }
+                    if (!bTagsMatch)
+                        continue;
+                }
+                else if (!MaterialConnections ||
+                    !MaterialConnections->FindRule(
+                        TargetKind, TargetView.Tag, SourceKind, SourcePoint.SnapTag))
+                {
+                    // Cross-material support needs an explicit material rule.
+                    continue;
+                }
+
+                const FTransform SourceCenterWorld = SourcePoint.LocalTransform * SourceActorWorldTransform;
+                FTransform TargetWorld = TargetView.LocalTransform * TargetActor->GetActorTransform();
+                if (TargetLog && TargetLog->GetSnapPoints()[TargetIndex].bRuntimeRadialFrame)
+                {
+                    TargetWorld = TargetLog->GetSnapPointWorldTransformForAim(
+                        TargetIndex, SourceCenterWorld.GetLocation());
+                }
+
+                FTransform SourceWorld = SourcePoint.bRuntimeRadialFrame
+                    ? SourceLog->GetSnapPointWorldTransformForAim(
+                        SourceIndex, TargetWorld.GetLocation(), SourceActorWorldTransform)
+                    : SourceCenterWorld;
+
+                if (TargetLog && TargetLog->GetSnapPoints()[TargetIndex].bRuntimeRadialFrame)
+                {
+                    TargetWorld = TargetLog->GetSnapPointWorldTransformForAim(
+                        TargetIndex, SourceWorld.GetLocation());
+                    if (SourcePoint.bRuntimeRadialFrame)
+                    {
+                        SourceWorld = SourceLog->GetSnapPointWorldTransformForAim(
+                            SourceIndex, TargetWorld.GetLocation(), SourceActorWorldTransform);
+                    }
+                }
+
+                const float Distance = FVector::Distance(
+                    SourceWorld.GetLocation(), TargetWorld.GetLocation());
+                if (!FMath::IsFinite(Distance) || Distance > MaxContactDistanceCm)
+                    continue;
+
+                const FVector SourceNormal = SourceWorld.GetUnitAxis(EAxis::X).GetSafeNormal();
+                const FVector TargetNormal = TargetWorld.GetUnitAxis(EAxis::X).GetSafeNormal();
+                const float FacingPenalty = SourceNormal.IsNearlyZero() || TargetNormal.IsNearlyZero()
+                    ? 10.0f
+                    : (1.0f + FVector::DotProduct(SourceNormal, TargetNormal)) * 10.0f;
+                const float Score = Distance + FacingPenalty;
+                if (Score >= BestScore)
+                    continue;
+
+                BestScore = Score;
+                OutPair.TargetAnchorId = TargetAnchorId;
+                OutPair.SourceAnchorId = SourcePoint.PointId;
+                OutPair.TargetSnapIndex = TargetIndex;
+                OutPair.SourceSnapIndex = SourceIndex;
+                OutPair.TargetWorldTransform = TargetWorld;
+                OutPair.SourceWorldTransform = SourceWorld;
+                OutPair.ContactDistanceCm = Distance;
+            }
+        }
+
+        return !OutPair.TargetAnchorId.IsNone() && !OutPair.SourceAnchorId.IsNone();
+    }
+}
+
+
 namespace { FVector LocalAxisVector(ELogLongitudinalAxis Axis); }
 
 ULogCarryComponent::ULogCarryComponent()
@@ -3288,20 +3437,51 @@ bool ULogCarryComponent::CommitHeldLogAt(
         return false;
 
     UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    const IStructuralPieceInterface* Primary = Cast<IStructuralPieceInterface>(PrimarySupport);
-    const IStructuralPieceInterface* Secondary = Cast<IStructuralPieceInterface>(SecondarySupport);
-    const IStructuralPieceInterface* Dependent = Cast<IStructuralPieceInterface>(AdditionalDependent);
+    ALogBuildPiece* PrimaryLog = Cast<ALogBuildPiece>(PrimarySupport);
+    ALogBuildPiece* SecondaryLog = Cast<ALogBuildPiece>(SecondarySupport);
+    ALogBuildPiece* DependentLog = Cast<ALogBuildPiece>(AdditionalDependent);
     const FGuid NodeId = Piece->GetStructuralNodeId();
 
-    // A named support is a hard requirement. Do not silently fall back to free placement.
-    if ((PrimarySupport && (!Graph || !Primary || !Primary->IsStructurallyPlaced())) ||
-        (SecondarySupport && (!Graph || !Secondary || !Secondary->IsStructurallyPlaced())) ||
-        (AdditionalDependent && (!Graph || !Dependent || !Dependent->IsStructurallyPlaced())) ||
+    // Primary placement in this routine is a wood-to-wood physical snap. Mixed
+    // materials use MaterialConnectionSubsystem, which has a distinct rule gate.
+    if ((PrimarySupport && (!Graph || !PrimaryLog || !PrimaryLog->IsStructurallyPlaced())) ||
+        (SecondarySupport && (!Graph || !SecondaryLog || !SecondaryLog->IsStructurallyPlaced())) ||
+        (AdditionalDependent && (!Graph || !DependentLog || !DependentLog->IsStructurallyPlaced())) ||
         (SecondarySupport && (!PrimarySupport || SecondarySupport == PrimarySupport)) ||
         (AdditionalDependent && AdditionalDependent == Piece) ||
         !NodeId.IsValid())
     {
-        PlacementStatus = TEXT("Placement rejected: a required support is invalid or unavailable.");
+        PlacementStatus = TEXT("Placement rejected: a required support or its material adapter is unavailable.");
+        return false;
+    }
+
+    FResolvedLogSupportPair PrimaryPair;
+    FResolvedLogSupportPair SecondaryPair;
+    FResolvedLogSupportPair DependentPair;
+    if (PrimaryLog &&
+        !FindCompatibleLogSupportPair(PrimaryLog, Piece, WorldTransform, PrimaryPair))
+    {
+        PlacementStatus = TEXT("Placement rejected: no compatible, unoccupied primary anchor pair fits this pose.");
+        return false;
+    }
+    if (SecondaryLog &&
+        !FindCompatibleLogSupportPair(SecondaryLog, Piece, WorldTransform, SecondaryPair,
+            PrimaryPair.SourceSnapIndex))
+    {
+        PlacementStatus = TEXT("Placement rejected: no distinct free anchor pair exists for the second support.");
+        return false;
+    }
+    if (DependentLog &&
+        !FindCompatibleLogSupportPair(DependentLog, Piece, WorldTransform, DependentPair,
+            PrimaryPair.SourceSnapIndex))
+    {
+        PlacementStatus = TEXT("Placement rejected: the dependent beam has no free compatible anchor for the brace.");
+        return false;
+    }
+    if (SecondaryLog && DependentLog &&
+        SecondaryPair.SourceSnapIndex == DependentPair.SourceSnapIndex)
+    {
+        PlacementStatus = TEXT("Placement rejected: one source anchor cannot satisfy two distinct structural relationships.");
         return false;
     }
 
@@ -3361,44 +3541,57 @@ bool ULogCarryComponent::CommitHeldLogAt(
     Piece->SetHeldState(false);
     Piece->SetPlacedState(true);
 
-    if (Primary)
+    if (PrimaryLog &&
+        !PrimaryLog->TryReserveSnapPoints(PrimaryPair.TargetSnapIndex, Piece, PrimaryPair.SourceSnapIndex))
     {
-        const FName PrimaryAnchor(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString()));
-        if (!Graph->TryConnect(Primary->GetStructuralNodeId(), PrimaryAnchor, NodeId, TEXT("DeckA")))
-        {
-            Transaction.Rollback();
-            PlacementStatus = TEXT("Placement rejected: the primary support could not be committed.");
-            return false;
-        }
+        Transaction.Rollback();
+        PlacementStatus = TEXT("Placement rejected: the primary anchor reservation failed.");
+        return false;
+    }
 
-        if (!Piece->AttachToActor(PrimarySupport, FAttachmentTransformRules::KeepWorldTransform))
+    if (SecondaryLog)
+    {
+        TWeakObjectPtr<ALogBuildPiece> WeakSupport = SecondaryLog;
+        TWeakObjectPtr<ALogBuildPiece> WeakPiece = Piece;
+        const FName SupportAnchorId = SecondaryPair.TargetAnchorId;
+        const FName OwnAnchorId = SecondaryPair.SourceAnchorId;
+        Transaction.AddUndo([WeakSupport, WeakPiece, SupportAnchorId, OwnAnchorId]()
+        {
+            ALogBuildPiece* StrongSupport = WeakSupport.Get();
+            ALogBuildPiece* StrongPiece = WeakPiece.Get();
+            const bool bA = StrongSupport && StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false);
+            const bool bB = StrongPiece && StrongPiece->SetStructuralAnchorOccupied(OwnAnchorId, false);
+            return bA && bB;
+        });
+        if (!SecondaryLog->SetStructuralAnchorOccupied(SupportAnchorId, true) ||
+            !Piece->SetStructuralAnchorOccupied(OwnAnchorId, true) ||
+            !Graph->TryAddSecondarySupport(NodeId, SecondaryLog->GetStructuralNodeId(),
+                SupportAnchorId, OwnAnchorId))
         {
             Transaction.Rollback();
-            PlacementStatus = TEXT("Placement rejected: the physical attachment failed.");
+            PlacementStatus = TEXT("Placement rejected: the second support failed; all changes were rolled back.");
             return false;
         }
     }
 
-    if (Secondary)
+    if (DependentLog)
     {
-        const FName SecondaryAnchor(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString()));
-        if (!Graph->TryAddSecondarySupport(NodeId, Secondary->GetStructuralNodeId(),
-            SecondaryAnchor, TEXT("DeckB")))
+        TWeakObjectPtr<ALogBuildPiece> WeakSupport = Piece;
+        TWeakObjectPtr<ALogBuildPiece> WeakDependent = DependentLog;
+        const FName SupportAnchorId = DependentPair.SourceAnchorId;
+        const FName DependentAnchorId = DependentPair.TargetAnchorId;
+        Transaction.AddUndo([WeakSupport, WeakDependent, SupportAnchorId, DependentAnchorId]()
         {
-            Transaction.Rollback();
-            PlacementStatus = TEXT("Placement rejected: the secondary support failed; all changes were rolled back.");
-            return false;
-        }
-    }
-
-    // Used by diagonal braces: the new strut is committed to the post, and the
-    // beam's secondary support edge is committed in the very same transaction.
-    if (Dependent)
-    {
-        const FGuid DependentId = Dependent->GetStructuralNodeId();
-        const FName StrutAnchor(*FString::Printf(TEXT("Strut_%s"), *NodeId.ToString()));
-        if (!DependentId.IsValid() ||
-            !Graph->TryAddSecondarySupport(DependentId, NodeId, StrutAnchor, TEXT("StrutTop")))
+            ALogBuildPiece* StrongSupport = WeakSupport.Get();
+            ALogBuildPiece* StrongDependent = WeakDependent.Get();
+            const bool bA = StrongSupport && StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false);
+            const bool bB = StrongDependent && StrongDependent->SetStructuralAnchorOccupied(DependentAnchorId, false);
+            return bA && bB;
+        });
+        if (!Piece->SetStructuralAnchorOccupied(SupportAnchorId, true) ||
+            !DependentLog->SetStructuralAnchorOccupied(DependentAnchorId, true) ||
+            !Graph->TryAddSecondarySupport(DependentLog->GetStructuralNodeId(), NodeId,
+                SupportAnchorId, DependentAnchorId))
         {
             Transaction.Rollback();
             PlacementStatus = TEXT("Placement rejected: the dependent beam could not accept the brace support.");
@@ -3412,7 +3605,6 @@ bool ULogCarryComponent::CommitHeldLogAt(
     bHasPlacementSurface = false;
     ClearSnapCandidate();
     PlacementStatus = TEXT("Placed.");
-    ApplyEndContactSupports(Piece);
     CommitHeldLifts(Piece);
     LiftDroopingEndsOnto(Piece);
     return true;
@@ -3473,9 +3665,11 @@ void ULogCarryComponent::ApplyEndContactSupports(ALogBuildPiece* Piece)
 {
     using namespace MyProject3Construction;
     FLogGeometry Shape;
-    UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    if (!Graph || !GetLogGeometry(Piece, Shape))
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!Graph || !IsValid(Piece) || !GetLogGeometry(Piece, Shape))
         return;
+
     const FGuid NodeId = Piece->GetStructuralNodeId();
     FStructuralNodeRecord Node;
     if (!Graph->GetNode(NodeId, Node))
@@ -3492,44 +3686,46 @@ void ULogCarryComponent::ApplyEndContactSupports(ALogBuildPiece* Piece)
         GetWorld()->OverlapMultiByObjectType(Overlaps, End, FQuat::Identity,
             FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects),
             FCollisionShape::MakeSphere(Shape.Radius + 12.0f), Params);
+
         for (const FOverlapResult& Overlap : Overlaps)
         {
-            AActor* Other = Overlap.GetActor();
-            if (!Other || Seen.Contains(Other))
+            ALogBuildPiece* OtherLog = Cast<ALogBuildPiece>(Overlap.GetActor());
+            if (!IsValid(OtherLog) || OtherLog == Piece || Seen.Contains(OtherLog) || !OtherLog->IsPlaced())
                 continue;
-            Seen.Add(Other);
-            if (AHarvestableTreeActor* Tree = Cast<AHarvestableTreeActor>(Other))
-            {
-                // A standing trunk holds the log like the ground does, until it is felled.
-                if (Tree->CanBeChopped() && !Piece->FindComponentByClass<UTreeAnchorComponent>())
-                {
-                    UTreeAnchorComponent* Anchor = NewObject<UTreeAnchorComponent>(Piece);
-                    Anchor->SetTree(Tree);
-                    Anchor->RegisterComponent();
-                    if (!Node.ParentNodeId.IsValid())
-                        Graph->SetGroundSupported(NodeId, true);
-                    PlacementStatus += TEXT("  Resting on the tree.");
-                }
+            Seen.Add(OtherLog);
+
+            const FGuid OtherId = OtherLog->GetStructuralNodeId();
+            if (!OtherId.IsValid() || OtherId == NodeId)
                 continue;
-            }
-            const IStructuralPieceInterface* OtherPiece = Cast<IStructuralPieceInterface>(Other);
-            if (!OtherPiece || !OtherPiece->IsStructurallyPlaced())
-                continue;
-            const FGuid OtherId = OtherPiece->GetStructuralNodeId();
-            if (OtherId == Node.ParentNodeId)
-                continue;
+
             FVector OtherOrigin, OtherExtent;
-            Other->GetActorBounds(true, OtherOrigin, OtherExtent);
-            const FName Link(*FString::Printf(TEXT("Contact_%s"), *NodeId.ToString()));
-            if (OtherOrigin.Z > End.Z + 5.0f)
+            OtherLog->GetActorBounds(true, OtherOrigin, OtherExtent);
+            const bool bOtherSupportsThis = OtherOrigin.Z <= End.Z + 5.0f && Node.ParentNodeId.IsValid();
+            const bool bThisSupportsOther = OtherOrigin.Z > End.Z + 5.0f;
+            if (!bOtherSupportsThis && !bThisSupportsOther)
+                continue;
+
+            ALogBuildPiece* Child = bThisSupportsOther ? OtherLog : Piece;
+            ALogBuildPiece* Support = bThisSupportsOther ? Piece : OtherLog;
+            FResolvedLogSupportPair Pair;
+            if (!FindCompatibleLogSupportPair(Support, Child, Child->GetActorTransform(), Pair))
+                continue;
+
+            const FName ChildAnchorId = Pair.SourceAnchorId;
+            const FName SupportAnchorId = Pair.TargetAnchorId;
+            if (!Support->SetStructuralAnchorOccupied(SupportAnchorId, true) ||
+                !Child->SetStructuralAnchorOccupied(ChildAnchorId, true))
             {
-                // This end props up the piece above it (a brace or strut).
-                if (Graph->TryAddSecondarySupport(OtherId, NodeId, Link, TEXT("BraceTop")))
-                    PlacementStatus += TEXT("  Bracing the piece above.");
+                Support->SetStructuralAnchorOccupied(SupportAnchorId, false);
+                Child->SetStructuralAnchorOccupied(ChildAnchorId, false);
+                continue;
             }
-            else if (Node.ParentNodeId.IsValid())
+
+            if (!Graph->TryAddSecondarySupport(Child->GetStructuralNodeId(),
+                Support->GetStructuralNodeId(), SupportAnchorId, ChildAnchorId))
             {
-                Graph->TryAddSecondarySupport(NodeId, OtherId, Link, TEXT("EndRest"));
+                Support->SetStructuralAnchorOccupied(SupportAnchorId, false);
+                Child->SetStructuralAnchorOccupied(ChildAnchorId, false);
             }
         }
     }
