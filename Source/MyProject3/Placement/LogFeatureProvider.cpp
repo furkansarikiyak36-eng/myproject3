@@ -78,6 +78,17 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
         {
             Feature.bRadialFree = true;
             Feature.RadiusCm = bHasShape ? Shape.Radius : 0.0f;
+            const ELogCrossSectionProfile Section = Log->GetCrossSectionProfile();
+            if (Section == ELogCrossSectionProfile::Round)
+            {
+                Feature.Tag = TEXT("LogRoundStation");
+                Feature.RadialStepDeg = 0.0f; // A round log accepts the aimed contact direction.
+            }
+            else
+            {
+                Feature.Tag = TEXT("LogSurfaceStation");
+                Feature.RadialStepDeg = 90.0f; // Flat/hewn pieces keep to the four authored side directions.
+            }
         }
         OutFeatures.Add(Feature);
     }
