@@ -110,3 +110,13 @@ The comparisons establish that:
 - [ ] Full M001–M119 line-by-line source audit on the preferred candidate branch.
 - [ ] Diff/compatibility review for public APIs and runtime state ownership.
 - [ ] UE 5.8 build/UHT, editor load, PIE and save/load validation.
+
+
+## 8. Catalogue validation evidence added after initial audit
+
+- GitHub Actions run [40583305901](https://github.com/furkansarikiyak36-eng/myproject3/actions/runs/40583305901), commit `cdaf57753b27898f091a85ced9fac1befb570d9b`, completed successfully on 2026-10-27.
+- The validator reports: 14 JSON Schema Draft 2020-12 schemas pass meta-schema validation; the M001–M119 registry contains 119 unique IDs with valid entries and resolved mechanic dependencies; 45 sample definitions validate; sample IDs are unique within each schema family.
+- The initial failure was a real contract/sample mismatch: the shovel sample listed `Sand` as a tool target while the tool schema did not allow it. The tool/action schemas now list `Sand` and `Gravel`; the soil-excavation shovel sample is narrowed to `Soil`, matching its action family and required `SOIL` tag.
+- This is **catalogue/schema CI only**. It does not validate the full set of external definition references, compile Unreal C++, load Unreal assets, or prove gameplay/PIE/save-load behavior.
+
+The Phase 00 audit remains open until the per-mechanic source/caller review and the target-engine verification gates are completed.
