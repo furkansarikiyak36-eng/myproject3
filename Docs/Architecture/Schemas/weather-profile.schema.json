@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/weather-profile.schema.json",
+  "title": "MyProject3 Weather Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "temperatureBiasC",
+    "windIntensity",
+    "precipitation",
+    "visibilityFactor",
+    "ambientEventIds",
+    "hazardTags"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "temperatureBiasC": {
+      "type": "number"
+    },
+    "windIntensity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "precipitation": {
+      "enum": [
+        "None",
+        "Drizzle",
+        "Rain",
+        "HeavyRain",
+        "Snow",
+        "Sleet",
+        "Ash",
+        "ToxicFallout"
+      ]
+    },
+    "precipitationIntensity": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "visibilityFactor": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "stormRisk": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "lightningRisk": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "ambientEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "hazardTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "travelCostMultiplier": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "exposureRateMultiplier": {
+      "type": "number",
+      "minimum": 0
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
