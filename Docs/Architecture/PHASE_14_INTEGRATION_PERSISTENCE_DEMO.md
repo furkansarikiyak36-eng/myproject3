@@ -1,6 +1,6 @@
 # Phase 14 — Cross-System Integration, Persistence and Demo Coverage
 
-**Status:** Skeleton only; final validation and demo not run  
+**Status (2026-10-28):** Save coordinator and domain snapshots exist in source, with voxel density added in schema v14 on `integration/phase-02-14-closure`; full runtime restoration/119-mechanic demo remains unverified.  
 **Registry gate:** M109 plus integration acceptance for M001–M119  
 **Prerequisites:** All phase source layers and the mechanic registry
 
@@ -10,13 +10,9 @@ Own the final integration contracts, save/load order, source-level consistency a
 
 ## Proposed source boundaries
 
-- `WorldSaveCoordinator`: versioned save/load orchestration and ordered restore.
-- `WorldStateSnapshot`: stable identity/revision and domain payload references.
-- `CrossSystemConsistencyAudit`: documented source-level invariants and report format.
-- `MechanicCoverageManifest`: M001–M119 → prerequisites, test location, setup, action, expected result and cleanup.
-- `DemoScenarioDirector`: deterministic scenario setup only after the mechanics are integrated.
-
-These are proposed design boundaries, not existing source files.
+- `WorldSaveCoordinatorSubsystem` / `WorldSimulationSaveGame`: versioned save/load orchestration and ordered restore exist in source.
+- `FWorldVoxelChunkSnapshot`: new schema-v14 payload stores chunk actor identity, density dimensions/data/revision and bounded-dig receipts.
+- `CrossSystemConsistencyAudit`, full `MechanicCoverageManifest`, and `DemoScenarioDirector` remain proposed/future boundaries or incomplete artifacts; their existence is not implied by the save coordinator.
 
 ## Restore ordering proposal
 
@@ -29,7 +25,7 @@ These are proposed design boundaries, not existing source files.
 7. Player survival/equipment, spoilage timers and exploration discoveries.
 8. Rebuild derived collision/navigation/visual state; validate cross-references before gameplay resumes.
 
-The exact ordering must be refined against actual Unreal serialization and actor lifecycle behavior; this document is not evidence that persistence exists.
+Voxel chunk density is now captured and validated separately from generic actor SaveGame fields. On restore, its mesh/collision is rebuilt after physical actor state and before the structure graph is restored. The current implementation validates that every initialized voxel chunk is already present and has a stable unique identity; it does not recreate missing voxel actors. Ordering, rollback and physics behavior still require UE 5.8 runtime verification.
 
 ## Atomicity and integration gates
 
@@ -52,6 +48,18 @@ For each canonical M-ID, eventually record:
 - evidence status: not planned / planned / source-reviewed / engine-verified.
 
 The demo should test mechanics in useful, intentional locations; avoid clutter and do not force all mechanics into one tiny scene. Multiple focused stations/areas are preferred.
+
+## Current persistence source delta — not engine accepted
+
+- [x] SaveGame schema version raised to 14 with `FWorldVoxelChunkSnapshot`: actor identity, cells-per-axis, voxel size, density revision, density samples and bounded-dig receipts.
+- [x] Save capture refuses initialized voxel chunks without valid unique actor identity or a valid export.
+- [x] Load pre-validates a complete one-to-one snapshot set against initialized chunks in the current level.
+- [x] Restoring density rebuilds the chunk mesh and collision.
+- [x] Legacy schema 13 advances to 14 without synthesizing density; it fails closed if the current level has initialized voxel chunks but the old save lacks their snapshots.
+- [ ] Missing physical actors/chunks are not reconstructed; authored level identity must match the save.
+- [ ] Save/load round-trip and rollback have not been run through Unreal 5.8 / PIE in this session.
+- [ ] Logical terrain cells and physical voxel density are not yet transactionally reconciled.
+- [ ] The M001–M119 demo map and evidence coverage are not complete or accepted.
 
 ## Acceptance gates
 
