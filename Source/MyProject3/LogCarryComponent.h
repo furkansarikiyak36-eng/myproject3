@@ -83,6 +83,11 @@ public:
         meta = (ClampMin = "100.0"))
     float PlacementTraceDistance = 4500.0f;
 
+    /** Radius around the aim point used to gather nearby placed logs as snap candidates. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement",
+        meta = (ClampMin = "25.0", ClampMax = "500.0"))
+    float PlacementCandidateSearchRadiusCm = 180.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement",
         meta = (ClampMin = "50.0"))
     float CarryDistance = 250.0f;
@@ -421,6 +426,8 @@ private:
     bool TraceFromView(float Distance, FHitResult& OutHit) const;
     void UpdateHeldPreview();
     void FindBestSnapCandidate();
+    void GatherContextualSnapCandidates(const FVector& AimPoint, AActor* DirectAimActor,
+        TArray<AActor*>& OutCandidates, ALogBuildPiece*& OutPreferredTarget) const;
     void ClearSnapCandidate();
     void SetSnapCandidate(ALogBuildPiece* Target, int32 SourceIndex,
         int32 TargetIndex, const FTransform& DesiredActorTransform);
