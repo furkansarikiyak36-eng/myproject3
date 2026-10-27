@@ -138,6 +138,14 @@ private:
 
     void SolveSnap(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
         const FPlacementSolution* Previous, FPlacementSolution& InOutBest) const;
+    /**
+     * A body across a top end (profile param crossTop): centred on it on the 45 degree
+     * grid of the structure, or spanning to a second free top at the same height,
+     * centred between the two.
+     */
+    void SolveCrossOnTop(const FPlacementProfile& Profile, const FPlacementIntent& Intent, const FPlacementSolution* Previous,
+        AActor* Target, const FPlacementFeature& TargetFeature, uint32 TargetRevision, const TArray<FPlacementFeature>& Sources,
+        FPlacementSolution& InOutBest) const;
     void SolveAnchor(const FPlacementProfile& Profile, const FPlacementIntent& Intent, FPlacementSolution& InOutBest) const;
     void SolveStack(const FPlacementProfile& Profile, const FPlacementIntent& Intent, FPlacementSolution& InOutBest) const;
     void SolveDeck(const FPlacementProfile& Profile, const FPlacementIntent& Intent, FPlacementSolution& InOutBest) const;

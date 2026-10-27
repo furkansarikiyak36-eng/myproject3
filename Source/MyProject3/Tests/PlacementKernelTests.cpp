@@ -6,6 +6,7 @@
 #include "LogBuildPiece.h"
 #include "LogCarryComponent.h"
 #include "Placement/LogFeatureProvider.h"
+#include "Placement/PlacementBodyMath.h"
 #include "Placement/PlacementFeatureProvider.h"
 #include "Placement/PlacementKernelSubsystem.h"
 #include "Placement/PlacementProfiles.h"
@@ -814,6 +815,138 @@ bool FPlacementContextTest::RunTest(const FString& Parameters)
 
     const FLogContextResult Strut = Ask(PostB, FVector(15, 800, 120), -10.0f);
     TestTrue(FString::Printf(TEXT("Post side under a beam: a strut (%s)"), *Strut.Reason), Strut.Action == ELogContextAction::Strut);
+    return true;
+}
+
+// Diagonals are symmetric: a log across a post top is centred on it on the
+// structure's 45 degree grid, or spans to a second post centred between them; a
+// diagonal on a wall mirrors one already there; corner to corner on a frame; a
+// second strut takes the leg of the one on the other side of the post.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementSymmetryTest, "MyProject3.Placement.DiagonalsAreSymmetric", Flags)
+bool FPlacementSymmetryTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World ? World->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Kernel"), Kernel))
+        return false;
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
+    auto YawOf = [](const FTransform& Transform)
+    {
+        const FVector Axis = Transform.GetUnitAxis(EAxis::X);
+        return FMath::RadiansToDegrees(FMath::Atan2(Axis.Y, Axis.X));
+    };
+    auto SameLine = [](float A, float B) { return PlacementBodyMath::LineYawDistance(A, B) < 0.5f; };
+
+    // 1. A post alone: carried at 50 degrees, the log lies at 45, centred on the top.
+    ALogBuildPiece* Post = SpawnCubeLog(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 600, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Post;
+    Intent.AimPoint = FVector(0, 0, 200);
+    Intent.CarryYawDeg = 50.0f;
+    Intent.AllowedProfiles = { TEXT("log.station_to_end") };
+    const FPlacementSolution Alone = Kernel->Solve(Intent);
+    if (!TestTrue(FString::Printf(TEXT("Across the post (%s)"), *Alone.Reason), Alone.bValid))
+        return false;
+    TestTrue(FString::Printf(TEXT("At 45 degrees (%.1f)"), YawOf(Alone.PieceTransform)), SameLine(YawOf(Alone.PieceTransform), 45.0f));
+    TestTrue(FString::Printf(TEXT("Centred on the top (%s)"), *Alone.PieceTransform.GetLocation().ToString()),
+        Alone.PieceTransform.GetLocation().Equals(FVector(0, 0, 215), 1.0f));
+
+    // 2. A second free post it reaches, near the carry direction: it spans both, centred.
+    ALogBuildPiece* Second = SpawnCubeLog(World, FVector(180, 130, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    Intent.CarryYawDeg = 40.0f;
+    const FPlacementSolution Span = Kernel->Solve(Intent);
+    const float SpanYaw = FMath::RadiansToDegrees(FMath::Atan2(130.0f, 180.0f));
+    TestTrue(FString::Printf(TEXT("Post to post (%.1f, want %.1f)"), YawOf(Span.PieceTransform), SpanYaw),
+        Span.bValid && SameLine(YawOf(Span.PieceTransform), SpanYaw));
+    TestTrue(FString::Printf(TEXT("Centred between them (%s)"), *Span.PieceTransform.GetLocation().ToString()),
+        Span.PieceTransform.GetLocation().Equals(FVector(90, 65, 215), 1.0f));
+    TestTrue(TEXT("It rests on the second post too"), Span.GetTarget(EPlacementLinkRole::Secondary) == Second);
+
+    // 3. Carried away from it: the 45 degree grid now runs from the line between the posts.
+    Intent.CarryYawDeg = 80.0f;
+    const FPlacementSolution OnGrid = Kernel->Solve(Intent);
+    TestTrue(FString::Printf(TEXT("On the structure's grid (%.1f, want %.1f)"), YawOf(OnGrid.PieceTransform), SpanYaw + 45.0f),
+        OnGrid.bValid && SameLine(YawOf(OnGrid.PieceTransform), SpanYaw + 45.0f) && !OnGrid.FindLink(EPlacementLinkRole::Secondary));
+
+    // 4. A wall of 640 cm (stations not symmetric about its centre): a diagonal, then its mirror.
+    ALogBuildPiece* Wall = SpawnCubeLog(World, FVector(0, -1000, 100), FRotator::ZeroRotator, 640.0f, 30.0f, true);
+    ALogBuildPiece* First = SpawnCubeLog(World, FVector(0, -1400, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    FPlacementIntent OnWall;
+    OnWall.Held = First;
+    OnWall.AimActor = Wall;
+    OnWall.AimPoint = FVector(-207.5f, -1000, 115);
+    OnWall.CarryYawDeg = 45.0f;
+    OnWall.AllowedProfiles = { TEXT("log.parallel_stack") };
+    const FPlacementSolution Diagonal = Kernel->Solve(OnWall);
+    if (!TestTrue(FString::Printf(TEXT("A diagonal on the wall (%s)"), *Diagonal.Reason), Diagonal.bValid))
+        return false;
+    TestTrue(FString::Printf(TEXT("At 45 degrees to the wall (%.1f)"), YawOf(Diagonal.PieceTransform)),
+        SameLine(YawOf(Diagonal.PieceTransform), 45.0f));
+    TestTrue(FString::Printf(TEXT("Centred on the station (%s)"), *Diagonal.PieceTransform.GetLocation().ToString()),
+        FVector::Dist2D(Diagonal.PieceTransform.GetLocation(), FVector(-207.5f, -1000, 0)) < 1.0f);
+    FString Reason;
+    TestTrue(FString::Printf(TEXT("First diagonal committed (%s)"), *Reason), Kernel->CommitPlacement(First, Diagonal, Options, Reason));
+    ALogBuildPiece* Mirror = SpawnCubeLog(World, FVector(0, -1500, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    OnWall.Held = Mirror;
+    OnWall.AimPoint = FVector(205.0f, -1000, 115);
+    OnWall.CarryYawDeg = -45.0f;
+    const FPlacementSolution Mirrored = Kernel->Solve(OnWall);
+    TestTrue(FString::Printf(TEXT("The mirror leans the other way (%.1f)"), YawOf(Mirrored.PieceTransform)),
+        Mirrored.bValid && SameLine(YawOf(Mirrored.PieceTransform), -45.0f));
+    TestTrue(FString::Printf(TEXT("Exactly at the mirrored place, off the station grid (%s)"), *Mirrored.PieceTransform.GetLocation().ToString()),
+        FVector::Dist2D(Mirrored.PieceTransform.GetLocation(), FVector(207.5f, -1000, 0)) < 1.0f);
+
+    // 5. A frame of two parallel beams: from an end station, corner to corner.
+    ALogBuildPiece* BeamA = SpawnCubeLog(World, FVector(0, -2000, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* BeamB = SpawnCubeLog(World, FVector(0, -1880, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Brace = SpawnCubeLog(World, FVector(0, -2400, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    FPlacementIntent OnFrame = OnWall;
+    OnFrame.Held = Brace;
+    OnFrame.AimActor = BeamA;
+    OnFrame.AimPoint = FVector(-110.0f, -2000, 115);
+    OnFrame.CarryYawDeg = 35.0f;
+    const FPlacementSolution Corner = Kernel->Solve(OnFrame);
+    const float CornerYaw = FMath::RadiansToDegrees(FMath::Atan2(120.0f, 225.0f));
+    TestTrue(FString::Printf(TEXT("Corner to corner (%.1f, want %.1f; %s)"), YawOf(Corner.PieceTransform), CornerYaw, *Corner.Reason),
+        Corner.bValid && SameLine(YawOf(Corner.PieceTransform), CornerYaw));
+    TestTrue(FString::Printf(TEXT("Centred between the corners (%s)"), *Corner.PieceTransform.GetLocation().ToString()),
+        FVector::Dist2D(Corner.PieceTransform.GetLocation(), FVector(0, -1940, 0)) < 1.0f);
+    TestTrue(TEXT("It rests on the far beam too"), Corner.GetTarget(EPlacementLinkRole::Secondary) == BeamB);
+
+    // 6. Struts: the post is off the beam's station grid, so the two sides differ until one is built.
+    ALogBuildPiece* Column = SpawnCubeLog(World, FVector(0, 3000, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    // The beam rests on the column, its -X end at x -280; built through the kernel so it is in the structure.
+    ALogBuildPiece* Beam = SpawnCubeLog(World, FVector(20, 3000, 215), FRotator::ZeroRotator, 600.0f, 30.0f, false);
+    const FPlacementSolution BeamOnColumn = Kernel->MakeDirectSolution(Beam, Beam->GetActorTransform(),
+        TEXT("log.station_to_end"), Column);
+    TestTrue(FString::Printf(TEXT("Beam built on the column (%s)"), *Reason), Kernel->CommitPlacement(Beam, BeamOnColumn, Options, Reason));
+    ALogBuildPiece* StrutA = SpawnCubeLog(World, FVector(0, 3600, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    ALogBuildPiece* StrutB = SpawnCubeLog(World, FVector(0, 3700, 300), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    FPlacementIntent Brace1;
+    Brace1.Held = StrutA;
+    Brace1.AimActor = Column;
+    Brace1.AimPoint = FVector(15, 3000, 120);
+    Brace1.AllowedProfiles = { TEXT("log.strut") };
+    const FPlacementSolution Right = Kernel->Solve(Brace1);
+    if (!TestTrue(FString::Printf(TEXT("A strut on the +X side (%s)"), *Right.Reason), Right.bValid))
+        return false;
+    TestTrue(FString::Printf(TEXT("It meets the beam station 57.5 cm out (%.1f)"), Right.MarkerPoint.X),
+        FMath::IsNearlyEqual(Right.MarkerPoint.X, 57.5f, 0.5f));
+    FPlacementIntent Brace2 = Brace1;
+    Brace2.Held = StrutB;
+    Brace2.AimPoint = FVector(-15, 3000, 120);
+    const FPlacementSolution LeftAlone = Kernel->Solve(Brace2);
+    TestTrue(FString::Printf(TEXT("Alone, the -X side takes its own station (%.1f)"), LeftAlone.MarkerPoint.X),
+        LeftAlone.bValid && FMath::IsNearlyEqual(LeftAlone.MarkerPoint.X, -92.5f, 0.5f));
+    TestTrue(FString::Printf(TEXT("+X strut committed (%s)"), *Reason), Kernel->CommitPlacement(StrutA, Right, Options, Reason));
+    const FPlacementSolution LeftMirrored = Kernel->Solve(Brace2);
+    TestTrue(FString::Printf(TEXT("With the +X strut built, the -X one mirrors it (%.1f)"), LeftMirrored.MarkerPoint.X),
+        LeftMirrored.bValid && FMath::IsNearlyEqual(LeftMirrored.MarkerPoint.X, -57.5f, 0.5f));
     return true;
 }
 

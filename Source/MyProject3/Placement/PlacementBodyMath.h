@@ -27,15 +27,61 @@ namespace PlacementBodyMath
     MYPROJECT3_API bool SolveStack(const FPlacementBody& Lower, const FPlacementBody& Upper, const FVector& AimPoint,
         float CarryYawDeg, bool bUpright, float ModuleCm, float Interlock, float PostSeat, FPlacementPose& OutPose);
 
+    /** Smallest angle between two undirected horizontal lines, in degrees (0..90). */
+    MYPROJECT3_API float LineYawDistance(float YawA, float YawB);
+
+    /**
+     * A body lying across a top point (a post top), centred on it so it overhangs
+     * equally both ways. Its direction is the carry direction rounded to StepDeg
+     * from ReferenceYawDeg (the line to the nearest neighbour), kept at
+     * PreviousYawDeg within HysteresisDeg. When one of OtherTops lies within
+     * ToleranceDeg of the carry direction and the body reaches it with MinOverhangCm
+     * to spare at each end, it spans both, centred between them (corner to corner).
+     */
+    MYPROJECT3_API bool SolveCrossOnTop(const FVector& Top, const FPlacementBody& Held, float CarryYawDeg,
+        float ReferenceYawDeg, float StepDeg, const float* PreviousYawDeg, float HysteresisDeg,
+        const TArray<FVector>& OtherTops, float MinOverhangCm, float ToleranceDeg,
+        FPlacementPose& OutPose, int32& OutOtherIndex, float& OutYawDeg);
+
+    /** A diagonal already lying across a body: where it crosses (cm from the body centre) and which way it leans (+1 or -1). */
+    struct FDiagonalCrossing
+    {
+        float AlongCm = 0.0f;
+        float Lean = 1.0f;
+    };
+
+    /**
+     * A body lying across a lying body at 45 degrees, centred on the station under
+     * the aim. Mirror of an existing diagonal: leaning the other way near the
+     * mirrored place (about the lower body's centre) it crosses exactly there.
+     * Corner to corner: crossing at an end station, it runs exactly to one of
+     * Corners (crossing points of other bodies, at their centre height) within
+     * ToleranceDeg of the carry direction, centred between the two.
+     */
+    MYPROJECT3_API bool SolveDiagonalStack(const FPlacementBody& Lower, const FPlacementBody& Upper, const FVector& AimPoint,
+        float CarryYawDeg, float ModuleCm, float Interlock, const TArray<FDiagonalCrossing>& Existing,
+        const TArray<FVector>& Corners, float MinOverhangCm, float ToleranceDeg, FPlacementPose& OutPose, int32& OutCornerIndex);
+
+    /** How a diagonal body crosses Lower (false when it does not lie on it at about 45 degrees). */
+    MYPROJECT3_API bool MeasureDiagonal(const FPlacementBody& Lower, const FPlacementBody& Diagonal, FDiagonalCrossing& Out);
+
     /**
      * A strut from the side of a post up to the beam resting on it, on the aimed
      * side. It meets the beam under the beam station nearest LegCm from the post
      * (never the post's own station) and goes as far down the post, at 45 degrees.
-     * ModuleCm 0 uses LegCm as it is.
+     * ModuleCm 0 uses LegCm as it is. With MirrorLegCm (a strut already on the other
+     * side) it uses exactly that leg, so the pair is symmetric about the post.
      */
     MYPROJECT3_API bool SolveStrut(const FPlacementBody& Post, const FPlacementBody& Beam, const FPlacementBody& Strut,
         const FVector& AimPoint, float LegCm, float ModuleCm, float MinLengthCm, FPlacementPose& OutPose, float& OutLength,
-        FVector& OutBeamPoint);
+        FVector& OutBeamPoint, const float* MirrorLegCm = nullptr);
+
+    /**
+     * The leg of a strut already standing between Post and Beam, and its side along
+     * the beam (+1 toward the beam's +axis). False when Strut is no such strut.
+     */
+    MYPROJECT3_API bool MeasureStrut(const FPlacementBody& Post, const FPlacementBody& Beam, const FPlacementBody& Strut,
+        float& OutLegCm, float& OutSide);
 
     /**
      * A board across two parallel supports A and B at the aimed place along A.

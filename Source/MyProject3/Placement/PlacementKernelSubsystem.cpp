@@ -344,6 +344,8 @@ void UPlacementKernelSubsystem::ResolveFreeEnd(const FPlacementProfile& Profile,
     const FPlacementLink* Joint = InOutSolution.GetPrimaryLink();
     FPlacementBody Body;
     FPlacementFeature Source;
+    if (InOutSolution.FindLink(EPlacementLinkRole::Secondary))
+        return; // It already rests on a second support (a span).
     if (!Joint || !GetWorld() || !FPlacementProviderRegistry::GetBody(Intent.Held, Body) ||
         !FPlacementProviderRegistry::FindFeature(Intent.Held, Joint->Source.FeatureId, Source))
         return;
@@ -434,6 +436,13 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
         {
             if (!TargetFeature.bCanReceive || TargetFeature.bOccupied || !Profile.Target.Matches(TargetFamily, TargetFeature))
                 continue;
+            // A top facing up: the held body lies across it, symmetric.
+            if (GetParam(Profile, Intent, TEXT("crossTop"), 0.0f) > 0.5f &&
+                TargetFeature.WorldFrame.GetUnitAxis(EAxis::X).Z > 0.9f)
+            {
+                SolveCrossOnTop(Profile, Intent, Previous, Target, TargetFeature, TargetRevision, Sources, InOutBest);
+                continue;
+            }
             for (const FPlacementFeature& SourceFeature : Sources)
             {
                 if (!TargetProvider->CanLink(Target, TargetFeature, Intent.Held, SourceFeature))
@@ -483,6 +492,112 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
             }
         }
     }
+}
+
+void UPlacementKernelSubsystem::SolveCrossOnTop(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
+    const FPlacementSolution* Previous, AActor* Target, const FPlacementFeature& TargetFeature, uint32 TargetRevision,
+    const TArray<FPlacementFeature>& Sources, FPlacementSolution& InOutBest) const
+{
+    const IPlacementFeatureProvider* HeldProvider = ProviderOf(Intent.Held);
+    const IPlacementFeatureProvider* TargetProvider = ProviderOf(Target);
+    const FVector Top = TargetFeature.WorldFrame.GetLocation();
+    const float Distance = FVector::Distance(Intent.AimPoint, Top);
+    FPlacementBody Held;
+    if (Distance > Profile.SearchRadiusCm || !HeldProvider->GetBody(Intent.Held, Held))
+        return;
+
+    // Other upright tops at this height: the nearest gives the structure's line,
+    // a free one the body reaches can be the far end of a span.
+    const float Level = GetParam(Profile, Intent, TEXT("topLevelCm"), 15.0f);
+    TArray<AActor*> Nearby;
+    GatherPlacedBodies(Top, Held.Length() + 100.0f, Nearby);
+    TArray<FVector> OtherTops;
+    TArray<AActor*> OtherPieces;
+    float ReferenceYaw = 0.0f;
+    float NearestSquared = TNumericLimits<float>::Max();
+    for (AActor* Other : Nearby)
+    {
+        FPlacementBody Body;
+        if (Other == Target || Other == Intent.Held || !IsStructurallyPlaced(Other) ||
+            !FPlacementProviderRegistry::GetBody(Other, Body) || !Body.IsUpright())
+            continue;
+        const FVector OtherTop = Body.Top();
+        FVector Offset = OtherTop - Top;
+        if (FMath::Abs(Offset.Z) > Level)
+            continue;
+        Offset.Z = 0.0f;
+        if (Offset.SizeSquared() < NearestSquared && Offset.SizeSquared() > 1.0f)
+        {
+            NearestSquared = Offset.SizeSquared();
+            ReferenceYaw = FMath::RadiansToDegrees(FMath::Atan2(Offset.Y, Offset.X));
+        }
+        // A top already joined by a piece is taken.
+        TArray<FPlacementFeature> OtherFeatures;
+        if (const IPlacementFeatureProvider* OtherProvider = ProviderOf(Other))
+            OtherProvider->GetFeatures(Other, OtherFeatures);
+        const bool bTaken = OtherFeatures.ContainsByPredicate([&OtherTop](const FPlacementFeature& Feature)
+        {
+            return Feature.bOccupied && FVector::Dist(Feature.WorldFrame.GetLocation(), OtherTop) < 2.0f;
+        });
+        if (!bTaken)
+        {
+            OtherTops.Add(OtherTop);
+            OtherPieces.Add(Other);
+        }
+    }
+
+    const FPlacementLink* PreviousLink = Previous && Previous->bValid ? Previous->GetPrimaryLink() : nullptr;
+    const bool bSameAsPrevious = PreviousLink && Previous->ProfileId == Profile.Id &&
+        PreviousLink->Target.Piece.Get() == Target && PreviousLink->Target.FeatureId == TargetFeature.Id;
+    FPlacementPose Pose;
+    int32 OtherIndex = INDEX_NONE;
+    float Yaw = 0.0f;
+    if (!PlacementBodyMath::SolveCrossOnTop(Top, Held, Intent.CarryYawDeg, ReferenceYaw,
+        GetParam(Profile, Intent, TEXT("angleStepDeg"), 45.0f), bSameAsPrevious ? &Previous->AngleDeg : nullptr,
+        Profile.AngleHysteresisDeg, OtherTops, GetParam(Profile, Intent, TEXT("minOverhangCm"), 20.0f),
+        GetParam(Profile, Intent, TEXT("spanToleranceDeg"), 20.0f), Pose, OtherIndex, Yaw))
+        return;
+    const FTransform PieceTransform = HeldProvider->MakeBodyTransform(Intent.Held, Pose);
+
+    // The joint is booked on the held station nearest the top.
+    const FPlacementFeature* Source = nullptr;
+    float BestSquared = TNumericLimits<float>::Max();
+    for (const FPlacementFeature& Feature : Sources)
+    {
+        if (!Feature.bRadialFree || !TargetProvider->CanLink(Target, TargetFeature, Intent.Held, Feature))
+            continue;
+        const float Squared = FVector::DistSquared((Feature.LocalFrame * PieceTransform).GetLocation(), Top);
+        if (Squared < BestSquared)
+        {
+            BestSquared = Squared;
+            Source = &Feature;
+        }
+    }
+    if (!Source)
+        return;
+
+    FPlacementSolution Candidate;
+    Candidate.bValid = true;
+    Candidate.ProfileId = Profile.Id;
+    Candidate.Score = Distance - Profile.Priority * 0.01f - (bSameAsPrevious ? StickyBonusCm : 0.0f);
+    Candidate.PieceTransform = PieceTransform;
+    Candidate.AngleDeg = Yaw;
+    Candidate.MarkerPoint = Top;
+    FPlacementLink Link;
+    Link.Role = EPlacementLinkRole::Primary;
+    Link.Source.Piece = Intent.Held;
+    Link.Source.FeatureId = Source->Id;
+    Link.Source.Revision = InOutBest.HeldRevision;
+    Link.Target.Piece = Target;
+    Link.Target.FeatureId = TargetFeature.Id;
+    Link.Target.Revision = TargetRevision;
+    Candidate.Links.Add(Link);
+    if (OtherIndex != INDEX_NONE)
+    {
+        Candidate.SpanCm = FVector::Dist2D(Top, OtherTops[OtherIndex]);
+        Candidate.Links.Add(MakeBodyLink(Intent.Held, OtherPieces[OtherIndex], EPlacementLinkRole::Secondary));
+    }
+    Offer(MoveTemp(Candidate), InOutBest);
 }
 
 void UPlacementKernelSubsystem::SolveAnchor(const FPlacementProfile& Profile, const FPlacementIntent& Intent,
@@ -608,9 +723,47 @@ void UPlacementKernelSubsystem::SolveStack(const FPlacementProfile& Profile, con
         return;
     }
     FPlacementPose Pose;
-    if (!PlacementBodyMath::SolveStack(Lower, Upper, Intent.AimPoint, Intent.CarryYawDeg, Intent.bUpright,
-        GetParam(Profile, Intent, TEXT("moduleCm"), 75.0f), GetParam(Profile, Intent, TEXT("interlock"), 0.82f),
-        GetParam(Profile, Intent, TEXT("postSeat"), 0.6f), Pose))
+    const float ModuleCm = GetParam(Profile, Intent, TEXT("moduleCm"), 75.0f);
+    const float Interlock = GetParam(Profile, Intent, TEXT("interlock"), 0.82f);
+    // Carried within diagonalBandDeg of 45 degrees to the lower body: a diagonal.
+    const float Band = GetParam(Profile, Intent, TEXT("diagonalBandDeg"), 0.0f);
+    const float OffAxis = PlacementBodyMath::LineYawDistance(Intent.CarryYawDeg,
+        FMath::RadiansToDegrees(FMath::Atan2(Lower.Axis.Y, Lower.Axis.X)));
+    if (!Intent.bUpright && Band > 0.0f && FMath::Abs(OffAxis - 45.0f) <= Band)
+    {
+        // Diagonals already on it (for the mirror) and corners of the frame around it.
+        TArray<PlacementBodyMath::FDiagonalCrossing> Diagonals;
+        TArray<FVector> Corners;
+        TArray<AActor*> Nearby;
+        GatherPlacedBodies(Lower.Centre, Lower.HalfLength + Upper.Length() + 100.0f, Nearby);
+        for (AActor* Other : Nearby)
+        {
+            FPlacementBody Body;
+            if (Other == Target || Other == Intent.Held || !FPlacementProviderRegistry::GetBody(Other, Body))
+                continue;
+            PlacementBodyMath::FDiagonalCrossing Crossing;
+            if (PlacementBodyMath::MeasureDiagonal(Lower, Body, Crossing))
+            {
+                Diagonals.Add(Crossing);
+                continue;
+            }
+            if (!Body.IsLying() || !IsStructurallyPlaced(Other) ||
+                FMath::Abs(Body.Centre.Z - Lower.Centre.Z) > 2.0f * (Lower.Radius + Body.Radius))
+                continue;
+            // A frame corner sits on a body's end station.
+            const FVector Start = Body.EndA();
+            const FVector Direction = Body.Axis.GetSafeNormal();
+            Corners.Add(Start + Direction * PlacementBodyMath::NearestStation(Body.Length(), ModuleCm, 0.0f));
+            Corners.Add(Start + Direction * PlacementBodyMath::NearestStation(Body.Length(), ModuleCm, Body.Length()));
+        }
+        int32 Corner = INDEX_NONE;
+        if (!PlacementBodyMath::SolveDiagonalStack(Lower, Upper, Intent.AimPoint, Intent.CarryYawDeg, ModuleCm, Interlock,
+            Diagonals, Corners, GetParam(Profile, Intent, TEXT("minOverhangCm"), 20.0f),
+            GetParam(Profile, Intent, TEXT("cornerToleranceDeg"), 20.0f), Pose, Corner))
+            return;
+    }
+    else if (!PlacementBodyMath::SolveStack(Lower, Upper, Intent.AimPoint, Intent.CarryYawDeg, Intent.bUpright,
+        ModuleCm, Interlock, GetParam(Profile, Intent, TEXT("postSeat"), 0.6f), Pose))
         return;
     // A wall stands at most maxRows logs high (Sons of the Forest: six).
     const int32 MaxRows = FMath::RoundToInt(GetParam(Profile, Intent, TEXT("maxRows"), 6.0f));
@@ -898,11 +1051,30 @@ void UPlacementKernelSubsystem::SolveStrut(const FPlacementProfile& Profile, con
     FPlacementProviderRegistry::GetBody(Beam, BeamBody);
     if (!HeldProvider->GetBody(Intent.Held, Strut))
         return;
+    // A strut already on the other side of the post under this beam: the same leg, mirrored.
+    const float WantedSide = FMath::Sign(FVector::DotProduct(Intent.AimPoint - PostBody.Top(), BeamBody.Axis.GetSafeNormal()));
+    float MirrorLeg = 0.0f;
+    bool bMirror = false;
+    TArray<AActor*> Nearby;
+    GatherPlacedBodies(PostBody.Top(), BeamBody.HalfLength + 100.0f, Nearby);
+    for (AActor* Other : Nearby)
+    {
+        FPlacementBody Body;
+        float Leg = 0.0f, Side = 0.0f;
+        if (Other != Post && Other != Beam && Other != Intent.Held && FPlacementProviderRegistry::GetBody(Other, Body) &&
+            PlacementBodyMath::MeasureStrut(PostBody, BeamBody, Body, Leg, Side) && Side * WantedSide < 0.0f)
+        {
+            MirrorLeg = Leg;
+            bMirror = true;
+            break;
+        }
+    }
     FPlacementPose Pose;
     float Length = 0.0f;
     FVector BeamPoint;
     if (!PlacementBodyMath::SolveStrut(PostBody, BeamBody, Strut, Intent.AimPoint, GetParam(Profile, Intent, TEXT("legCm"), 75.0f),
-        GetParam(Profile, Intent, TEXT("moduleCm"), 75.0f), GetParam(Profile, Intent, TEXT("minLengthCm"), 40.0f), Pose, Length, BeamPoint))
+        GetParam(Profile, Intent, TEXT("moduleCm"), 75.0f), GetParam(Profile, Intent, TEXT("minLengthCm"), 40.0f), Pose, Length, BeamPoint,
+        bMirror ? &MirrorLeg : nullptr))
         return;
     Candidate.bValid = true;
     Candidate.ProfileId = Profile.Id;

@@ -1,5 +1,7 @@
 #include "Placement/PlacementBodyMath.h"
 
+#include "Placement/PlacementSolvers.h"
+
 namespace PlacementBodyMath
 {
     float NearestStation(float LengthCm, float ModuleCm, float Along)
@@ -65,9 +67,198 @@ namespace PlacementBodyMath
         return true;
     }
 
+    float LineYawDistance(float YawA, float YawB)
+    {
+        const float Direct = PlacementMath::AngleDistance(YawA, YawB);
+        return FMath::Min(Direct, 180.0f - Direct);
+    }
+
+    namespace
+    {
+        float YawOf(const FVector& Direction) { return FMath::RadiansToDegrees(FMath::Atan2(Direction.Y, Direction.X)); }
+
+        /** The horizontal line at Yaw, turned to face the carry direction (a body has no front). */
+        FVector LineToward(float YawDeg, float CarryYawDeg)
+        {
+            const FVector Line = FRotator(0.0f, YawDeg, 0.0f).Vector();
+            return FVector::DotProduct(Line, FRotator(0.0f, CarryYawDeg, 0.0f).Vector()) < 0.0f ? -Line : Line;
+        }
+    }
+
+    bool SolveCrossOnTop(const FVector& Top, const FPlacementBody& Held, float CarryYawDeg,
+        float ReferenceYawDeg, float StepDeg, const float* PreviousYawDeg, float HysteresisDeg,
+        const TArray<FVector>& OtherTops, float MinOverhangCm, float ToleranceDeg,
+        FPlacementPose& OutPose, int32& OutOtherIndex, float& OutYawDeg)
+    {
+        OutOtherIndex = INDEX_NONE;
+        FVector Centre = Top;
+        float Yaw = 0.0f;
+        // A second top the body reaches, near the carry direction: span both, centred.
+        float BestError = ToleranceDeg;
+        for (int32 Index = 0; Index < OtherTops.Num(); ++Index)
+        {
+            FVector Delta = OtherTops[Index] - Top;
+            Delta.Z = 0.0f;
+            const float Span = Delta.Size();
+            if (Span < 2.0f * Held.Radius || Span > Held.Length() - 2.0f * MinOverhangCm)
+                continue;
+            const float Error = LineYawDistance(YawOf(Delta), CarryYawDeg);
+            if (Error < BestError)
+            {
+                BestError = Error;
+                OutOtherIndex = Index;
+                Yaw = YawOf(Delta);
+            }
+        }
+        if (OutOtherIndex != INDEX_NONE)
+        {
+            Centre = 0.5f * (Top + OtherTops[OutOtherIndex]);
+            Centre.Z = FMath::Max(Top.Z, OtherTops[OutOtherIndex].Z);
+        }
+        else
+        {
+            // Alone: on the angle grid of the structure, centred on the top.
+            const float Step = FMath::Clamp(StepDeg, 1.0f, 90.0f);
+            const int32 Count = FMath::Max(1, FMath::RoundToInt(180.0f / Step));
+            float Best = ReferenceYawDeg;
+            float BestDistance = LineYawDistance(CarryYawDeg, Best);
+            for (int32 Index = 1; Index < Count; ++Index)
+            {
+                const float Candidate = ReferenceYawDeg + Index * Step;
+                const float Distance = LineYawDistance(CarryYawDeg, Candidate);
+                if (Distance < BestDistance)
+                {
+                    Best = Candidate;
+                    BestDistance = Distance;
+                }
+            }
+            if (PreviousYawDeg)
+            {
+                const float Rounded = ReferenceYawDeg + FMath::RoundToFloat((*PreviousYawDeg - ReferenceYawDeg) / Step) * Step;
+                if (LineYawDistance(Rounded, *PreviousYawDeg) < 0.5f &&
+                    LineYawDistance(CarryYawDeg, *PreviousYawDeg) <= BestDistance + HysteresisDeg)
+                    Best = *PreviousYawDeg;
+            }
+            Yaw = Best;
+        }
+        const FVector Axis = LineToward(Yaw, CarryYawDeg);
+        OutYawDeg = YawOf(Axis);
+        OutPose.Centre = Centre + FVector::UpVector * Held.Radius;
+        OutPose.Axis = Axis;
+        OutPose.Up = FVector::UpVector;
+        return !OutPose.Centre.ContainsNaN();
+    }
+
+    bool MeasureDiagonal(const FPlacementBody& Lower, const FPlacementBody& Diagonal, FDiagonalCrossing& Out)
+    {
+        const FVector Along = Lower.Axis.GetSafeNormal2D();
+        const FVector Line = Diagonal.Axis.GetSafeNormal2D();
+        if (Along.IsNearlyZero() || Line.IsNearlyZero() || !Diagonal.IsLying())
+            return false;
+        const float Cosine = FMath::Abs(FVector::DotProduct(Along, Line));
+        if (Cosine < 0.5f || Cosine > 0.866f)
+            return false; // Not near 45 degrees.
+        FVector OnLower, OnDiagonal;
+        FMath::SegmentDistToSegmentSafe(Lower.EndA(), Lower.EndB(), Diagonal.EndA(), Diagonal.EndB(), OnLower, OnDiagonal);
+        if (FVector::Dist(OnLower, OnDiagonal) > Lower.Radius + Diagonal.Radius + 2.0f || OnDiagonal.Z < OnLower.Z)
+            return false;
+        const FVector Across = FVector::CrossProduct(FVector::UpVector, Along);
+        Out.AlongCm = FVector::DotProduct(OnLower - Lower.Centre, Along);
+        Out.Lean = FMath::Sign(FVector::DotProduct(Line, Along)) * FMath::Sign(FVector::DotProduct(Line, Across));
+        return true;
+    }
+
+    bool SolveDiagonalStack(const FPlacementBody& Lower, const FPlacementBody& Upper, const FVector& AimPoint,
+        float CarryYawDeg, float ModuleCm, float Interlock, const TArray<FDiagonalCrossing>& Existing,
+        const TArray<FVector>& Corners, float MinOverhangCm, float ToleranceDeg, FPlacementPose& OutPose, int32& OutCornerIndex)
+    {
+        OutCornerIndex = INDEX_NONE;
+        const FVector Along = Lower.Axis.GetSafeNormal2D();
+        if (Along.IsNearlyZero() || ModuleCm <= 1.0f)
+            return false;
+        const FVector Across = FVector::CrossProduct(FVector::UpVector, Along);
+        const FVector Want = FRotator(0.0f, CarryYawDeg, 0.0f).Vector();
+        const float SignAlong = FVector::DotProduct(Want, Along) < 0.0f ? -1.0f : 1.0f;
+        const float SignAcross = FVector::DotProduct(Want, Across) < 0.0f ? -1.0f : 1.0f;
+        const float Lean = SignAlong * SignAcross;
+        // The station under the aim, measured from the lower body's centre.
+        const float StartA = -Lower.HalfLength;
+        const float AimAlong = FVector::DotProduct(AimPoint - Lower.Centre, Along);
+        float CrossAlong = StartA + NearestStation(Lower.Length(), ModuleCm, AimAlong - StartA);
+        // Mirror of a diagonal leaning the other way: exactly at the mirrored place.
+        for (const FDiagonalCrossing& Other : Existing)
+        {
+            if (Other.Lean * Lean < 0.0f && FMath::Abs(AimAlong + Other.AlongCm) <= 0.5f * ModuleCm + 1.0f)
+            {
+                CrossAlong = -Other.AlongCm;
+                break;
+            }
+        }
+        const FVector Crossing = Lower.Centre + Along * CrossAlong;
+        FVector Axis = (Along * SignAlong + Across * SignAcross).GetSafeNormal();
+        FVector Centre = Crossing;
+        float Z = Lower.Centre.Z;
+
+        // From an end station to a corner the body reaches: exactly corner to corner.
+        const float FirstStation = StartA + NearestStation(Lower.Length(), ModuleCm, 0.0f);
+        const float LastStation = StartA + NearestStation(Lower.Length(), ModuleCm, Lower.Length());
+        if (FMath::IsNearlyEqual(CrossAlong, FirstStation, 1.0f) || FMath::IsNearlyEqual(CrossAlong, LastStation, 1.0f))
+        {
+            float BestError = ToleranceDeg;
+            for (int32 Index = 0; Index < Corners.Num(); ++Index)
+            {
+                FVector Delta = Corners[Index] - Crossing;
+                Delta.Z = 0.0f;
+                const float Span = Delta.Size();
+                if (Span < ModuleCm || Span > Upper.Length() - 2.0f * MinOverhangCm)
+                    continue;
+                const float Error = LineYawDistance(YawOf(Delta), CarryYawDeg);
+                if (Error < BestError)
+                {
+                    BestError = Error;
+                    OutCornerIndex = Index;
+                }
+            }
+            if (OutCornerIndex != INDEX_NONE)
+            {
+                const FVector Corner = Corners[OutCornerIndex];
+                Axis = (Corner - Crossing).GetSafeNormal2D();
+                Centre = 0.5f * (Crossing + Corner);
+                Z = FMath::Max(Z, Corner.Z);
+            }
+        }
+        OutPose.Centre = Centre;
+        OutPose.Centre.Z = Z + (Lower.Radius + Upper.Radius) * Interlock;
+        OutPose.Axis = Axis;
+        OutPose.Up = FVector::UpVector;
+        return !OutPose.Centre.ContainsNaN();
+    }
+
+    bool MeasureStrut(const FPlacementBody& Post, const FPlacementBody& Beam, const FPlacementBody& Strut,
+        float& OutLegCm, float& OutSide)
+    {
+        const FVector Axis = Strut.Axis.GetSafeNormal();
+        if (FMath::Abs(Axis.Z) < 0.3f || FMath::Abs(Axis.Z) > 0.95f)
+            return false; // Not leaning.
+        const FVector Top = Post.Top();
+        const FVector BeamAxis = Beam.Axis.GetSafeNormal();
+        const FVector OnBeam = FMath::ClosestPointOnSegment(Top, Beam.EndA(), Beam.EndB());
+        // Where its line reaches the height SolveStrut meets the beam at.
+        const float MeetZ = OnBeam.Z - Beam.Radius - Strut.Radius * 0.5f;
+        const FVector High = Strut.Centre + Axis * ((MeetZ - Strut.Centre.Z) / Axis.Z);
+        const FVector Offset = High - OnBeam;
+        const float Along = FVector::DotProduct(Offset, BeamAxis);
+        if ((Offset - BeamAxis * Along).Size2D() > Beam.Radius + Strut.Radius ||
+            FVector::Dist2D(Strut.Centre, Top) > FMath::Abs(Along) + Post.Radius + Strut.Radius)
+            return false;
+        OutLegCm = FMath::Abs(Along);
+        OutSide = FMath::Sign(Along);
+        return OutLegCm > 1.0f;
+    }
+
     bool SolveStrut(const FPlacementBody& Post, const FPlacementBody& Beam, const FPlacementBody& Strut,
         const FVector& AimPoint, float LegCm, float ModuleCm, float MinLengthCm, FPlacementPose& OutPose, float& OutLength,
-        FVector& OutBeamPoint)
+        FVector& OutBeamPoint, const float* MirrorLegCm)
     {
         const FVector Top = Post.Top();
         FVector Along = Beam.Axis;
@@ -82,8 +273,9 @@ namespace PlacementBodyMath
         const float PostFromStart = FVector::DotProduct(OnBeam - Beam.EndA(), BeamAxis);
         const float Direction = FVector::DotProduct(Along, BeamAxis) > 0.0f ? 1.0f : -1.0f;
         // Where the strut meets the beam: on the beam station nearest one leg out.
-        float MeetFromStart = PostFromStart + Direction * LegCm;
-        if (ModuleCm > KINDA_SMALL_NUMBER)
+        // A strut already on the other side: exactly its leg, for a symmetric pair.
+        float MeetFromStart = PostFromStart + Direction * (MirrorLegCm ? *MirrorLegCm : LegCm);
+        if (ModuleCm > KINDA_SMALL_NUMBER && !MirrorLegCm)
         {
             MeetFromStart = NearestStation(Beam.Length(), ModuleCm, MeetFromStart);
             if (FMath::Abs(MeetFromStart - PostFromStart) < 0.5f * ModuleCm)
