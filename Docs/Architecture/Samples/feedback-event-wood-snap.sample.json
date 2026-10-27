@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "SFX_WOOD_SNAP",
+  "eventType": "SFX",
+  "triggerId": "CONSTRUCTION_ATTACHED",
+  "spatialization": "World3D",
+  "priority": 65,
+  "concurrencyGroup": "WOOD_CONSTRUCTION",
+  "maxConcurrentInstances": 5,
+  "mixBus": "ToolsAndConstruction",
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "AudioAndVisual",
+  "mustNotMaskThreatAudio": true,
+  "notes": "Logical cue only; no audio file authored."
+}
