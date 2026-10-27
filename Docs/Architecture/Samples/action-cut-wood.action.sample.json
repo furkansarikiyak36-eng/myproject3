@@ -37,8 +37,11 @@
   "noiseLevel": 0.35,
   "lightLevel": 0,
   "feedbackEventIds": [
-    "SFX_WOOD_SPLIT",
+    "SFX_WOOD_CUT",
     "VFX_WOOD_CHIP"
   ],
-  "notes": "Shared action ID; actual cut geometry and hit-location rules remain owned by the wood domain."
+  "notes": "Shared action ID; commits the configured process transition only after cut-through, and must keep cross-cut half-length geometry distinct from longitudinal split-half state.",
+  "processTransitionIds": [
+    "PROC_LOG_CUT_HALF"
+  ]
 }
