@@ -25,7 +25,7 @@ Do not merge Phase 01–06 and Phase H individually into feature/simple-intent; 
 - Inspect main README, core log source entry points, build scripts, config and tracked content.
 - Compare phase-01-foundation-v2, phase-02-core-contracts through phase-06-inventory-crafting, mechanic-detailing-pass-h, and feature/simple-intent.
 - Preserve the canonical M001–M119 IDs. Create a separate baseline matrix that does not overwrite the registry's own verification fields.
-- Record the registry discrepancies: phase-01-v2 uses unreviewed/not_run; the latest feature/simple-intent version uses implemented_unverified, static_review=fail, UnrealBuild=pass and runtime_test=not_run for all 119; the JSON phase field is 1 for all entries.
+- Record the registry discrepancy precisely: the latest registry snapshot contains 90 `implemented_unverified` and 29 `unreviewed` records; all 119 have `static_review=fail` and `runtime_test=not_run`; 90 list `unreal_build=pass` while 29 list `not_run`. The build evidence cited in those rows is a build on `integration/canonical-log-model` (2026-10-26), not proof that the current `feature/simple-intent` HEAD compiles. Here `static_review=fail` means the mechanic's end-to-end acceptance criterion is not met by available evidence; it is not a compiler-error status. The older phase-01-v2 registry uses `unreviewed/not_run`; preserve this discrepancy instead of overwriting one registry's evidence fields. The JSON phase field remains 1 for all entries and is not the later implementation-phase assignment.
 - Separate branch history, source presence, static review, automated tests, Unreal build, PIE behavior and save/load evidence.
 - Keep this GDD branch documentation-only.
 
