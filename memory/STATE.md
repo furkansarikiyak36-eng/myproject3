@@ -43,3 +43,10 @@ developer; replies in Turkish. Main test level: /Game/DemoAssets/Maps/VerticalSl
 - The candidate registry JSON gives phase=1 to every entry; the Phase 01–14 plan uses a separate provisional mapping in Docs/Architecture/PHASE_00_M001_M119_BASELINE.csv.
 - Added GAMEPLAY_DEFINITION_CATALOG_SCHEMA.json, FEEDBACK_EVENT_CATALOG_SCHEMA.json, and WOOD_PROCESSING_TRANSITIONS.json. GitHub Actions run 40583305901 passed catalogue validation on 2026-10-27: 14 JSON schemas, 119 unique mechanic IDs/dependencies, and 45 sample records. Full cross-reference validation and Unreal runtime loading/behavior remain unverified.
 - Phase 00 audit, branch topology, Phase 01 contracts, plan alignment and GDD index are updated. UE 5.8 build/UHT, PIE, save/load and the per-mechanic code audit remain open.
+
+## Targeted source review follow-up (2026-10-27)
+
+- Targeted Phase 01 API review on `feature/simple-intent`: `WorldSimulationSaveGame::CurrentSchemaVersion` is 13, not 2. SaveCoordinator captures physical actor snapshots and graph/ownership/inventory/logical-terrain state, but restore expects matching actors already in the loaded world; held-item saves fail closed.
+- Terrain integration gap confirmed in source: `WorldTerrainStateSubsystem` snapshots logical cell records, while `VoxelTerrainChunkComponent` owns density edits and mesh/collision rebuild without a direct adapter in the inspected files. Terrain operation receipts are transient and cleared on cell snapshot restore.
+- Generic `WorldOperationLedgerSubsystem::TryBeginOperation/CompleteOperation` is not called by the inspected domain operation paths; domain-specific ownership/split receipts exist. Some actor transfer helpers create operation GUIDs internally, limiting caller-controlled retry identity. These are open design/code-review tasks, not runtime findings.
+- Catalogue CI is green, but Phase 00/01 remains open for full M001–M119 call-chain mapping, candidate public API/Blueprint compatibility review, full cross-reference validation, UE 5.8 build/UHT/PIE, and save/load.
