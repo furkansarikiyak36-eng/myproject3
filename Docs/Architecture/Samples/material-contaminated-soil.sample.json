@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_CONTAMINATED_SOIL",
+  "displayNameKey": "material.contaminated_soil",
+  "family": "Soil",
+  "hardnessClass": "Soft",
+  "hardnessValue": 0.2,
+  "densityKgPerM3": 1350,
+  "diggable": true,
+  "permittedDepthLayers": [
+    0,
+    1,
+    2
+  ],
+  "requiredToolTags": [
+    "TOOL_SHOVEL"
+  ],
+  "yieldItemDefinitionIds": [
+    "ITEM_SOIL_CONTAMINATED"
+  ],
+  "processingTransitionIds": [],
+  "surfaceSfxEventIds": [],
+  "terrainTags": [
+    "SOIL",
+    "CONTAMINATED"
+  ],
+  "contaminationModelId": "CONTAMINATION_TOXIC",
+  "notes": "Example material sample; actual exposure and terrain adapter behavior are separate."
+}
