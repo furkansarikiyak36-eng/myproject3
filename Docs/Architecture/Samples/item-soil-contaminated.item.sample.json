@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_SOIL_CONTAMINATED",
+  "displayNameKey": "item.soil_contaminated",
+  "inventoryCategory": "Resource",
+  "family": "Soil",
+  "representation": "StackablePickup",
+  "unitMassKg": 1,
+  "unitVolumeLiters": 1,
+  "maxStack": 50,
+  "requiresUniqueInstance": false,
+  "durability": {
+    "model": "None"
+  },
+  "stateModel": "ContaminationState",
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Store",
+    "Process"
+  ],
+  "tags": [
+    "SOIL",
+    "CONTAMINATED"
+  ],
+  "persistencePolicy": "SaveWhenOwned",
+  "notes": "Example material sample only; voxel excavation yields need a bounded runtime adapter."
+}
