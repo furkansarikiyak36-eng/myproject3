@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "REG_TOXIC_FOREST_EDGE",
+  "displayNameKey": "region.toxic_forest_edge",
+  "tags": [
+    "FOREST",
+    "TOXIC"
+  ],
+  "initialConditions": {
+    "contamination": 0.9,
+    "soilQuality": 0.1,
+    "waterQuality": 0.1,
+    "vegetationStage": "Lifeless",
+    "threatPressure": 0.4,
+    "temperatureBiasC": -2
+  },
+  "sourceDefinitionIds": [
+    "SRC_TREE_FALLEN",
+    "SRC_SOIL_CONTAMINATED"
+  ],
+  "ambientEventIds": [
+    "AMB_TOXIC_FOREST"
+  ],
+  "weatherProfileId": "WTH_TOXIC_COLD",
+  "restorationMilestones": [
+    {
+      "id": "MILESTONE_LOCAL_SOIL_RECOVERED",
+      "requiredCondition": {
+        "soilQuality": 0.6,
+        "contamination": 0.3
+      },
+      "effects": [
+        {
+          "effectType": "UnlockResource",
+          "targetId": "SRC_SEEDLING"
+        },
+        {
+          "effectType": "ChangeAmbient",
+          "targetId": "AMB_FOREST_RECOVERING"
+        }
+      ]
+    }
+  ],
+  "notes": "Example for a region-level state; not a finalized region map."
+}
