@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_TOPSOIL",
+  "displayNameKey": "material.topsoil",
+  "family": "Soil",
+  "hardnessClass": "Soft",
+  "hardnessValue": 0.15,
+  "densityKgPerM3": 1250,
+  "diggable": true,
+  "permittedDepthLayers": [
+    0
+  ],
+  "requiredToolTags": [
+    "TOOL_SHOVEL"
+  ],
+  "terrainTags": [
+    "ORGANIC",
+    "TOPSOIL"
+  ],
+  "notes": "Example material fixture for the VXL-02 forest profile; depth policy remains owned by the stratum profile."
+}
