@@ -7,6 +7,7 @@
 - Repository: furkansarikiyak36-eng/myproject3
 - Candidate source baseline: feature/simple-intent
 - New implementation branch: feature/voxel-terrain-policy-spike, created from the latest inspected feature/simple-intent head.
+- The task packet, GDD and new stratum schema/sample live on planning/gdd-inventory-production-roadmap, not on feature/simple-intent. Read those files from that documentation branch or ask the user to paste them. Do not merge the documentation branch wholesale into the implementation branch.
 - Do not edit main or the documentation branch.
 - Before editing, state the actual base SHA and inspect the current versions of every referenced file. If the branch/file is different, stop and report the mismatch before guessing.
 
