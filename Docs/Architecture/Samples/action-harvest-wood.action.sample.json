@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_HARVEST_WOOD",
+  "displayNameKey": "action.harvest_wood",
+  "ownerSystem": "RESOURCE_SOURCE",
+  "targetKinds": [
+    "ResourceSource"
+  ],
+  "targetFamilies": [
+    "Wood"
+  ],
+  "sourceDefinitionIds": [
+    "SRC_TREE_FALLEN"
+  ],
+  "requiredToolDefinitionIds": [
+    "TOOL_AXE_BASIC"
+  ],
+  "outputItemDefinitionIds": [
+    "ITEM_LOG_WHOLE_600"
+  ],
+  "operationMode": "HitProgress",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "OBJECT_PROCESSED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "MissingTool",
+    "InvalidState",
+    "PrerequisiteNotMet",
+    "MissingConfiguration",
+    "InsufficientResources",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresLooseTarget": false,
+  "maximumRangeCm": 220,
+  "progressResumePolicy": "KeepProgress",
+  "noiseLevel": 0.4,
+  "lightLevel": 0,
+  "feedbackEventIds": [
+    "SFX_WOOD_SPLIT"
+  ],
+  "notes": "Target contract for a future/validated tree-felling actor; the registry entry does not prove a tree-felling runtime owner exists."
+}
