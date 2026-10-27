@@ -173,7 +173,7 @@ struct FPlacementIntent
     float CarryYawDeg = 0.0f;
     /** The player holds the piece upright (post mode). */
     bool bUpright = false;
-    /** Pieces to consider; empty means AimActor only. */
+    /** Contextually gathered placed targets near the aim; empty means AimActor only. */
     TArray<AActor*> Candidates;
     /** The one placing (the player pawn, the helper); never a support or an obstacle. */
     AActor* Placer = nullptr;
