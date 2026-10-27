@@ -6,6 +6,8 @@
 #include "LogBuildPiece.h"
 #include "LogCarryComponent.h"
 #include "LogContainerActor.h"
+#include "StickPrimitivePiece.h"
+#include "HarvestableTreeActor.h"
 #include "RopeLineActor.h"
 #include "StructuralPieceInterface.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -40,11 +42,20 @@ FString ULogBuildToolsComponent::GetHelpText()
     return TEXT(
         "E pick up / place / use      G drop      Q throw      R rotate      RMB placement mode\n"
         "  modes: Horizontal, Vertical, Diagonal (45), Floor (floors, roofs, bridges, ramps), Stairs\n"
-        "C choose cut   F cut aimed log   V push/roll   B drag\n"
-        "X sharpen standing log   K door / gate opening   P window opening   L lock door (inside)\n"
+        "C choose cut (length cut: look along the log for 1/2, 3/4 or 1/4)   F mark the cut, F again to cut\n"
+        "V push/roll   B drag\n"
+        "  red dashes: where it will be cut   white dashes: where the carried log will lie, arrow: the joint\n"
+        "LMB on a log with the axe: mark a cut, LMB again to cut; on the top of a standing log: sharpen; on a damaged piece: repair\n"
+        "X sharpen standing log   K door / gate opening   P window opening\n"
+        "Lock a door: carry a stick, E on the closed door from the inside; L takes the bar off\n"
+        "Diagonal mode, aim at a post with a beam on it: a strut (payanda); struts let middle posts be removed\n"
         "Delete remove a support   H tie rope (twice; sloped rope = zipline)\n"
         "Z choose building plan   Y place / remove plan   T pull or release sled\n"
         "Carrying a log: E on storage/sled stores it, on a fire burns it, on a zipline top sends it\n"
+        "U carrying a log, aim at a sloped beam: fill the gable (one-sided apex) under it, row by row\n"
+        "Carrying a log, E on another loose log puts it on your shoulder (two logs at once)\n"
+        "Defensive wall plan: Y at the start, Y at the end of the line\n"
+        "J helper: follow / collect logs into storage / bring logs here / finish the nearest plan / sharpen and repair walls / stay\n"
         "F1 hide this help");
 }
 
@@ -114,6 +125,7 @@ void ULogBuildToolsComponent::BindDefaultInput(UInputComponent* InputComponent)
     InputComponent->BindKey(EKeys::Delete, IE_Pressed, this, &ULogBuildToolsComponent::DismantleInput);
     InputComponent->BindKey(EKeys::Q, IE_Pressed, this, &ULogBuildToolsComponent::ThrowInput);
     InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &ULogBuildToolsComponent::HelpInput);
+    InputComponent->BindKey(EKeys::U, IE_Pressed, this, &ULogBuildToolsComponent::ApexInput);
 }
 
 bool ULogBuildToolsComponent::GetSupportLine(const AActor* Support, FVector& OutA, FVector& OutB, float& OutRadius) const
@@ -212,7 +224,12 @@ bool ULogBuildToolsComponent::TryHandleInteract()
             if (!Opening->HasPanel() && Opening->Kind != EConstructionOpeningKind::Window)
             {
                 FString Reason;
-                if (!IsSplitBoard(HeldLog))
+                if (!IsSplitBoard(HeldLog) && HeldLog->GetCrossSectionProfile() == ELogCrossSectionProfile::Round &&
+                    Carry->SplitCarriedLogInHalf())
+                {
+                    HeldLog = Carry->HeldPiece;
+                }
+                if (!HeldLog || !IsSplitBoard(HeldLog))
                 {
                     SetStatus(TEXT("Doors and gates need split boards (plank, half or quarter log)."));
                     return true;
@@ -228,6 +245,34 @@ bool ULogBuildToolsComponent::TryHandleInteract()
                 }
                 return true;
             }
+        }
+    }
+    if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Carry->HeldMaterialPiece.Get()); Stick && bNear)
+    {
+        if (AConstructionOpeningActor* Opening = FindOpening(Hit); Opening && Opening->HasPanel())
+        {
+            FString Reason;
+            Carry->ReleaseHeldToTool();
+            Stick->SetHeldState(false);
+            Stick->SetActorEnableCollision(false);
+            if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Stick->GetRootComponent()))
+                Root->SetSimulatePhysics(false);
+            TransferPiece(Stick, EWorldItemOwnerKind::World, FGuid(), Stick->GetActorLocation());
+            if (Opening->TryBarWithStick(Stick, GetOwner()->GetActorLocation(), Reason))
+            {
+                if (UWorldObjectIdentityComponent* Identity = Stick->FindComponentByClass<UWorldObjectIdentityComponent>())
+                {
+                    if (Identity->GetLifecycleState() == EWorldObjectLifecycleState::Held)
+                        Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed);
+                }
+                SetStatus(TEXT("Barred with the stick. L from the inside takes the bar off."));
+            }
+            else
+            {
+                SetStatus(Reason);
+                DropReleasedPiece(Stick);
+            }
+            return true;
         }
     }
     if (HeldAny && bNear)
@@ -534,8 +579,28 @@ bool ULogBuildToolsComponent::TryPlaceDeck(AActor* Support, const FVector& AimPo
     FString Reason;
     if (!ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs, Transform, Second, Span, Reason))
     {
+        // No second support: on a floor or beam edge it becomes a single step.
+        if (TryPlaceSingleStep(Cast<ALogBuildPiece>(Support), AimPoint))
+            return true;
         SetStatus(Reason);
         return true;
+    }
+    if (Carry->IsBadlyDamaged(Support) || Carry->IsBadlyDamaged(Second))
+    {
+        SetStatus(TEXT("This piece is damaged: repair it before building on it (LMB with the axe)."));
+        return true;
+    }
+    // Floors, ramps and steps are made of split logs: a full log is split on the spot.
+    FString SplitNote;
+    if (Board->GetCrossSectionProfile() == ELogCrossSectionProfile::Round && Carry->SplitCarriedLogInHalf())
+    {
+        Board = Carry->HeldPiece;
+        SplitNote = TEXT(" Split in half; the other half is on your shoulder.");
+        if (!Board || !ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs, Transform, Second, Span, Reason))
+        {
+            SetStatus(Reason);
+            return true;
+        }
     }
     // A board much longer than the gap is cut to fit; the offcut drops at the feet.
     FLogGeometry Shape;
@@ -555,8 +620,105 @@ bool ULogBuildToolsComponent::TryPlaceDeck(AActor* Support, const FVector& AimPo
         SetStatus(TEXT("The board could not be placed."));
         return true;
     }
-    SetStatus(FString::Printf(TEXT("%s placed.%s"), bStairs ? TEXT("Step") : TEXT("Board"), *Note), 2.5f);
+    SetStatus(FString::Printf(TEXT("%s placed.%s%s"), bStairs ? TEXT("Step") : TEXT("Board"), *Note, *SplitNote), 3.0f);
     return true;
+}
+
+bool ULogBuildToolsComponent::TryPlaceSingleStep(ALogBuildPiece* Edge, const FVector& AimPoint)
+{
+    ULogCarryComponent* Carry = GetCarry();
+    FLogGeometry Floor;
+    if (!Carry || !Carry->HeldPiece || !Edge || !Edge->IsPlaced() || !IsHorizontalLog(Edge) || !GetLogGeometry(Edge, Floor) ||
+        Carry->IsBadlyDamaged(Edge))
+        return false;
+    if (Carry->HeldPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
+        Carry->SplitCarriedLogInHalf();
+    ALogBuildPiece* Board = Carry->HeldPiece;
+    FLogGeometry Step;
+    if (!Board || !GetLogGeometry(Board, Step))
+        return false;
+    // In front of the edge, on the player's side, a little lower than its top.
+    const FVector OnEdge = ClosestPointOnSegment(AimPoint, Floor.EndA(), Floor.EndB());
+    FVector Out = GetOwner()->GetActorLocation() - OnEdge;
+    Out.Z = 0.0f;
+    const FVector Along = Floor.Axis.GetSafeNormal2D();
+    Out = (Out - Along * FVector::DotProduct(Out, Along)).GetSafeNormal();
+    if (Out.IsNearlyZero())
+    {
+        // Otherwise the side of the edge the player aimed at.
+        Out = AimPoint - OnEdge;
+        Out.Z = 0.0f;
+        Out = (Out - Along * FVector::DotProduct(Out, Along)).GetSafeNormal();
+    }
+    if (Out.IsNearlyZero())
+        return false;
+    constexpr float StepLength = 150.0f;
+    if (Step.Length() > StepLength + 10.0f)
+        CutOffRemainder(Board, StepLength, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+    GetLogGeometry(Board, Step);
+    FVector Centre = OnEdge + Out * (Floor.Radius + Step.Radius + 25.0f);
+    Centre.Z = Floor.Centre.Z + Floor.Radius - 25.0f - Step.Radius;
+    const FTransform Target = MakeLogTransform(Board, Centre, MakeLogRotation(Board, Along, FVector::UpVector));
+    if (!Carry->CommitHeldLogAt(Target, Edge, nullptr))
+        return false;
+    SetStatus(TEXT("Single step placed."), 2.5f);
+    return true;
+}
+
+float ULogBuildToolsComponent::GetLongestUnsupportedSpan(const ALogBuildPiece* Beam, const ALogBuildPiece* Ignore,
+    bool& bOutOverhangTooLong) const
+{
+    bOutOverhangTooLong = false;
+    FLogGeometry B;
+    if (!GetLogGeometry(Beam, B))
+        return 0.0f;
+    const FVector Start = B.EndA();
+    const FVector Dir = B.Axis.GetSafeNormal();
+    TArray<float> Points;
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        FLogGeometry O;
+        if (*It == Beam || *It == Ignore || !It->IsPlaced() || !GetLogGeometry(*It, O))
+            continue;
+        const float Up = FMath::Abs(O.Axis.Z);
+        TArray<FVector> Contacts;
+        if (Up >= 0.3f)
+        {
+            // A post or a strut: its upper end.
+            Contacts.Add(O.EndA().Z > O.EndB().Z ? O.EndA() : O.EndB());
+        }
+        else if (FMath::Abs(FVector::DotProduct(O.Axis.GetSafeNormal(), Dir)) > 0.95f)
+        {
+            // A log lying along under it holds it along their overlap.
+            for (float Step = -O.HalfLength; Step <= O.HalfLength; Step += 50.0f)
+                Contacts.Add(O.Centre + O.Axis * Step);
+        }
+        else
+        {
+            // A log crossing under it.
+            FVector OnOther = ClosestPointOnSegment(B.Centre, O.EndA(), O.EndB());
+            const FVector OnBeam = ClosestPointOnSegment(OnOther, B.EndA(), B.EndB());
+            OnOther = ClosestPointOnSegment(OnBeam, O.EndA(), O.EndB());
+            Contacts.Add(OnOther);
+        }
+        for (const FVector& Contact : Contacts)
+        {
+            const FVector OnBeam = ClosestPointOnSegment(Contact, B.EndA(), B.EndB());
+            if (Contact.Z <= OnBeam.Z + 5.0f && FVector::Dist(Contact, OnBeam) < O.Radius + B.Radius + 15.0f)
+                Points.Add(FVector::DotProduct(OnBeam - Start, Dir));
+        }
+    }
+    if (Points.Num() == 0)
+    {
+        bOutOverhangTooLong = true;
+        return B.Length();
+    }
+    Points.Sort();
+    bOutOverhangTooLong = Points[0] > MaxBeamOverhangCm || B.Length() - Points.Last() > MaxBeamOverhangCm;
+    float Longest = 0.0f;
+    for (int32 Index = 1; Index < Points.Num(); ++Index)
+        Longest = FMath::Max(Longest, Points[Index] - Points[Index - 1]);
+    return Longest;
 }
 
 // ---------------------------------------------------------------- plans
@@ -565,10 +727,124 @@ ABuildPlanActor* ULogBuildToolsComponent::PlacePlan(EBuildPlanKind Kind, const F
 {
     if (!GetWorld())
         return nullptr;
-    ABuildPlanActor* Plan = GetWorld()->SpawnActor<ABuildPlanActor>(Location, FRotator(0.0f, Yaw, 0.0f));
+    FVector Where = Location;
+    AHarvestableTreeActor* Tree = nullptr;
+    if (ABuildPlanActor::NeedsTree(Kind))
+    {
+        // Tree plans go around the nearest standing trunk.
+        float Best = 500.0f;
+        for (TActorIterator<AHarvestableTreeActor> It(GetWorld()); It; ++It)
+        {
+            const float Distance = FVector::Dist2D(It->GetActorLocation(), Location);
+            if (It->CanBeChopped() && Distance < Best)
+            {
+                Best = Distance;
+                Tree = *It;
+            }
+        }
+        if (!Tree)
+            return nullptr;
+        const FBoxSphereBounds Trunk = Tree->TreeMesh->Bounds;
+        Where = FVector(Trunk.Origin.X, Trunk.Origin.Y, Trunk.Origin.Z - Trunk.BoxExtent.Z);
+    }
+    ABuildPlanActor* Plan = GetWorld()->SpawnActor<ABuildPlanActor>(Where, FRotator(0.0f, Yaw, 0.0f));
     if (Plan)
+    {
+        Plan->AnchorTree = Tree;
         Plan->InitializePlan(Kind);
+    }
     return Plan;
+}
+
+ABuildPlanActor* ULogBuildToolsComponent::PlaceDefenseLine(const FVector& From, const FVector& To)
+{
+    const FVector Line = To - From;
+    const float Length = Line.Size2D();
+    if (!GetWorld() || Length < 80.0f)
+        return nullptr;
+    // The plan's stakes run along its local Y.
+    const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(Line.Y, Line.X)) - 90.0f;
+    ABuildPlanActor* Plan = GetWorld()->SpawnActor<ABuildPlanActor>(0.5f * (From + To), FRotator(0.0f, Yaw, 0.0f));
+    if (Plan)
+    {
+        Plan->LineLengthCm = Length;
+        Plan->InitializePlan(EBuildPlanKind::DefenseWall);
+    }
+    return Plan;
+}
+
+bool ULogBuildToolsComponent::TryFillApex(ALogBuildPiece* SlopedBeam)
+{
+    ULogCarryComponent* Carry = GetCarry();
+    ALogBuildPiece* Log = Carry ? Carry->HeldPiece.Get() : nullptr;
+    FLogGeometry Beam, Held;
+    if (!Log || !SlopedBeam || !SlopedBeam->IsPlaced() || !GetLogGeometry(SlopedBeam, Beam) || !GetLogGeometry(Log, Held))
+    {
+        SetStatus(TEXT("Carry a log and aim at a sloped beam to fill the gable under it."));
+        return false;
+    }
+    const float Slope = FMath::Abs(Beam.Axis.Z);
+    if (Slope < 0.15f || Slope > 0.9f)
+    {
+        SetStatus(TEXT("A gable is filled under a sloped beam."));
+        return false;
+    }
+    FVector Low = Beam.EndA(), High = Beam.EndB();
+    if (Low.Z > High.Z)
+        Swap(Low, High);
+    const FVector Run = High - Low;
+    const FVector Along = Run.GetSafeNormal2D();
+    const float Span = Run.Size2D();
+    const float Tan = (High.Z - Low.Z) / FMath::Max(Span, 1.0f);
+    const float Step = 2.0f * Held.Radius * 0.9f;
+
+    // Rows from the beam's low end upwards; each ends where it meets the slope.
+    for (int32 Row = 0; Row < 24; ++Row)
+    {
+        const float Z = Low.Z - Beam.Radius + Held.Radius + Row * Step;
+        const float Start = (Z + Held.Radius + Beam.Radius - Low.Z) / Tan;
+        const float Length = Span - Start;
+        if (Length < 40.0f)
+            break;
+        FVector Centre = Low + Along * (Start + 0.5f * Length);
+        Centre.Z = Z;
+        bool bTaken = false;
+        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It && !bTaken; ++It)
+        {
+            FLogGeometry Other;
+            if (*It == SlopedBeam || *It == Log || !It->IsPlaced() || !GetLogGeometry(*It, Other))
+                continue;
+            bTaken = FVector::Dist(ClosestPointOnSegment(Centre, Other.EndA(), Other.EndB()), Centre) < Held.Radius;
+        }
+        if (bTaken)
+            continue;
+        if (Held.Length() < Length * 0.85f)
+        {
+            SetStatus(FString::Printf(TEXT("Too short: this gable row needs about %.0f cm."), Length));
+            return true;
+        }
+        if (Held.Length() > Length + 10.0f)
+            CutOffRemainder(Log, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+        const FTransform Target = MakeLogTransform(Log, Centre, MakeLogRotation(Log, Along, FVector::UpVector));
+        if (!Carry->CommitHeldLogAt(Target, SlopedBeam, nullptr))
+        {
+            SetStatus(TEXT("The log could not be placed."));
+            return true;
+        }
+        SetStatus(FString::Printf(TEXT("Gable row %d placed (%.0f cm)."), Row + 1, Length));
+        return true;
+    }
+    SetStatus(TEXT("The gable under this beam is full."));
+    return true;
+}
+
+void ULogBuildToolsComponent::ApexInput()
+{
+    FHitResult Hit;
+    if (TraceView(InteractRange, Hit))
+        TryFillApex(Cast<ALogBuildPiece>(Hit.GetActor()));
+    else
+        SetStatus(TEXT("Carry a log and aim at a sloped beam to fill the gable under it."));
 }
 
 bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotIndex)
@@ -650,6 +926,23 @@ bool ULogBuildToolsComponent::DismantlePiece(ALogBuildPiece* Piece)
     {
         SetStatus(TEXT("Other pieces rest only on this one: add another support first."));
         return false;
+    }
+    if (ULogCarryComponent* Carry = GetCarry(); Carry && IsVerticalLog(Piece))
+    {
+        // A beam may not be left spanning too far: struts at its posts let middle posts go.
+        TArray<ALogBuildPiece*> Beams;
+        Carry->FindBeamsOnPost(Piece, Beams);
+        for (const ALogBuildPiece* Beam : Beams)
+        {
+            bool bOverhang = false;
+            const float Span = GetLongestUnsupportedSpan(Beam, Piece, bOverhang);
+            if (Span > MaxBeamSpanCm || bOverhang)
+            {
+                SetStatus(FString::Printf(TEXT("Without this post the beam would sag (%.0f cm unsupported). ")
+                    TEXT("Put struts at its posts first (half logs, diagonal mode)."), bOverhang ? MaxBeamOverhangCm : Span));
+                return false;
+            }
+        }
     }
     TArray<AActor*> Attached;
     Piece->GetAttachedActors(Attached);
@@ -977,10 +1270,25 @@ void ULogBuildToolsComponent::LockInput()
     FString Reason;
     if (!Opening)
         SetStatus(TEXT("Aim at a door or gate."));
-    else if (Opening->ToggleLock(GetOwner()->GetActorLocation(), Reason))
-        SetStatus(Opening->IsLocked() ? TEXT("Locked.") : TEXT("Unlocked."), 1.5f);
+    else if (Opening->GetBar())
+    {
+        if (AActor* Stick = Opening->RemoveBar(GetOwner()->GetActorLocation(), Reason))
+        {
+            if (UWorldObjectIdentityComponent* Identity = Stick->FindComponentByClass<UWorldObjectIdentityComponent>())
+            {
+                if (Identity->GetLifecycleState() == EWorldObjectLifecycleState::Placed)
+                    Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
+            }
+            DropReleasedPiece(Stick);
+            SetStatus(TEXT("Bar taken off: the door is open to use."), 2.0f);
+        }
+        else
+            SetStatus(Reason);
+    }
+    else if (Opening->IsLocked() && Opening->ToggleLock(GetOwner()->GetActorLocation(), Reason))
+        SetStatus(TEXT("Unlocked."), 1.5f);
     else
-        SetStatus(Reason);
+        SetStatus(TEXT("Carry a stick and press E on the closed door from the inside to bar it."));
 }
 
 void ULogBuildToolsComponent::RopeInput()
@@ -1028,7 +1336,7 @@ void ULogBuildToolsComponent::TowInput()
 void ULogBuildToolsComponent::CyclePlanInput()
 {
     SelectedPlan = static_cast<EBuildPlanKind>((static_cast<uint8>(SelectedPlan) + 1) %
-        (static_cast<uint8>(EBuildPlanKind::DefenseWall) + 1));
+        (static_cast<uint8>(ABuildPlanActor::LastKind) + 1));
     SetStatus(FString::Printf(TEXT("Plan: %s (Y to place)."), *ABuildPlanActor::GetPlanName(SelectedPlan)));
 }
 
@@ -1046,8 +1354,28 @@ void ULogBuildToolsComponent::PlacePlanInput()
     FVector Location;
     FRotator Rotation;
     GetView(Location, Rotation);
+    if (SelectedPlan == EBuildPlanKind::DefenseWall)
+    {
+        // Draw the wall: Y at the start of the line, Y again at its end.
+        if (!bWallLineStarted)
+        {
+            bWallLineStarted = true;
+            WallLineStart = Hit.ImpactPoint;
+            SetStatus(TEXT("Defensive wall: aim at the end of the line and press Y."), 8.0f);
+            return;
+        }
+        bWallLineStarted = false;
+        if (ABuildPlanActor* Line = PlaceDefenseLine(WallLineStart, Hit.ImpactPoint))
+            SetStatus(FString::Printf(TEXT("Defensive wall drawn: %d stakes. Carry logs in, or tell the helper (J) to finish it."),
+                Line->GetSlotCount()));
+        else
+            SetStatus(TEXT("The line is too short."));
+        return;
+    }
     if (PlacePlan(SelectedPlan, Hit.ImpactPoint, Rotation.Yaw))
         SetStatus(FString::Printf(TEXT("%s plan placed: carry logs into the ghost parts."), *ABuildPlanActor::GetPlanName(SelectedPlan)));
+    else if (ABuildPlanActor::NeedsTree(SelectedPlan))
+        SetStatus(TEXT("Tree plans go around a standing tree: aim near one."));
 }
 
 void ULogBuildToolsComponent::DismantleInput()

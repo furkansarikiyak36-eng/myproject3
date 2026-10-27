@@ -6,6 +6,7 @@
 
 class ALogBuildPiece;
 class UStaticMeshComponent;
+class AHarvestableTreeActor;
 
 UENUM(BlueprintType)
 enum class EBuildPlanKind : uint8
@@ -16,7 +17,19 @@ enum class EBuildPlanKind : uint8
     SmallLogStorage UMETA(DisplayName = "Small Log Storage"),
     LargeLogStorage UMETA(DisplayName = "Large Log Storage"),
     LogSled UMETA(DisplayName = "Log Sled"),
-    DefenseWall UMETA(DisplayName = "Defensive Stake Wall")
+    DefenseWall UMETA(DisplayName = "Defensive Stake Wall"),
+    HuntingShelter UMETA(DisplayName = "Hunting Shelter"),
+    SmallPlatform UMETA(DisplayName = "Small Platform"),
+    Bench UMETA(DisplayName = "Bench"),
+    WeaponRack UMETA(DisplayName = "Weapon Rack"),
+    SmallLogCabin UMETA(DisplayName = "Small Log Cabin"),
+    TreePlatform UMETA(DisplayName = "Tree Platform"),
+    TreeShelter UMETA(DisplayName = "Tree Shelter"),
+    Chair UMETA(DisplayName = "Chair"),
+    Couch UMETA(DisplayName = "Couch"),
+    Shelf UMETA(DisplayName = "Shelf"),
+    RabbitHutch UMETA(DisplayName = "Rabbit Hutch"),
+    CornerRamp UMETA(DisplayName = "Corner Ramp")
 };
 
 /** One log position in a plan, in the plan's local space. */
@@ -59,6 +72,21 @@ public:
     EBuildPlanKind Kind = EBuildPlanKind::LogWall;
 
     void InitializePlan(EBuildPlanKind InKind);
+
+    /** Length of a drawn defensive wall line (cm); one stake every 40 cm. Set before InitializePlan. */
+    float LineLengthCm = 0.0f;
+
+    /** Plans built in a tree: ground-level parts rest on this trunk and fall with it. */
+    TWeakObjectPtr<AHarvestableTreeActor> AnchorTree;
+
+    /** Tree platform and tree shelter need a standing tree. */
+    static bool NeedsTree(EBuildPlanKind InKind)
+    {
+        return InKind == EBuildPlanKind::TreePlatform || InKind == EBuildPlanKind::TreeShelter;
+    }
+
+    /** The last plan kind, for cycling through them. */
+    static constexpr EBuildPlanKind LastKind = EBuildPlanKind::CornerRamp;
 
     int32 GetSlotCount() const { return Slots.Num(); }
     int32 GetFilledCount() const;

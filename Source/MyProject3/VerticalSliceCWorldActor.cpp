@@ -3,10 +3,12 @@
 #include "ConstructionHelpers.h"
 #include "HarvestableTreeActor.h"
 #include "HeatSourceComponent.h"
+#include "HelperCompanionActor.h"
 #include "LogAttachmentComponents.h"
 #include "LogSnapCharacter.h"
 #include "LogBuildPiece.h"
 #include "LogContainerActor.h"
+#include "LogCarryComponent.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
 #include "StickPrimitivePiece.h"
@@ -358,14 +360,15 @@ AHarvestableTreeActor* AVerticalSliceCWorldActor::SpawnTree(const FVector& Base,
     Tree->TreeMesh->SetMaterial(0, Tint(FLinearColor(0.11f + Random.FRandRange(-0.02f, 0.02f), 0.075f, 0.05f)));
     Tree->MaxChopHealth = 4.0f + TrunkScale * 4.0f;
     Tree->FallImpulse = 250000.0f;
-    Tree->LogsToSpawn = Height > 650.0f ? 3 : 2;
+    // The fallen trunk gives logs by its length: 600 cm logs, then one shorter piece.
+    Tree->bYieldFromTrunkLength = true;
     Tree->LogActorClass = ALogBuildPiece::StaticClass();
     Tree->LogMeshVariantSetId = Family.VariantSetId;
     Tree->OutputProcessingMeshSets.Add(Family);
 
     // Overlapping crown layers of a conifer; the top one hides the trunk tip.
     UStaticMesh* Cone = LoadEngineShape(TEXT("Cone"));
-    const int32 CrownLayers = Height > 650.0f ? 5 : 4;
+    const int32 CrownLayers = Height > 1100.0f ? 6 : 5;
     const FLinearColor Needles(0.03f + Random.FRandRange(0.0f, 0.02f), 0.075f + Random.FRandRange(0.0f, 0.035f),
         0.035f + Random.FRandRange(0.0f, 0.015f));
     for (int32 Layer = 0; Layer < CrownLayers; ++Layer)
@@ -379,7 +382,8 @@ AHarvestableTreeActor* AVerticalSliceCWorldActor::SpawnTree(const FVector& Base,
         Crown->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         // Cone centres from 38% to 90% of the height; each cone is 30% tall.
         const float Fraction = FMath::Lerp(0.38f, 1.0f, Alpha);
-        const float Width = FMath::Lerp(0.52f, 0.16f, Alpha) * Height / 100.0f * Random.FRandRange(0.9f, 1.1f);
+        // Tall trees grow upwards, not wider: the crown width stops growing at 8 m.
+        const float Width = FMath::Lerp(0.5f, 0.15f, Alpha) * FMath::Min(Height, 800.0f) / 100.0f * Random.FRandRange(0.9f, 1.1f);
         Crown->SetRelativeLocation(FVector(0, 0, (Fraction - 0.5f) * 100.0f));
         Crown->SetRelativeRotation(FRotator(0, Random.FRandRange(0, 360), 0));
         Crown->SetWorldScale3D(FVector(Width, Width, 0.3f * Height / 100.0f));
@@ -460,7 +464,7 @@ void AVerticalSliceCWorldActor::BuildForest()
         const float Y = FMath::Clamp(Radius * FMath::Sin(Angle), -HalfExtent + 80, HalfExtent - 80);
         if (!IsOpenGround(X, Y, 0.0f))
             continue;
-        SpawnTree(FVector(X, Y, GetGroundHeight(X, Y)), Random.FRandRange(600.0f, 900.0f), Random.FRandRange(0.32f, 0.5f), Attempt);
+        SpawnTree(FVector(X, Y, GetGroundHeight(X, Y)), Random.FRandRange(900.0f, 1350.0f), Random.FRandRange(0.34f, 0.5f), Attempt);
     }
     // Scattered trees inside, each a possible source of logs.
     for (int32 Attempt = 0; Attempt < 120 && Trees.Num() < 185; ++Attempt)
@@ -469,10 +473,10 @@ void AVerticalSliceCWorldActor::BuildForest()
         const float Y = Random.FRandRange(-2300.0f, 2300.0f);
         if (!IsOpenGround(X, Y, 120.0f))
             continue;
-        SpawnTree(FVector(X, Y, GetGroundHeight(X, Y)), Random.FRandRange(480.0f, 760.0f), Random.FRandRange(0.28f, 0.42f), 1000 + Attempt);
+        SpawnTree(FVector(X, Y, GetGroundHeight(X, Y)), Random.FRandRange(750.0f, 1150.0f), Random.FRandRange(0.3f, 0.44f), 1000 + Attempt);
     }
     // One old giant by the hill path: its trunk can hold a platform.
-    SpawnTree(FVector(-1000.0f, 1450.0f, GetGroundHeight(-1000.0f, 1450.0f)), 1100.0f, 0.75f, 77);
+    SpawnTree(FVector(-1000.0f, 1450.0f, GetGroundHeight(-1000.0f, 1450.0f)), 1500.0f, 0.75f, 77);
 }
 
 void AVerticalSliceCWorldActor::BuildRocksAndGrass()
@@ -611,12 +615,12 @@ void AVerticalSliceCWorldActor::BuildCamp()
 
 void AVerticalSliceCWorldActor::BuildCabin()
 {
-    // Seven rows of notched walls, no door, no window and no roof yet.
+    // Six rows of notched walls (the most a log wall stands), no door, no window and no roof yet.
     const float Base = GetGroundHeight(CabinCentre.X, CabinCentre.Y);
     const float HalfLong = 170.0f;  // Walls along X at Y = centre +- this.
     const float HalfShort = 215.0f; // Walls along Y at X = centre +- this.
     float Radius = 18.0f;
-    for (int32 Row = 0; Row < 7; ++Row)
+    for (int32 Row = 0; Row < 6; ++Row)
     {
         const float Step = 2.0f * Radius * 0.88f;
         const float LongZ = Base + Radius + Row * Step;
@@ -798,6 +802,119 @@ void AVerticalSliceCWorldActor::BuildLife()
     }
 }
 
+// ---------------------------------------------------------------- creek
+
+FVector AVerticalSliceCWorldActor::GetCreekFlow(float X) const
+{
+    const float Slope = 260.0f * 0.0011f * FMath::Cos(X * 0.0011f + 0.6f);
+    // Fast in the deep channel, slowing where it spreads out over the ford.
+    const float Speed = FMath::Lerp(110.0f, 25.0f, Smooth(1900.0f, 2500.0f, X));
+    return FVector(1.0f, Slope, 0.0f).GetSafeNormal() * Speed;
+}
+
+bool AVerticalSliceCWorldActor::IsInCreek(const FVector& Point) const
+{
+    return FMath::Abs(Point.X) < HalfExtent && FMath::Abs(Point.Y - GetCreekCentreY(Point.X)) < 270.0f &&
+        GetGroundHeight(Point.X, Point.Y) < WaterLevel;
+}
+
+void AVerticalSliceCWorldActor::UpdateCreek(float DeltaSeconds)
+{
+    UWorld* World = GetWorld();
+    if (!World || DeltaSeconds <= 0.0f)
+        return;
+
+    // Loose logs in the water float half under and drift with the current.
+    int32 Drifting = 0;
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
+    {
+        ALogBuildPiece* Log = *It;
+        UStaticMeshComponent* LogMesh = Log->GetLogMesh();
+        if (Log->IsHeld() || Log->IsPlaced() || !LogMesh || !LogMesh->IsSimulatingPhysics())
+            continue;
+        const FBoxSphereBounds Bounds = LogMesh->Bounds;
+        const float Bottom = Bounds.Origin.Z - Bounds.BoxExtent.Z;
+        if (Bottom >= WaterLevel || !IsInCreek(Bounds.Origin))
+            continue;
+        ++Drifting;
+        const float Submerged = FMath::Clamp((WaterLevel - Bottom) / FMath::Max(2.0f * Bounds.BoxExtent.Z, 1.0f), 0.0f, 1.0f);
+        const float Mass = LogMesh->GetMass();
+        const FVector Velocity = LogMesh->GetPhysicsLinearVelocity();
+        const FVector Flow = GetCreekFlow(Bounds.Origin.X);
+        FVector Force(0.0f, 0.0f, Mass * 980.0f * 2.0f * Submerged);
+        Force += Mass * Submerged * FVector((Flow.X - Velocity.X) * 1.2f, (Flow.Y - Velocity.Y) * 1.2f, -Velocity.Z * 2.5f);
+        LogMesh->AddForce(Force);
+        LogMesh->SetPhysicsAngularVelocityInDegrees(
+            LogMesh->GetPhysicsAngularVelocityInDegrees() * FMath::Max(0.0f, 1.0f - 2.0f * DeltaSeconds));
+    }
+
+    // A sled floats, even loaded; left in the water it drifts too.
+    for (TActorIterator<ALogContainerActor> It(World); It; ++It)
+    {
+        if (!It->IsSled())
+            continue;
+        It->WaterSurfaceZ = WaterLevel;
+        const FVector Location = It->GetActorLocation();
+        if (It->IsTowed() || !IsInCreek(Location))
+            continue;
+        FVector Next = Location + GetCreekFlow(Location.X) * 0.6f * DeltaSeconds;
+        Next.Z = FMath::Max(GetGroundHeight(Next.X, Next.Y), WaterLevel) + 12.0f;
+        It->SetActorLocation(Next, true);
+    }
+
+    // Now and then a log comes down the creek from upstream, for a dam to catch.
+    DriftSpawnTimer -= DeltaSeconds;
+    if (DriftSpawnTimer <= 0.0f)
+    {
+        DriftSpawnTimer = 35.0f;
+        if (Drifting < 3 && DriftSpawned < 40 && Family.BaseRoundMesh)
+        {
+            const float X = -3200.0f;
+            const FVector Start(X, GetCreekCentreY(X), WaterLevel + 14.0f);
+            if (SpawnLog(DriftSpawned % 3 == 0 ? TEXT("SM_RawLog_600") : TEXT("SM_RawLog_300"), Start,
+                GetCreekFlow(X), false))
+            {
+                ++DriftSpawned;
+            }
+        }
+    }
+}
+
+void AVerticalSliceCWorldActor::BuildCreekDam()
+{
+    // Downstream of the bridge, three old posts stand in the water where someone
+    // began a log catcher. One gap is still open; a log is wedged against them.
+    const float X = 1480.0f;
+    const float CreekY = GetCreekCentreY(X);
+    for (const float Offset : { -150.0f, -60.0f, 130.0f })
+    {
+        const float Y = CreekY + Offset;
+        const float Bed = GetGroundHeight(X, Y);
+        SpawnLog(TEXT("SM_RawLog_300"), FVector(X, Y, Bed + 115.0f), FVector(0.03f, 0.0f, 1.0f), true, 260.0f);
+    }
+    SpawnLog(TEXT("SM_RawLog_300"), FVector(X - 40.0f, CreekY - 100.0f, WaterLevel + 10.0f), FVector(0.15f, 1.0f, 0.0f), false);
+}
+
+void AVerticalSliceCWorldActor::BuildHelper()
+{
+    // A helper waits by the camp; J gives him orders.
+    const FVector Location(260.0f, 180.0f, GetGroundHeight(260.0f, 180.0f));
+    Helper = GetWorld()->SpawnActor<AHelperCompanionActor>(Location, FRotator(0.0f, -120.0f, 0.0f));
+    if (!Helper)
+        return;
+    Helper->MinLogHeight = WaterLevel + 40.0f;
+}
+
+void AVerticalSliceCWorldActor::HelperOrderInput()
+{
+    if (!Helper)
+        return;
+    Helper->CycleOrder();
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(160, 210, 255),
+            FString::Printf(TEXT("Helper: %s"), *AHelperCompanionActor::GetOrderName(Helper->GetOrder())));
+}
+
 // ---------------------------------------------------------------- play
 
 bool AVerticalSliceCWorldActor::BuildWorld()
@@ -818,12 +935,14 @@ bool AVerticalSliceCWorldActor::BuildWorld()
         BuildOldBridge();
         BuildHill();
         BuildPalisade();
+        BuildCreekDam();
     }
     else
     {
         UE_LOG(LogTemp, Error, TEXT("VerticalSlice_C: log meshes missing under /Game/DemoAssets/Logs."));
     }
     BuildLife();
+    BuildHelper();
     return true;
 }
 
@@ -881,6 +1000,7 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& Binding = InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this,
                 &AVerticalSliceCWorldActor::ChopInput);
             Binding.bConsumeInput = false;
+            InputComponent->BindKey(EKeys::J, IE_Pressed, this, &AVerticalSliceCWorldActor::HelperOrderInput);
             bInputBound = true;
         }
     }
@@ -892,10 +1012,6 @@ void AVerticalSliceCWorldActor::ChopInput()
     if (!Controller)
         return;
 
-    ++ChopSwingCount;
-    if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
-        Character->PlayAxeSwing();
-
     FVector Location;
     FRotator Rotation;
     Controller->GetPlayerViewPoint(Location, Rotation);
@@ -903,6 +1019,27 @@ void AVerticalSliceCWorldActor::ChopInput()
     FCollisionQueryParams Params(SCENE_QUERY_STAT(VerticalSliceCChop), false, Controller->GetPawn());
     const bool bHitSomething = GetWorld()->LineTraceSingleByChannel(
         Hit, Location, Location + Rotation.Vector() * 260.0f, ECC_Visibility, Params);
+
+    // The axe on a log: repair a damaged piece, or mark and make a cut (the second click cuts).
+    ULogCarryComponent* Carry = Controller->GetPawn() ? Controller->GetPawn()->FindComponentByClass<ULogCarryComponent>() : nullptr;
+    if (ALogBuildPiece* Log = bHitSomething ? Cast<ALogBuildPiece>(Hit.GetActor()) : nullptr;
+        Log && Carry && !Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
+    {
+        UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+        if (Log->IsPlaced() && Graph && Graph->RepairDamage(Log->GetStructuralNodeId(), 25.0f))
+        {
+            if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
+                Character->PlayAxeSwing();
+            Carry->SetPlacementStatus(TEXT("Repaired a part of the damage."));
+            return;
+        }
+        Carry->ProcessAimedPiece();
+        return;
+    }
+
+    ++ChopSwingCount;
+    if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
+        Character->PlayAxeSwing();
 
     if (!bHitSomething)
     {
@@ -965,6 +1102,14 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     if (!PlayerSurvivalId.IsValid())
         SetupPlayer();
 
+    UpdateCreek(DeltaSeconds);
+    if (Helper && Helper->GetStatus() != LastHelperStatus && GEngine)
+    {
+        LastHelperStatus = Helper->GetStatus();
+        GEngine->AddOnScreenDebugMessage(4711, 4.0f, FColor(160, 210, 255),
+            FString::Printf(TEXT("Helper: %s"), *LastHelperStatus));
+    }
+
     Hours = FMath::Fmod(Hours + DeltaSeconds * static_cast<float>(SimulationTimeScale) / 3600.0f, 24.0f);
     UpdateSun();
 
@@ -986,6 +1131,6 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     {
         bIntroShown = true;
         GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor(230, 210, 160),
-            TEXT("The camp is abandoned. The cabin has no door and no roof, the bridge is gone, and the nights are cold. (F1: controls, LMB: chop)"));
+            TEXT("The camp is abandoned. The cabin has no door and no roof, the bridge is gone, and the nights are cold. A helper waits by the fire. (F1: controls, LMB: chop, J: helper)"));
     }
 }

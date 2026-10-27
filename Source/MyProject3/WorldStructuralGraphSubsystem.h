@@ -184,6 +184,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool ApplyDamage(FGuid NodeId, float DamageAmount, bool& bOutThresholdExceeded);
 
+    /** Takes up to Amount of damage off a piece; false when it had none. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool RepairDamage(FGuid NodeId, float Amount);
+
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool GetNode(FGuid NodeId, FStructuralNodeRecord& OutNode) const;
 

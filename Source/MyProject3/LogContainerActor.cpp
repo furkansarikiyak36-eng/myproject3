@@ -217,6 +217,25 @@ bool ALogContainerActor::ToggleTow(APawn* Puller)
     return true;
 }
 
+void ALogContainerActor::CatchThrownLogs()
+{
+    const FVector Centre = GetActorLocation();
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        ALogBuildPiece* Log = *It;
+        if (!IsValid(Log) || Log->IsHeld() || Log->IsPlaced() || Log->GetAttachParentActor())
+            continue;
+        const FVector Location = Log->GetLogMesh() ? Log->GetLogMesh()->Bounds.Origin : Log->GetActorLocation();
+        if (FVector::Dist2D(Location, Centre) > SledCatchRadius || Location.Z < Centre.Z - 40.0f || Location.Z > Centre.Z + 260.0f)
+            continue;
+        EWorldItemOwnerKind ItemOwner = EWorldItemOwnerKind::World;
+        if (!GetPieceOwnerKind(Log, ItemOwner) || ItemOwner != EWorldItemOwnerKind::World)
+            continue;
+        if (!TryStore(Log) || Stored.Num() >= GetCapacity())
+            return;
+    }
+}
+
 void ALogContainerActor::CollectNearbyLogs()
 {
     for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
@@ -257,6 +276,16 @@ void ALogContainerActor::Tick(float DeltaSeconds)
             CollectNearbyLogs();
         }
     }
+    else if (bCatchThrownLogs && IsSled())
+    {
+        // Thrown onto the sled: a log that lands on it (even still moving) is loaded.
+        TimeToCollect -= DeltaSeconds;
+        if (TimeToCollect <= 0.0f)
+        {
+            TimeToCollect = 0.15f;
+            CatchThrownLogs();
+        }
+    }
 
     if (APawn* Puller = TowedBy.Get())
     {
@@ -274,6 +303,8 @@ void ALogContainerActor::Tick(float DeltaSeconds)
             const float HalfHeight = Base->GetStaticMesh() ? Base->GetStaticMesh()->GetBounds().BoxExtent.Z : 50.0f;
             Target.Z = Ground.ImpactPoint.Z + HalfHeight * GetActorScale3D().Z + 2.0f;
         }
+        // A sled floats, even loaded: over water it rides on the surface.
+        Target.Z = FMath::Max(Target.Z, WaterSurfaceZ + 6.0f);
         const FVector Smoothed = FMath::VInterpTo(GetActorLocation(), Target, DeltaSeconds, 6.0f);
         SetActorLocationAndRotation(Smoothed, FRotator(0.0f, Forward.Rotation().Yaw, 0.0f));
     }

@@ -56,6 +56,12 @@ public:
     bool TryAddBoard(ALogBuildPiece* Board, const FVector& BuilderLocation, const FVector& AimPoint, FString& OutReason);
     bool ToggleOpen(const FVector& UserLocation, FString& OutReason);
     bool ToggleLock(const FVector& UserLocation, FString& OutReason);
+
+    /** Bars the closed door from the inside with a stick laid across it (the game's lock). */
+    bool TryBarWithStick(AActor* Stick, const FVector& UserLocation, FString& OutReason);
+    /** Takes the bar off from the inside and returns the stick. */
+    AActor* RemoveBar(const FVector& UserLocation, FString& OutReason);
+    AActor* GetBar() const { return Bar.Get(); }
     /** True when the panel or the opening frame belongs to this actor. */
     bool OwnsComponent(const UPrimitiveComponent* Component) const;
 
@@ -69,6 +75,7 @@ private:
     bool bPanelBuilt = false;
     bool bOpen = false;
     bool bLocked = false;
+    TWeakObjectPtr<AActor> Bar;
     /** +1/-1: which side of the opening the hinge is on (along the wall). */
     float HingeSide = 1.0f;
     /** +1/-1: the side the panel swings toward, away from the builder. */

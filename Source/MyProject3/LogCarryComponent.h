@@ -9,6 +9,30 @@ class ALogBuildPiece;
 enum class EWorldItemOwnerKind : uint8;
 class UInputComponent;
 
+/** How a cut chosen by the aim is made. */
+enum class ELogCutKind : uint8
+{
+    /** A cut from the mesh family's recipes (split, hew, 1/2, 3/4 + 1/4 ...). */
+    Recipe,
+    /** A length cut anywhere along a loose log, on a 25 cm step; both parts are scaled meshes. */
+    FreeLength,
+    /** Shortening a standing post that holds nothing up. */
+    ShortenPost,
+    /** Sharpening the top of a standing log into a stake (aim at its top). */
+    Sharpen
+};
+
+/** The cut the aim picks: the recipe action, where the saw goes and how it is made. */
+struct FLogCutChoice
+{
+    ELogCutAction Action = ELogCutAction::SplitHalf;
+    /** Saw position, 0..1 from the mesh's -X end; -1 for cuts along the log. */
+    float Share = -1.0f;
+    /** Turn the log end for end first (3/4 cut aimed at the -X end). */
+    bool bFlip = false;
+    ELogCutKind Kind = ELogCutKind::Recipe;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
     FLogSnapStateChanged, bool, bHasValidSnap);
 
@@ -174,6 +198,12 @@ public:
      */
     bool LiftDroopingEndsOnto(AActor* NewSupport);
 
+    /**
+     * A post set under the end of a placed beam and reaching above it lifts that end
+     * onto its top (the beam turns about its other end). Returns the beams raised.
+     */
+    int32 RaiseBeamsOntoPost(ALogBuildPiece* Post);
+
     /** World position of a log's end opposite the joint, the joint itself and the log radius. */
     bool GetLogFreeEnd(const ALogBuildPiece* Piece, int32 OwnSnapIndex,
         FVector& OutFreeEnd, FVector& OutPivot, float& OutRadius) const;
@@ -210,6 +240,116 @@ public:
 
     /** The loose log under the crosshair, if any. */
     ALogBuildPiece* GetAimedLooseLog() const;
+
+    /**
+     * The cut the player's aim chooses on Log. For a length cut the place along the
+     * log decides it: the middle of a full log gives two halves, near an end gives
+     * 3/4 + 1/4 with the short piece at that end. OutShare is where the saw goes,
+     * 0..1 from the mesh's -X end (-1 for split cuts). bOutFlip means the log is
+     * turned end for end first, so the short piece comes off the aimed end.
+     */
+    bool ResolveAimedCut(const ALogBuildPiece* Log, ELogCutAction& OutAction, float& OutShare, bool& bOutFlip) const;
+
+    /** The same, for a point on the log's surface (used by the aim and by tests). */
+    bool ResolveCutAtPoint(const ALogBuildPiece* Log, const FVector& WorldPoint,
+        ELogCutAction& OutAction, float& OutShare, bool& bOutFlip) const;
+
+    /**
+     * The full choice for a point: near a recipe point (1/4, 1/2, 3/4) the recipe
+     * cut; elsewhere on a loose log a free cut on a 25 cm step; on a standing post,
+     * shortening it from the top. Length cuts only; other cuts are recipes.
+     */
+    bool ResolveCutChoice(const ALogBuildPiece* Log, const FVector& WorldPoint, FLogCutChoice& Out) const;
+    bool ResolveAimedCutChoice(const ALogBuildPiece* Log, FLogCutChoice& Out) const;
+    bool CanMakeCut(const ALogBuildPiece* Log, const FLogCutChoice& Choice, FString& OutReason) const;
+    /** Player-facing name of the cut, with the resulting lengths. */
+    FString DescribeCut(const ALogBuildPiece* Log, const FLogCutChoice& Choice) const;
+    bool GetArmedCutChoice(const ALogBuildPiece*& OutLog, FLogCutChoice& OutChoice) const;
+
+    /**
+     * Cuts Log in two at Share (0..1 from the mesh's -X end). A loose log becomes two
+     * loose pieces. A standing post keeps its lower part; the top falls off and
+     * every piece resting on the top comes down by the cut length (a beam on two
+     * posts tilts about its other end).
+     */
+    bool CutLogAtShare(ALogBuildPiece* Log, float Share);
+
+    /** A second log carried on the shoulder; it comes to the hands when the first is put down. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Carry|State")
+    TObjectPtr<ALogBuildPiece> ShoulderPiece;
+
+    /** Takes a second log onto the shoulder while carrying one (Sons of the Forest: two logs). */
+    bool TryShoulderLog(ALogBuildPiece* Target);
+    /** Moves the shoulder log to the hands once they are empty. */
+    void PromoteShoulderLog();
+    int32 GetCarriedLogCount() const { return (HeldPiece ? 1 : 0) + (ShoulderPiece ? 1 : 0); }
+
+    /** A wall of logs laid along each other stands at most this many rows high. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "1"))
+    int32 MaxWallRows = 6;
+
+    /** Rows in the wall Target belongs to, counting Target and the parallel logs under it. */
+    int32 CountWallRows(const ALogBuildPiece* Target) const;
+
+    /** True when anything rests on the post: a cut there is refused (Sons of the Forest). */
+    bool PostHoldsAnything(const ALogBuildPiece* Post) const;
+
+    /** Split, quartered and plank pieces cannot stand as posts; round and hewn logs can. */
+    static bool CanStandAsPost(const ALogBuildPiece* Log);
+
+    /**
+     * Splits the round log in the hands lengthwise (as the game does when a full log
+     * is used for a floor, ramp or door): one half stays in the hands, the other goes
+     * on the shoulder, or to the ground when the shoulder is taken.
+     */
+    bool SplitCarriedLogInHalf();
+
+    /** Badly damaged pieces take no new parts until repaired. */
+    bool IsBadlyDamaged(const AActor* Piece) const;
+
+    /**
+     * A strut (payanda) from a post up to the beam resting on it, on the side of
+     * AimPoint: from 90 cm down the post to 90 cm along the beam. OutBeamPoint is
+     * where it meets the beam.
+     */
+    bool ComputeStrutPlacement(const ALogBuildPiece* Held, const ALogBuildPiece* Post, const ALogBuildPiece* Beam,
+        const FVector& AimPoint, FTransform& OutTransform, float& OutLength, FVector& OutBeamPoint) const;
+
+    /** Placed beams (lying, not upright) resting on the top of Post. */
+    void FindBeamsOnPost(const ALogBuildPiece* Post, TArray<ALogBuildPiece*>& OutBeams) const;
+
+    /**
+     * Moves a post's base so it stands one log length (150/300/450/600 cm) from the
+     * nearest standing post when it is close to that, so a wall fits between them.
+     */
+    bool SnapPostSpacing(const FVector& Base, FVector& OutBase, ALogBuildPiece*& OutPartner, float& OutSpan) const;
+
+    /** The post the carried post lines up with, and the span between them. */
+    bool GetPostSpan(const ALogBuildPiece*& OutPartner, float& OutSpan) const;
+
+    /** White dashes on the ground: a rectangle under a lying log, a circle under a post, and a line to a post in line. */
+    bool BuildGroundMarkerSegments(TArray<FVector>& OutPoints) const;
+
+    /** Dashed cone on the top of a standing log where it will be sharpened. */
+    bool BuildSharpenSegments(const ALogBuildPiece* Log, TArray<FVector>& OutPoints) const;
+
+    bool HasStrutPlacement() const { return bHasStrutPlacement; }
+
+    /** Dashed ring where a length cut at Share (0..1 from -X) would go. */
+    bool BuildCutRingSegments(const ALogBuildPiece* Log, float Share, TArray<FVector>& OutSegmentPoints) const;
+
+    /** The cut marked by the first F press: F again cuts it, C or another log cancels. */
+    bool GetArmedCut(const ALogBuildPiece*& OutLog, ELogCutAction& OutAction, float& OutShare) const;
+    void CancelArmedCut();
+
+    /**
+     * White dashed outline of the carried log where it will be put down, and when it
+     * joins another piece, an arrow (pairs of points) pointing into the joint.
+     */
+    bool BuildPlacementPreviewSegments(TArray<FVector>& OutOutline, TArray<FVector>& OutArrow) const;
+
+    /** True when the carried log is joined to a piece (snap or grid stack), not free placed. */
+    bool HasConnectionPreview() const { return bHasStackPlacement || bHasValidSnap || bHasStrutPlacement; }
 
     /** Throw speed (cm/s) for a 20 kg piece; heavier pieces fly slower. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Physics", meta = (ClampMin = "100.0"))
@@ -276,6 +416,28 @@ private:
     void ReleaseHeldFromLoad();
 
     FString PlacementStatus;
+
+    TWeakObjectPtr<ALogBuildPiece> ArmedLog;
+    ELogCutAction ArmedAction = ELogCutAction::SplitHalf;
+    float ArmedShare = -1.0f;
+    bool bArmedFlipPending = false;
+    ELogCutKind ArmedKind = ELogCutKind::Recipe;
+    float ArmedWork = 0.0f;
+
+    bool bHasStrutPlacement = false;
+    FTransform StrutTransform = FTransform::Identity;
+    float StrutLength = 0.0f;
+    FVector StrutJoint = FVector::ZeroVector;
+    TWeakObjectPtr<ALogBuildPiece> StrutPost;
+    TWeakObjectPtr<ALogBuildPiece> StrutBeam;
+    void UpdateStrutPlacement();
+    bool PlaceStrut();
+
+    TWeakObjectPtr<ALogBuildPiece> SpanPartner;
+    float SpanCm = 0.0f;
+
+    /** Lowers the pieces that rested on a post's old top by Drop cm. */
+    void LowerPiecesOnPost(ALogBuildPiece* Post, const FVector& OldTop, float Drop, const TArray<AActor*>& Children);
 
     bool bHasStackPlacement = false;
     FTransform StackTransform = FTransform::Identity;

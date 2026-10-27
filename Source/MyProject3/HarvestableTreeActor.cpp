@@ -4,6 +4,7 @@
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "LogBuildPiece.h"
+#include "WorldObjectIdentityComponent.h"
 #include "Math/RotationMatrix.h"
 
 void AHarvestableTreeActor::BeginPlay()
@@ -210,6 +211,26 @@ bool AHarvestableTreeActor::HasGroundContact() const
         Hit.bBlockingHit && Hit.GetActor() != this;
 }
 
+TArray<float> AHarvestableTreeActor::GetTrunkLogLengths(float StandingHeightCm, float StumpCm, float TopShare)
+{
+    TArray<float> Lengths;
+    float Usable = StandingHeightCm * (1.0f - FMath::Clamp(TopShare, 0.0f, 0.6f)) - StumpCm;
+    while (Usable >= 600.0f)
+    {
+        Lengths.Add(600.0f);
+        Usable -= 600.0f;
+    }
+    for (const float Piece : { 450.0f, 300.0f, 150.0f })
+    {
+        if (Usable >= Piece)
+        {
+            Lengths.Add(Piece);
+            break;
+        }
+    }
+    return Lengths;
+}
+
 bool AHarvestableTreeActor::SpawnHarvestLogs()
 {
     if (bLogsSpawned || !bGrounded || !GetWorld() || !LogActorClass ||
@@ -249,6 +270,19 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         }
         ResolvedLogCount = Match->LogCount;
         ResolvedPieceType = Match->OutputPieceType;
+    }
+
+    // Logs by trunk length: each piece gets the round mesh of its own length.
+    TArray<float> TrunkPieces;
+    if (YieldRules.IsEmpty() && bYieldFromTrunkLength)
+    {
+        const float TreeWorldHeight = StandingWorldHeightCm > KINDA_SMALL_NUMBER
+            ? StandingWorldHeightCm
+            : TreeMesh->GetStaticMesh()->GetBounds().BoxExtent.Z * 2.0f * TreeMesh->GetComponentScale().Z;
+        TrunkPieces = GetTrunkLogLengths(TreeWorldHeight, FMath::Clamp(StumpHeightCm, 10.0f, 100.0f), UnusableTopShare);
+        if (TrunkPieces.IsEmpty())
+            TrunkPieces.Add(150.0f);
+        ResolvedLogCount = TrunkPieces.Num();
     }
 
     // Runtime-spawned trees in VerticalSlice_C supply the selected family but
@@ -314,10 +348,29 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     // Keep independently spawned full-length logs apart rather than stacking all
     // outputs at nearly the same point.
     const float OutputSpacingCm = 350.0f;
+    // Trunk pieces lie end to end from the stump outwards, as if the trunk was cut up.
+    float TrunkStart = 0.0f;
+    if (!TrunkPieces.IsEmpty())
+    {
+        float Total = 0.0f;
+        for (const float Piece : TrunkPieces)
+            Total += Piece + 8.0f;
+        TrunkStart = -0.5f * Total;
+    }
     for (int32 Index = 0; Index < ResolvedLogCount; ++Index)
     {
         const float Side = (static_cast<float>(Index) - (ResolvedLogCount - 1) * 0.5f) * OutputSpacingCm;
-        const FVector Location = Base + Right * Side;
+        FVector Location = Base + Right * Side;
+        ELogPieceType PieceTypeForThis = ResolvedPieceType;
+        if (!TrunkPieces.IsEmpty())
+        {
+            const float Piece = TrunkPieces[Index];
+            Location = Base + Forward * (TrunkStart + 0.5f * Piece);
+            TrunkStart += Piece + 8.0f;
+            PieceTypeForThis = Piece >= 600.0f ? ELogPieceType::WholeLog
+                : Piece >= 450.0f ? ELogPieceType::ThreeQuarterLog
+                : Piece >= 300.0f ? ELogPieceType::HalfLengthLog : ELogPieceType::QuarterLog;
+        }
         FActorSpawnParameters Params;
         Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
         ALogBuildPiece* Log = GetWorld()->SpawnActorDeferred<ALogBuildPiece>(
@@ -338,15 +391,15 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
         }
         Log->SelectedProcessingMeshSetId = LogMeshVariantSetId;
         Log->BaseDefinitionId = FName(TEXT("Wood.Log.Harvested"));
-        Log->PieceType = ResolvedPieceType;
+        Log->PieceType = TrunkPieces.IsEmpty() ? ResolvedPieceType : ELogPieceType::WholeLog;
         Log->FinishSpawning(FTransform(LogRotation, Location));
         Spawned.Add(Log);
-        if (ResolvedPieceType != ELogPieceType::WholeLog &&
-            !Log->TrySetInitialPieceType(ResolvedPieceType, FGuid::NewGuid()))
+        if (PieceTypeForThis != ELogPieceType::WholeLog &&
+            !Log->TrySetInitialPieceType(PieceTypeForThis, FGuid::NewGuid()))
         {
             UE_LOG(LogTemp, Error,
                 TEXT("Tree '%s' output %d could not resolve its configured mesh variant for piece type %d."),
-                *GetName(), Index, static_cast<int32>(ResolvedPieceType));
+                *GetName(), Index, static_cast<int32>(PieceTypeForThis));
             RollbackSpawnedOutputs();
             return false;
         }

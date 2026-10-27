@@ -3,6 +3,9 @@
 #include "ConstructionHelpers.h"
 #include "LogBuildPiece.h"
 #include "LogContainerActor.h"
+#include "HarvestableTreeActor.h"
+#include "LogAttachmentComponents.h"
+#include "WildlifeActor.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -83,9 +86,179 @@ void ABuildPlanActor::InitializePlan(EBuildPlanKind InKind)
         AddSlot(FVector(80, 0, 3.0f * R), AlongY, 150.0f, 0);
         break;
     case EBuildPlanKind::DefenseWall:
-        for (int32 Index = 0; Index < 8; ++Index)
-            AddSlot(FVector(0, -140 + Index * 40.0f, 150), Up, 300.0f, INDEX_NONE);
+    {
+        // A drawn line: one stake every 40 cm along local Y, centred on the plan.
+        const float Line = LineLengthCm > 0.0f ? LineLengthCm : 320.0f;
+        const int32 Count = FMath::Clamp(FMath::RoundToInt(Line / 40.0f) + 1, 2, 60);
+        const float Step = Line / (Count - 1);
+        for (int32 Index = 0; Index < Count; ++Index)
+            AddSlot(FVector(0, -0.5f * Line + Index * Step, 150), Up, 300.0f, INDEX_NONE);
         break;
+    }
+    case EBuildPlanKind::HuntingShelter:
+        // A ridge on two posts with poles leaning on it from both sides.
+        AddSlot(FVector(0, -140, 75), Up, 150.0f, INDEX_NONE);
+        AddSlot(FVector(0, 140, 75), Up, 150.0f, INDEX_NONE);
+        AddSlot(FVector(0, 0, 150 + R), AlongY, 300.0f, 0);
+        for (int32 Index = 0; Index < 4; ++Index)
+        {
+            const float Y = -105.0f + Index * 70.0f;
+            AddSlot(FVector(-65, Y, 80), FRotator(-58, 0, 0), 190.0f, 2);
+            AddSlot(FVector(65, Y, 80), FRotator(-58, 180, 0), 190.0f, 2);
+        }
+        break;
+    case EBuildPlanKind::SmallPlatform:
+        // Four posts, two beams and a deck of seven logs, free of any tree.
+        for (int32 Index = 0; Index < 4; ++Index)
+            AddSlot(FVector(Index < 2 ? -120.0f : 120.0f, Index % 2 == 0 ? -100.0f : 100.0f, 125), Up, 250.0f, INDEX_NONE);
+        AddSlot(FVector(0, -100, 250 + R), AlongX, 300.0f, 0);
+        AddSlot(FVector(0, 100, 250 + R), AlongX, 300.0f, 1);
+        for (int32 Index = 0; Index < 7; ++Index)
+            AddSlot(FVector(-120 + Index * 40.0f, 0, 250 + 3.0f * R), AlongY, 260.0f, 4);
+        break;
+    case EBuildPlanKind::Bench:
+        AddSlot(FVector(-70, 0, 37), Up, 75.0f, INDEX_NONE);
+        AddSlot(FVector(70, 0, 37), Up, 75.0f, INDEX_NONE);
+        AddSlot(FVector(0, 0, 75 + R), AlongX, 200.0f, 0);
+        break;
+    case EBuildPlanKind::WeaponRack:
+        AddSlot(FVector(-80, 0, 75), Up, 150.0f, INDEX_NONE);
+        AddSlot(FVector(80, 0, 75), Up, 150.0f, INDEX_NONE);
+        AddSlot(FVector(0, 15, 60), AlongX, 200.0f, 0);
+        AddSlot(FVector(0, 15, 130), AlongX, 200.0f, 0);
+        break;
+    case EBuildPlanKind::SmallLogCabin:
+    {
+        // 4.2 x 3 m, five rows of notched walls with a door gap in the front
+        // (local -Y) wall, two gable posts, a ridge and four poles per roof side.
+        const float Step = 2.0f * R * 0.9f;
+        int32 Back = INDEX_NONE, Left = INDEX_NONE, Right = INDEX_NONE;
+        int32 FrontLeft = INDEX_NONE, FrontRight = INDEX_NONE, Front = INDEX_NONE;
+        for (int32 Row = 0; Row < 5; ++Row)
+        {
+            const float LongZ = R + Row * Step;
+            const float ShortZ = LongZ + 0.5f * Step;
+            AddSlot(FVector(0, 150, LongZ), AlongX, 440.0f, Back);
+            Back = Slots.Num() - 1;
+            if (Row < 4)
+            {
+                AddSlot(FVector(-135, -150, LongZ), AlongX, 170.0f, FrontLeft);
+                FrontLeft = Slots.Num() - 1;
+                AddSlot(FVector(135, -150, LongZ), AlongX, 170.0f, FrontRight);
+                FrontRight = Slots.Num() - 1;
+            }
+            else
+            {
+                AddSlot(FVector(0, -150, LongZ), AlongX, 440.0f, FrontLeft);
+                Front = Slots.Num() - 1;
+            }
+            AddSlot(FVector(-200, 0, ShortZ), AlongY, 360.0f, Left);
+            Left = Slots.Num() - 1;
+            AddSlot(FVector(200, 0, ShortZ), AlongY, 360.0f, Right);
+            Right = Slots.Num() - 1;
+        }
+        const float Top = R + 4.0f * Step + 0.5f * Step + R;
+        AddSlot(FVector(-200, 0, Top + 45), Up, 90.0f, Left);
+        const int32 GableA = Slots.Num() - 1;
+        AddSlot(FVector(200, 0, Top + 45), Up, 90.0f, Right);
+        AddSlot(FVector(0, 0, Top + 90 + R), AlongX, 460.0f, GableA);
+        const int32 Ridge = Slots.Num() - 1;
+        for (int32 Index = 0; Index < 4; ++Index)
+        {
+            const float X = -165.0f + Index * 110.0f;
+            AddSlot(FVector(X, -80, Top + 50), FRotator(31, 90, 0), 210.0f, Ridge);
+            AddSlot(FVector(X, 80, Top + 50), FRotator(31, -90, 0), 210.0f, Ridge);
+        }
+        (void)Front;
+        break;
+    }
+    case EBuildPlanKind::TreePlatform:
+    case EBuildPlanKind::TreeShelter:
+    {
+        // Two beams resting on the trunk (they fall with the tree), and a deck.
+        constexpr float DeckZ = 300.0f;
+        AddSlot(FVector(0, -60, DeckZ), AlongX, 300.0f, INDEX_NONE);
+        AddSlot(FVector(0, 60, DeckZ), AlongX, 300.0f, INDEX_NONE);
+        for (int32 Index = 0; Index < 6; ++Index)
+            AddSlot(FVector(-110 + Index * 44.0f, 0, DeckZ + 2.0f * R), AlongY, 240.0f, Index % 2);
+        if (Kind == EBuildPlanKind::TreeShelter)
+        {
+            // Corner posts on the deck beams, two roof beams and a roof.
+            for (int32 Index = 0; Index < 4; ++Index)
+                AddSlot(FVector(Index < 2 ? -120.0f : 120.0f, Index % 2 == 0 ? -60.0f : 60.0f, DeckZ + R + 75), Up, 150.0f, Index % 2);
+            const int32 FirstPost = Slots.Num() - 4;
+            AddSlot(FVector(0, -60, DeckZ + R + 150 + R), AlongX, 300.0f, FirstPost);
+            AddSlot(FVector(0, 60, DeckZ + R + 150 + R), AlongX, 300.0f, FirstPost + 1);
+            const int32 RoofBeam = Slots.Num() - 2;
+            for (int32 Index = 0; Index < 6; ++Index)
+                AddSlot(FVector(-110 + Index * 44.0f, 0, DeckZ + R + 150 + 3.0f * R), AlongY, 240.0f, RoofBeam);
+        }
+        break;
+    }
+    case EBuildPlanKind::Chair:
+        for (int32 Index = 0; Index < 4; ++Index)
+            AddSlot(FVector(Index < 2 ? -25.0f : 25.0f, Index % 2 == 0 ? -25.0f : 25.0f, 25), Up, 50.0f, INDEX_NONE);
+        AddSlot(FVector(0, -13, 50 + R), AlongX, 75.0f, 0);
+        AddSlot(FVector(0, 13, 50 + R), AlongX, 75.0f, 1);
+        AddSlot(FVector(-25, 30, 50 + 2.0f * R + 35), Up, 70.0f, 5);
+        AddSlot(FVector(25, 30, 50 + 2.0f * R + 35), Up, 70.0f, 5);
+        break;
+    case EBuildPlanKind::Couch:
+        for (int32 Index = 0; Index < 4; ++Index)
+            AddSlot(FVector(Index < 2 ? -95.0f : 95.0f, Index % 2 == 0 ? -35.0f : 35.0f, 25), Up, 50.0f, INDEX_NONE);
+        for (int32 Index = 0; Index < 3; ++Index)
+            AddSlot(FVector(0, -30 + Index * 30.0f, 50 + R), AlongX, 220.0f, 0);
+        AddSlot(FVector(-95, 50, 55), Up, 110.0f, INDEX_NONE);
+        AddSlot(FVector(95, 50, 55), Up, 110.0f, INDEX_NONE);
+        AddSlot(FVector(0, 50, 80), AlongX, 220.0f, 7);
+        AddSlot(FVector(0, 50, 80 + 2.0f * R * 0.9f), AlongX, 220.0f, 9);
+        break;
+    case EBuildPlanKind::Shelf:
+        AddSlot(FVector(-80, 0, 90), Up, 180.0f, INDEX_NONE);
+        AddSlot(FVector(80, 0, 90), Up, 180.0f, INDEX_NONE);
+        for (int32 Index = 0; Index < 3; ++Index)
+            AddSlot(FVector(0, 0, 45 + Index * 55.0f), AlongX, 190.0f, 0);
+        break;
+    case EBuildPlanKind::RabbitHutch:
+        AddSlot(FVector(0, -40, R), AlongX, 150.0f, INDEX_NONE);
+        AddSlot(FVector(0, 40, R), AlongX, 150.0f, INDEX_NONE);
+        for (int32 Index = 0; Index < 4; ++Index)
+            AddSlot(FVector(Index < 2 ? -65.0f : 65.0f, Index % 2 == 0 ? -40.0f : 40.0f, 2.0f * R + 40), Up, 80.0f, Index % 2);
+        AddSlot(FVector(0, -40, 2.0f * R + 80 + R), AlongX, 150.0f, 2);
+        AddSlot(FVector(0, 40, 2.0f * R + 80 + R), AlongX, 150.0f, 3);
+        for (int32 Index = 0; Index < 4; ++Index)
+            AddSlot(FVector(-54 + Index * 36.0f, 0, 2.0f * R + 80 + 3.0f * R), AlongY, 110.0f, 6);
+        break;
+    case EBuildPlanKind::CornerRamp:
+    {
+        // A ramp up to a landing, then a second ramp turning 90 degrees.
+        constexpr float Rise = 150.0f;
+        const float Pitch = FMath::RadiansToDegrees(FMath::Atan2(Rise, 300.0f));
+        AddSlot(FVector(150, -45, 0.5f * Rise), FRotator(Pitch, 0, 0), 340.0f, INDEX_NONE);
+        AddSlot(FVector(150, 45, 0.5f * Rise), FRotator(Pitch, 0, 0), 340.0f, INDEX_NONE);
+        for (int32 Index = 0; Index < 5; ++Index)
+        {
+            const float X = 40.0f + Index * 55.0f;
+            AddSlot(FVector(X, 0, X / 300.0f * Rise + 2.0f * R), AlongY, 140.0f, 0);
+        }
+        const int32 FirstPost = Slots.Num();
+        for (int32 Index = 0; Index < 4; ++Index)
+            AddSlot(FVector(Index < 2 ? 310.0f : 430.0f, Index % 2 == 0 ? -60.0f : 60.0f, 0.5f * Rise), Up, Rise, INDEX_NONE);
+        AddSlot(FVector(310, 0, Rise + R), AlongY, 160.0f, FirstPost);
+        AddSlot(FVector(430, 0, Rise + R), AlongY, 160.0f, FirstPost + 2);
+        const int32 LandingBeam = Slots.Num() - 2;
+        for (int32 Index = 0; Index < 3; ++Index)
+            AddSlot(FVector(370, -45 + Index * 45.0f, Rise + 3.0f * R), AlongX, 160.0f, LandingBeam);
+        AddSlot(FVector(325, 210, 1.5f * Rise), FRotator(Pitch, 90, 0), 340.0f, LandingBeam + 1);
+        AddSlot(FVector(415, 210, 1.5f * Rise), FRotator(Pitch, 90, 0), 340.0f, LandingBeam + 1);
+        const int32 UpperStringer = Slots.Num() - 2;
+        for (int32 Index = 0; Index < 5; ++Index)
+        {
+            const float Y = 100.0f + Index * 55.0f;
+            AddSlot(FVector(370, Y, Rise + (Y - 60.0f) / 300.0f * Rise + 2.0f * R), AlongX, 140.0f, UpperStringer);
+        }
+        break;
+    }
     }
 
     UStaticMesh* Cylinder = LoadEngineShape(TEXT("Cylinder"));
@@ -174,6 +347,13 @@ void ABuildPlanActor::MarkFilled(int32 Index, ALogBuildPiece* Piece)
         return;
     Slots[Index].bFilled = true;
     Slots[Index].Piece = Piece;
+    // Parts that rest on nothing in a tree plan rest on the trunk: they fall when it is cut.
+    if (AnchorTree.IsValid() && Slots[Index].SupportSlot == INDEX_NONE && Piece)
+    {
+        UTreeAnchorComponent* Anchor = NewObject<UTreeAnchorComponent>(Piece);
+        Anchor->RegisterComponent();
+        Anchor->SetTree(AnchorTree.Get());
+    }
     if (Ghosts.IsValidIndex(Index) && Ghosts[Index])
     {
         Ghosts[Index]->SetVisibility(false);
@@ -194,6 +374,17 @@ void ABuildPlanActor::Complete()
     case EBuildPlanKind::LargeLogStorage: ContainerKind = ELogContainerKind::LargeLogStorage; bSpawnContainer = true; break;
     case EBuildPlanKind::LogSled: ContainerKind = ELogContainerKind::BasicSled; bSpawnContainer = true; break;
     default: break;
+    }
+    if (Kind == EBuildPlanKind::RabbitHutch && World)
+    {
+        // A rabbit moves into the finished hutch.
+        const FVector Inside = GetActorLocation() + FVector(0, 0, 45.0f);
+        if (AWildlifeActor* Rabbit = World->SpawnActorDeferred<AWildlifeActor>(AWildlifeActor::StaticClass(), FTransform(Inside)))
+        {
+            Rabbit->ConfigureKind(EWildlifeKind::SmallAnimal);
+            Rabbit->WanderRadius = 25.0f;
+            Rabbit->FinishSpawning(FTransform(GetActorRotation(), Inside, Rabbit->GetActorScale3D()));
+        }
     }
     if (bSpawnContainer && World)
     {

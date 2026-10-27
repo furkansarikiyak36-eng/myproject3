@@ -792,6 +792,16 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
     return Total;
 }
 
+bool UWorldStructuralGraphSubsystem::RepairDamage(FGuid NodeId, float Amount)
+{
+    FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+    if (!Node || Node->Revision == MAX_int64 || !FMath::IsFinite(Amount) || Amount <= 0.0f || Node->Damage <= 0.0f)
+        return false;
+    Node->Damage = FMath::Max(0.0f, Node->Damage - Amount);
+    ++Node->Revision;
+    return true;
+}
+
 bool UWorldStructuralGraphSubsystem::ApplyDamage(
     FGuid NodeId, float DamageAmount, bool& bOutThresholdExceeded)
 {

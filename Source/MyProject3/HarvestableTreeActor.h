@@ -96,6 +96,21 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Harvest|Meshes")
     TArray<FLogProcessingMeshSet> OutputProcessingMeshSets;
     
+    /**
+     * Cut the fallen trunk into logs by its real length: as many 600 cm logs as fit,
+     * then one 450/300/150 cm piece for the rest, laid end to end where the trunk lay.
+     * Used when no YieldRules are set; LogsToSpawn is then ignored.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield")
+    bool bYieldFromTrunkLength = false;
+
+    /** Share of the height at the top that is too thin to give a log. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield", meta=(ClampMin="0.0", ClampMax="0.6"))
+    float UnusableTopShare = 0.12f;
+
+    /** The pieces a trunk of this standing height gives (lengths in cm, longest first). */
+    static TArray<float> GetTrunkLogLengths(float StandingHeightCm, float StumpCm, float TopShare);
+
     /** If configured, exactly one height band must match; no filename-based size guesses. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tree|Yield")
     TArray<FHarvestTreeYieldRule> YieldRules;

@@ -76,6 +76,32 @@ public:
     bool TryPlaceDeck(AActor* Support, const FVector& AimPoint, const FVector& ViewDirection, bool bStairs);
     bool TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotIndex);
     ABuildPlanActor* PlacePlan(EBuildPlanKind Kind, const FVector& Location, float Yaw);
+
+    /** A defensive stake wall plan drawn from one point to another (one stake per 40 cm). */
+    ABuildPlanActor* PlaceDefenseLine(const FVector& From, const FVector& To);
+
+    /**
+     * One-sided apex: fills the next free row of the triangle under a sloped placed
+     * log with the carried log, cut to fit between the slope and its high end.
+     */
+    bool TryFillApex(ALogBuildPiece* SlopedBeam);
+
+    /** Longest stretch a beam may span between supports; a post leaving more is not removed. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Construction", meta = (ClampMin = "100.0"))
+    float MaxBeamSpanCm = 400.0f;
+
+    /** How far a beam may stick out past its last support. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Construction", meta = (ClampMin = "50.0"))
+    float MaxBeamOverhangCm = 220.0f;
+
+    /**
+     * The longest unsupported stretch of Beam, counting posts, struts and logs under
+     * it, but not Ignore. Struts at the posts shorten it, so middle posts can go.
+     */
+    float GetLongestUnsupportedSpan(const ALogBuildPiece* Beam, const ALogBuildPiece* Ignore, bool& bOutOverhangTooLong) const;
+
+    /** A single step in front of a floor or beam edge (no second support needed). */
+    bool TryPlaceSingleStep(ALogBuildPiece* Edge, const FVector& AimPoint);
     ARopeLineActor* TieRope(const FVector& From, AActor* FromActor, const FVector& To, AActor* ToActor);
     bool FeedFire(AActor* Fire);
 
@@ -90,6 +116,9 @@ private:
     bool bShowHelp = false;
     EBuildPlanKind SelectedPlan = EBuildPlanKind::LogWall;
     bool bRopeStarted = false;
+    bool bWallLineStarted = false;
+    FVector WallLineStart = FVector::ZeroVector;
+    void ApexInput();
     FVector RopeStart = FVector::ZeroVector;
     TWeakObjectPtr<AActor> RopeStartActor;
 

@@ -470,6 +470,8 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
     const FLengthFamily Lengths[] =
     {
         { ELogLengthFraction::FullLength, TEXT("SM_RawLog_600"), TEXT("SM_RawLog_600") },
+        // Built from the 600 cm meshes at 0.75 length (UnrealEditorScripts/CreateLog450Meshes.py).
+        { ELogLengthFraction::ThreeQuarterLength, TEXT("SM_RawLog_450"), TEXT("SM_RawLog_450") },
         { ELogLengthFraction::HalfLength, TEXT("SM_RawLog_300"), TEXT("SM_RawLog_300") },
         { ELogLengthFraction::QuarterLength, TEXT("SM_RawLog_150"), TEXT("SM_RawLog_150") },
         { ELogLengthFraction::EighthLength, TEXT("SM_RawLog_75"), TEXT("SM_RawLog_Long_01") }
@@ -548,8 +550,7 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
 
     AddCut(ELogCutAction::SplitLengthHalf, ELogLengthFraction::FullLength,
         ELogLengthFraction::HalfLength, ELogLengthFraction::HalfLength, -152.0f, 152.0f);
-    // Retain this recipe as an explicit blocked case when the exact 450 cm
-    // mesh is absent; the log processor should reject it rather than fake a cut.
+    // 450 + 150: the 3/4 piece at -X, the 1/4 piece at +X.
     AddCut(ELogCutAction::SplitLengthThreeQuarter, ELogLengthFraction::FullLength,
         ELogLengthFraction::ThreeQuarterLength, ELogLengthFraction::QuarterLength, -77.0f, 227.0f);
     AddCut(ELogCutAction::SplitHalfLengthIntoQuarters, ELogLengthFraction::HalfLength,

@@ -7,6 +7,7 @@
 
 class ADirectionalLight;
 class AHarvestableTreeActor;
+class AHelperCompanionActor;
 class ALogBuildPiece;
 class UHierarchicalInstancedStaticMeshComponent;
 class UMaterialInterface;
@@ -42,6 +43,21 @@ public:
 
     /** Centre line of the creek (world Y) at X. */
     float GetCreekCentreY(float X) const;
+
+    /** Direction and speed (cm/s) the creek water flows at X; it runs east to the ford. */
+    FVector GetCreekFlow(float X) const;
+
+    /**
+     * Water in the creek: loose logs float and drift downstream, a sled rides the
+     * surface, and now and then a log comes floating down from upstream.
+     */
+    void UpdateCreek(float DeltaSeconds);
+
+    /** True when a point lies over the creek bed below the water line. */
+    bool IsInCreek(const FVector& Point) const;
+
+    AHelperCompanionActor* GetHelper() const { return Helper; }
+    int32 GetDriftSpawnCount() const { return DriftSpawned; }
 
     int32 GetTreeCount() const { return Trees.Num(); }
     int32 GetPlacedLogCount() const { return PlacedLogs.Num(); }
@@ -85,6 +101,13 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<ALogBuildPiece>> PlacedLogs;
 
+    UPROPERTY(Transient)
+    TObjectPtr<AHelperCompanionActor> Helper;
+
+    float DriftSpawnTimer = 6.0f;
+    int32 DriftSpawned = 0;
+    FString LastHelperStatus;
+
     FLogProcessingMeshSet Family;
     bool bBuilt = false;
     bool bInputBound = false;
@@ -107,6 +130,9 @@ private:
     void BuildHill();
     void BuildPalisade();
     void BuildLife();
+    void BuildCreekDam();
+    void BuildHelper();
+    void HelperOrderInput();
 
     bool IsOpenGround(float X, float Y, float Margin) const;
     UMaterialInterface* Tint(const FLinearColor& Colour);

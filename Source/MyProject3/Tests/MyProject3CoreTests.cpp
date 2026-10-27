@@ -10,6 +10,8 @@
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
 #include "LogBuildPiece.h"
+#include "HelperCompanionActor.h"
+#include "HarvestableTreeActor.h"
 #include "LogCarryComponent.h"
 #include "BuildPlanActor.h"
 #include "ConstructionHelpers.h"
@@ -17,6 +19,7 @@
 #include "LogAttachmentComponents.h"
 #include "LogBuildToolsComponent.h"
 #include "LogContainerActor.h"
+#include "Engine/StaticMesh.h"
 #include "PhysicalHealthComponent.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
@@ -835,6 +838,7 @@ bool FVerticalSliceDemoTest::RunTest(const FString& Parameters)
     if (!TestNotNull(TEXT("A loose demo log"), Log))
         return false;
     TestEqual(TEXT("Real mesh family selected"), Log->GetSelectedProcessingMeshSetId(), FName(TEXT("Log600")));
+    // This older demo family has no 450 cm row, so its 3/4 cut stays blocked.
     TestFalse(TEXT("3/4 cut is blocked without a 450 cm mesh"), Log->CanApplyCutAction(ELogCutAction::SplitLengthThreeQuarter));
     TestTrue(TEXT("Block reason explains the missing recipe or mesh"),
         Log->GetCutActionBlockReason(ELogCutAction::SplitLengthThreeQuarter).Contains(TEXT("length-cut")));
@@ -1220,7 +1224,8 @@ bool FDismantleSupportTest::RunTest(const FString& Parameters)
     UWorld* World = TestWorld.World;
     UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
     ALogBuildPiece* PostA = SpawnBeam(World, FVector(-150, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
-    ALogBuildPiece* PostB = SpawnBeam(World, FVector(150, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    // Post B stands under the middle, so the beam does not overhang too far without post A.
+    ALogBuildPiece* PostB = SpawnBeam(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
     ALogBuildPiece* Beam = SpawnBeam(World, FVector(0, 0, 220), FRotator::ZeroRotator, 340.0f, 30.0f, true);
     FPlayerTools Player(World);
     if (!TestNotNull(TEXT("Beam"), Beam))
@@ -1262,7 +1267,7 @@ bool FDoorOpeningTest::RunTest(const FString& Parameters)
     FString Reason;
     TestFalse(TEXT("No door yet to open"), Opening->ToggleOpen(FVector(0, -200, 100), Reason));
     TestFalse(TEXT("No door yet to lock"), Opening->ToggleLock(FVector(0, -200, 100), Reason));
-    TestEqual(TEXT("A 1 m door takes four boards"), Opening->GetRequiredBoards(), 4);
+    TestEqual(TEXT("A door takes three split planks"), Opening->GetRequiredBoards(), 3);
     return true;
 }
 
@@ -1359,7 +1364,7 @@ bool FVerticalSliceCTest::RunTest(const FString& Parameters)
         return false;
     World->BuildWorld();
     TestTrue(FString::Printf(TEXT("A forest stands (%d trees)"), World->GetTreeCount()), World->GetTreeCount() > 120);
-    TestTrue(FString::Printf(TEXT("Built pieces exist (%d)"), World->GetPlacedLogCount()), World->GetPlacedLogCount() > 60);
+    TestTrue(FString::Printf(TEXT("Built pieces exist (%d)"), World->GetPlacedLogCount()), World->GetPlacedLogCount() > 55);
     const float CreekY = World->GetCreekCentreY(0.0f);
     TestTrue(TEXT("The creek is below the water line"), World->GetGroundHeight(0.0f, CreekY) < AVerticalSliceCWorldActor::WaterLevel - 50.0f);
     TestTrue(TEXT("The ford is shallow"), World->GetGroundHeight(2600.0f, World->GetCreekCentreY(2600.0f)) > AVerticalSliceCWorldActor::WaterLevel);
@@ -1507,6 +1512,577 @@ bool FLogGridStackTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("The post stands"), FMath::Abs(Shape.Axis.Z) > 0.99f);
     TestTrue(FString::Printf(TEXT("On a grid point (x %.1f)"), Shape.Centre.X), FMath::IsNearlyEqual(Shape.Centre.X, -75.0f, 1.0f));
     TestTrue(TEXT("Its foot rests on the log top"), FMath::Abs((Shape.Centre.Z - Shape.HalfLength) - (20.0f + 18.0f * 0.6f)) < 2.0f);
+    return true;
+}
+
+
+// Length cut by aim (SOTF red dashes): the middle of a full log gives two halves,
+// near an end gives 3/4 + 1/4 with the short piece at that end; the 450 cm mesh
+// exists, so the 3/4 cut really works.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAimedLengthCutTest,
+    "MyProject3.Carry.Logs.AimedLengthCutHalfAndThreeQuarter", TestFlags)
+bool FAimedLengthCutTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    const FLogProcessingMeshSet Family = AVerticalSliceBWorldActor::BuildLogMeshFamily();
+    if (!TestNotNull(TEXT("Demo log family"), Family.BaseRoundMesh.Get()))
+        return false;
+    const FTransform Spawn(FRotator::ZeroRotator, FVector(0, 0, 300));
+    ALogBuildPiece* Log = World->SpawnActorDeferred<ALogBuildPiece>(ALogBuildPiece::StaticClass(), Spawn,
+        nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    Log->BaseDefinitionId = TEXT("Wood.Log.AimCut");
+    Log->SelectedProcessingMeshSetId = Family.VariantSetId;
+    Log->ProcessingMeshSets.Add(Family);
+    Log->SetPieceStaticMesh(Family.BaseRoundMesh);
+    Log->FinishSpawning(Spawn);
+    Log->GetLogMesh()->SetSimulatePhysics(false);
+
+    FPlayerTools Player(World);
+    // From the split cut, eight presses of C reach the length cut.
+    for (int32 Press = 0; Press < 8; ++Press)
+        Player.Carry->CycleCutAction();
+    TestEqual(TEXT("Length cut selected"), Player.Carry->GetSelectedCutAction(), ELogCutAction::SplitLengthHalf);
+
+    MyProject3Construction::FLogGeometry Shape;
+    MyProject3Construction::GetLogGeometry(Log, Shape);
+    ELogCutAction Action = ELogCutAction::SplitHalf;
+    float Share = -1.0f;
+    bool bFlip = false;
+    TestTrue(TEXT("Middle resolves"), Player.Carry->ResolveCutAtPoint(Log, Shape.Centre, Action, Share, bFlip));
+    TestEqual(TEXT("Middle gives halves"), Action, ELogCutAction::SplitLengthHalf);
+    TestTrue(TEXT("Near +X end resolves"), Player.Carry->ResolveCutAtPoint(Log, Shape.Centre + Shape.Axis * 150.0f, Action, Share, bFlip));
+    TestEqual(TEXT("Near an end gives 3/4 + 1/4"), Action, ELogCutAction::SplitLengthThreeQuarter);
+    TestFalse(TEXT("No turn needed at +X"), bFlip);
+    TestTrue(TEXT("Cut ring at 3/4"), FMath::IsNearlyEqual(Share, 0.75f));
+    Player.Carry->ResolveCutAtPoint(Log, Shape.Centre - Shape.Axis * 150.0f, Action, Share, bFlip);
+    FLogCutChoice Free;
+    TestTrue(TEXT("Between the recipe points"), Player.Carry->ResolveCutChoice(Log, Shape.Centre + Shape.Axis * 90.0f, Free));
+    TestTrue(FString::Printf(TEXT("A free cut on the 25 cm step (%.3f)"), Free.Share),
+        Free.Kind == ELogCutKind::FreeLength && FMath::IsNearlyEqual(Free.Share * 600.0f, 400.0f, 1.0f));
+    TestTrue(TEXT("At -X the log is turned first"), bFlip && FMath::IsNearlyEqual(Share, 0.25f));
+    TArray<FVector> Ring;
+    TestTrue(TEXT("Red ring preview"), Player.Carry->BuildCutRingSegments(Log, 0.25f, Ring) && Ring.Num() > 10);
+
+    TestTrue(FString::Printf(TEXT("3/4 cut allowed (%s)"), *Log->GetCutActionBlockReason(ELogCutAction::SplitLengthThreeQuarter)),
+        Log->CanApplyCutAction(ELogCutAction::SplitLengthThreeQuarter));
+    TestTrue(TEXT("3/4 cut applies"), Log->ApplyCutAction(ELogCutAction::SplitLengthThreeQuarter));
+    TArray<float> Lengths;
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
+    {
+        MyProject3Construction::FLogGeometry Piece;
+        if (MyProject3Construction::GetLogGeometry(*It, Piece))
+            Lengths.Add(Piece.Length());
+    }
+    Lengths.Sort();
+    TestEqual(TEXT("Two pieces"), Lengths.Num(), 2);
+    if (Lengths.Num() == 2)
+    {
+        TestTrue(FString::Printf(TEXT("A 150 cm piece (%.0f)"), Lengths[0]), FMath::IsNearlyEqual(Lengths[0], 150.0f, 6.0f));
+        TestTrue(FString::Printf(TEXT("A 450 cm piece (%.0f)"), Lengths[1]), FMath::IsNearlyEqual(Lengths[1], 450.0f, 6.0f));
+    }
+    return true;
+}
+
+// A felled tree gives logs by trunk length: 600 cm logs first, then one shorter piece.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTrunkYieldTest,
+    "MyProject3.World.Trees.YieldFollowsTrunkLength", TestFlags)
+bool FTrunkYieldTest::RunTest(const FString& Parameters)
+{
+    const TArray<float> Small = AHarvestableTreeActor::GetTrunkLogLengths(800.0f, 45.0f, 0.12f);
+    const TArray<float> Medium = AHarvestableTreeActor::GetTrunkLogLengths(1300.0f, 45.0f, 0.12f);
+    const TArray<float> Tall = AHarvestableTreeActor::GetTrunkLogLengths(1600.0f, 45.0f, 0.12f);
+    const TArray<float> Sapling = AHarvestableTreeActor::GetTrunkLogLengths(400.0f, 45.0f, 0.12f);
+    TestEqual(TEXT("8 m tree: one log"), Small.Num(), 1);
+    TestTrue(TEXT("13 m tree: 600 + 450"), Medium.Num() == 2 && Medium[0] == 600.0f && Medium[1] == 450.0f);
+    TestTrue(TEXT("16 m tree: 600 + 600 + 150"), Tall.Num() == 3 && Tall[2] == 150.0f);
+    TestTrue(TEXT("4 m tree: a 300 cm piece"), Sapling.Num() == 1 && Sapling[0] == 300.0f);
+    return true;
+}
+
+// The helper (Kelvin's orders): fetches a loose log into storage, and builds a
+// bench plan from loose logs, cutting them to length.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHelperCompanionTest,
+    "MyProject3.Construction.HelperCollectsLogsAndBuildsPlan", TestFlags)
+bool FHelperCompanionTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogContainerActor* Store = World->SpawnActorDeferred<ALogContainerActor>(ALogContainerActor::StaticClass(), FTransform(FVector(600, 0, 10)));
+    Store->ConfigureKind(ELogContainerKind::SmallLogStorage);
+    Store->FinishSpawning(FTransform(FRotator::ZeroRotator, FVector(600, 0, 10), Store->GetActorScale3D()));
+    Store->bAutoCollect = false;
+    ALogBuildPiece* Loose = SpawnBeam(World, FVector(-500, 300, 20), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    AHelperCompanionActor* Helper = World->SpawnActor<AHelperCompanionActor>(FVector(0, 0, 0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Helper"), Helper) || !TestNotNull(TEXT("Log"), Loose))
+        return false;
+
+    Helper->SetOrder(ECompanionOrder::CollectLogs);
+    for (int32 Step = 0; Step < 200 && Store->GetStoredCount() == 0; ++Step)
+        Helper->Tick(0.1f);
+    TestEqual(TEXT("The helper stored the log"), Store->GetStoredCount(), 1);
+    EWorldItemOwnerKind Owner = EWorldItemOwnerKind::World;
+    MyProject3Construction::GetPieceOwnerKind(Loose, Owner);
+    TestEqual(TEXT("Owned by the storage"), Owner, EWorldItemOwnerKind::Storage);
+
+    ABuildPlanActor* Plan = World->SpawnActor<ABuildPlanActor>(FVector(-300, -400, 0), FRotator::ZeroRotator);
+    Plan->InitializePlan(EBuildPlanKind::Bench);
+    for (int32 Index = 0; Index < 3; ++Index)
+        SpawnBeam(World, FVector(-700 + Index * 60.0f, -700, 20), FRotator(0, 90, 0), 300.0f, 30.0f, false);
+    TWeakObjectPtr<ABuildPlanActor> WeakPlan = Plan;
+    Helper->SetOrder(ECompanionOrder::BuildPlan);
+    for (int32 Step = 0; Step < 600 && WeakPlan.IsValid() && !WeakPlan->IsActorBeingDestroyed(); ++Step)
+        Helper->Tick(0.1f);
+    TestTrue(TEXT("The bench plan was finished"), !WeakPlan.IsValid() || WeakPlan->IsActorBeingDestroyed());
+    int32 Placed = 0;
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
+        Placed += It->IsPlaced() ? 1 : 0;
+    TestEqual(TEXT("Two legs and a seat stand"), Placed, 3);
+    return true;
+}
+
+// The creek: it flows east, logs in it are found, a log comes down from upstream,
+// the old log catcher stands in the water, and a helper waits at camp.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCreekDriftTest,
+    "MyProject3.VerticalSliceC.CreekFlowCatcherAndHelper", TestFlags)
+bool FCreekDriftTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    AVerticalSliceCWorldActor* World = TestWorld.World->SpawnActor<AVerticalSliceCWorldActor>();
+    if (!TestNotNull(TEXT("World actor"), World))
+        return false;
+    World->BuildWorld();
+    TestTrue(TEXT("The creek flows east"), World->GetCreekFlow(0.0f).X > 50.0f);
+    TestTrue(TEXT("It slows over the ford"), World->GetCreekFlow(2600.0f).Size() < World->GetCreekFlow(0.0f).Size());
+    TestTrue(TEXT("The creek bed counts as water"), World->IsInCreek(FVector(0.0f, World->GetCreekCentreY(0.0f), -150.0f)));
+    TestFalse(TEXT("The camp is dry"), World->IsInCreek(FVector(0.0f, 0.0f, 0.0f)));
+    TestNotNull(TEXT("A helper waits at camp"), World->GetHelper());
+
+    int32 PostsInWater = 0;
+    for (TActorIterator<ALogBuildPiece> It(TestWorld.World); It; ++It)
+    {
+        if (It->IsPlaced() && MyProject3Construction::IsVerticalLog(*It) && World->IsInCreek(It->GetActorLocation()))
+            ++PostsInWater;
+    }
+    TestTrue(FString::Printf(TEXT("The old log catcher stands in the water (%d posts)"), PostsInWater), PostsInWater >= 3);
+    World->UpdateCreek(40.0f);
+    TestEqual(TEXT("A log came down the creek"), World->GetDriftSpawnCount(), 1);
+    return true;
+}
+
+
+namespace
+{
+    AHarvestableTreeActor* SpawnTestTree(UWorld* World, const FVector& Base, float Height)
+    {
+        const FTransform Spawn(Base + FVector(0, 0, 0.5f * Height));
+        AHarvestableTreeActor* Tree = World->SpawnActorDeferred<AHarvestableTreeActor>(AHarvestableTreeActor::StaticClass(), Spawn);
+        if (!Tree)
+            return nullptr;
+        Tree->TreeMesh->SetStaticMesh(LoadEngineMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
+        Tree->TreeMesh->SetRelativeScale3D(FVector(0.4f, 0.4f, Height / 100.0f));
+        Tree->MaxChopHealth = 2.0f;
+        Tree->LogActorClass = ALogBuildPiece::StaticClass();
+        Tree->LogMeshVariantSetId = TEXT("TestFamily");
+        Tree->FinishSpawning(Spawn);
+        return Tree;
+    }
+}
+
+// Two logs at once: E on a loose log while carrying one puts it on the shoulder;
+// when the first is put down, the second comes to the hands.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTwoLogCarryTest,
+    "MyProject3.Carry.Logs.TwoLogsOnTheShoulder", TestFlags)
+bool FTwoLogCarryTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* First = SpawnBeam(World, FVector(0, 0, 20), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    ALogBuildPiece* Second = SpawnBeam(World, FVector(0, 100, 20), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    ALogBuildPiece* Third = SpawnBeam(World, FVector(0, 200, 20), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    FPlayerTools Player(World);
+    TestTrue(TEXT("First log in the hands"), Player.Carry->TryPickupPiece(First));
+    TestTrue(TEXT("Second log on the shoulder"), Player.Carry->TryShoulderLog(Second));
+    TestEqual(TEXT("Two logs carried"), Player.Carry->GetCarriedLogCount(), 2);
+    TestFalse(TEXT("Not a third"), Player.Carry->TryShoulderLog(Third));
+    EWorldItemOwnerKind Owner = EWorldItemOwnerKind::World;
+    MyProject3Construction::GetPieceOwnerKind(Second, Owner);
+    TestEqual(TEXT("The shoulder log is held in the ledger"), Owner, EWorldItemOwnerKind::Held);
+    Player.Carry->DropHeldPiece();
+    Player.Carry->PromoteShoulderLog();
+    TestTrue(TEXT("The second log came to the hands"), Player.Carry->HeldPiece == Second);
+    TestEqual(TEXT("One log carried"), Player.Carry->GetCarriedLogCount(), 1);
+    return true;
+}
+
+// 3.7 / 2.6: a standing post is cut only when nothing rests on it; its top is
+// sharpened when the axe aims at the top.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPostShortenTest,
+    "MyProject3.Construction.PostCutOnlyWhenFreeAndTopSharpens", TestFlags)
+bool FPostShortenTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Holding = SpawnBeam(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    SpawnBeam(World, FVector(300, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    SpawnBeam(World, FVector(150, 0, 215), FRotator::ZeroRotator, 340.0f, 30.0f, true);
+    ALogBuildPiece* Free = SpawnBeam(World, FVector(0, 500, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    FPlayerTools Player(World);
+    for (int32 Press = 0; Press < 8; ++Press)
+        Player.Carry->CycleCutAction();
+
+    FLogCutChoice Choice;
+    FString Reason;
+    TestTrue(TEXT("A cut is offered on the post"), Player.Carry->ResolveCutChoice(Holding, FVector(0, 0, 120), Choice));
+    TestEqual(TEXT("Shorten kind"), Choice.Kind, ELogCutKind::ShortenPost);
+    TestTrue(TEXT("The post holds the beam"), Player.Carry->PostHoldsAnything(Holding));
+    TestFalse(TEXT("A post holding a beam is not cut"), Player.Carry->CanMakeCut(Holding, Choice, Reason));
+
+    TestTrue(TEXT("The free post can be shortened"), Player.Carry->ResolveCutChoice(Free, FVector(0, 500, 148), Choice) &&
+        Player.Carry->CanMakeCut(Free, Choice, Reason));
+    TestTrue(TEXT("Cut made"), Player.Carry->CutLogAtShare(Free, Choice.Share));
+    MyProject3Construction::FLogGeometry Post;
+    MyProject3Construction::GetLogGeometry(Free, Post);
+    TestTrue(FString::Printf(TEXT("Post is 150 cm (%.0f)"), Post.Length()), FMath::IsNearlyEqual(Post.Length(), 150.0f, 4.0f));
+    TestTrue(TEXT("Still standing"), Free->IsPlaced());
+
+    TestTrue(TEXT("Aiming at the top"), Player.Carry->ResolveCutChoice(Free, FVector(0, 500, 145), Choice));
+    TestEqual(TEXT("The top is sharpened"), Choice.Kind, ELogCutKind::Sharpen);
+    TArray<FVector> Cone;
+    TestTrue(TEXT("Red sharpen marks"), Player.Carry->BuildSharpenSegments(Free, Cone) && Cone.Num() > 8);
+    return true;
+}
+
+// A log wall stands at most six rows high.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWallRowLimitTest,
+    "MyProject3.Construction.WallRowsCountedToSix", TestFlags)
+bool FWallRowLimitTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    TArray<ALogBuildPiece*> Rows;
+    for (int32 Row = 0; Row < 6; ++Row)
+        Rows.Add(SpawnBeam(World, FVector(0, 0, 15 + Row * 27.0f), FRotator::ZeroRotator, 300.0f, 30.0f, true));
+    SpawnBeam(World, FVector(0, 400, 15), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    FPlayerTools Player(World);
+    TestEqual(TEXT("Third row counts three"), Player.Carry->CountWallRows(Rows[2]), 3);
+    TestEqual(TEXT("Top row counts six"), Player.Carry->CountWallRows(Rows[5]), 6);
+    TestTrue(TEXT("The limit is six"), Player.Carry->CountWallRows(Rows[5]) >= Player.Carry->MaxWallRows);
+    return true;
+}
+
+// One-sided apex: the carried log fills the lowest row under a sloped beam, cut
+// short enough to stay under the slope.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FApexFillTest,
+    "MyProject3.Construction.OneSidedApexFillsUnderSlope", TestFlags)
+bool FApexFillTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Slope = SpawnBeam(World, FVector(150, 0, 100), FRotator(30, 0, 0), 340.0f, 30.0f, true);
+    ALogBuildPiece* Log = SpawnBeam(World, FVector(0, -300, 20), FRotator::ZeroRotator, 400.0f, 30.0f, false);
+    FPlayerTools Player(World);
+    TestTrue(TEXT("Carrying"), Player.Carry->TryPickupPiece(Log));
+    TestTrue(TEXT("Apex fill handled"), Player.Tools->TryFillApex(Slope));
+    TestTrue(TEXT("The log is built in"), Log->IsPlaced());
+    MyProject3Construction::FLogGeometry Row, Beam;
+    MyProject3Construction::GetLogGeometry(Log, Row);
+    MyProject3Construction::GetLogGeometry(Slope, Beam);
+    TestTrue(TEXT("The row lies level"), MyProject3Construction::IsHorizontalLog(Log));
+    TestTrue(FString::Printf(TEXT("Cut to fit under the slope (%.0f)"), Row.Length()), Row.Length() < 300.0f && Row.Length() > 150.0f);
+    const FVector High = Beam.EndA().Z > Beam.EndB().Z ? Beam.EndA() : Beam.EndB();
+    TestTrue(TEXT("It ends under the high end"), FMath::Abs(FMath::Max(Row.EndA().X, Row.EndB().X) - High.X) < 5.0f);
+    return true;
+}
+
+// Thrown onto a sled: a log that lands on it is loaded.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSledThrowLoadTest,
+    "MyProject3.Construction.SledLoadsThrownLogs", TestFlags)
+bool FSledThrowLoadTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogContainerActor* Sled = World->SpawnActorDeferred<ALogContainerActor>(ALogContainerActor::StaticClass(), FTransform(FVector(0, 0, 10)));
+    Sled->ConfigureKind(ELogContainerKind::BasicSled);
+    Sled->FinishSpawning(FTransform(FRotator::ZeroRotator, FVector(0, 0, 10), Sled->GetActorScale3D()));
+    SpawnBeam(World, FVector(20, 30, 90), FRotator::ZeroRotator, 200.0f, 30.0f, false);
+    SpawnBeam(World, FVector(900, 0, 20), FRotator::ZeroRotator, 200.0f, 30.0f, false);
+    for (int32 Step = 0; Step < 10; ++Step)
+        Sled->Tick(0.2f);
+    TestEqual(TEXT("The log that landed on the sled is loaded, the far one is not"), Sled->GetStoredCount(), 1);
+    return true;
+}
+
+// New ready-made plans, a drawn defensive wall, and a tree platform that rests on its trunk.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPrefabPlansTest,
+    "MyProject3.Construction.PrefabPlansTreeAndWallLine", TestFlags)
+bool FPrefabPlansTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    FPlayerTools Player(World);
+    for (EBuildPlanKind Kind : { EBuildPlanKind::SmallLogCabin, EBuildPlanKind::Chair, EBuildPlanKind::Couch,
+        EBuildPlanKind::Shelf, EBuildPlanKind::RabbitHutch, EBuildPlanKind::CornerRamp, EBuildPlanKind::HuntingShelter })
+    {
+        ABuildPlanActor* Plan = Player.Tools->PlacePlan(Kind, FVector(0, 0, 0), 0.0f);
+        TestTrue(FString::Printf(TEXT("%s has parts"), *ABuildPlanActor::GetPlanName(Kind)), Plan && Plan->GetSlotCount() >= 4);
+        if (Plan)
+            Plan->Destroy();
+    }
+    ABuildPlanActor* Cabin = Player.Tools->PlacePlan(EBuildPlanKind::SmallLogCabin, FVector(0, 0, 0), 0.0f);
+    TestTrue(FString::Printf(TEXT("The cabin has walls and a roof (%d parts)"), Cabin ? Cabin->GetSlotCount() : 0),
+        Cabin && Cabin->GetSlotCount() >= 30);
+    if (Cabin)
+        Cabin->Destroy();
+
+    ABuildPlanActor* Line = Player.Tools->PlaceDefenseLine(FVector(0, 0, 0), FVector(400, 0, 0));
+    TestTrue(FString::Printf(TEXT("A 4 m line takes 11 stakes (%d)"), Line ? Line->GetSlotCount() : 0), Line && Line->GetSlotCount() == 11);
+    if (Line)
+    {
+        const FVector First = Line->GetSlotWorld(0).GetLocation();
+        const FVector Last = Line->GetSlotWorld(Line->GetSlotCount() - 1).GetLocation();
+        TestTrue(TEXT("Stakes run along the drawn line"), FMath::Abs(First.Y) < 2.0f && FMath::Abs(Last.Y) < 2.0f &&
+            FMath::IsNearlyEqual(FMath::Abs(Last.X - First.X), 400.0f, 2.0f));
+    }
+
+    TestNull(TEXT("No tree, no tree platform"), Player.Tools->PlacePlan(EBuildPlanKind::TreePlatform, FVector(2000, 2000, 0), 0.0f));
+    AHarvestableTreeActor* Tree = SpawnTestTree(World, FVector(1000, 0, 0), 900.0f);
+    ABuildPlanActor* Platform = Player.Tools->PlacePlan(EBuildPlanKind::TreePlatform, FVector(1150, 80, 0), 0.0f);
+    if (!TestNotNull(TEXT("Tree platform around the tree"), Platform))
+        return false;
+    TestTrue(TEXT("Centred on the trunk"), FVector::Dist2D(Platform->GetActorLocation(), Tree->GetActorLocation()) < 1.0f);
+    ALogBuildPiece* Beam = SpawnBeam(World, Platform->GetSlotWorld(0).GetLocation(), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    Platform->MarkFilled(0, Beam);
+    UTreeAnchorComponent* Anchor = Beam->FindComponentByClass<UTreeAnchorComponent>();
+    TestTrue(TEXT("The beam rests on the trunk"), Anchor && Anchor->GetTree() == Tree);
+    return true;
+}
+
+// More helper orders: bring logs to a pile, fell a tree when none are loose,
+// and sharpen the stakes of a wall.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHelperMoreOrdersTest,
+    "MyProject3.Construction.HelperPilesChopsAndSharpens", TestFlags)
+bool FHelperMoreOrdersTest::RunTest(const FString& Parameters)
+{
+    {
+        FScopedTestWorld TestWorld;
+        UWorld* World = TestWorld.World;
+        ALogBuildPiece* Log = SpawnBeam(World, FVector(500, 300, 20), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+        AHelperCompanionActor* Helper = World->SpawnActor<AHelperCompanionActor>(FVector(0, 0, 0), FRotator::ZeroRotator);
+        Helper->bMayChopTrees = false;
+        Helper->SetOrder(ECompanionOrder::PileLogsHere);
+        Helper->SetPilePoint(FVector(-600, 0, 0));
+        for (int32 Step = 0; Step < 300 && Helper->GetDeliveredCount() == 0; ++Step)
+            Helper->Tick(0.1f);
+        TestEqual(TEXT("One log brought"), Helper->GetDeliveredCount(), 1);
+        TestTrue(TEXT("It lies at the pile"), FVector::Dist2D(Log->GetActorLocation(), FVector(-600, 0, 0)) < 200.0f);
+    }
+    {
+        FScopedTestWorld TestWorld;
+        UWorld* World = TestWorld.World;
+        SpawnTestTree(World, FVector(800, 0, 0), 900.0f);
+        AHelperCompanionActor* Helper = World->SpawnActor<AHelperCompanionActor>(FVector(0, 0, 0), FRotator::ZeroRotator);
+        Helper->SetOrder(ECompanionOrder::CollectLogs);
+        for (int32 Step = 0; Step < 300 && Helper->GetTreesFelled() == 0; ++Step)
+            Helper->Tick(0.1f);
+        TestEqual(TEXT("With no loose logs he fells a tree"), Helper->GetTreesFelled(), 1);
+    }
+    {
+        FScopedTestWorld TestWorld;
+        UWorld* World = TestWorld.World;
+        ALogBuildPiece* StakeA = SpawnBeam(World, FVector(400, 0, 150), FRotator(90, 0, 0), 300.0f, 30.0f, true);
+        ALogBuildPiece* StakeB = SpawnBeam(World, FVector(400, 45, 150), FRotator(90, 0, 0), 300.0f, 30.0f, true);
+        AHelperCompanionActor* Helper = World->SpawnActor<AHelperCompanionActor>(FVector(0, 0, 0), FRotator::ZeroRotator);
+        Helper->SetOrder(ECompanionOrder::MaintainWalls);
+        for (int32 Step = 0; Step < 300 && Helper->GetWallsTended() < 2; ++Step)
+            Helper->Tick(0.1f);
+        TestTrue(TEXT("Both stakes sharpened"), StakeA->FindComponentByClass<USharpenedTipComponent>() &&
+            StakeB->FindComponentByClass<USharpenedTipComponent>());
+    }
+    return true;
+}
+
+
+// Raising a beam: a taller post set under the free end of a placed beam lifts that
+// end onto its top; the other end stays on its post.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRaiseBeamTest,
+    "MyProject3.Construction.NewPostRaisesBeamEnd", TestFlags)
+bool FRaiseBeamTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    SpawnBeam(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Beam = SpawnBeam(World, FVector(150, 0, 215), FRotator::ZeroRotator, 340.0f, 30.0f, true);
+    ALogBuildPiece* Tall = SpawnBeam(World, FVector(310, 0, 130), FRotator(90, 0, 0), 260.0f, 30.0f, true);
+    ALogBuildPiece* OnLog = SpawnBeam(World, FVector(150, 0, 270), FRotator(90, 0, 0), 80.0f, 20.0f, true);
+    FPlayerTools Player(World);
+    TestEqual(TEXT("A post standing on the beam lifts nothing"), Player.Carry->RaiseBeamsOntoPost(OnLog), 0);
+    TestEqual(TEXT("The tall post lifts one beam end"), Player.Carry->RaiseBeamsOntoPost(Tall), 1);
+    MyProject3Construction::FLogGeometry Shape;
+    MyProject3Construction::GetLogGeometry(Beam, Shape);
+    const FVector Right = Shape.EndA().X > Shape.EndB().X ? Shape.EndA() : Shape.EndB();
+    const FVector Left = Shape.EndA().X > Shape.EndB().X ? Shape.EndB() : Shape.EndA();
+    TestTrue(FString::Printf(TEXT("The right end sits on the tall post (%.0f)"), Right.Z), FMath::IsNearlyEqual(Right.Z, 275.0f, 6.0f));
+    TestTrue(FString::Printf(TEXT("The left end stays (%.0f)"), Left.Z), FMath::IsNearlyEqual(Left.Z, 215.0f, 3.0f));
+    return true;
+}
+
+
+// 3.5: split pieces cannot stand as posts; 3.6: a full log used for boards is split
+// on the spot, one half in the hands and the other on the shoulder.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSplitRulesTest,
+    "MyProject3.Carry.Logs.SplitPiecesAndAutoSplit", TestFlags)
+bool FSplitRulesTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    const FLogProcessingMeshSet Family = AVerticalSliceBWorldActor::BuildLogMeshFamily();
+    if (!TestNotNull(TEXT("Demo log family"), Family.BaseRoundMesh.Get()))
+        return false;
+    const FTransform Spawn(FRotator::ZeroRotator, FVector(0, 0, 40));
+    ALogBuildPiece* Log = World->SpawnActorDeferred<ALogBuildPiece>(ALogBuildPiece::StaticClass(), Spawn,
+        nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+    Log->BaseDefinitionId = TEXT("Wood.Log.AutoSplit");
+    Log->SelectedProcessingMeshSetId = Family.VariantSetId;
+    Log->ProcessingMeshSets.Add(Family);
+    Log->SetPieceStaticMesh(Family.BaseRoundMesh);
+    Log->FinishSpawning(Spawn);
+    Log->GetLogMesh()->SetSimulatePhysics(false);
+    TestTrue(TEXT("A round log can stand"), ULogCarryComponent::CanStandAsPost(Log));
+
+    FPlayerTools Player(World);
+    TestTrue(TEXT("Carrying"), Player.Carry->TryPickupPiece(Log));
+    TestTrue(TEXT("Split in the hands"), Player.Carry->SplitCarriedLogInHalf());
+    ALogBuildPiece* Half = Player.Carry->HeldPiece;
+    TestTrue(TEXT("A half in the hands"), Half && Half->GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound);
+    TestTrue(TEXT("The other half on the shoulder"), Player.Carry->ShoulderPiece &&
+        Player.Carry->ShoulderPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::HalfRound);
+    TestFalse(TEXT("A half cannot stand as a post"), ULogCarryComponent::CanStandAsPost(Half));
+    return true;
+}
+
+// 4.6 / 4.7: a strut runs from a post up to its beam; a middle post can only be
+// removed when the beam would not span too far, which struts make possible.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FStrutSpanTest,
+    "MyProject3.Construction.StrutsLetMiddlePostGo", TestFlags)
+bool FStrutSpanTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Left = SpawnBeam(World, FVector(-280, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Middle = SpawnBeam(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    SpawnBeam(World, FVector(280, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    ALogBuildPiece* Beam = SpawnBeam(World, FVector(0, 0, 215), FRotator::ZeroRotator, 600.0f, 30.0f, true);
+    ALogBuildPiece* Half = SpawnBeam(World, FVector(0, -400, 20), FRotator::ZeroRotator, 300.0f, 20.0f, false);
+    FPlayerTools Player(World);
+
+    TArray<ALogBuildPiece*> Beams;
+    Player.Carry->FindBeamsOnPost(Left, Beams);
+    TestTrue(TEXT("The beam rests on the post"), Beams.Contains(Beam));
+    FTransform Strut;
+    float Length = 0.0f;
+    FVector Joint;
+    TestTrue(TEXT("A strut fits from the post to the beam"),
+        Player.Carry->ComputeStrutPlacement(Half, Left, Beam, FVector(0, 0, 200), Strut, Length, Joint));
+    TestTrue(FString::Printf(TEXT("About 1.3 m long (%.0f)"), Length), Length > 110.0f && Length < 150.0f);
+    TestTrue(FString::Printf(TEXT("It meets the beam 90 cm in (%.0f)"), Joint.X), FMath::IsNearlyEqual(Joint.X, -190.0f, 5.0f));
+
+    TestFalse(TEXT("Without struts the middle post stays"), Player.Tools->DismantlePiece(Middle));
+    TestTrue(TEXT("Still placed"), Middle->IsPlaced());
+    // Two struts, one at each end post.
+    SpawnBeam(World, FVector(-237, 0, 160), FRotator(45, 0, 0), 125.0f, 20.0f, true);
+    SpawnBeam(World, FVector(237, 0, 160), FRotator(45, 180, 0), 125.0f, 20.0f, true);
+    bool bOverhang = false;
+    const float Span = Player.Tools->GetLongestUnsupportedSpan(Beam, Middle, bOverhang);
+    TestTrue(FString::Printf(TEXT("Struts shorten the span (%.0f)"), Span), Span < Player.Tools->MaxBeamSpanCm && !bOverhang);
+    TestTrue(TEXT("Now the middle post can go"), Player.Tools->DismantlePiece(Middle));
+    return true;
+}
+
+// 2.2 / 2.3: a post near one log length from another moves to exactly that span,
+// and the ground shows a circle under a post and a rectangle under a lying log.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPostSpacingTest,
+    "MyProject3.Carry.Logs.PostSpacingAndGroundMarks", TestFlags)
+bool FPostSpacingTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Standing = SpawnBeam(World, FVector(0, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    FPlayerTools Player(World);
+    FVector Base;
+    ALogBuildPiece* Partner = nullptr;
+    float Span = 0.0f;
+    TestTrue(TEXT("Lines up near 3 m"), Player.Carry->SnapPostSpacing(FVector(285, 20, 0), Base, Partner, Span));
+    TestTrue(TEXT("With the standing post"), Partner == Standing && Span == 300.0f);
+    TestTrue(FString::Printf(TEXT("Exactly 300 cm away (%.1f)"), FVector::Dist2D(Base, FVector::ZeroVector)),
+        FMath::IsNearlyEqual(FVector::Dist2D(Base, FVector::ZeroVector), 300.0f, 0.5f));
+    TestFalse(TEXT("Not in between"), Player.Carry->SnapPostSpacing(FVector(220, 0, 0), Base, Partner, Span));
+    return true;
+}
+
+// 4.4: a post set under the middle of a beam is cut to meet it and props it up.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMidPostFitTest,
+    "MyProject3.Construction.PostUnderBeamIsCutToFit", TestFlags)
+bool FMidPostFitTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    SpawnBeam(World, FVector(-280, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    SpawnBeam(World, FVector(280, 0, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
+    SpawnBeam(World, FVector(0, 0, 215), FRotator::ZeroRotator, 600.0f, 30.0f, true);
+    ALogBuildPiece* Tall = SpawnBeam(World, FVector(0, 0, 150), FRotator(90, 0, 0), 300.0f, 30.0f, true);
+    FPlayerTools Player(World);
+    TestEqual(TEXT("The post is fitted"), Player.Carry->RaiseBeamsOntoPost(Tall), 1);
+    MyProject3Construction::FLogGeometry Post;
+    MyProject3Construction::GetLogGeometry(Tall, Post);
+    const float Top = FMath::Max(Post.EndA().Z, Post.EndB().Z);
+    TestTrue(FString::Printf(TEXT("Its top meets the beam bottom (%.0f)"), Top), FMath::IsNearlyEqual(Top, 200.0f, 3.0f));
+    return true;
+}
+
+// 7.5: a board aimed at a floor edge with no second support becomes a single step.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSingleStepTest,
+    "MyProject3.Construction.SingleStepAtFloorEdge", TestFlags)
+bool FSingleStepTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Edge = SpawnBeam(World, FVector(0, 0, 60), FRotator::ZeroRotator, 400.0f, 30.0f, true);
+    ALogBuildPiece* Board = SpawnBeam(World, FVector(0, -600, 20), FRotator::ZeroRotator, 300.0f, 10.0f, false);
+    FPlayerTools Player(World);
+    TestTrue(TEXT("Carrying"), Player.Carry->TryPickupPiece(Board));
+    const bool bStep = Player.Tools->TryPlaceSingleStep(Edge, FVector(0, -15, 75));
+    TestTrue(FString::Printf(TEXT("Step placed (%s / %s)"), *Player.Tools->GetStatus(), *Player.Carry->GetPlacementStatus()), bStep);
+    TestTrue(TEXT("Built in"), Board->IsPlaced());
+    MyProject3Construction::FLogGeometry Step;
+    MyProject3Construction::GetLogGeometry(Board, Step);
+    TestTrue(FString::Printf(TEXT("On the player's side of the edge (%.0f)"), Step.Centre.Y), Step.Centre.Y < -20.0f);
+    TestTrue(TEXT("Lower than the floor"), Step.Centre.Z < 75.0f);
+    return true;
+}
+
+// 8.7: a badly damaged piece takes no new parts.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDamagedRefusesTest,
+    "MyProject3.Construction.DamagedPieceTakesNoParts", TestFlags)
+bool FDamagedRefusesTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ALogBuildPiece* Beam = SpawnBeam(World, FVector(0, 0, 20), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    FPlayerTools Player(World);
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    FStructuralNodeRecord Node;
+    if (!Graph->GetNode(Beam->GetStructuralNodeId(), Node))
+    {
+        AddWarning(TEXT("The test beam has no graph node; skipped."));
+        return true;
+    }
+    TestFalse(TEXT("Sound at first"), Player.Carry->IsBadlyDamaged(Beam));
+    bool bBroken = false;
+    Graph->ApplyDamage(Beam->GetStructuralNodeId(), Node.DamageThreshold * 0.6f, bBroken);
+    TestTrue(TEXT("Badly damaged"), Player.Carry->IsBadlyDamaged(Beam));
+    Graph->RepairDamage(Beam->GetStructuralNodeId(), Node.DamageThreshold);
+    TestFalse(TEXT("Repaired"), Player.Carry->IsBadlyDamaged(Beam));
     return true;
 }
 

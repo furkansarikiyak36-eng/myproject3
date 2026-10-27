@@ -1062,7 +1062,9 @@ void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
     {
         Connections->ReleaseCrossMaterialChildren(this);
     }
-    for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
+    // Each child removes itself from AttachedPieces while detaching: walk a copy.
+    const TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedCopy = AttachedPieces;
+    for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedCopy)
     {
         if (Child.IsValid())
         {

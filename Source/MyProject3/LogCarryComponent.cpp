@@ -7,6 +7,7 @@
 #include "HarvestableTreeActor.h"
 #include "LogAttachmentComponents.h"
 #include "LogBuildToolsComponent.h"
+#include "LogSnapCharacter.h"
 #include "ThrownImpactComponent.h"
 #include "Engine/OverlapResult.h"
 #include "MaterialConnectionSubsystem.h"
@@ -50,6 +51,7 @@ void ULogCarryComponent::TickComponent(
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
     UpdateHingeSwings(DeltaTime);
+    PromoteShoulderLog();
 
     if (bIsDraggingLog)
     {
@@ -102,6 +104,18 @@ void ULogCarryComponent::TickComponent(
         return;
     }
 
+    // A split piece cannot stand: say so while it is held upright.
+    if (PlacementMode == ELogPlacementMode::Vertical && !CanStandAsPost(HeldPiece))
+        PlacementStatus = TEXT("Split pieces cannot stand as posts: use a round or hewn log.");
+
+    // A strut between a post and its beam takes over in diagonal mode.
+    UpdateStrutPlacement();
+    if (bHasStrutPlacement)
+    {
+        UpdateHeldLifts();
+        return;
+    }
+
     // Stacking on a placed log takes over from end snaps and free placement.
     UpdateStackPlacement();
     if (bHasStackPlacement)
@@ -145,11 +159,8 @@ void ULogCarryComponent::TickComponent(
         FindBestSnapCandidate();
         if (bHasValidSnap)
         {
-            AActor* Support = nullptr;
-            bool bGround = false;
-            PlacementStatus = EvaluateFarEndSupport(HeldPiece, CurrentSourceSnapPointIndex, Support, bGround)
-                ? TEXT("Snap ready: E to place.")
-                : TEXT("The other end has no support: it will swing down around the joint.");
+            // A free far end needs no warning: it simply swings down around the joint.
+            PlacementStatus = TEXT("Snap ready: E to place.");
         }
         else
         {
@@ -277,6 +288,14 @@ void ULogCarryComponent::Interact()
     }
     if (IsValid(HeldPiece))
     {
+        // E on a loose log while carrying one: it goes on the shoulder.
+        FHitResult Hit;
+        if (!IsValid(ShoulderPiece) && TraceFromView(PickupRange, Hit))
+        {
+            ALogBuildPiece* Loose = Cast<ALogBuildPiece>(Hit.GetActor());
+            if (Loose && Loose != HeldPiece && !Loose->IsPlaced() && !Loose->IsHeld() && TryShoulderLog(Loose))
+                return;
+        }
         PlaceHeldPiece();
     }
     else if (IsValid(HeldMaterialPiece))
@@ -466,6 +485,30 @@ void ULogCarryComponent::UpdateHeldPreview()
         const float RequiredLift = -BottomOffsetFromActor + 2.0f;
         PreviewLocation = PlacementHit.ImpactPoint +
             FVector::UpVector * RequiredLift;
+
+        // A post near one log length from another post moves to exactly that span.
+        SpanPartner.Reset();
+        ALogBuildPiece* Partner = nullptr;
+        FVector SnappedBase;
+        float Span = 0.0f;
+        if (PlacementMode == ELogPlacementMode::Vertical && !bHitBuildPiece &&
+            SnapPostSpacing(PlacementHit.ImpactPoint, SnappedBase, Partner, Span))
+        {
+            FHitResult Ground;
+            FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(PostSpanGround), false, GetOwner());
+            GroundParams.AddIgnoredActor(HeldPiece);
+            if (GetWorld()->LineTraceSingleByChannel(Ground, SnappedBase + FVector(0, 0, 150.0f),
+                SnappedBase - FVector(0, 0, 300.0f), ECC_Visibility, GroundParams) && !Cast<ALogBuildPiece>(Ground.GetActor()))
+            {
+                PreviewLocation = Ground.ImpactPoint + FVector::UpVector * RequiredLift;
+                SpanPartner = Partner;
+                SpanCm = Span;
+            }
+        }
+    }
+    else
+    {
+        SpanPartner.Reset();
     }
 
     HeldPiece->SetActorLocation(PreviewLocation);
@@ -491,7 +534,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
     }
 
     ALogBuildPiece* AimedTarget = Cast<ALogBuildPiece>(AimHit.GetActor());
-    if (!IsValid(AimedTarget) || !AimedTarget->IsPlaced() || AimedTarget->IsHeld())
+    if (!IsValid(AimedTarget) || !AimedTarget->IsPlaced() || AimedTarget->IsHeld() || IsBadlyDamaged(AimedTarget))
     {
         ClearSnapCandidate();
         return;
@@ -689,6 +732,13 @@ void ULogCarryComponent::ClearSnapCandidate()
 
 bool ULogCarryComponent::PlaceHeldPiece()
 {
+    if (bHasStrutPlacement && IsValid(HeldPiece))
+        return PlaceStrut();
+    if (IsValid(HeldPiece) && MyProject3Construction::IsVerticalLog(HeldPiece) && !CanStandAsPost(HeldPiece))
+    {
+        PlacementStatus = TEXT("Split pieces cannot stand as posts: use a round or hewn log.");
+        return false;
+    }
     if (bHasStackPlacement && StackTarget.IsValid() && IsValid(HeldPiece))
     {
         ALogBuildPiece* Target = StackTarget.Get();
@@ -762,7 +812,7 @@ bool ULogCarryComponent::PlaceHeldPiece()
                 // Like a board nailed at one end: the joint holds, the free end swings down.
                 if (StartHingeSwing(PieceToPlace, OwnSnapIndex))
                 {
-                    PlacementStatus = TEXT("One end is fixed; the free end swings down.");
+                    PlacementStatus = TEXT("Placed.");
                     return true;
                 }
                 if (UWorldObjectIdentityComponent* Identity =
@@ -953,6 +1003,7 @@ void ULogCarryComponent::CyclePlacementMode()
 
 void ULogCarryComponent::CycleCutAction()
 {
+    CancelArmedCut();
     switch (SelectedCutAction)
     {
     case ELogCutAction::SplitHalf:
@@ -979,15 +1030,10 @@ void ULogCarryComponent::CycleCutAction()
     case ELogCutAction::Plank:
         SelectedCutAction = ELogCutAction::SplitLengthHalf;
         break;
+    // One length-cut entry: where the player looks along the log picks 1/2, 3/4 or 1/4.
     case ELogCutAction::SplitLengthHalf:
-        SelectedCutAction = ELogCutAction::SplitLengthThreeQuarter;
-        break;
     case ELogCutAction::SplitLengthThreeQuarter:
-        SelectedCutAction = ELogCutAction::SplitHalfLengthIntoQuarters;
-        break;
     case ELogCutAction::SplitHalfLengthIntoQuarters:
-        SelectedCutAction = ELogCutAction::SplitQuarterLengthIntoEighths;
-        break;
     case ELogCutAction::SplitQuarterLengthIntoEighths:
     default:
         SelectedCutAction = ELogCutAction::SplitHalf;
@@ -1178,13 +1224,105 @@ bool ULogCarryComponent::ProcessAimedPiece()
         return false;
     }
 
+    // First press marks the cut where the player looks; the next presses cut it.
+    if (ArmedLog.Get() != Piece)
+    {
+        FLogCutChoice Choice;
+        FString Reason;
+        if (!ResolveCutChoice(Piece, Hit.ImpactPoint, Choice))
+            Reason = Piece->IsPlaced()
+                ? TEXT("Built pieces are not cut; choose the length cut (C) to shorten a standing post.")
+                : TEXT("This piece is too short to cut again.");
+        else
+            CanMakeCut(Piece, Choice, Reason);
+        if (!Reason.IsEmpty())
+        {
+            CancelArmedCut();
+            PlacementStatus = Reason;
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, Reason);
+            return false;
+        }
+        ArmedLog = Piece;
+        ArmedAction = Choice.Action;
+        ArmedShare = Choice.Share;
+        bArmedFlipPending = Choice.bFlip;
+        ArmedKind = Choice.Kind;
+        ArmedWork = 0.0f;
+        PlacementStatus = FString::Printf(TEXT("Marked: %s. F: cut with the axe, C: cancel."), *DescribeCut(Piece, Choice));
+        return true;
+    }
+
+    // A 3/4 cut aimed at the -X end: turn the log end for end so the short piece
+    // comes off where the player marked it. The marked ring stays in place.
+    if (bArmedFlipPending)
+    {
+        bArmedFlipPending = false;
+        if (UStaticMeshComponent* LogMesh = Piece->GetLogMesh())
+        {
+            const FVector Pivot = LogMesh->Bounds.Origin;
+            const FVector AxisWorld = LogMesh->GetComponentTransform().TransformVectorNoScale(
+                LocalAxisVector(Piece->LongitudinalAxis));
+            const FQuat Turn(FMath::Abs(AxisWorld.Z) > 0.9f ? FVector::XAxisVector : FVector::UpVector, PI);
+            FTransform Turned = Piece->GetActorTransform();
+            Turned.SetRotation(Turn * Turned.GetRotation());
+            Turned.SetLocation(Pivot + Turn.RotateVector(Turned.GetLocation() - Pivot));
+            Piece->SetActorTransform(Turned, false, nullptr, ETeleportType::TeleportPhysics);
+            if (LogMesh->IsSimulatingPhysics())
+            {
+                LogMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+                LogMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+            }
+            ArmedShare = 1.0f - ArmedShare;
+        }
+    }
+    const ELogCutAction CutAction = ArmedAction;
+    if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(GetOwner()))
+        Character->PlayAxeSwing();
+
+    // Free cuts and post shortening take the same number of swings as a recipe cut.
+    if (ArmedKind != ELogCutKind::Recipe)
+    {
+        ArmedWork += FMath::Clamp(CutWorkPerPress, 0.05f, 1.0f);
+        if (ArmedWork < 1.0f - KINDA_SMALL_NUMBER)
+        {
+            PlacementStatus = FString::Printf(TEXT("Cutting: %.0f%% - F again to continue"), ArmedWork * 100.0f);
+            return true;
+        }
+        FLogCutChoice Done;
+        Done.Share = ArmedShare;
+        Done.Kind = ArmedKind;
+        const FString What = DescribeCut(Piece, Done);
+        if (ArmedKind == ELogCutKind::Sharpen)
+        {
+            CancelArmedCut();
+            USharpenedTipComponent* Tip = NewObject<USharpenedTipComponent>(Piece);
+            Tip->RegisterComponent();
+            const bool bSharp = Tip->InitializeTip();
+            if (!bSharp)
+                Tip->DestroyComponent();
+            PlacementStatus = bSharp ? TEXT("Sharpened: climbers will be hurt and pushed back.") : TEXT("It could not be sharpened.");
+            return bSharp;
+        }
+        if (ArmedKind == ELogCutKind::ShortenPost && PostHoldsAnything(Piece))
+        {
+            CancelArmedCut();
+            PlacementStatus = TEXT("This post holds up other pieces: a post can only be cut when nothing rests on it.");
+            return false;
+        }
+        const bool bCut = CutLogAtShare(Piece, ArmedShare);
+        CancelArmedCut();
+        PlacementStatus = bCut ? FString::Printf(TEXT("Done: %s."), *What) : TEXT("The cut could not be made.");
+        return bCut;
+    }
+
     // Remember what already lies here, so the new pieces can be found after the cut.
     TSet<ALogBuildPiece*> Before;
     for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
         Before.Add(*It);
 
     const FWorldOperationResult CutResult = Piece->TryAdvanceCutProgress(
-        SelectedCutAction,
+        CutAction,
         FMath::Clamp(CutWorkPerPress, 0.05f, 1.0f),
         FGuid::NewGuid());
 
@@ -1197,7 +1335,7 @@ bool ULogCarryComponent::ProcessAimedPiece()
         {
             const UEnum* Enum = StaticEnum<ELogCutAction>();
             const FString ActionName = Enum
-                ? Enum->GetDisplayNameTextByValue(static_cast<int64>(SelectedCutAction)).ToString()
+                ? Enum->GetDisplayNameTextByValue(static_cast<int64>(CutAction)).ToString()
                 : TEXT("Processing");
             const FString Message = FString::Printf(
                 TEXT("%s: %.0f%% — press F again to continue"),
@@ -1219,7 +1357,7 @@ bool ULogCarryComponent::ProcessAimedPiece()
         }
         const UEnum* Enum = StaticEnum<ELogCutAction>();
         const FString ActionName = Enum
-            ? Enum->GetDisplayNameTextByValue(static_cast<int64>(SelectedCutAction)).ToString()
+            ? Enum->GetDisplayNameTextByValue(static_cast<int64>(CutAction)).ToString()
             : TEXT("Processing");
         const FString Message = FString::Printf(TEXT("Log processed: %s"), *ActionName);
         UE_LOG(LogTemp, Log, TEXT("%s"), *Message);
@@ -1227,14 +1365,17 @@ bool ULogCarryComponent::ProcessAimedPiece()
         {
             GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Green, Message);
         }
+        CancelArmedCut();
+        PlacementStatus = Message;
         return true;
     }
 
-    const FString Reason = Piece->GetCutActionBlockReason(SelectedCutAction);
+    const FString Reason = Piece->GetCutActionBlockReason(CutAction);
     const FString Message = Reason.IsEmpty()
         ? TEXT("This cut operation is not available on the aimed log.")
         : Reason;
     UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
+    CancelArmedCut();
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, Message);
@@ -1704,20 +1845,7 @@ bool ULogCarryComponent::BuildCutPreviewSegments(
     }
 
     if (FirstShare > 0.0f)
-    {
-        // A dashed ring around the log where the saw will go.
-        const FVector RingCentre = Centre - Axis * HalfLength + Axis * (2.0f * HalfLength * FirstShare);
-        const float Radius = FMath::Max(HalfSide, HalfUp) * 1.05f;
-        constexpr int32 Segments = 24;
-        for (int32 Index = 0; Index < Segments; Index += 2)
-        {
-            const float A0 = 2.0f * PI * Index / Segments;
-            const float A1 = 2.0f * PI * (Index + 1) / Segments;
-            OutSegmentPoints.Add(World(RingCentre + (Side * FMath::Cos(A0) + Up * FMath::Sin(A0)) * Radius));
-            OutSegmentPoints.Add(World(RingCentre + (Side * FMath::Cos(A1) + Up * FMath::Sin(A1)) * Radius));
-        }
-        return true;
-    }
+        return BuildCutRingSegments(Log, FirstShare, OutSegmentPoints);
 
     switch (Action)
     {
@@ -1747,6 +1875,940 @@ bool ULogCarryComponent::BuildCutPreviewSegments(
     default:
         return false;
     }
+    return true;
+}
+
+namespace
+{
+    bool IsLengthCut(ELogCutAction Action)
+    {
+        return Action == ELogCutAction::SplitLengthHalf || Action == ELogCutAction::SplitLengthThreeQuarter ||
+            Action == ELogCutAction::SplitHalfLengthIntoQuarters || Action == ELogCutAction::SplitQuarterLengthIntoEighths;
+    }
+
+    /** Mesh-space centre, long axis and half length of a log, from its mesh bounds. */
+    bool GetMeshFrame(const ALogBuildPiece* Log, FTransform& OutMeshTransform, FVector& OutCentre,
+        FVector& OutAxis, float& OutHalfLength, float& OutRadius)
+    {
+        const UStaticMeshComponent* Mesh = Log ? Log->GetLogMesh() : nullptr;
+        if (!Mesh || !Mesh->GetStaticMesh())
+            return false;
+        OutMeshTransform = Mesh->GetComponentTransform();
+        const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+        OutAxis = LocalAxisVector(Log->LongitudinalAxis);
+        OutCentre = Bounds.Origin;
+        OutHalfLength = FVector::DotProduct(Bounds.BoxExtent, OutAxis.GetAbs());
+        const FVector Cross = Bounds.BoxExtent - Bounds.BoxExtent * OutAxis.GetAbs();
+        OutRadius = Cross.GetMax();
+        return OutHalfLength > KINDA_SMALL_NUMBER;
+    }
+
+    void AddDashedRing(TArray<FVector>& Out, const FTransform& Frame, const FVector& Centre,
+        const FVector& Side, const FVector& Up, float Radius)
+    {
+        constexpr int32 Segments = 24;
+        for (int32 Index = 0; Index < Segments; Index += 2)
+        {
+            const float A0 = 2.0f * PI * Index / Segments;
+            const float A1 = 2.0f * PI * (Index + 1) / Segments;
+            Out.Add(Frame.TransformPosition(Centre + (Side * FMath::Cos(A0) + Up * FMath::Sin(A0)) * Radius));
+            Out.Add(Frame.TransformPosition(Centre + (Side * FMath::Cos(A1) + Up * FMath::Sin(A1)) * Radius));
+        }
+    }
+}
+
+bool ULogCarryComponent::BuildCutRingSegments(const ALogBuildPiece* Log, float Share, TArray<FVector>& OutSegmentPoints) const
+{
+    OutSegmentPoints.Reset();
+    FTransform Frame;
+    FVector Centre, Axis;
+    float HalfLength = 0.0f, Radius = 0.0f;
+    if (Share < 0.0f || !GetMeshFrame(Log, Frame, Centre, Axis, HalfLength, Radius))
+        return false;
+    const FVector Up = FMath::Abs(Axis.Z) > 0.5f ? FVector::XAxisVector : FVector::ZAxisVector;
+    const FVector Side = FVector::CrossProduct(Up, Axis).GetSafeNormal();
+    const FVector RingCentre = Centre - Axis * HalfLength + Axis * (2.0f * HalfLength * Share);
+    AddDashedRing(OutSegmentPoints, Frame, RingCentre, Side, Up, Radius * 1.08f);
+    return true;
+}
+
+bool ULogCarryComponent::ResolveCutChoice(const ALogBuildPiece* Log, const FVector& WorldPoint, FLogCutChoice& Out) const
+{
+    Out = FLogCutChoice();
+    Out.Action = SelectedCutAction;
+    if (!IsValid(Log))
+        return false;
+
+    FTransform Frame;
+    FVector Centre, Axis;
+    float HalfLength = 0.0f, Radius = 0.0f;
+    MyProject3Construction::FLogGeometry Shape;
+    if (!GetMeshFrame(Log, Frame, Centre, Axis, HalfLength, Radius) || !MyProject3Construction::GetLogGeometry(Log, Shape))
+        return false;
+    const FVector Local = Frame.InverseTransformPosition(WorldPoint);
+    const float T = FMath::Clamp((FVector::DotProduct(Local - Centre, Axis) + HalfLength) / (2.0f * HalfLength), 0.0f, 1.0f);
+    const float Length = Shape.Length();
+    constexpr float Step = 25.0f;
+
+    if (Log->IsPlaced() && MyProject3Construction::IsVerticalLog(Log))
+    {
+        // The top of a standing log is sharpened, whatever cut is selected.
+        const bool bEndALowTop = Shape.EndA().Z <= Shape.EndB().Z;
+        const float FromBottomTop = bEndALowTop ? T * Length : (1.0f - T) * Length;
+        if (Length - FromBottomTop < FMath::Max(30.0f, 0.15f * Length) && !Log->FindComponentByClass<USharpenedTipComponent>())
+        {
+            Out.Kind = ELogCutKind::Sharpen;
+            Out.Share = bEndALowTop ? 1.0f : 0.0f;
+            return true;
+        }
+    }
+    if (!IsLengthCut(SelectedCutAction))
+        return !Log->IsPlaced();
+
+    if (Log->IsPlaced())
+    {
+        // Only a standing post is cut where it stands: from the top down.
+        if (!MyProject3Construction::IsVerticalLog(Log))
+            return false;
+        const bool bEndALow = Shape.EndA().Z <= Shape.EndB().Z;
+        const float FromBottom = bEndALow ? T * Length : (1.0f - T) * Length;
+        const float Keep = FMath::Clamp(FMath::RoundToFloat(FromBottom / Step) * Step, 30.0f, Length - 20.0f);
+        if (Length < 55.0f)
+            return false;
+        Out.Kind = ELogCutKind::ShortenPost;
+        Out.Share = bEndALow ? Keep / Length : 1.0f - Keep / Length;
+        return true;
+    }
+
+    // Recipe points for unshortened pieces, within 45 cm of the aim.
+    const float AxisScale = FMath::Abs(FVector::DotProduct(Log->GetActorScale3D(), LocalAxisVector(Log->LongitudinalAxis).GetAbs()));
+    const bool bTrimmed = FMath::Abs(AxisScale - 1.0f) > 0.02f;
+    if (!bTrimmed)
+    {
+        switch (Log->GetLengthFraction())
+        {
+        case ELogLengthFraction::FullLength:
+            if (FMath::Abs(T - 0.5f) * Length <= 45.0f)
+            {
+                Out.Action = ELogCutAction::SplitLengthHalf;
+                Out.Share = 0.5f;
+                return true;
+            }
+            if (FMath::Abs(T - 0.75f) * Length <= 45.0f || FMath::Abs(T - 0.25f) * Length <= 45.0f)
+            {
+                // The recipe puts the 1/4 piece at +X; aiming at the -X end turns the log first.
+                Out.Action = ELogCutAction::SplitLengthThreeQuarter;
+                Out.Share = T > 0.5f ? 0.75f : 0.25f;
+                Out.bFlip = T < 0.5f;
+                return true;
+            }
+            break;
+        case ELogLengthFraction::HalfLength:
+            if (FMath::Abs(T - 0.5f) * Length <= 45.0f)
+            {
+                Out.Action = ELogCutAction::SplitHalfLengthIntoQuarters;
+                Out.Share = 0.5f;
+                return true;
+            }
+            break;
+        case ELogLengthFraction::QuarterLength:
+            if (FMath::Abs(T - 0.5f) * Length <= 30.0f)
+            {
+                Out.Action = ELogCutAction::SplitQuarterLengthIntoEighths;
+                Out.Share = 0.5f;
+                return true;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    // Anywhere else: a free cut on a 25 cm step, both parts at least 30 cm.
+    if (Length < 60.0f)
+        return false;
+    const float Cut = FMath::Clamp(FMath::RoundToFloat(T * Length / Step) * Step, 30.0f, Length - 30.0f);
+    Out.Kind = ELogCutKind::FreeLength;
+    Out.Share = Cut / Length;
+    return true;
+}
+
+bool ULogCarryComponent::ResolveCutAtPoint(const ALogBuildPiece* Log, const FVector& WorldPoint,
+    ELogCutAction& OutAction, float& OutShare, bool& bOutFlip) const
+{
+    FLogCutChoice Choice;
+    const bool bResolved = ResolveCutChoice(Log, WorldPoint, Choice);
+    OutAction = Choice.Action;
+    OutShare = Choice.Share;
+    bOutFlip = Choice.bFlip;
+    return bResolved;
+}
+
+bool ULogCarryComponent::ResolveAimedCutChoice(const ALogBuildPiece* Log, FLogCutChoice& Out) const
+{
+    FHitResult Hit;
+    const FVector Point = TraceFromView(PickupRange, Hit) && Hit.GetActor() == Log
+        ? Hit.ImpactPoint : (Log ? Log->GetActorLocation() : FVector::ZeroVector);
+    return ResolveCutChoice(Log, Point, Out);
+}
+
+bool ULogCarryComponent::ResolveAimedCut(const ALogBuildPiece* Log, ELogCutAction& OutAction, float& OutShare, bool& bOutFlip) const
+{
+    FLogCutChoice Choice;
+    const bool bResolved = ResolveAimedCutChoice(Log, Choice);
+    OutAction = Choice.Action;
+    OutShare = Choice.Share;
+    bOutFlip = Choice.bFlip;
+    return bResolved;
+}
+
+bool ULogCarryComponent::CanMakeCut(const ALogBuildPiece* Log, const FLogCutChoice& Choice, FString& OutReason) const
+{
+    OutReason.Reset();
+    if (!IsValid(Log) || Log->IsHeld())
+    {
+        OutReason = TEXT("Nothing to cut.");
+        return false;
+    }
+    switch (Choice.Kind)
+    {
+    case ELogCutKind::ShortenPost:
+        if (!Log->IsPlaced() || !MyProject3Construction::IsVerticalLog(Log))
+            OutReason = TEXT("Only a standing post can be shortened where it stands.");
+        else if (PostHoldsAnything(Log))
+            OutReason = TEXT("This post holds up other pieces: a post can only be cut when nothing rests on it.");
+        break;
+    case ELogCutKind::Sharpen:
+        if (!Log->IsPlaced() || !MyProject3Construction::IsVerticalLog(Log))
+            OutReason = TEXT("Sharpen a log that stands upright.");
+        else if (Log->FindComponentByClass<USharpenedTipComponent>())
+            OutReason = TEXT("Already sharpened.");
+        break;
+    case ELogCutKind::FreeLength:
+    {
+        EWorldItemOwnerKind ItemOwner = EWorldItemOwnerKind::World;
+        if (Log->IsPlaced() || !MyProject3Construction::GetPieceOwnerKind(Log, ItemOwner) || ItemOwner != EWorldItemOwnerKind::World)
+            OutReason = TEXT("Cut a loose log, or a standing post.");
+        break;
+    }
+    case ELogCutKind::Recipe:
+    default:
+        if (!Log->CanApplyCutAction(Choice.Action))
+            OutReason = Log->GetCutActionBlockReason(Choice.Action);
+        break;
+    }
+    return OutReason.IsEmpty();
+}
+
+FString ULogCarryComponent::DescribeCut(const ALogBuildPiece* Log, const FLogCutChoice& Choice) const
+{
+    MyProject3Construction::FLogGeometry Shape;
+    const float Length = MyProject3Construction::GetLogGeometry(Log, Shape) ? Shape.Length() : 0.0f;
+    const float First = FMath::RoundToFloat(Length * FMath::Max(Choice.Share, 0.0f));
+    switch (Choice.Kind)
+    {
+    case ELogCutKind::ShortenPost:
+    {
+        const bool bEndALow = Shape.EndA().Z <= Shape.EndB().Z;
+        const float Keep = bEndALow ? First : Length - First;
+        return FString::Printf(TEXT("Shorten the post to %.0f cm"), Keep);
+    }
+    case ELogCutKind::FreeLength:
+        return FString::Printf(TEXT("Cut here: %.0f + %.0f cm"), First, Length - First);
+    case ELogCutKind::Sharpen:
+        return TEXT("Sharpen the top into a stake");
+    case ELogCutKind::Recipe:
+    default:
+        if (Choice.Share >= 0.0f)
+            return FString::Printf(TEXT("Cut: %.0f + %.0f cm"), First, Length - First);
+        return StaticEnum<ELogCutAction>()->GetDisplayNameTextByValue(static_cast<int64>(Choice.Action)).ToString();
+    }
+}
+
+bool ULogCarryComponent::GetArmedCutChoice(const ALogBuildPiece*& OutLog, FLogCutChoice& OutChoice) const
+{
+    OutLog = ArmedLog.Get();
+    OutChoice.Action = ArmedAction;
+    OutChoice.Share = ArmedShare;
+    OutChoice.bFlip = bArmedFlipPending;
+    OutChoice.Kind = ArmedKind;
+    return IsValid(OutLog) && !OutLog->IsHeld();
+}
+
+bool ULogCarryComponent::GetArmedCut(const ALogBuildPiece*& OutLog, ELogCutAction& OutAction, float& OutShare) const
+{
+    OutLog = ArmedLog.Get();
+    OutAction = ArmedAction;
+    OutShare = ArmedShare;
+    return IsValid(OutLog) && !OutLog->IsHeld();
+}
+
+void ULogCarryComponent::CancelArmedCut()
+{
+    ArmedLog.Reset();
+    ArmedShare = -1.0f;
+    bArmedFlipPending = false;
+    ArmedKind = ELogCutKind::Recipe;
+    ArmedWork = 0.0f;
+}
+
+bool ULogCarryComponent::CutLogAtShare(ALogBuildPiece* Log, float Share)
+{
+    using namespace MyProject3Construction;
+    FLogGeometry Shape;
+    if (!IsValid(Log) || Log->IsHeld() || !GetLogGeometry(Log, Shape) || Share <= 0.0f || Share >= 1.0f)
+        return false;
+    const float Split = -Shape.HalfLength + Shape.Length() * Share;
+    constexpr float Gap = 1.0f;
+    const bool bPost = Log->IsPlaced();
+    // A post keeps its lower end; a loose log keeps its -X end.
+    const bool bKeepA = !bPost || Shape.EndA().Z <= Shape.EndB().Z;
+    const FVector OldTop = bKeepA ? Shape.EndB() : Shape.EndA();
+    const float Removed = bKeepA ? Shape.HalfLength - Split : Split + Shape.HalfLength;
+    if (Removed < 15.0f || Shape.Length() - Removed < 25.0f)
+        return false;
+
+    // Pieces hanging on the log must not be scaled with it.
+    TArray<AActor*> Children;
+    Log->GetAttachedActors(Children);
+    for (AActor* Child : Children)
+        Child->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+    ALogBuildPiece* Other = SpawnLogCopy(Log, Log->GetActorTransform());
+    if (!Other)
+    {
+        for (AActor* Child : Children)
+            Child->AttachToActor(Log, FAttachmentTransformRules::KeepWorldTransform);
+        return false;
+    }
+    if (bKeepA)
+    {
+        TrimLogToRange(Other, Split + Gap, Shape.HalfLength);
+        TrimLogToRange(Log, -Shape.HalfLength, Split - Gap);
+    }
+    else
+    {
+        TrimLogToRange(Other, -Shape.HalfLength, Split - Gap);
+        TrimLogToRange(Log, Split + Gap, Shape.HalfLength);
+    }
+    for (ALogBuildPiece* Piece : { Log, Other })
+    {
+        UStaticMeshComponent* PieceMesh = Piece->GetLogMesh();
+        if (PieceMesh && PieceMesh->IsSimulatingPhysics())
+        {
+            PieceMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            PieceMesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+        }
+    }
+
+    if (bPost)
+    {
+        // The cut-off top drops beside the post, out of the way of what comes down.
+        FVector Side = GetOwner() ? (GetOwner()->GetActorLocation() - Shape.Centre).GetSafeNormal2D() : FVector::XAxisVector;
+        if (Side.IsNearlyZero())
+            Side = FVector::XAxisVector;
+        const FVector Bottom = bKeepA ? Shape.EndA() : Shape.EndB();
+        Other->SetActorLocation(Other->GetActorLocation() + Side * (Shape.Radius * 2.0f + 40.0f) +
+            FVector(0.0f, 0.0f, Bottom.Z - Other->GetActorLocation().Z + 0.5f * Removed + 10.0f),
+            false, nullptr, ETeleportType::TeleportPhysics);
+        LowerPiecesOnPost(Log, OldTop, Removed + 2.0f * Gap, Children);
+    }
+    for (AActor* Child : Children)
+    {
+        if (IsValid(Child))
+            Child->AttachToActor(Log, FAttachmentTransformRules::KeepWorldTransform);
+    }
+    return true;
+}
+
+void ULogCarryComponent::LowerPiecesOnPost(ALogBuildPiece* Post, const FVector& OldTop, float Drop, const TArray<AActor*>& Children)
+{
+    using namespace MyProject3Construction;
+    FLogGeometry PostShape;
+    GetLogGeometry(Post, PostShape);
+    TArray<ALogBuildPiece*> Resting;
+    for (AActor* Child : Children)
+    {
+        if (ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Child))
+            Resting.AddUnique(Piece);
+    }
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        FLogGeometry Shape;
+        if (*It == Post || !It->IsPlaced() || !GetLogGeometry(*It, Shape))
+            continue;
+        const float Reach = PostShape.Radius + Shape.Radius + 20.0f;
+        if (FVector::Dist(ClosestPointOnSegment(OldTop, Shape.EndA(), Shape.EndB()), OldTop) < Reach &&
+            !IsVerticalLog(*It))
+            Resting.AddUnique(*It);
+    }
+
+    for (ALogBuildPiece* Piece : Resting)
+    {
+        FLogGeometry Shape;
+        if (!GetLogGeometry(Piece, Shape))
+            continue;
+        const bool bANear = FVector::Dist(Shape.EndA(), OldTop) <= FVector::Dist(Shape.EndB(), OldTop);
+        const FVector Near = bANear ? Shape.EndA() : Shape.EndB();
+        const FVector Far = bANear ? Shape.EndB() : Shape.EndA();
+
+        // Is the far end held by something else? Then the piece tilts about it.
+        bool bFarHeld = false;
+        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It && !bFarHeld; ++It)
+        {
+            FLogGeometry Other;
+            if (*It == Piece || *It == Post || !It->IsPlaced() || !GetLogGeometry(*It, Other))
+                continue;
+            bFarHeld = FVector::Dist(ClosestPointOnSegment(Far, Other.EndA(), Other.EndB()), Far) <
+                Other.Radius + Shape.Radius + 15.0f;
+        }
+        if (!bFarHeld)
+        {
+            FHitResult Ground;
+            FCollisionQueryParams Params(SCENE_QUERY_STAT(PostLowerGround), false, Piece);
+            bFarHeld = GetWorld()->LineTraceSingleByChannel(Ground, Far, Far - FVector(0, 0, Shape.Radius + 25.0f),
+                ECC_Visibility, Params) && !Cast<ALogBuildPiece>(Ground.GetActor());
+        }
+
+        if (bFarHeld)
+        {
+            const FVector Arm = Near - Far;
+            const float Angle = FMath::Asin(FMath::Clamp(Drop / FMath::Max(Arm.Size(), 1.0f), 0.0f, 0.9f));
+            const FVector Hinge = FVector::CrossProduct(Arm, FVector::UpVector).GetSafeNormal();
+            if (Hinge.IsNearlyZero())
+                continue;
+            FQuat Turn(Hinge, Angle);
+            if (Turn.RotateVector(Arm).Z > Arm.Z)
+                Turn = FQuat(Hinge, -Angle);
+            FTransform Moved = Piece->GetActorTransform();
+            Moved.SetRotation(Turn * Moved.GetRotation());
+            Moved.SetLocation(Far + Turn.RotateVector(Moved.GetLocation() - Far));
+            Piece->SetActorTransform(Moved, false, nullptr, ETeleportType::TeleportPhysics);
+        }
+        else
+        {
+            Piece->AddActorWorldOffset(FVector(0.0f, 0.0f, -Drop), false, nullptr, ETeleportType::TeleportPhysics);
+        }
+    }
+}
+
+int32 ULogCarryComponent::CountWallRows(const ALogBuildPiece* Target) const
+{
+    using namespace MyProject3Construction;
+    FLogGeometry Top;
+    if (!GetLogGeometry(Target, Top) || !IsHorizontalLog(Target))
+        return 0;
+    // Distinct heights of parallel placed logs in the same wall line, at or below Target.
+    TArray<float> Heights;
+    Heights.Add(Top.Centre.Z);
+    const FVector Line = Top.Axis.GetSafeNormal2D();
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        FLogGeometry Shape;
+        if (*It == Target || !It->IsPlaced() || !IsHorizontalLog(*It) || !GetLogGeometry(*It, Shape))
+            continue;
+        if (FMath::Abs(FVector::DotProduct(Shape.Axis.GetSafeNormal2D(), Line)) < 0.95f ||
+            Shape.Centre.Z > Top.Centre.Z + 1.0f || Top.Centre.Z - Shape.Centre.Z > 2.0f * Top.Radius * MaxWallRows + 50.0f)
+            continue;
+        FVector Offset = Shape.Centre - Top.Centre;
+        Offset.Z = 0.0f;
+        const float Across = (Offset - Line * FVector::DotProduct(Offset, Line)).Size();
+        const float AlongGap = FMath::Abs(FVector::DotProduct(Offset, Line)) - Shape.HalfLength - Top.HalfLength;
+        if (Across > Top.Radius || AlongGap > 0.0f)
+            continue;
+        if (!Heights.ContainsByPredicate([&Shape, &Top](float Z) { return FMath::Abs(Z - Shape.Centre.Z) < Top.Radius; }))
+            Heights.Add(Shape.Centre.Z);
+    }
+    return Heights.Num();
+}
+
+bool ULogCarryComponent::TryShoulderLog(ALogBuildPiece* Target)
+{
+    if (!IsValid(HeldPiece) || IsValid(ShoulderPiece) || !IsValid(Target) || Target == HeldPiece ||
+        Target->IsPlaced() || Target->IsHeld() || !GetOwner())
+        return false;
+    ALogBuildPiece* First = HeldPiece;
+    HeldPiece = nullptr;
+    const bool bTaken = TryPickupPiece(Target);
+    ALogBuildPiece* Second = HeldPiece;
+    HeldPiece = First;
+    TimeUntilSnapRefresh = 0.0f;
+    if (!bTaken || !Second)
+        return false;
+
+    // On the right shoulder, lying along the walking direction, mostly behind.
+    ShoulderPiece = Second;
+    MyProject3Construction::FLogGeometry Shape;
+    MyProject3Construction::GetLogGeometry(Second, Shape);
+    const AActor* Owner = GetOwner();
+    const FVector Forward = Owner->GetActorForwardVector().GetSafeNormal2D();
+    const FVector Centre = Owner->GetActorLocation() + Owner->GetActorRightVector() * 32.0f +
+        FVector(0.0f, 0.0f, 55.0f) - Forward * FMath::Max(0.0f, Shape.HalfLength - 60.0f);
+    Second->SetActorTransform(MyProject3Construction::MakeLogTransform(Second, Centre,
+        MyProject3Construction::MakeLogRotation(Second, Forward, FVector::UpVector)));
+    Second->AttachToActor(GetOwner(), FAttachmentTransformRules::KeepWorldTransform);
+    PlacementStatus = TEXT("Two logs: the second rides on your shoulder.");
+    return true;
+}
+
+void ULogCarryComponent::PromoteShoulderLog()
+{
+    if (IsValid(HeldPiece) || !IsValid(ShoulderPiece) || IsValid(HeldMaterialPiece))
+        return;
+    ShoulderPiece->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    HeldPiece = ShoulderPiece;
+    ShoulderPiece = nullptr;
+    HeldYawOffset = 0.0f;
+    TimeUntilSnapRefresh = 0.0f;
+    PlacementStatus = TEXT("The second log is in your hands.");
+}
+
+void ULogCarryComponent::FindBeamsOnPost(const ALogBuildPiece* Post, TArray<ALogBuildPiece*>& OutBeams) const
+{
+    using namespace MyProject3Construction;
+    OutBeams.Reset();
+    FLogGeometry PostShape;
+    if (!IsValid(Post) || !GetLogGeometry(Post, PostShape))
+        return;
+    const FVector Top = PostShape.EndA().Z > PostShape.EndB().Z ? PostShape.EndA() : PostShape.EndB();
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        FLogGeometry Shape;
+        if (*It == Post || !It->IsPlaced() || IsVerticalLog(*It) || !GetLogGeometry(*It, Shape))
+            continue;
+        const FVector Closest = ClosestPointOnSegment(Top, Shape.EndA(), Shape.EndB());
+        if (Closest.Z >= Top.Z - 5.0f && FVector::Dist(Closest, Top) < PostShape.Radius + Shape.Radius + 20.0f)
+            OutBeams.Add(*It);
+    }
+}
+
+bool ULogCarryComponent::PostHoldsAnything(const ALogBuildPiece* Post) const
+{
+    if (!IsValid(Post))
+        return false;
+    TArray<AActor*> Children;
+    Post->GetAttachedActors(Children);
+    if (Children.ContainsByPredicate([](const AActor* Child) { return Cast<ALogBuildPiece>(Child) != nullptr; }))
+        return true;
+    if (const UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+    {
+        if (Graph->GetDirectDependents(Post->GetStructuralNodeId()).Num() > 0)
+            return true;
+    }
+    TArray<ALogBuildPiece*> Beams;
+    FindBeamsOnPost(Post, Beams);
+    return Beams.Num() > 0;
+}
+
+bool ULogCarryComponent::CanStandAsPost(const ALogBuildPiece* Log)
+{
+    if (!Log)
+        return false;
+    switch (Log->GetCrossSectionProfile())
+    {
+    case ELogCrossSectionProfile::HalfRound:
+    case ELogCrossSectionProfile::QuarterRound:
+    case ELogCrossSectionProfile::Plank:
+    case ELogCrossSectionProfile::GroovedHalfRound:
+    case ELogCrossSectionProfile::Trough:
+        return false;
+    default:
+        return true;
+    }
+}
+
+bool ULogCarryComponent::IsBadlyDamaged(const AActor* Piece) const
+{
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    const UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    FStructuralNodeRecord Node;
+    return Structural && Graph && Graph->GetNode(Structural->GetStructuralNodeId(), Node) &&
+        Node.DamageThreshold > 0.0f && Node.Damage >= 0.5f * Node.DamageThreshold;
+}
+
+bool ULogCarryComponent::SplitCarriedLogInHalf()
+{
+    ALogBuildPiece* Log = HeldPiece;
+    // Only a log whose mesh family has split halves can be split.
+    if (!IsValid(Log) || Log->GetCrossSectionProfile() != ELogCrossSectionProfile::Round ||
+        Log->GetSelectedProcessingMeshSetId().IsNone())
+        return false;
+    bool bHasHalves = false;
+    for (const FLogProcessingMeshSet& Set : Log->ProcessingMeshSets)
+    {
+        if (Set.VariantSetId != Log->GetSelectedProcessingMeshSetId())
+            continue;
+        for (const FLogGeometryVariantMesh& Variant : Set.MeshVariants)
+            bHasHalves |= Variant.CrossSectionProfile == ELogCrossSectionProfile::HalfRound &&
+                Variant.LengthFraction == Log->GetLengthFraction() && Variant.Mesh;
+    }
+    if (!bHasHalves)
+        return false;
+
+    // Into the world for the axe, then the halves back into the hands and onto the shoulder.
+    ReleaseHeldFromLoad();
+    HeldPiece = nullptr;
+    bHasStackPlacement = false;
+    bHasStrutPlacement = false;
+    ClearSnapCandidate();
+    FWorldOwnedItemRecord Record;
+    Log->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(), Log->GetActorLocation(), Record);
+    if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
+    {
+        if (Identity->GetLifecycleState() == EWorldObjectLifecycleState::Held)
+            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World);
+    }
+    Log->SetHeldState(false);
+    if (Log->GetLogMesh())
+        Log->GetLogMesh()->SetSimulatePhysics(false);
+
+    TSet<ALogBuildPiece*> Before;
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+        Before.Add(*It);
+    const bool bSplit = Log->CanApplyCutAction(ELogCutAction::SplitHalf) && Log->ApplyCutAction(ELogCutAction::SplitHalf);
+    ALogBuildPiece* Other = nullptr;
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It && bSplit; ++It)
+    {
+        if (!Before.Contains(*It))
+        {
+            Other = *It;
+            break;
+        }
+    }
+    TryPickupPiece(Log);
+    if (Other && Other->GetLogMesh())
+    {
+        Other->GetLogMesh()->SetSimulatePhysics(false);
+        if (!TryShoulderLog(Other))
+            Other->GetLogMesh()->SetSimulatePhysics(true);
+    }
+    if (bSplit)
+        PlacementStatus = TEXT("The log was split in half: one half in your hands, the other on your shoulder.");
+    return bSplit;
+}
+
+bool ULogCarryComponent::ComputeStrutPlacement(const ALogBuildPiece* Held, const ALogBuildPiece* Post, const ALogBuildPiece* Beam,
+    const FVector& AimPoint, FTransform& OutTransform, float& OutLength, FVector& OutBeamPoint) const
+{
+    using namespace MyProject3Construction;
+    FLogGeometry PostShape, BeamShape, HeldShape;
+    if (!Held || !GetLogGeometry(Post, PostShape) || !GetLogGeometry(Beam, BeamShape) || !GetLogGeometry(Held, HeldShape))
+        return false;
+    const FVector Top = PostShape.EndA().Z > PostShape.EndB().Z ? PostShape.EndA() : PostShape.EndB();
+    FVector Along = BeamShape.Axis;
+    Along.Z = 0.0f;
+    Along = Along.GetSafeNormal();
+    if (Along.IsNearlyZero())
+        return false;
+    if (FVector::DotProduct(AimPoint - Top, Along) < 0.0f)
+        Along = -Along;
+    constexpr float Leg = 90.0f;
+    const FVector OnBeam = ClosestPointOnSegment(Top, BeamShape.EndA(), BeamShape.EndB());
+    const float AlongFromPost = FVector::DotProduct(OnBeam - BeamShape.Centre, BeamShape.Axis.GetSafeNormal()) +
+        (FVector::DotProduct(Along, BeamShape.Axis) > 0.0f ? Leg : -Leg);
+    if (FMath::Abs(AlongFromPost) > BeamShape.HalfLength)
+        return false;
+    // Ends: on the post's side face below the beam, and under the beam out along it.
+    const FVector Low = Top - FVector(0, 0, Leg + BeamShape.Radius) + Along * (PostShape.Radius + HeldShape.Radius * 0.5f);
+    const FVector High = OnBeam + Along * Leg - FVector(0, 0, BeamShape.Radius + HeldShape.Radius * 0.5f);
+    const FVector Axis = High - Low;
+    OutLength = Axis.Size();
+    if (OutLength < 40.0f)
+        return false;
+    OutBeamPoint = OnBeam + Along * Leg - FVector(0, 0, BeamShape.Radius);
+    OutTransform = MakeLogTransform(Held, 0.5f * (Low + High), MakeLogRotation(Held, Axis.GetSafeNormal(),
+        FVector::CrossProduct(Axis.GetSafeNormal(), FVector::CrossProduct(FVector::UpVector, Axis.GetSafeNormal())).GetSafeNormal()));
+    return !OutTransform.ContainsNaN();
+}
+
+void ULogCarryComponent::UpdateStrutPlacement()
+{
+    using namespace MyProject3Construction;
+    bHasStrutPlacement = false;
+    StrutPost.Reset();
+    StrutBeam.Reset();
+    if (!IsValid(HeldPiece) || PlacementMode != ELogPlacementMode::Diagonal)
+        return;
+    FHitResult Hit;
+    if (!TraceFromView(PlacementTraceDistance, Hit))
+        return;
+    ALogBuildPiece* Aimed = Cast<ALogBuildPiece>(Hit.GetActor());
+    if (!IsValid(Aimed) || !Aimed->IsPlaced() || Aimed == HeldPiece)
+        return;
+    ALogBuildPiece* Post = nullptr;
+    ALogBuildPiece* Beam = nullptr;
+    if (IsVerticalLog(Aimed))
+    {
+        TArray<ALogBuildPiece*> Beams;
+        FindBeamsOnPost(Aimed, Beams);
+        if (Beams.Num() > 0)
+        {
+            Post = Aimed;
+            Beam = Beams[0];
+        }
+    }
+    else if (IsHorizontalLog(Aimed, 0.5f))
+    {
+        // The post under this beam nearest to where the player looks.
+        float Best = 250.0f;
+        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+        {
+            if (*It == Aimed || !It->IsPlaced() || !IsVerticalLog(*It))
+                continue;
+            TArray<ALogBuildPiece*> Beams;
+            FindBeamsOnPost(*It, Beams);
+            const float Distance = FVector::Dist2D(It->GetActorLocation(), Hit.ImpactPoint);
+            if (Beams.Contains(Aimed) && Distance < Best)
+            {
+                Best = Distance;
+                Post = *It;
+            }
+        }
+        Beam = Post ? Aimed : nullptr;
+    }
+    if (!Post || !Beam)
+        return;
+    if (IsBadlyDamaged(Post) || IsBadlyDamaged(Beam))
+    {
+        PlacementStatus = TEXT("This piece is damaged: repair it before building on it (LMB with the axe).");
+        return;
+    }
+    FTransform Transform;
+    float Length = 0.0f;
+    FVector Joint;
+    if (!ComputeStrutPlacement(HeldPiece, Post, Beam, Hit.ImpactPoint, Transform, Length, Joint))
+        return;
+    bHasStrutPlacement = true;
+    StrutTransform = Transform;
+    StrutLength = Length;
+    StrutJoint = Joint;
+    StrutPost = Post;
+    StrutBeam = Beam;
+    ClearSnapCandidate();
+    HeldPiece->SetActorTransform(Transform);
+    FLogGeometry Held;
+    GetLogGeometry(HeldPiece, Held);
+    PlacementStatus = HeldPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::Round
+        ? FString::Printf(TEXT("Strut (split in half and cut to %.0f cm): E to place."), Length)
+        : FString::Printf(TEXT("Strut (cut to %.0f cm): E to place."), Length);
+}
+
+bool ULogCarryComponent::PlaceStrut()
+{
+    using namespace MyProject3Construction;
+    ALogBuildPiece* Post = StrutPost.Get();
+    ALogBuildPiece* Beam = StrutBeam.Get();
+    const FVector Aim = StrutJoint;
+    bHasStrutPlacement = false;
+    if (!IsValid(HeldPiece) || !Post || !Beam)
+        return false;
+    // Struts are made from half logs: a round log is split first.
+    if (HeldPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
+        SplitCarriedLogInHalf();
+    FTransform Transform;
+    float Length = 0.0f;
+    FVector Joint;
+    if (!IsValid(HeldPiece) || !ComputeStrutPlacement(HeldPiece, Post, Beam, Aim, Transform, Length, Joint))
+        return false;
+    FLogGeometry Held;
+    GetLogGeometry(HeldPiece, Held);
+    if (Held.Length() < Length * 0.85f)
+    {
+        PlacementStatus = FString::Printf(TEXT("Too short: the strut needs about %.0f cm."), Length);
+        return false;
+    }
+    if (Held.Length() > Length + 10.0f && GetOwner())
+        CutOffRemainder(HeldPiece, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+    ComputeStrutPlacement(HeldPiece, Post, Beam, Aim, Transform, Length, Joint);
+    ALogBuildPiece* Strut = HeldPiece;
+    if (!CommitHeldLogAt(Transform, Post, nullptr))
+        return false;
+    // The beam now also rests on the strut.
+    if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+    {
+        Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Strut->GetStructuralNodeId(),
+            FName(*FString::Printf(TEXT("Strut_%s"), *Strut->GetStructuralNodeId().ToString())), TEXT("StrutTop"));
+    }
+    PlacementStatus = TEXT("Strut placed: the beam also rests on it.");
+    return true;
+}
+
+bool ULogCarryComponent::SnapPostSpacing(const FVector& Base, FVector& OutBase, ALogBuildPiece*& OutPartner, float& OutSpan) const
+{
+    using namespace MyProject3Construction;
+    OutPartner = nullptr;
+    float BestError = 30.0f;
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        FLogGeometry Shape;
+        if (*It == HeldPiece || !It->IsPlaced() || !IsVerticalLog(*It) || !GetLogGeometry(*It, Shape))
+            continue;
+        const FVector Foot = Shape.EndA().Z < Shape.EndB().Z ? Shape.EndA() : Shape.EndB();
+        const float Distance = FVector::Dist2D(Foot, Base);
+        for (const float Span : { 150.0f, 300.0f, 450.0f, 600.0f })
+        {
+            const float Error = FMath::Abs(Distance - Span);
+            if (Error < BestError)
+            {
+                BestError = Error;
+                OutPartner = *It;
+                OutSpan = Span;
+                FVector Direction = Base - Foot;
+                Direction.Z = 0.0f;
+                Direction = Direction.GetSafeNormal();
+                OutBase = FVector(Foot.X, Foot.Y, Base.Z) + Direction * Span;
+            }
+        }
+    }
+    return OutPartner != nullptr;
+}
+
+bool ULogCarryComponent::GetPostSpan(const ALogBuildPiece*& OutPartner, float& OutSpan) const
+{
+    OutPartner = SpanPartner.Get();
+    OutSpan = SpanCm;
+    return IsValid(OutPartner) && IsValid(HeldPiece) && PlacementMode == ELogPlacementMode::Vertical;
+}
+
+bool ULogCarryComponent::BuildGroundMarkerSegments(TArray<FVector>& OutPoints) const
+{
+    using namespace MyProject3Construction;
+    OutPoints.Reset();
+    FLogGeometry Shape;
+    if (!IsValid(HeldPiece) || HasConnectionPreview() || !bHasPlacementSurface || !GetLogGeometry(HeldPiece, Shape))
+        return false;
+    const FVector Low = Shape.EndA().Z < Shape.EndB().Z ? Shape.EndA() : Shape.EndB();
+    if (IsVerticalLog(HeldPiece))
+    {
+        // A dashed circle where the post's foot will stand.
+        const float Radius = Shape.Radius * 1.5f;
+        const FVector Centre = Low + FVector(0, 0, 3.0f);
+        constexpr int32 Segments = 24;
+        for (int32 Index = 0; Index < Segments; Index += 2)
+        {
+            const float A0 = 2.0f * PI * Index / Segments;
+            const float A1 = 2.0f * PI * (Index + 1) / Segments;
+            OutPoints.Add(Centre + FVector(FMath::Cos(A0), FMath::Sin(A0), 0.0f) * Radius);
+            OutPoints.Add(Centre + FVector(FMath::Cos(A1), FMath::Sin(A1), 0.0f) * Radius);
+        }
+        // A line to the post it lines up with.
+        if (const ALogBuildPiece* Partner = SpanPartner.Get())
+        {
+            FLogGeometry Other;
+            if (GetLogGeometry(Partner, Other))
+            {
+                const FVector Foot = Other.EndA().Z < Other.EndB().Z ? Other.EndA() : Other.EndB();
+                const FVector Head = Other.EndA().Z < Other.EndB().Z ? Other.EndB() : Other.EndA();
+                const FVector MyHead = Shape.EndA().Z < Shape.EndB().Z ? Shape.EndB() : Shape.EndA();
+                AddDashedLine(OutPoints, Centre, Foot + FVector(0, 0, 3.0f));
+                AddDashedLine(OutPoints, MyHead, Head);
+            }
+        }
+        return true;
+    }
+    // A dashed rectangle on the ground under a lying log.
+    FVector Along = Shape.Axis;
+    Along.Z = 0.0f;
+    Along = Along.GetSafeNormal() * Shape.HalfLength * FMath::Sqrt(FMath::Max(0.0f, 1.0f - Shape.Axis.Z * Shape.Axis.Z));
+    const FVector Side = FVector::CrossProduct(FVector::UpVector, Along.GetSafeNormal()) * Shape.Radius * 1.2f;
+    const FVector Centre(Shape.Centre.X, Shape.Centre.Y, FMath::Min(Shape.EndA().Z, Shape.EndB().Z) - Shape.Radius + 3.0f);
+    const FVector Corners[4] = { Centre - Along - Side, Centre + Along - Side, Centre + Along + Side, Centre - Along + Side };
+    for (int32 Index = 0; Index < 4; ++Index)
+        AddDashedLine(OutPoints, Corners[Index], Corners[(Index + 1) % 4]);
+    return true;
+}
+
+bool ULogCarryComponent::BuildSharpenSegments(const ALogBuildPiece* Log, TArray<FVector>& OutPoints) const
+{
+    using namespace MyProject3Construction;
+    OutPoints.Reset();
+    FLogGeometry Shape;
+    if (!GetLogGeometry(Log, Shape))
+        return false;
+    const bool bBTop = Shape.EndB().Z >= Shape.EndA().Z;
+    const FVector Top = bBTop ? Shape.EndB() : Shape.EndA();
+    const FVector Up = bBTop ? Shape.Axis : -Shape.Axis;
+    const FVector RingCentre = Top - Up * FMath::Min(35.0f, Shape.HalfLength);
+    const FVector SideA = FVector::CrossProduct(Up, FVector::XAxisVector).GetSafeNormal();
+    const FVector SideB = FVector::CrossProduct(Up, SideA).GetSafeNormal();
+    const float Radius = Shape.Radius * 1.08f;
+    constexpr int32 Segments = 16;
+    for (int32 Index = 0; Index < Segments; ++Index)
+    {
+        const float Angle = 2.0f * PI * Index / Segments;
+        const FVector Rim = RingCentre + (SideA * FMath::Cos(Angle) + SideB * FMath::Sin(Angle)) * Radius;
+        if (Index % 2 == 0)
+        {
+            const float Next = 2.0f * PI * (Index + 1) / Segments;
+            OutPoints.Add(Rim);
+            OutPoints.Add(RingCentre + (SideA * FMath::Cos(Next) + SideB * FMath::Sin(Next)) * Radius);
+        }
+        if (Index % 4 == 0)
+            AddDashedLine(OutPoints, Rim, Top + Up * 4.0f);
+    }
+    return true;
+}
+
+bool ULogCarryComponent::BuildPlacementPreviewSegments(TArray<FVector>& OutOutline, TArray<FVector>& OutArrow) const
+{
+    OutOutline.Reset();
+    OutArrow.Reset();
+    FTransform Frame;
+    FVector Centre, Axis;
+    float HalfLength = 0.0f, Radius = 0.0f;
+    if (!IsValid(HeldPiece) || !GetMeshFrame(HeldPiece, Frame, Centre, Axis, HalfLength, Radius))
+        return false;
+
+    // Where the log will lie: four dashed lines along it and a dashed ring at each end.
+    const FVector Up = FMath::Abs(Axis.Z) > 0.5f ? FVector::XAxisVector : FVector::ZAxisVector;
+    const FVector Side = FVector::CrossProduct(Up, Axis).GetSafeNormal();
+    const float R = Radius * 1.06f;
+    for (const FVector& Offset : { Side * R, -Side * R, Up * R, -Up * R })
+        AddDashedLine(OutOutline, Frame.TransformPosition(Centre + Offset - Axis * HalfLength),
+            Frame.TransformPosition(Centre + Offset + Axis * HalfLength));
+    AddDashedRing(OutOutline, Frame, Centre - Axis * HalfLength, Side, Up, R);
+    AddDashedRing(OutOutline, Frame, Centre + Axis * HalfLength, Side, Up, R);
+
+    // The joint: an arrow along the log pointing into the piece it joins.
+    FVector Joint = FVector::ZeroVector;
+    bool bJoint = false;
+    if (bHasStrutPlacement)
+    {
+        Joint = StrutJoint;
+        bJoint = true;
+    }
+    else if (bHasStackPlacement && StackTarget.IsValid())
+    {
+        MyProject3Construction::FLogGeometry Target;
+        if (MyProject3Construction::GetLogGeometry(StackTarget.Get(), Target))
+        {
+            Joint = MyProject3Construction::ClosestPointOnSegment(Frame.TransformPosition(Centre), Target.EndA(), Target.EndB());
+            bJoint = true;
+        }
+    }
+    else if (bHasValidSnap && IsValid(CurrentSnapTarget) && CurrentTargetSnapPointIndex != INDEX_NONE)
+    {
+        Joint = (CurrentSnapTarget->GetSnapPointLocalTransform(CurrentTargetSnapPointIndex) *
+            CurrentSnapTarget->GetActorTransform()).GetLocation();
+        bJoint = true;
+    }
+    if (!bJoint)
+        return true;
+
+    const FVector HeldCentre = Frame.TransformPosition(Centre);
+    FVector Into = (Joint - HeldCentre).GetSafeNormal();
+    if (Into.IsNearlyZero())
+        Into = -FVector::UpVector;
+    const FVector Tip = Joint - Into * 6.0f;
+    const FVector Tail = Tip - Into * 90.0f;
+    AddDashedLine(OutArrow, Tail, Tip);
+    FVector Across = FVector::CrossProduct(Into, FVector::UpVector).GetSafeNormal();
+    if (Across.IsNearlyZero())
+        Across = FVector::CrossProduct(Into, FVector::XAxisVector).GetSafeNormal();
+    OutArrow.Add(Tip);
+    OutArrow.Add(Tip - Into * 22.0f + Across * 12.0f);
+    OutArrow.Add(Tip);
+    OutArrow.Add(Tip - Into * 22.0f - Across * 12.0f);
     return true;
 }
 
@@ -1916,8 +2978,106 @@ bool ULogCarryComponent::ComputeDroopLift(const ALogBuildPiece* Piece, int32 Own
     return true;
 }
 
+int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
+{
+    using namespace MyProject3Construction;
+    FLogGeometry PostShape;
+    if (!IsValid(Post) || !Post->IsPlaced() || !IsVerticalLog(Post) || !GetLogGeometry(Post, PostShape))
+        return 0;
+    const FVector Top = PostShape.EndA().Z > PostShape.EndB().Z ? PostShape.EndA() : PostShape.EndB();
+    const float PostBottom = FMath::Min(PostShape.EndA().Z, PostShape.EndB().Z);
+    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    int32 Raised = 0;
+    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    {
+        ALogBuildPiece* Beam = *It;
+        FLogGeometry Shape;
+        if (Beam == Post || !Beam->IsPlaced() || !GetLogGeometry(Beam, Shape) || FMath::Abs(Shape.Axis.Z) > 0.85f)
+            continue;
+        const int32 RaisedBefore = Raised;
+        for (const bool bEndA : { true, false })
+        {
+            const FVector End = bEndA ? Shape.EndA() : Shape.EndB();
+            const FVector Other = bEndA ? Shape.EndB() : Shape.EndA();
+            const float Bottom = End.Z - Shape.Radius;
+            // The new post stands under this end and reaches higher than it: the end rises onto it.
+            if (FVector::Dist2D(End, Top) > PostShape.Radius + Shape.Radius + 10.0f ||
+                Bottom >= Top.Z - 2.0f || Bottom < Top.Z - 150.0f || PostBottom > Bottom - 5.0f)
+                continue;
+            // An end already resting on another piece stays where it is.
+            bool bRests = false;
+            for (TActorIterator<ALogBuildPiece> Under(GetWorld()); Under && !bRests; ++Under)
+            {
+                FLogGeometry Below;
+                if (*Under == Beam || *Under == Post || !Under->IsPlaced() || !GetLogGeometry(*Under, Below))
+                    continue;
+                const FVector Closest = ClosestPointOnSegment(End, Below.EndA(), Below.EndB());
+                bRests = Closest.Z < End.Z && FVector::Dist(Closest, End) < Below.Radius + Shape.Radius + 8.0f;
+            }
+            if (bRests)
+            {
+                // The end already rests on something: the new post is cut to meet it and props it up.
+                const float Keep = Bottom - PostBottom;
+                const bool bPostALow = PostShape.EndA().Z <= PostShape.EndB().Z;
+                if (Keep > 25.0f && TrimLogToRange(Post, bPostALow ? -PostShape.HalfLength : PostShape.HalfLength - Keep,
+                    bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength))
+                {
+                    if (Graph)
+                        Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
+                            FName(*FString::Printf(TEXT("Prop_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("PropEnd"));
+                    PlacementStatus = FString::Printf(TEXT("Post cut to %.0f cm to fit under the beam."), Keep);
+                    ++Raised;
+                }
+                break;
+            }
+            const FVector Arm = End - Other;
+            const float Lift = Top.Z - Bottom;
+            const float Angle = FMath::Asin(FMath::Clamp(Lift / FMath::Max(Arm.Size(), 1.0f), 0.0f, 0.9f));
+            const FVector Hinge = FVector::CrossProduct(Arm, FVector::UpVector).GetSafeNormal();
+            if (Hinge.IsNearlyZero())
+                continue;
+            FQuat Turn(Hinge, Angle);
+            if (Turn.RotateVector(Arm).Z < Arm.Z)
+                Turn = FQuat(Hinge, -Angle);
+            FTransform Moved = Beam->GetActorTransform();
+            Moved.SetRotation(Turn * Moved.GetRotation());
+            Moved.SetLocation(Other + Turn.RotateVector(Moved.GetLocation() - Other));
+            Beam->SetActorTransform(Moved, false, nullptr, ETeleportType::TeleportPhysics);
+            if (Graph)
+            {
+                Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
+                    FName(*FString::Printf(TEXT("Raised_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("RaisedEnd"));
+            }
+            ++Raised;
+            break;
+        }
+        if (Raised > RaisedBefore)
+            continue;
+        // Under the middle of the beam: the post is cut to meet the beam and props it up.
+        const FVector OnBeam = ClosestPointOnSegment(Top, Shape.EndA(), Shape.EndB());
+        const float BeamBottom = OnBeam.Z - Shape.Radius;
+        if (FVector::Dist2D(OnBeam, Top) < PostShape.Radius + Shape.Radius && BeamBottom < Top.Z + 15.0f &&
+            BeamBottom > Top.Z - 150.0f && PostBottom < BeamBottom - 25.0f)
+        {
+            const float Keep = BeamBottom - PostBottom;
+            const bool bPostALow = PostShape.EndA().Z <= PostShape.EndB().Z;
+            if (Keep < PostShape.Length() - 1.0f)
+                TrimLogToRange(Post, bPostALow ? -PostShape.HalfLength : PostShape.HalfLength - Keep,
+                    bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength);
+            if (Graph)
+                Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
+                    FName(*FString::Printf(TEXT("Prop_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("PropMid"));
+            PlacementStatus = FString::Printf(TEXT("Post fitted under the beam (%.0f cm)."), Keep);
+            ++Raised;
+        }
+    }
+    return Raised;
+}
+
 bool ULogCarryComponent::LiftDroopingEndsOnto(AActor* NewSupport)
 {
+    // A new post under the end of a placed beam lifts that end onto its top.
+    RaiseBeamsOntoPost(Cast<ALogBuildPiece>(NewSupport));
     bool bLifted = false;
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
@@ -2211,12 +3371,29 @@ void ULogCarryComponent::UpdateStackPlacement()
     ALogBuildPiece* Target = Cast<ALogBuildPiece>(Hit.GetActor());
     if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced() || !MyProject3Construction::IsHorizontalLog(Target))
         return;
+    if (IsBadlyDamaged(Target))
+    {
+        PlacementStatus = TEXT("This piece is damaged: repair it before building on it (LMB with the axe).");
+        return;
+    }
+    if (PlacementMode == ELogPlacementMode::Vertical && !CanStandAsPost(HeldPiece))
+        return;
     FVector ViewLocation;
     FRotator ViewRotation;
     GetViewPoint(ViewLocation, ViewRotation);
     FTransform Transform;
     if (!ComputeStackPlacement(HeldPiece, Target, Hit.ImpactPoint, ViewRotation.Yaw + HeldYawOffset, Transform))
         return;
+    // A log wall stands at most six logs high (Sons of the Forest).
+    const FVector NewAxis = Transform.TransformVectorNoScale(LocalAxisVector(HeldPiece->LongitudinalAxis));
+    MyProject3Construction::FLogGeometry TargetShape;
+    if (PlacementMode == ELogPlacementMode::Horizontal && MyProject3Construction::GetLogGeometry(Target, TargetShape) &&
+        FMath::Abs(FVector::DotProduct(NewAxis.GetSafeNormal2D(), TargetShape.Axis.GetSafeNormal2D())) > 0.95f &&
+        CountWallRows(Target) >= MaxWallRows)
+    {
+        PlacementStatus = FString::Printf(TEXT("A log wall stands at most %d logs high."), MaxWallRows);
+        return;
+    }
     bHasStackPlacement = true;
     StackTarget = Target;
     StackTransform = Transform;

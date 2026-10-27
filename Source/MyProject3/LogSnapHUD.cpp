@@ -17,6 +17,17 @@ void ALogSnapHUD::DrawCrosshair(float CentreX, float CentreY)
     DrawRect(CrosshairColor, CentreX - 2.0f, CentreY - 2.0f, 4.0f, 4.0f);
 }
 
+void ALogSnapHUD::DrawWorldSegments(const TArray<FVector>& Points, const FLinearColor& Colour, float Thickness)
+{
+    for (int32 Index = 0; Index + 1 < Points.Num(); Index += 2)
+    {
+        const FVector A = Project(Points[Index], false);
+        const FVector B = Project(Points[Index + 1], false);
+        if (A.Z > 0.0f && B.Z > 0.0f)
+            DrawLine(A.X, A.Y, B.X, B.Y, Colour, Thickness);
+    }
+}
+
 void ALogSnapHUD::DrawHUD()
 {
     Super::DrawHUD();
@@ -37,32 +48,72 @@ void ALogSnapHUD::DrawHUD()
 
     if (!Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
     {
-        if (const ALogBuildPiece* Log = Carry->GetAimedLooseLog())
+        const ALogBuildPiece* ArmedLog = nullptr;
+        FLogCutChoice Choice;
+        const ALogBuildPiece* Aimed = Carry->GetAimedLooseLog();
+        // A marked cut stays shown until the player aims at another log.
+        const bool bArmed = Carry->GetArmedCutChoice(ArmedLog, Choice) && (!Aimed || Aimed == ArmedLog);
+        const ALogBuildPiece* Log = bArmed ? ArmedLog : Aimed;
+        // Built pieces only show a cut when the length cut can shorten them (standing posts).
+        if (Log && !bArmed && Log->IsPlaced() && !Carry->ResolveAimedCutChoice(Log, Choice))
+            Log = nullptr;
+        if (Log)
         {
-            const ELogCutAction Action = Carry->GetSelectedCutAction();
-            const bool bAllowed = Log->CanApplyCutAction(Action);
+            // The marked cut stays where it was marked; otherwise it follows the aim.
+            const bool bResolved = bArmed || Carry->ResolveAimedCutChoice(Log, Choice);
+            FString Reason;
+            const bool bAllowed = bResolved && Carry->CanMakeCut(Log, Choice, Reason);
             const FLinearColor Colour = bAllowed ? AllowedCutColor : BlockedCutColor;
 
             TArray<FVector> Points;
-            if (Carry->BuildCutPreviewSegments(Log, Action, Points))
-            {
-                for (int32 Index = 0; Index + 1 < Points.Num(); Index += 2)
-                {
-                    const FVector A = Project(Points[Index], false);
-                    const FVector B = Project(Points[Index + 1], false);
-                    if (A.Z > 0.0f && B.Z > 0.0f)
-                        DrawLine(A.X, A.Y, B.X, B.Y, Colour, 2.0f);
-                }
-            }
+            const bool bLines = Choice.Kind == ELogCutKind::Sharpen
+                ? Carry->BuildSharpenSegments(Log, Points)
+                : (Choice.Share >= 0.0f
+                    ? Carry->BuildCutRingSegments(Log, Choice.Share, Points)
+                    : Carry->BuildCutPreviewSegments(Log, Choice.Action, Points));
+            if (bLines)
+                DrawWorldSegments(Points, Colour, bArmed ? 3.0f : 2.0f);
 
-            const FString ActionName = StaticEnum<ELogCutAction>()->GetDisplayNameTextByValue(
-                static_cast<int64>(Action)).ToString();
-            const FString Label = bAllowed
-                ? FString::Printf(TEXT("%s  [F: cut, C: change]"), *ActionName)
-                : FString::Printf(TEXT("%s - not possible on this piece  [C: change]"), *ActionName);
+            const FString ActionName = bResolved ? Carry->DescribeCut(Log, Choice) : FString();
+            FString Label;
+            if (!bResolved)
+                Label = TEXT("Too short to cut again  [C: change]");
+            else if (!bAllowed)
+                Label = FString::Printf(TEXT("%s - %s  [C: change]"), *ActionName, *Reason);
+            else if (bArmed)
+                Label = FString::Printf(TEXT("%s  [LMB/F: cut with the axe, C: cancel]"), *ActionName);
+            else if (Choice.Kind == ELogCutKind::Sharpen)
+                Label = FString::Printf(TEXT("%s  [LMB/F: mark, then swing]"), *ActionName);
+            else if (Choice.Share >= 0.0f)
+                Label = FString::Printf(TEXT("%s  [look along the log to move the cut, LMB/F: mark]"), *ActionName);
+            else
+                Label = FString::Printf(TEXT("%s  [LMB/F: mark the cut, C: change]"), *ActionName);
             float W = 0.0f, H = 0.0f;
             GetTextSize(Label, W, H, Font);
             DrawText(Label, Colour, CentreX - W * 0.5f, TextY, Font);
+            TextY += H + 4.0f;
+        }
+    }
+    else if (Carry->IsCarryingLog())
+    {
+        // White dashes where the log will lie; an arrow when it joins another piece.
+        TArray<FVector> Outline, Arrow, Ground;
+        if (Carry->BuildPlacementPreviewSegments(Outline, Arrow))
+        {
+            DrawWorldSegments(Outline, PlacementColor, 1.5f);
+            DrawWorldSegments(Arrow, PlacementColor, 3.0f);
+        }
+        // On the ground: a rectangle under a lying log, a circle under a post.
+        if (Carry->BuildGroundMarkerSegments(Ground))
+            DrawWorldSegments(Ground, PlacementColor, 2.0f);
+        const ALogBuildPiece* Partner = nullptr;
+        float Span = 0.0f;
+        if (Carry->GetPostSpan(Partner, Span))
+        {
+            const FString SpanText = FString::Printf(TEXT("In line with a post: %.0f cm apart, a %.0f cm log spans it"), Span, Span);
+            float W = 0.0f, H = 0.0f;
+            GetTextSize(SpanText, W, H, Font);
+            DrawText(SpanText, PlacementColor, CentreX - W * 0.5f, TextY, Font);
             TextY += H + 4.0f;
         }
     }

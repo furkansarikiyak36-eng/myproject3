@@ -34,7 +34,11 @@ void AConstructionOpeningActor::InitializeOpening(EConstructionOpeningKind InKin
 
 int32 AConstructionOpeningActor::GetRequiredBoards() const
 {
-    return Kind == EConstructionOpeningKind::Window ? 0 : FMath::Max(2, FMath::CeilToInt(Width / 25.0f));
+    // As in Sons of the Forest a door panel takes three split planks; a wider gate
+    // in a stake wall takes one plank per 40 cm.
+    if (Kind == EConstructionOpeningKind::Window)
+        return 0;
+    return Kind == EConstructionOpeningKind::Door ? 3 : FMath::Max(3, FMath::CeilToInt(Width / 40.0f));
 }
 
 float AConstructionOpeningActor::SideOf(const FVector& Location) const
@@ -140,6 +144,56 @@ bool AConstructionOpeningActor::ToggleLock(const FVector& UserLocation, FString&
     }
     bLocked = !bLocked;
     return true;
+}
+
+bool AConstructionOpeningActor::TryBarWithStick(AActor* Stick, const FVector& UserLocation, FString& OutReason)
+{
+    if (!Stick || !bPanelBuilt)
+    {
+        OutReason = TEXT("There is no door to bar yet.");
+        return false;
+    }
+    if (bOpen)
+    {
+        OutReason = TEXT("Close it first.");
+        return false;
+    }
+    if (bLocked)
+    {
+        OutReason = TEXT("It is already barred.");
+        return false;
+    }
+    if (SideOf(UserLocation) != InsideSide)
+    {
+        OutReason = TEXT("The bar goes on the inside of the door.");
+        return false;
+    }
+    // Laid across the door on its inside face.
+    const FVector Across = GetActorTransform().TransformPosition(FVector(0.0f, InsideSide * 14.0f, 0.1f * Height));
+    Stick->SetActorLocationAndRotation(Across, GetActorQuat() * FRotator(90.0f, 0.0f, 0.0f).Quaternion());
+    Stick->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
+    Bar = Stick;
+    bLocked = true;
+    return true;
+}
+
+AActor* AConstructionOpeningActor::RemoveBar(const FVector& UserLocation, FString& OutReason)
+{
+    AActor* Stick = Bar.Get();
+    if (!Stick)
+    {
+        OutReason = TEXT("It is not barred.");
+        return nullptr;
+    }
+    if (SideOf(UserLocation) != InsideSide)
+    {
+        OutReason = TEXT("The bar is on the other side.");
+        return nullptr;
+    }
+    Stick->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    Bar.Reset();
+    bLocked = false;
+    return Stick;
 }
 
 bool AConstructionOpeningActor::OwnsComponent(const UPrimitiveComponent* Component) const

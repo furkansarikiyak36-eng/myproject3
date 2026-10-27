@@ -48,6 +48,18 @@ public:
     int32 GetStoredCount() const { return Stored.Num(); }
     bool IsSled() const { return Kind == ELogContainerKind::BasicSled || Kind == ELogContainerKind::AdvancedSled; }
     bool IsTowed() const { return TowedBy.IsValid(); }
+
+    /** Water surface height where the sled floats instead of sinking (unset: no water). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
+    float WaterSurfaceZ = -1.0e6f;
+
+    /** How close to a sled's centre a thrown log must come to be loaded onto it. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container", meta = (ClampMin = "50.0"))
+    float SledCatchRadius = 150.0f;
+
+    /** A sled loads logs thrown or dropped onto it. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
+    bool bCatchThrownLogs = true;
     FGuid GetStorageId() const { return StorageId; }
 
     bool CanAccept(const AActor* Piece, FString& OutReason) const;
@@ -76,4 +88,6 @@ private:
     FTransform GetSlotTransform(int32 Index, const AActor* Piece) const;
     void ApplyTowSpeed() const;
     void CollectNearbyLogs();
+    /** Loads loose logs that land on or right beside a sled, including thrown ones. */
+    void CatchThrownLogs();
 };
