@@ -7,6 +7,7 @@ or verify that candidate gameplay code is merged into the current default branch
 from __future__ import annotations
 
 import json
+import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -68,6 +69,8 @@ def schema_name_for_sample(filename: str) -> str | None:
         return "tool-definition"
     if filename.startswith("weather-profile"):
         return "weather-profile"
+    if filename.startswith("terrain-stratum-profile"):
+        return "terrain-stratum-profile"
     return None
 
 
@@ -196,6 +199,62 @@ def main() -> int:
                 )
                 continue
             validated_samples += 1
+
+            # Terrain profiles need ordered and complete strata and normalized material blends.
+            # JSON Schema describes each record's shape; these cross-field invariants are semantic.
+            if key == "terrain-stratum-profile":
+                semantic_errors: list[str] = []
+                strata = sample.get("strata", [])
+                profile_depth = sample.get("profileDepthCm", 0)
+                stratum_ids = [
+                    item.get("id") for item in strata
+                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                ]
+                duplicate_strata = sorted({
+                    value for value in stratum_ids if stratum_ids.count(value) > 1
+                })
+                if duplicate_strata:
+                    semantic_errors.append(f"duplicate stratum IDs: {duplicate_strata}")
+                if not strata:
+                    semantic_errors.append("strata must not be empty")
+                else:
+                    if not math.isclose(strata[0]["minDepthCm"], 0.0, abs_tol=1e-5):
+                        semantic_errors.append("first stratum must start at depth 0")
+                    for index, stratum in enumerate(strata):
+                        minimum = stratum["minDepthCm"]
+                        maximum = stratum["maxDepthCm"]
+                        if maximum <= minimum:
+                            semantic_errors.append(
+                                f"strata[{index}] maxDepthCm must exceed minDepthCm"
+                            )
+                        if index > 0 and not math.isclose(
+                            minimum, strata[index - 1]["maxDepthCm"], abs_tol=1e-5
+                        ):
+                            semantic_errors.append(
+                                f"strata[{index}] must start exactly where the previous stratum ends"
+                            )
+                        weights = [entry["weight"] for entry in stratum["materialBlend"]]
+                        if not math.isclose(sum(weights), 1.0, rel_tol=0.0, abs_tol=1e-4):
+                            semantic_errors.append(
+                                f"strata[{index}] materialBlend weights must sum to 1.0"
+                            )
+                        if (
+                            stratum["digPermission"] == "ToolGated"
+                            and not stratum["requiredToolTags"]
+                        ):
+                            semantic_errors.append(
+                                f"strata[{index}] ToolGated requires at least one requiredToolTag"
+                            )
+                    if not math.isclose(
+                        strata[-1]["maxDepthCm"], profile_depth, abs_tol=1e-5
+                    ):
+                        semantic_errors.append(
+                            "last stratum must end exactly at profileDepthCm"
+                        )
+                if semantic_errors:
+                    failures += 1
+                    show_errors(label, semantic_errors)
+
             definition_id = sample.get("id") if isinstance(sample, dict) else None
             if isinstance(definition_id, str):
                 sample_ids[key].append((definition_id, label))
