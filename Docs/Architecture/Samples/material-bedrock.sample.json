@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_BEDROCK",
+  "displayNameKey": "material.bedrock",
+  "family": "Stone",
+  "hardnessClass": "VeryHard",
+  "hardnessValue": 1,
+  "densityKgPerM3": 2900,
+  "diggable": false,
+  "permittedDepthLayers": [
+    4
+  ],
+  "terrainTags": [
+    "BEDROCK",
+    "PROTECTED"
+  ],
+  "notes": "Always blocked for player excavation in the initial scope."
+}
