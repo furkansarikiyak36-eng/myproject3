@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/resource-source-definition.schema.json",
+  "title": "MyProject3 Resource Source Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "sourceType",
+    "yieldPolicy",
+    "yields"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceType": {
+      "enum": [
+        "Tree",
+        "FallenTree",
+        "Stump",
+        "Boulder",
+        "RockOutcrop",
+        "Plant",
+        "SoilPatch",
+        "WaterSource",
+        "ScrapDeposit",
+        "StoryObject",
+        "ResourceContainer",
+        "Other"
+      ]
+    },
+    "materialDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "regionTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiredToolDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiredToolTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "allowedOperationIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "yieldPolicy": {
+      "enum": [
+        "Once",
+        "StagedDamage",
+        "RepeatableWithCooldown",
+        "RenewableByWorldState",
+        "PersistentDiscovery"
+      ]
+    },
+    "yields": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemDefinitionId",
+          "minimumQuantity",
+          "maximumQuantity"
+        ],
+        "properties": {
+          "itemDefinitionId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "minimumQuantity": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maximumQuantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "resultStateId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "byproductItemDefinitionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "regenerationSeconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maximumHarvestCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "stateIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
