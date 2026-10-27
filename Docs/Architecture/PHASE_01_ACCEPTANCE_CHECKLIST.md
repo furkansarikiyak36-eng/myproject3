@@ -7,6 +7,7 @@
 - [x] Mechanic IDs are treated as separate from item/material/recipe/asset IDs.
 - [x] Instance ID, definition ID, operation ID and anchor feature ID namespaces are documented.
 - [x] Existing candidate C++ contracts and their branches are identified.
+- [x] Targeted static inspection of core result/request types, identity, ownership, inventory, log split, structural graph, terrain state and save coordinator recorded in [the reconciliation review](PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md).
 - [ ] Every M001–M119 row is checked against exact owning functions and caller chains; domain-level paths are not sufficient for closeout.
 - [ ] Replace generic acceptance criteria with mechanic-specific preconditions, state changes, rejection cases, retry rules, persistence expectations and evidence steps.
 
@@ -34,6 +35,8 @@
 - [ ] Test expected-revision conflicts and verify failure has no partial mutation.
 - [ ] Test physical item transitions World ↔ Held ↔ Placed ↔ Inventory/Storage without duplication.
 - [ ] Test wood split outputs, inventory ownership receipt and structural graph changes as one valid cross-system outcome.
+- [ ] Decide where the global operation ledger must be adopted versus domain-owned receipts; inspected domain source does not consistently call TryBeginOperation/CompleteOperation.
+- [ ] Normalize caller operation-ID propagation for helper transactions that currently generate their own ID, or explicitly document a narrower retry guarantee.
 
 ## D. Placement and physical geometry
 - [x] Existing shared placement kernel/profile architecture is recorded as the authority.
@@ -45,7 +48,7 @@
 ## E. Terrain, save/load and runtime
 - [x] Logical terrain state and mesh prototype are described as separate components.
 - [x] Current known save/load gaps are recorded.
-- [ ] Validate terrain schema to chunk renderer/collision adapter mapping.
+- [ ] Validate terrain schema to chunk renderer/collision adapter mapping; current logical cell state and voxel chunk density are separate APIs with no adapter found in the inspected implementation files.
 - [ ] Verify actor transforms, attachments, item ownership, structural graph and terrain edits in one save/load round trip.
 - [ ] Compile/UHT/UBT against the selected source integration branch using Unreal Engine 5.8.
 - [ ] Run Editor/PIE acceptance scenarios and store logs/captures/reproduction steps.
