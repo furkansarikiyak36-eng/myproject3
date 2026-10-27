@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "ASSET_LOG_WHOLE_600",
+  "displayNameKey": "asset.log.whole_600",
+  "assetKind": "StaticMesh",
+  "productionStatus": "LogicalRequirement",
+  "sourcePolicy": "ExistingProjectAsset",
+  "dimensionsCm": {
+    "x": 600,
+    "y": 25,
+    "z": 25
+  },
+  "localForwardAxis": "X",
+  "pivotPolicy": "BaseCenter",
+  "collisionPolicy": "Simple",
+  "interactionType": "PHYSICAL_RESOURCE",
+  "meshVariantSetId": "MSH_LOG_600_WHOLE",
+  "feedbackEventIds": [
+    "SFX_WOOD_SPLIT"
+  ],
+  "lodPolicy": "StandardStatic",
+  "persistencePolicy": "SaveWhenInWorld",
+  "notes": "Logical record: confirm actual mesh dimensions/pivot/collision and asset path during source asset audit."
+}
