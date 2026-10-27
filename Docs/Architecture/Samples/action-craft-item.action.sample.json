@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_CRAFT_ITEM",
+  "displayNameKey": "action.craft_item",
+  "ownerSystem": "INVENTORY_CRAFTING",
+  "targetKinds": [
+    "InventoryItem",
+    "WorkStation"
+  ],
+  "recipeIds": [
+    "REC_ROPE_FROM_FIBER"
+  ],
+  "operationMode": "ProgressAction",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "RESOURCE_CONSUMED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "MissingMaterial",
+    "MissingTool",
+    "InvalidState",
+    "PrerequisiteNotMet",
+    "MissingConfiguration",
+    "InsufficientResources",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresLooseTarget": false,
+  "noiseLevel": 0.05,
+  "lightLevel": 0,
+  "feedbackEventIds": [
+    "SFX_ROPE_TWIST"
+  ],
+  "notes": "The output and input ownership transfer must be atomic; this record does not prove crafting UI/station integration."
+}
