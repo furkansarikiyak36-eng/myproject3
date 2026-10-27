@@ -1,0 +1,398 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MyProject3 World Snapshot Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "world_id",
+    "world_time_seconds",
+    "random_seed",
+    "objects",
+    "item_records",
+    "structural_links",
+    "terrain_edits",
+    "crop_records",
+    "region_records",
+    "discoveries"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "world_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "saved_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "world_time_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "random_seed": {
+      "type": "integer"
+    },
+    "objects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/objectRecord"
+      }
+    },
+    "item_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/itemRecord"
+      }
+    },
+    "structural_links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/structuralLink"
+      }
+    },
+    "terrain_edits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/terrainEdit"
+      }
+    },
+    "crop_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cropRecord"
+      }
+    },
+    "region_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/regionRecord"
+      }
+    },
+    "discoveries": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+      }
+    },
+    "environment_state": {
+      "type": "object"
+    },
+    "threat_state": {
+      "type": "object"
+    },
+    "production_queues": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "vec3": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "objectRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "definition_id",
+        "revision",
+        "lifecycle_state",
+        "location_cm",
+        "rotation_degrees",
+        "domain_state"
+      ],
+      "properties": {
+        "instance_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "definition_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lifecycle_state": {
+          "enum": [
+            "World",
+            "Held",
+            "Placed",
+            "Consumed",
+            "Destroyed"
+          ]
+        },
+        "location_cm": {
+          "$ref": "#/$defs/vec3"
+        },
+        "rotation_degrees": {
+          "$ref": "#/$defs/vec3"
+        },
+        "domain_state": {
+          "type": "object"
+        },
+        "owner_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        }
+      }
+    },
+    "itemRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "item_id",
+        "definition_id",
+        "quantity",
+        "owner_kind",
+        "revision"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "definition_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "base_definition_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "owner_kind": {
+          "enum": [
+            "World",
+            "Held",
+            "Inventory",
+            "Storage",
+            "InTransit",
+            "Consumed",
+            "Transformed"
+          ]
+        },
+        "owner_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "location_cm": {
+          "$ref": "#/$defs/vec3"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stack_key": {
+          "type": "string"
+        }
+      }
+    },
+    "structuralLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parent_instance_id",
+        "parent_anchor_id",
+        "child_instance_id",
+        "child_anchor_id"
+      ],
+      "properties": {
+        "parent_instance_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "parent_anchor_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "child_instance_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "child_anchor_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "link_kind": {
+          "enum": [
+            "Snap",
+            "Support",
+            "Rope",
+            "Attachment",
+            "Custom"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "terrainEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cell_xyz",
+        "depth_layer",
+        "material_id",
+        "edit_state",
+        "revision"
+      ],
+      "properties": {
+        "cell_xyz": {
+          "$ref": "#/$defs/vec3"
+        },
+        "depth_layer": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "material_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "edit_state": {
+          "enum": [
+            "Solid",
+            "Excavated",
+            "Filled",
+            "Replaced"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "cropRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "plot_id",
+        "crop_definition_id",
+        "stage",
+        "planted_world_time",
+        "last_updated_world_time"
+      ],
+      "properties": {
+        "plot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "crop_definition_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "stage": {
+          "enum": [
+            "Seed",
+            "Seedling",
+            "Growing",
+            "Mature",
+            "Harvested",
+            "Dormant",
+            "Dead"
+          ]
+        },
+        "planted_world_time": {
+          "type": "number",
+          "minimum": 0
+        },
+        "last_updated_world_time": {
+          "type": "number",
+          "minimum": 0
+        },
+        "growth_progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "condition": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "regionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "region_id",
+        "revision"
+      ],
+      "properties": {
+        "region_id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contamination_level": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "soil_quality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "water_quality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "vegetation_stage": {
+          "enum": [
+            "Dead",
+            "Sparse",
+            "Recovering",
+            "Established",
+            "Restored"
+          ]
+        },
+        "state": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}
