@@ -42,7 +42,7 @@ All queries using the same profile revision, world seed and coordinates must ret
 2. Keep geology policy separate from mesh rendering. Do not use material color or mesh identity to decide whether digging succeeds.
 3. Measure depth beneath the **original base surface**, not a pit floor or freshly carved tunnel roof. Do not recompute a new zero-depth surface from the edited density.
 4. Make stratum intervals ordered and non-overlapping. Validate the first interval starts at zero, the last ends at the profile depth, and there are no gaps. Validate per-stratum material weights sum to 1 within a small documented tolerance.
-5. A Blocked stratum always fails. A ToolGated stratum fails unless all required tier/tool tags are present. Missing/invalid profile, NaN/Inf/negative depth and depth beyond the profile fail closed.
+5. A Blocked stratum always fails. A ToolGated stratum fails unless all required tier/tool tags are present. Missing/invalid profile, empty/invalid material IDs, NaN/Inf/negative depth and depth beyond the profile fail closed. Only validate material-ID lookup if an authoritative runtime material catalogue already exists; do not invent a parallel registry for this task.
 6. A deterministic boundary-variation query may use world seed + horizontal position + profile/version to vary the interface. Never use a fresh random draw on each call. If the first implementation leaves boundary variation unimplemented, return the exact configured strata boundary and explicitly document that limitation rather than faking support.
 7. Return a stable machine-readable reason code and a descriptive message separately.
 8. Do not mutate terrain density, chunk mesh, collision, inventory, item ownership, receipts or world events in this task.
@@ -66,7 +66,7 @@ Add focused automation tests for:
 - Bedrock is always blocked.
 - Negative, NaN and infinite depths fail.
 - Out-of-profile depth fails.
-- Missing profile, missing material IDs, duplicate stratum IDs, gaps, overlaps, invalid intervals and blend weights not summing to 1 fail profile validation.
+- Missing profile, empty/invalid material IDs, duplicate stratum IDs, gaps, overlaps, invalid intervals and blend weights not summing to 1 fail profile validation.
 - Repeated query yields exactly the same result for the same inputs.
 - Query does not mutate the profile or world.
 - Boundary cases (just below/at/above each interval boundary) follow one explicit, documented convention and cannot select two strata.
