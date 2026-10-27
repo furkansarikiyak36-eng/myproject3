@@ -1,6 +1,6 @@
 # 14-Phase Architecture Roadmap
 
-**Status:** Architecture baseline / implementation coverage not yet claimed  
+**Status (2026-10-28):** Architecture baseline plus incremental implementation on `integration/phase-02-14-closure`; source availability is not engine/gameplay acceptance.  
 **Primary source baseline for current implementation review:** `mechanic-detailing-pass-h-integrated-world-systems`  
 **Scope authority:** `MECHANIC_REGISTRY_119.md/.csv/.json`
 
@@ -21,7 +21,7 @@ Existing IDs M001–M119 are immutable; they are the current baseline, not neces
 | 5 | Stick and primitive tools | M039–M048 | Initial state/anchor/trap layer exists; integrations remain |
 | 6 | Inventory and crafting | M049–M058 | Logical inventory/recipe layer exists; actor/UI/persistence gaps remain |
 | 7 | Shared structure graph, support and damage | M059–M070 | Graph foundation/adapters exist; multi-support, full collapse and persistence remain |
-| 8 | Terrain, Landscape Builder and constrained digging | M071–M080 | Logical cell-edit layer exists; native Landscape bridge, physical excavation/collision/navigation and save integration remain |
+| 8 | Terrain, Landscape Builder and constrained digging | M071–M080 | Logical cells + bounded voxel chunk API + v14 density save/restore source exist; player caller, atomic logical/physical edit, Landscape seams, navigation, async mesh and UE validation remain |
 | 9 | Farming and animal husbandry | M081–M090 | Logical simulation exists; actors, real inputs/outputs and habitat integration remain |
 | 10 | Raid director and threat AI | M091–M100 | Scheduling/adapter layers exist; full target selection, navigation and attack AI remain |
 | 11 | Logistics, carrying routes and resource movement | M101–M102 | Logical route/cargo layers exist; physical transport and terrain-aware routes remain |
