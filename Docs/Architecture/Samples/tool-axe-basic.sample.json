@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "TOOL_AXE_BASIC",
+  "itemDefinitionId": "ITEM_AXE_BASIC",
+  "displayNameKey": "tool.axe_basic",
+  "durabilityModel": "Durability",
+  "capabilities": [
+    {
+      "actionIds": [
+        "ACTION_CUT_WOOD",
+        "ACTION_SPLIT_WOOD"
+      ],
+      "validTargetFamilies": [
+        "Wood"
+      ],
+      "validTargetStateIds": [
+        "STATE_WOOD_WHOLE",
+        "STATE_WOOD_SPLIT_HALF_ROUND"
+      ],
+      "requiredMaterialTags": [
+        "WOOD"
+      ],
+      "workRate": 1,
+      "durabilityCostPerWork": 0.2,
+      "maxRangeCm": 220,
+      "requiresGroundContact": true,
+      "requiresLooseTarget": true,
+      "allowsProgressResume": true,
+      "feedbackEventIds": [
+        "SFX_WOOD_SPLIT",
+        "VFX_WOOD_CHIP"
+      ]
+    }
+  ],
+  "notes": "Schema fixture, not a claim that runtime tool capabilities currently route through this record."
+}
