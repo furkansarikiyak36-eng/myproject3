@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "PROC_LOG_SPLIT",
+  "domain": "Wood",
+  "inputDefinitionId": "ITEM_LOG_WHOLE_600",
+  "allowedInputStateIds": [
+    "STATE_WOOD_WHOLE"
+  ],
+  "requiredToolDefinitionIds": [
+    "TOOL_AXE_BASIC",
+    "TOOL_WOOD_WEDGE"
+  ],
+  "requiredToolTags": [
+    "WOODWORKING"
+  ],
+  "requiresGroundContact": true,
+  "requiresLooseObject": true,
+  "rejectIfHasAttachedChildren": true,
+  "requiresSplitHalf": false,
+  "progressMode": "HitProgress",
+  "durationSeconds": 0,
+  "outputs": [
+    {
+      "definitionId": "ITEM_LOG_SPLIT_HALF_600",
+      "quantity": 2,
+      "resultStateId": "STATE_WOOD_SPLIT_HALF_ROUND",
+      "meshVariantSetId": "MSH_LOG_600_SPLIT_HALF",
+      "physicalOutput": true
+    }
+  ],
+  "byproducts": [],
+  "commitPolicy": "AtomicAtCommit",
+  "interruptionPolicy": "ResetProgress",
+  "feedbackEventIds": [
+    "SFX_WOOD_SPLIT",
+    "VFX_WOOD_CHIP"
+  ],
+  "failureReasonIds": [
+    "INVALID_STATE",
+    "MISSING_TOOL",
+    "HAS_ATTACHED_CHILDREN"
+  ],
+  "notes": "Example emphasizes that split-half geometry/state is not half-length geometry."
+}
