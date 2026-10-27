@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/tool-definition.schema.json",
+  "title": "MyProject3 Tool Capability Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "itemDefinitionId",
+    "capabilities"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "itemDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "durabilityModel": {
+      "enum": [
+        "None",
+        "Durability",
+        "Charges"
+      ]
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "actionIds",
+          "validTargetFamilies",
+          "workRate",
+          "durabilityCostPerWork"
+        ],
+        "properties": {
+          "actionIds": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          },
+          "validTargetFamilies": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "Wood",
+                "Stone",
+                "Soil",
+                "Clay",
+                "PlantFiber",
+                "Food",
+                "Metal",
+                "Electronics",
+                "Other"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "validTargetStateIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          },
+          "requiredMaterialTags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          },
+          "workRate": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "durabilityCostPerWork": {
+            "type": "number",
+            "minimum": 0
+          },
+          "maxRangeCm": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "requiresGroundContact": {
+            "type": "boolean",
+            "default": false
+          },
+          "requiresLooseTarget": {
+            "type": "boolean",
+            "default": true
+          },
+          "allowsProgressResume": {
+            "type": "boolean",
+            "default": true
+          },
+          "feedbackEventIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
