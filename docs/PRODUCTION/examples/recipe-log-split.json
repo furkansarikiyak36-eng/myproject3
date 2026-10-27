@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "recipeId": "RECIPE_LOG_SPLIT",
+  "version": 1,
+  "inputs": [
+    {
+      "itemId": "ITEM_WOOD_LOG_WHOLE",
+      "quantity": 1,
+      "consume": true,
+      "requiredState": "WholeLog"
+    }
+  ],
+  "preconditions": {
+    "requiredToolId": "TOOL_AXE",
+    "requiredPieceState": "WholeLog"
+  },
+  "operation": {
+    "operationType": "ProgressBased",
+    "durationSeconds": 2,
+    "interruptPolicy": "KeepProgress",
+    "noiseLevel": 0.3
+  },
+  "outputs": [
+    {
+      "itemId": "ITEM_WOOD_LOG_SPLIT_HALF",
+      "quantity": 2,
+      "worldRepresentation": "PhysicalActor"
+    }
+  ],
+  "byproducts": [],
+  "toolWear": 0.1,
+  "atomicity": "AllOrNothing",
+  "persistencePolicy": "SaveInProgress",
+  "feedbackEventIds": [
+    "EVT_LOG_SPLIT_STARTED",
+    "EVT_LOG_SPLIT_COMMITTED"
+  ],
+  "notes": "Schema example only; exact geometry transition must follow the authoritative wood-state contract."
+}
