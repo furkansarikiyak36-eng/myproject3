@@ -43,6 +43,24 @@ namespace PlacementBodyMath
         const TArray<FVector>& OtherTops, float MinOverhangCm, float ToleranceDeg,
         FPlacementPose& OutPose, int32& OutOtherIndex, float& OutYawDeg);
 
+    /**
+     * The bend of an end joint (degrees, + turns left seen from above): the carry
+     * direction relative to the target end's outward direction, rounded to StepDeg,
+     * at most MaxBendDeg either way. Carried back toward the target it goes on
+     * straight (0). PreviousBendDeg is kept within HysteresisDeg.
+     */
+    MYPROJECT3_API float ChooseBend(float OutwardYawDeg, float CarryYawDeg, float StepDeg, float MaxBendDeg,
+        const float* PreviousBendDeg, float HysteresisDeg);
+
+    /**
+     * A body joined end to end at a bend (a < or L corner): the two axes meet one
+     * target radius inside the target's end, the held end sits one held radius
+     * past that corner, both at the target's height. bSourceAtPositiveEnd: the
+     * held body's +axis end is the one at the corner.
+     */
+    MYPROJECT3_API FPlacementPose SolveBentEnd(const FVector& TargetEnd, const FVector& Outward, float TargetRadius,
+        const FPlacementBody& Held, float BendDeg, bool bSourceAtPositiveEnd);
+
     /** A diagonal already lying across a body: where it crosses (cm from the body centre) and which way it leans (+1 or -1). */
     struct FDiagonalCrossing
     {

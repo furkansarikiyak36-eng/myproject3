@@ -85,6 +85,34 @@ namespace PlacementBodyMath
         }
     }
 
+    float ChooseBend(float OutwardYawDeg, float CarryYawDeg, float StepDeg, float MaxBendDeg,
+        const float* PreviousBendDeg, float HysteresisDeg)
+    {
+        const float Step = FMath::Max(1.0f, StepDeg);
+        const float Raw = FMath::UnwindDegrees(CarryYawDeg - OutwardYawDeg);
+        if (FMath::Abs(Raw) > MaxBendDeg + 0.5f * Step)
+            return 0.0f; // Carried back toward the target: straight on.
+        const float Best = FMath::Clamp(FMath::RoundToFloat(Raw / Step) * Step, -MaxBendDeg, MaxBendDeg);
+        if (PreviousBendDeg && FMath::Abs(*PreviousBendDeg) <= MaxBendDeg + 0.01f &&
+            FMath::Abs(Raw - *PreviousBendDeg) <= FMath::Abs(Raw - Best) + HysteresisDeg)
+            return *PreviousBendDeg;
+        return Best;
+    }
+
+    FPlacementPose SolveBentEnd(const FVector& TargetEnd, const FVector& Outward, float TargetRadius,
+        const FPlacementBody& Held, float BendDeg, bool bSourceAtPositiveEnd)
+    {
+        const FVector Out = Outward.GetSafeNormal2D();
+        const FVector Direction = Out.RotateAngleAxis(BendDeg, FVector::UpVector);
+        const FVector Corner = TargetEnd - Out * TargetRadius;
+        FPlacementPose Pose;
+        Pose.Centre = Corner + Direction * (Held.HalfLength - Held.Radius);
+        Pose.Centre.Z = TargetEnd.Z;
+        Pose.Axis = bSourceAtPositiveEnd ? -Direction : Direction;
+        Pose.Up = FVector::UpVector;
+        return Pose;
+    }
+
     bool SolveCrossOnTop(const FVector& Top, const FPlacementBody& Held, float CarryYawDeg,
         float ReferenceYawDeg, float StepDeg, const float* PreviousYawDeg, float HysteresisDeg,
         const TArray<FVector>& OtherTops, float MinOverhangCm, float ToleranceDeg,

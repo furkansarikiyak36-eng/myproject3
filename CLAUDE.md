@@ -23,7 +23,7 @@ Skip unless the task is about them: `Content/`, `AssetPackages/`, `Binaries/`, `
 | Helper NPC | `HelperCompanionActor.*` | Follow, collect, pile, build plans (uses the kernel commit). |
 | World / demo | `VerticalSliceCWorldActor.*` (main test level), `VerticalSliceB*`, `HarvestableTreeActor.*`, `LogContainerActor.*` | Level setup, trees, creek, sleds, storage. |
 | Save | `WorldSaveCoordinatorSubsystem.*`, `WorldSimulationSaveGame.h` | Saves every subsystem, including the structural graph. |
-| Tests | `Tests/MyProject3CoreTests.cpp`, `Tests/PlacementKernelTests.cpp` | Automation tests (67). Add a test with every behaviour change. |
+| Tests | `Tests/MyProject3CoreTests.cpp`, `Tests/PlacementKernelTests.cpp` | Automation tests (68). Add a test with every behaviour change. |
 
 Plans and status: `Docs/Architecture/GLOBAL_SNAP_SYSTEM_PLAN.md` (placement), `Docs/Demo/RAPOR_SOTF_KUTUK_SISTEMI.md` (log mechanics report).
 

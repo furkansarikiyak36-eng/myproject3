@@ -950,6 +950,59 @@ bool FPlacementSymmetryTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// End to end, a log bends toward where it is carried, on a 45 degree grid: an
+// open corner, an L, a sharp <. Carried back toward the target it goes on straight.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementBendTest, "MyProject3.Placement.EndJointsBendIntoCorners", Flags)
+bool FPlacementBendTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World ? World->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    // A beam along X, its +X end at x 150; radius 15.
+    ALogBuildPiece* Beam = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 600, 100), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Beam"), Beam) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Beam;
+    Intent.AimPoint = FVector(150, 0, 100);
+    Intent.AllowedProfiles = { TEXT("log.end_to_end") };
+    auto Joint = [&](float CarryYaw)
+    {
+        Intent.CarryYawDeg = CarryYaw;
+        return Kernel->Solve(Intent);
+    };
+    auto LineYaw = [](const FPlacementSolution& Solution)
+    {
+        const FVector Axis = Solution.PieceTransform.GetUnitAxis(EAxis::X);
+        return FMath::RadiansToDegrees(FMath::Atan2(Axis.Y, Axis.X));
+    };
+    // The corner lies one radius inside the beam's end; the held log runs from there.
+    const FVector Corner(135, 0, 100);
+    struct FCase { float Carry; float Bend; };
+    const FCase Cases[] = { { 40.0f, 45.0f }, { 95.0f, 90.0f }, { 140.0f, 135.0f }, { -50.0f, -45.0f } };
+    for (const FCase& Case : Cases)
+    {
+        const FPlacementSolution Bent = Joint(Case.Carry);
+        const FVector Direction = FRotator(0.0f, Case.Bend, 0.0f).Vector();
+        const FVector Want = Corner + Direction * (150.0f - 15.0f);
+        TestTrue(FString::Printf(TEXT("Carried at %.0f: bends %.0f (%s)"), Case.Carry, Case.Bend, *Bent.Reason),
+            Bent.bValid && FMath::IsNearlyEqual(Bent.AngleDeg, Case.Bend, 0.1f) &&
+            PlacementBodyMath::LineYawDistance(LineYaw(Bent), Case.Bend) < 0.5f);
+        TestTrue(FString::Printf(TEXT("Bend %.0f: it runs from the corner (%s, want %s)"), Case.Bend,
+            *Bent.PieceTransform.GetLocation().ToString(), *Want.ToString()), Bent.PieceTransform.GetLocation().Equals(Want, 1.0f));
+        TestEqual(TEXT("Joined end to end"), Bent.Links.Num() > 0 ? Bent.Links[0].Target.FeatureId : NAME_None, FName(TEXT("End.B")));
+    }
+    const FPlacementSolution Straight = Joint(0.0f);
+    TestTrue(TEXT("Carried on: straight"), Straight.bValid && FMath::IsNearlyZero(Straight.AngleDeg) &&
+        PlacementBodyMath::LineYawDistance(LineYaw(Straight), 0.0f) < 0.5f && Straight.PieceTransform.GetLocation().X > 250.0f);
+    const FPlacementSolution Back = Joint(180.0f);
+    TestTrue(TEXT("Carried back toward the beam: still straight"), Back.bValid && FMath::IsNearlyZero(Back.AngleDeg) &&
+        PlacementBodyMath::LineYawDistance(LineYaw(Back), 0.0f) < 0.5f);
+    return true;
+}
+
 // Modularity: the kernel and its math never name a material. New materials come
 // in as providers and profiles; if this test fails, a material rule leaked in.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementKernelNeutralTest, "MyProject3.Placement.KernelNamesNoMaterial", Flags)

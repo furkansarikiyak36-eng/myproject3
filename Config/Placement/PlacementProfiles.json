@@ -15,7 +15,7 @@
       "source": { "family": "log", "kind": "End", "tags": ["LogEnd"], "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
       "target": { "family": "log", "kind": "End", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
       "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 2,
-      "physics": "Hinge", "params": { "endInset": 1.0, "crossInset": 0.5, "freeEndProbeCm": 30 } },
+      "physics": "Hinge", "params": { "endInset": 1.0, "crossInset": 0.5, "freeEndProbeCm": 30, "bendStepDeg": 45, "maxBendDeg": 135 } },
     { "id": "log.end_to_station", "solver": "AlignOne", "mode": "snap",
       "source": { "family": "log", "kind": "End", "tags": ["LogEnd"], "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },
       "target": { "family": "log", "kind": "Station", "sections": ["Round", "Hewn", "HewnTwoFaces", "SquareBeam"] },

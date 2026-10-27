@@ -478,6 +478,25 @@ void UPlacementKernelSubsystem::SolveSnap(const FPlacementProfile& Profile, cons
                 Candidate.PieceTransform = ApplyJointInset(Profile, Intent, Target, SourceFeature, TargetPoint,
                     PlacementMath::AlignOne(SourceFrame, HeldTransform.GetScale3D(), TargetFrame, TargetFeature.bFlipIncoming, Angle));
                 Candidate.AngleDeg = Angle;
+                // End to end on a lying piece: it bends toward the carry direction (a < or L corner).
+                const float BendStep = GetParam(Profile, Intent, TEXT("bendStepDeg"), 0.0f);
+                const FVector Outward = TargetFrame.GetUnitAxis(EAxis::X);
+                FPlacementBody TargetBody, HeldBody;
+                if (BendStep > 0.0f && !Intent.bUpright && SourceFeature.Kind == EPlacementFeatureKind::End &&
+                    TargetFeature.Kind == EPlacementFeatureKind::End && FMath::Abs(Outward.Z) < 0.3f &&
+                    FPlacementProviderRegistry::GetBody(Target, TargetBody) && HeldProvider->GetBody(Intent.Held, HeldBody))
+                {
+                    const float Bend = PlacementBodyMath::ChooseBend(FMath::RadiansToDegrees(FMath::Atan2(Outward.Y, Outward.X)),
+                        Intent.CarryYawDeg, BendStep, GetParam(Profile, Intent, TEXT("maxBendDeg"), 135.0f),
+                        bSameAsPrevious ? &PreviousAngle : nullptr, Profile.AngleHysteresisDeg);
+                    if (!FMath::IsNearlyZero(Bend))
+                    {
+                        const bool bPositiveEnd = FVector::DotProduct(SourcePoint - HeldBody.Centre, HeldBody.Axis) > 0.0f;
+                        Candidate.PieceTransform = HeldProvider->MakeBodyTransform(Intent.Held,
+                            PlacementBodyMath::SolveBentEnd(TargetPoint, Outward, TargetBody.Radius, HeldBody, Bend, bPositiveEnd));
+                    }
+                    Candidate.AngleDeg = Bend;
+                }
                 Candidate.MarkerPoint = TargetPoint;
                 FPlacementLink Link;
                 Link.Role = EPlacementLinkRole::Primary;
