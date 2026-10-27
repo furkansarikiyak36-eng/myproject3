@@ -1,6 +1,7 @@
 #include "VoxelTerrainChunkComponent.h"
 
 #include "Generators/MarchingCubes.h"
+#include "PlacementKernelSubsystem.h"
 
 UVoxelTerrainChunkComponent::UVoxelTerrainChunkComponent(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -37,6 +38,13 @@ float UVoxelTerrainChunkComponent::GetPoint(int32 X, int32 Y, int32 Z) const
 
 void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
 {
+    if (!FMath::IsFinite(GroundHeightCm) ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f ||
+        CellsPerAxis < 1 || CellsPerAxis > 128 || VoxelRevision == MAX_int64)
+    {
+        return;
+    }
+
     const int32 N = PointsPerAxis();
     Density.SetNumUninitialized(N * N * N);
     for (int32 Z = 0; Z < N; ++Z)
@@ -47,6 +55,10 @@ void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
             for (int32 X = 0; X < N; ++X)
                 Density[PointIndex(X, Y, Z)] = AvoidIsoValue(Height - GroundHeightCm);
     }
+
+    ++VoxelRevision;
+    EditReceipts.Reset();
+    EditReceiptOrder.Reset();
 }
 
 float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) const
@@ -68,29 +80,135 @@ float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) c
 
 float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float RadiusCm, bool bAdd)
 {
-    if (Density.IsEmpty() || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f || LocalCenter.ContainsNaN())
+    float DeltaVolume = 0.0f;
+    int64 CommittedRevision = INDEX_NONE;
+    FString Failure;
+    if (!TryApplySphereEdit(FGuid::NewGuid(), VoxelRevision, LocalCenter, RadiusCm, bAdd,
+        DeltaVolume, CommittedRevision, Failure))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Voxel sphere edit rejected: %s"), *Failure);
         return 0.0f;
-
-    const float VolumeBefore = GetSolidVolumeCubicMetres();
-    const int32 N = PointsPerAxis();
-    const int32 MinX = FMath::Max(0, FMath::FloorToInt((LocalCenter.X - RadiusCm) / VoxelSizeCm) - 1);
-    const int32 MaxX = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.X + RadiusCm) / VoxelSizeCm) + 1);
-    const int32 MinY = FMath::Max(0, FMath::FloorToInt((LocalCenter.Y - RadiusCm) / VoxelSizeCm) - 1);
-    const int32 MaxY = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.Y + RadiusCm) / VoxelSizeCm) + 1);
-    const int32 MinZ = FMath::Max(0, FMath::FloorToInt((LocalCenter.Z - RadiusCm) / VoxelSizeCm) - 1);
-    const int32 MaxZ = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.Z + RadiusCm) / VoxelSizeCm) + 1);
-    for (int32 Z = MinZ; Z <= MaxZ; ++Z)
-        for (int32 Y = MinY; Y <= MaxY; ++Y)
-            for (int32 X = MinX; X <= MaxX; ++X)
-            {
-                const FVector Point(X * VoxelSizeCm, Y * VoxelSizeCm, Z * VoxelSizeCm);
-                // Signed distance to the sphere, negative inside it.
-                const float Sphere = static_cast<float>(FVector::Dist(Point, LocalCenter)) - RadiusCm;
-                float& Value = Density[PointIndex(X, Y, Z)];
-                Value = AvoidIsoValue(bAdd ? FMath::Min(Value, Sphere) : FMath::Max(Value, -Sphere));
-            }
-    return GetSolidVolumeCubicMetres() - VolumeBefore;
+    }
+    return DeltaVolume;
 }
+
+bool UVoxelTerrainChunkComponent::TryApplySphereEdit(
+    FGuid OperationId, int64 ExpectedRevision, FVector LocalCenter, float RadiusCm,
+    bool bAdd, float& OutDeltaVolumeCubicMetres, int64& OutCommittedRevision,
+    FString& OutFailureReason)
+{
+    OutDeltaVolumeCubicMetres = 0.0f;
+    OutCommittedRevision = VoxelRevision;
+    OutFailureReason.Reset();
+
+    if (!OperationId.IsValid() || ExpectedRevision < 0 ||
+        !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f || LocalCenter.ContainsNaN() ||
+        Density.IsEmpty() || !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f ||
+        VoxelRevision == MAX_int64)
+    {
+        OutFailureReason = TEXT("Invalid operation ID, expected revision, density grid or sphere geometry.");
+        return false;
+    }
+
+    // Idempotent replay check precedes optimistic revision validation.
+    if (const FVoxelEditOperationReceipt* Previous = EditReceipts.Find(OperationId))
+    {
+        const bool bSameRequest = Previous->ExpectedRevision == ExpectedRevision &&
+            Previous->LocalCenter.Equals(LocalCenter, 0.001f) &&
+            FMath::IsNearlyEqual(Previous->RadiusCm, RadiusCm, 0.001f) &&
+            Previous->bAdd == bAdd;
+        if (!bSameRequest)
+        {
+            OutFailureReason = TEXT("This voxel operation ID was already used for a different edit request.");
+            return false;
+        }
+
+        OutDeltaVolumeCubicMetres = Previous->DeltaVolumeCubicMetres;
+        OutCommittedRevision = Previous->CommittedRevision;
+        return true;
+    }
+
+    if (ExpectedRevision != VoxelRevision)
+    {
+        OutFailureReason = FString::Printf(
+            TEXT("Voxel revision conflict: expected %lld, current %lld."),
+            static_cast<long long>(ExpectedRevision),
+            static_cast<long long>(VoxelRevision));
+        return false;
+    }
+
+    UPlacementKernelSubsystem* Kernel =
+        GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    FPlacementProfileDefinition Profile;
+    if (!Kernel || !Kernel->IsCatalogReady() ||
+        !Kernel->GetProfile(TEXT("voxel.multi_cell_edit"), Profile) ||
+        Profile.OperationKindText != FString(TEXT("voxel_operation")) ||
+        Profile.Geometry != TEXT("multi_cell_edit") || !Profile.bAtomicCommit)
+    {
+        OutFailureReason = TEXT("The global voxel.multi_cell_edit profile is missing or invalid.");
+        return false;
+    }
+
+    const TArray<float> PreviousDensity = Density;
+    const int64 PreviousRevision = VoxelRevision;
+    const float Delta = ApplySphereEditInternal(LocalCenter, RadiusCm, bAdd);
+
+    bool bValidDensity = FMath::IsFinite(Delta) && Density.Num() == PreviousDensity.Num();
+    bool bDensityChanged = false;
+    for (int32 Index = 0; bValidDensity && Index < Density.Num(); ++Index)
+    {
+        bValidDensity = FMath::IsFinite(Density[Index]);
+        bDensityChanged |= Density[Index] != PreviousDensity[Index];
+    }
+
+    if (!bValidDensity)
+    {
+        Density = PreviousDensity;
+        VoxelRevision = PreviousRevision;
+        RebuildMesh();
+        OutFailureReason = TEXT("The voxel edit produced invalid density state; the previous grid was restored.");
+        return false;
+    }
+
+    // Render/collision data is derived from density and is rebuilt only after
+    // every cell value has passed validation.
+    RebuildMesh();
+    if (bDensityChanged)
+        ++VoxelRevision;
+
+    FVoxelEditOperationReceipt Receipt;
+    Receipt.ExpectedRevision = ExpectedRevision;
+    Receipt.LocalCenter = LocalCenter;
+    Receipt.RadiusCm = RadiusCm;
+    Receipt.bAdd = bAdd;
+    Receipt.DeltaVolumeCubicMetres = Delta;
+    Receipt.CommittedRevision = VoxelRevision;
+    RememberEditReceipt(OperationId, Receipt);
+
+    OutDeltaVolumeCubicMetres = Delta;
+    OutCommittedRevision = VoxelRevision;
+    return true;
+}
+
+void UVoxelTerrainChunkComponent::RememberEditReceipt(
+    FGuid OperationId, const FVoxelEditOperationReceipt& Receipt)
+{
+    constexpr int32 MaxReceipts = 512;
+    if (!EditReceipts.Contains(OperationId))
+        EditReceiptOrder.Add(OperationId);
+    EditReceipts.Add(OperationId, Receipt);
+
+    while (EditReceiptOrder.Num() > MaxReceipts)
+    {
+        const FGuid ExpiredId = EditReceiptOrder[0];
+        EditReceiptOrder.RemoveAt(0);
+        EditReceipts.Remove(ExpiredId);
+    }
+}
+
+float UVoxelTerrainChunkComponent::ApplySphereEditInternal(
+    FVector LocalCenter, float RadiusCm, bool bAdd)
+{
 
 float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
 {
