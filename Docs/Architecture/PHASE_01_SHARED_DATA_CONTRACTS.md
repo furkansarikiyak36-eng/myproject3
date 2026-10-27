@@ -180,7 +180,7 @@ The operation event dispatcher is transient; do not confuse it with the durable 
 - WOOD_PROCESSING_TRANSITIONS.json records length fraction separately from cross-section profile and defines the intended transformation prerequisites and output requirements.
 - PHASE_00_M001_M119_BASELINE.csv adds a proposed implementation-phase mapping and current-main evidence columns without rewriting the canonical registry fields.
 
-The JSON files were checked for syntactic parseability, and the baseline CSV was checked for 119 rows and 119 unique IDs. A full JSON Schema validator is not wired into this repository workflow yet, so schema conformance is not claimed. The schemas are contracts for later validation tooling, not evidence that the runtime loads the catalogs today.
+The JSON files were checked for syntactic parseability, and the baseline CSV was checked for 119 rows and 119 unique IDs. A Python JSON Schema validator is now available at Tools/Validation/validate_gameplay_catalogue.py, and .github/workflows/validate-gameplay-catalogue.yml is configured to run it on matching pushes and pull requests. Do not assume this branch passed the validator until the specific CI result for its commit is inspected. The schemas remain design-time contracts, not evidence that the runtime loads catalogs today.
 
 ## 12. Canonical phase field discrepancy
 
