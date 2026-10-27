@@ -548,7 +548,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
             TEXT("World load refused because production receipts do not match the snapshot item ownership ledger."));
         return false;
     }
-    if (!ValidatePhysicalActorSnapshotSet(World, Snapshot->PhysicalActors))
+    if (!ValidatePhysicalActorSnapshotSet(World, Snapshot->PhysicalActors) ||
+        !ValidateVoxelChunkSnapshotSet(World, Snapshot->VoxelChunks))
     {
         UE_LOG(LogTemp, Warning,
             TEXT("World load refused because physical actor identities, classes or component state do not match this level."));
@@ -574,6 +575,11 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!ApplyPhysicalActorSnapshots(World, Snapshot->PhysicalActors))
     {
         UE_LOG(LogTemp, Warning, TEXT("World load failed while applying physical actor state."));
+        return false;
+    }
+    if (!ApplyVoxelChunkSnapshots(World, Snapshot->VoxelChunks))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World load failed while applying voxel density state."));
         return false;
     }
     if (!StructuralGraph->RestoreSnapshot(Snapshot->StructuralGraph))
