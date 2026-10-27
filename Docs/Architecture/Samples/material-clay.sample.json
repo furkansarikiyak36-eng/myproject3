@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_CLAY",
+  "displayNameKey": "material.clay",
+  "family": "Clay",
+  "hardnessClass": "Medium",
+  "hardnessValue": 0.52,
+  "densityKgPerM3": 1800,
+  "diggable": true,
+  "permittedDepthLayers": [
+    0,
+    1,
+    2
+  ],
+  "terrainTags": [
+    "CLAY_RICH"
+  ],
+  "notes": "Clay may occur in multiple blended strata; the active profile still decides whether the current depth is excavatable."
+}
