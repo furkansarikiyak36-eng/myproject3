@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "SFX_WOOD_SPLIT",
+  "eventType": "SFX",
+  "triggerId": "ObjectProcessed",
+  "spatialization": "World3D",
+  "priority": 70,
+  "concurrencyGroup": "WOOD_TOOLS",
+  "maxConcurrentInstances": 6,
+  "mixBus": "ToolsAndConstruction",
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "AudioAndVisual",
+  "mustNotMaskThreatAudio": true,
+  "notes": "Logical sound cue ID only; no sound asset is included."
+}
