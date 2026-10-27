@@ -101,7 +101,10 @@ struct FPlacementFeature
      * side a joint uses is solved from where the player aims, RadiusCm out.
      */
     bool bRadialFree = false;
+    /** Contact radius measured in world centimetres for a station feature. */
     float RadiusCm = 0.0f;
+    /** 0 = continuous round-surface direction; positive values quantize the radial face direction. */
+    float RadialStepDeg = 90.0f;
 };
 
 /** A long piece seen as a line with a thickness: logs, planks, sticks, ropes. */
