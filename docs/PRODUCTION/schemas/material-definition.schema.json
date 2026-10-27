@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://myproject3.local/schemas/material-definition.schema.json",
+  "title": "MyProject3 Material Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "materialId",
+    "family",
+    "physicalClass",
+    "hardness",
+    "densityKgM3",
+    "digPolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "materialId": {
+      "type": "string",
+      "pattern": "^MAT_[A-Z0-9_]+$"
+    },
+    "family": {
+      "enum": [
+        "Wood",
+        "Stone",
+        "Soil",
+        "Sand",
+        "Gravel",
+        "Clay",
+        "Fiber",
+        "Metal",
+        "Water",
+        "Organic",
+        "Synthetic",
+        "Unknown"
+      ]
+    },
+    "physicalClass": {
+      "enum": [
+        "Soft",
+        "Medium",
+        "Hard",
+        "Fluid",
+        "Structural",
+        "Organic"
+      ]
+    },
+    "hardness": {
+      "type": "number",
+      "minimum": 0
+    },
+    "densityKgM3": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "digPolicy": {
+      "enum": [
+        "NotDiggable",
+        "HandTool",
+        "HeavyTool",
+        "ConfiguredLayerOnly",
+        "FluidInteraction"
+      ]
+    },
+    "breakStages": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "resourceYields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemId",
+          "quantity"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]+$"
+          },
+          "quantity": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "unitId": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "contaminationTags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "supportRequirement": {
+      "enum": [
+        "None",
+        "PlaceSupportForDefinedSpan",
+        "ProtectedLayer",
+        "NotApplicable"
+      ],
+      "default": "None"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
