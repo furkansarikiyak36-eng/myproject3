@@ -749,7 +749,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
                 }
 
                 const float AnchorDistance = FVector::Distance(
-                    (SourcePoint.LocalTransform * HeldActorTransform).GetLocation(),
+                    (SourceLocalFeatureTransform * HeldActorTransform).GetLocation(),
                     TargetWorldTransform.GetLocation());
                 const float AimToAnchorDistance = FVector::Distance(
                     AimHit.ImpactPoint, TargetWorldTransform.GetLocation());
@@ -1014,22 +1014,82 @@ bool ULogCarryComponent::PlaceHeldPiece()
             }
         }
 
-        // Evaluate the second end before committing the first anchor or transferring ownership.
+        // Resolve structural support before any persistent connection or ownership change.
         AActor* Support = nullptr;
         bool bGround = false;
         const bool bHasFarEndSupport =
             EvaluateFarEndSupport(PieceToPlace, CurrentSourceSnapPointIndex, Support, bGround);
-        if (!PieceToPlace->GetSnapPoints().IsValidIndex(CurrentSourceSnapPointIndex) ||
-            !CurrentSnapTarget->GetSnapPoints().IsValidIndex(CurrentTargetSnapPointIndex))
-        {
-            Transaction.Rollback();
-            ClearSnapCandidate();
-            PlacementStatus = TEXT("The preview became stale; aim again to place.");
-            return false;
-        }
         const FLogSnapPoint& SourceAnchor = PieceToPlace->GetSnapPoints()[CurrentSourceSnapPointIndex];
         const FLogSnapPoint& TargetAnchor = CurrentSnapTarget->GetSnapPoints()[CurrentTargetSnapPointIndex];
         const bool bExplicitHingeAllowed = SourceAnchor.bAllowsHinge || TargetAnchor.bAllowsHinge;
+        const UStaticMeshComponent* HeldMesh = PieceToPlace->GetLogMesh();
+        const FVector HeldAxis = HeldMesh
+            ? HeldMesh->GetComponentTransform().TransformVectorNoScale(
+                LocalAxisVector(PieceToPlace->LongitudinalAxis)).GetSafeNormal()
+            : FVector::ZeroVector;
+        const bool bRequiresTwoSupports = HeldMesh && FMath::Abs(HeldAxis.Z) < 0.7f;
+        FResolvedLogSupportPair FarSupportPair;
+        bool bHasSolvedSecondSupport = false;
+
+        if (bRequiresTwoSupports && bHasFarEndSupport && IsValid(Support) &&
+            Cast<IStructuralPieceInterface>(Support))
+        {
+            if (Support == CurrentSnapTarget ||
+                !FindCompatibleLogSupportPair(Support, PieceToPlace, CurrentSnapActorTransform,
+                    FarSupportPair, CurrentSourceSnapPointIndex))
+            {
+                Transaction.Rollback();
+                PlacementStatus = TEXT("The beam has no distinct compatible anchor pair at its far end.");
+                ClearSnapCandidate();
+                return false;
+            }
+
+            const FTransform SourceLocalFeatureB =
+                FarSupportPair.SourceWorldTransform * CurrentSnapActorTransform.Inverse();
+            FPlacementSolution TwoSupportSolution;
+            FString TwoSupportFailure;
+            if (!PlacementKernel->SolveTwoAnchorAlignment(
+                TEXT("log.two_support_beam"),
+                CurrentSnapSourceLocalFeatureTransform,
+                SourceLocalFeatureB,
+                CurrentSnapTargetWorldTransform,
+                FarSupportPair.TargetWorldTransform,
+                CurrentSnapActorTransform,
+                TwoSupportSolution,
+                TwoSupportFailure))
+            {
+                Transaction.Rollback();
+                PlacementStatus = FString::Printf(
+                    TEXT("The beam cannot satisfy both supports: %s"), *TwoSupportFailure);
+                ClearSnapCandidate();
+                return false;
+            }
+
+            CurrentSnapActorTransform = TwoSupportSolution.ActorWorldTransform;
+            PieceToPlace->SetActorTransform(CurrentSnapActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            TArray<AActor*> IgnoredActors;
+            IgnoredActors.Add(CurrentSnapTarget);
+            IgnoredActors.Add(Support);
+            FString CollisionFailure;
+            if (!PlacementKernel->ValidateCandidatePose(
+                PieceToPlace, CurrentSnapActorTransform, IgnoredActors, CollisionFailure))
+            {
+                Transaction.Rollback();
+                PlacementStatus = TEXT("The two-support beam solution is blocked.");
+                ClearSnapCandidate();
+                return false;
+            }
+            bHasSolvedSecondSupport = true;
+        }
+
+        if (bRequiresTwoSupports && bHasFarEndSupport && IsValid(Support) &&
+            Cast<IStructuralPieceInterface>(Support) && !bHasSolvedSecondSupport)
+        {
+            Transaction.Rollback();
+            PlacementStatus = TEXT("The horizontal beam needs two valid structural supports.");
+            ClearSnapCandidate();
+            return false;
+        }
         if (!bHasFarEndSupport && !bExplicitHingeAllowed)
         {
             Transaction.Rollback();
@@ -1089,19 +1149,39 @@ bool ULogCarryComponent::PlaceHeldPiece()
 
         UWorldStructuralGraphSubsystem* Graph =
             GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-        if (bHasFarEndSupport && IsValid(Support))
+        if (bHasSolvedSecondSupport && IsValid(Support))
         {
-            const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
-            if (SupportPiece && Graph && SupportPiece->IsStructurallyPlaced())
+            IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
+            const FGuid SupportId = SupportPiece ? SupportPiece->GetStructuralNodeId() : FGuid();
+            const FGuid NodeId = PieceToPlace->GetStructuralNodeId();
+            if (!Graph || !SupportPiece || !SupportPiece->IsStructurallyPlaced() ||
+                !SupportId.IsValid() || !NodeId.IsValid())
             {
-                const FGuid NodeId = PieceToPlace->GetStructuralNodeId();
-                if (!Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd")))
-                {
-                    Transaction.Rollback();
-                    PlacementStatus = TEXT("The second support could not be committed; placement was rolled back.");
-                    return false;
-                }
+                Transaction.Rollback();
+                PlacementStatus = TEXT("The second support lost its structural identity before commit.");
+                return false;
+            }
+
+            const FName SupportAnchorId = FarSupportPair.TargetAnchorId;
+            const FName OwnAnchorId = FarSupportPair.SourceAnchorId;
+            TWeakObjectPtr<AActor> WeakSupport = Support;
+            TWeakObjectPtr<ALogBuildPiece> WeakPiece = PieceToPlace;
+            Transaction.AddUndo([WeakSupport, WeakPiece, SupportAnchorId, OwnAnchorId]()
+            {
+                IStructuralPieceInterface* StrongSupport = Cast<IStructuralPieceInterface>(WeakSupport.Get());
+                ALogBuildPiece* StrongPiece = WeakPiece.Get();
+                return StrongSupport && StrongPiece &&
+                    StrongSupport->SetStructuralAnchorOccupied(SupportAnchorId, false) &&
+                    StrongPiece->SetStructuralAnchorOccupied(OwnAnchorId, false);
+            });
+
+            if (!SupportPiece->SetStructuralAnchorOccupied(SupportAnchorId, true) ||
+                !PieceToPlace->SetStructuralAnchorOccupied(OwnAnchorId, true) ||
+                !Graph->TryAddSecondarySupport(NodeId, SupportId, SupportAnchorId, OwnAnchorId))
+            {
+                Transaction.Rollback();
+                PlacementStatus = TEXT("The second support could not be committed; placement was rolled back.");
+                return false;
             }
         }
 
