@@ -30,3 +30,10 @@ Base: main at 65faad8602d4e14e894dc2cf4e3d507ca39cbb1d
 - Aligned the plan to Phase 00 audit plus the existing Phase 01–14 stack; noted legacy “16 phases” mismatch.
 - Added shared data contract, gameplay definition catalog schema, feedback event schema and wood processing transition map; checked JSON syntax and CSV count only, not formal schema validation.
 - No gameplay C++ or Unreal content changed; no Unreal build, UHT, PIE or save/load was run.
+
+
+## Catalogue validation follow-up
+- Investigated failed GitHub Actions run 40582999713: the shovel sample listed Sand while the tool capability schema excluded Sand.
+- Updated tool and action target-family schemas to include Sand/Gravel and narrowed the current soil excavation shovel fixture to Soil, consistent with ACTION_EXCAVATE_SOIL.
+- GitHub Actions run 40583305901 passed on commit cdaf57753b27898f091a85ced9fac1befb570d9b: 14 schemas, 119 unique registry IDs/dependencies, 45 sample records and sample-ID uniqueness passed.
+- Updated Phase 01 checklist and Phase 00 audit with the exact CI evidence. This was catalogue validation only; no Unreal build/UHT/Editor/PIE/save-load test ran.
