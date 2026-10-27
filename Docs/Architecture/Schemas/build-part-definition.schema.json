@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/build-part-definition.schema.json",
+  "title": "MyProject3 Build Part Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "materialDefinitionId",
+    "partType",
+    "dimensionsCm",
+    "localForwardAxis",
+    "pivotPolicy",
+    "collisionPolicy",
+    "placementProviderId",
+    "anchors",
+    "persistencePolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+      "description": "Stable definition/event ID. Never use an M001-M119 mechanic ID or a display name here."
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "materialDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "partType": {
+      "enum": [
+        "Support",
+        "Beam",
+        "Floor",
+        "Deck",
+        "Wall",
+        "Roof",
+        "Door",
+        "Gate",
+        "Ramp",
+        "Stair",
+        "Bridge",
+        "RopeAnchor",
+        "TunnelSupport",
+        "Trap",
+        "Storage",
+        "Other"
+      ]
+    },
+    "dimensionsCm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "y": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "z": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "localForwardAxis": {
+      "enum": [
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    "pivotPolicy": {
+      "enum": [
+        "AuthoredOrigin",
+        "Center",
+        "BaseCenter",
+        "EndA",
+        "ExplicitOffset"
+      ]
+    },
+    "pivotOffsetCm": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "collisionPolicy": {
+      "enum": [
+        "Simple",
+        "ComplexAsSimple",
+        "QueryOnly",
+        "CustomAuthored",
+        "None"
+      ]
+    },
+    "placementProviderId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "placementProfileId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "supportClass": {
+      "enum": [
+        "None",
+        "GroundSupport",
+        "VerticalSupport",
+        "HorizontalMember",
+        "Surface",
+        "FlexibleLink",
+        "TerrainBrace"
+      ]
+    },
+    "maximumSupportedLoad": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maximumSpanCm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "featureId",
+          "role",
+          "localPositionCm"
+        ],
+        "properties": {
+          "featureId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "role": {
+            "enum": [
+              "Source",
+              "Receiver",
+              "Bidirectional",
+              "Support",
+              "GroundContact"
+            ]
+          },
+          "localPositionCm": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "localRotationDeg": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "compatibleFeatureTags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          },
+          "acceptedPartTypeTags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          },
+          "maxOccupancy": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "meshVariantSetId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "persistencePolicy": {
+      "enum": [
+        "SaveWhenPlaced",
+        "SaveWhenInWorld",
+        "AlwaysSave",
+        "Transient"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
