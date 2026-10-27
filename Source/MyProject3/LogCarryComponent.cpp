@@ -158,9 +158,11 @@ void ULogCarryComponent::TickComponent(
     if (bHasValidSnap && IsValid(CurrentSnapTarget))
     {
         FHitResult AimHit;
-        const bool bStillAimingAtSnapTarget =
-            TraceFromView(PlacementTraceDistance, AimHit) &&
-            AimHit.GetActor() == CurrentSnapTarget;
+        const bool bTraceHit = TraceFromView(PlacementTraceDistance, AimHit);
+        const bool bStillAimingAtSnapTarget = bTraceHit &&
+            (AimHit.GetActor() == CurrentSnapTarget ||
+             FVector::DistSquared(AimHit.ImpactPoint, CurrentSolution.MarkerPoint) <=
+                 FMath::Square(PlacementCandidateSearchRadiusCm));
 
         if (bStillAimingAtSnapTarget)
         {
@@ -538,6 +540,65 @@ void ULogCarryComponent::UpdateHeldPreview()
     HeldPiece->SetActorLocation(PreviewLocation);
 }
 
+void ULogCarryComponent::GatherContextualSnapCandidates(
+    const FVector& AimPoint,
+    AActor* DirectAimActor,
+    TArray<AActor*>& OutCandidates,
+    ALogBuildPiece*& OutPreferredTarget) const
+{
+    OutCandidates.Reset();
+    OutPreferredTarget = nullptr;
+
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Kernel || !GetWorld())
+        return;
+
+    // Start from the placed bodies near the world point the player is looking at.
+    // The kernel still applies its stricter per-feature search radius and all
+    // geometry/compatibility constraints before a candidate can become a solution.
+    TArray<AActor*> NearbyBodies;
+    Kernel->GatherPlacedBodies(AimPoint, PlacementCandidateSearchRadiusCm, NearbyBodies);
+    if (IsValid(DirectAimActor) && !NearbyBodies.Contains(DirectAimActor))
+        NearbyBodies.Insert(DirectAimActor, 0);
+
+    TSet<AActor*> Seen;
+    float PreferredScore = TNumericLimits<float>::Max();
+    for (AActor* BodyActor : NearbyBodies)
+    {
+        ALogBuildPiece* Candidate = Cast<ALogBuildPiece>(BodyActor);
+        if (!IsValid(Candidate) || Candidate == HeldPiece || !Candidate->IsPlaced() ||
+            Candidate->IsHeld() || Kernel->IsDamaged(Candidate) || Seen.Contains(Candidate))
+        {
+            continue;
+        }
+
+        Seen.Add(Candidate);
+        OutCandidates.Add(Candidate);
+
+        FPlacementBody Body;
+        float Score = FVector::DistSquared(AimPoint, Candidate->GetActorLocation());
+        if (FPlacementProviderRegistry::GetBody(Candidate, Body))
+        {
+            const FVector ClosestPoint = FMath::ClosestPointOnSegment(AimPoint, Body.EndA(), Body.EndB());
+            Score = FVector::DistSquared(AimPoint, ClosestPoint);
+        }
+
+        // A direct valid hit remains the preferred target for solvers that use a
+        // single support. When the player aims beside a piece, use the nearest
+        // body under the aim point instead.
+        if (Candidate == DirectAimActor)
+        {
+            OutPreferredTarget = Candidate;
+            PreferredScore = -1.0f;
+        }
+        else if (PreferredScore >= 0.0f && Score < PreferredScore)
+        {
+            OutPreferredTarget = Candidate;
+            PreferredScore = Score;
+        }
+    }
+}
+
 void ULogCarryComponent::FindBestSnapCandidate()
 {
     if (!IsValid(HeldPiece) || !GetWorld())
@@ -546,10 +607,6 @@ void ULogCarryComponent::FindBestSnapCandidate()
         return;
     }
 
-    // Snap to the structure the player is actually aiming at, not any nearby
-    // structure behind the camera. This is essential for deliberate SOTF-style
-    // placement: the crosshair chooses the candidate; socket geometry chooses
-    // the exact final transform.
     FHitResult AimHit;
     if (!TraceFromView(PlacementTraceDistance, AimHit))
     {
@@ -557,31 +614,42 @@ void ULogCarryComponent::FindBestSnapCandidate()
         return;
     }
 
-    ALogBuildPiece* AimedTarget = Cast<ALogBuildPiece>(AimHit.GetActor());
-    if (!IsValid(AimedTarget) || !AimedTarget->IsPlaced() || AimedTarget->IsHeld() || IsBadlyDamaged(AimedTarget))
-    {
-        ClearSnapCandidate();
-        return;
-    }
-
-    // The placement kernel picks the joint; this component only feeds it the
-    // player's aim and shows the result.
-    UPlacementKernelSubsystem* Kernel = GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
+    UPlacementKernelSubsystem* Kernel = GetKernel();
     if (!Kernel)
     {
         ClearSnapCandidate();
         return;
     }
+
+    TArray<AActor*> CandidateActors;
+    ALogBuildPiece* PreferredTarget = nullptr;
+    GatherContextualSnapCandidates(AimHit.ImpactPoint, AimHit.GetActor(), CandidateActors, PreferredTarget);
+    if (CandidateActors.Num() == 0 || !IsValid(PreferredTarget))
+    {
+        ClearSnapCandidate();
+        return;
+    }
+
+    // The component supplies a contextual candidate set; the kernel remains
+    // responsible for selecting a valid feature pair and exact final transform.
     FVector ViewLocation;
     FRotator ViewRotation;
-    GetViewPoint(ViewLocation, ViewRotation);
+    if (!GetViewPoint(ViewLocation, ViewRotation))
+    {
+        ClearSnapCandidate();
+        return;
+    }
+
     FPlacementIntent Intent;
     Intent.Held = HeldPiece;
-    Intent.AimActor = AimedTarget;
+    Intent.AimActor = PreferredTarget;
+    Intent.Candidates = CandidateActors;
     Intent.AimPoint = AimHit.ImpactPoint;
     Intent.ViewDirection = ViewRotation.Vector();
+    Intent.PlacerLocation = GetOwner() ? GetOwner()->GetActorLocation() : FVector::ZeroVector;
     Intent.HeldAngleDeg = HeldYawOffset;
     Intent.Placer = GetOwner();
+
     const FPlacementSolution Solution = Kernel->Solve(Intent, bHasValidSnap ? &CurrentSolution : nullptr);
     const FPlacementLink* Link = Solution.GetPrimaryLink();
     FPlacementFeature SourceFeature;
@@ -594,6 +662,7 @@ void ULogCarryComponent::FindBestSnapCandidate()
         ClearSnapCandidate();
         return;
     }
+
     CurrentSolution = Solution;
     SetSnapCandidate(Target, HeldPiece->FindSnapPointIndex(SourceFeature.Id), Target->FindSnapPointIndex(TargetFeature.Id),
         Solution.PieceTransform);
