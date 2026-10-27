@@ -808,6 +808,111 @@ bool FVoxelChunkDigTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelBoundedDigPolicyTest,
+    "MyProject3.Terrain.Voxel.BoundedDigChecksMaterialToolAndRevision", TestFlags)
+bool FVoxelBoundedDigPolicyTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Chunk = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    if (!TestNotNull(TEXT("Chunk"), Chunk))
+        return false;
+
+    Chunk->EditableBoundsLocal = FBox(FVector(300.0f), FVector(1300.0f));
+    Chunk->SoilClass = EVoxelSoilClass::HardSoil;
+    Chunk->InitializeFlatGround(800.0f);
+    TestTrue(TEXT("Density grid initialized"), Chunk->HasInitializedDensity());
+    const int64 InitialRevision = Chunk->GetDensityRevision();
+
+    const FGuid WeakToolOperation = FGuid::NewGuid();
+    float Removed = -1.0f;
+    int64 ResultRevision = -1;
+    TestFalse(TEXT("Weak tool rejected by hard soil"),
+        Chunk->TryApplyBoundedDig(WeakToolOperation, FVector(800.0f), 100.0f,
+            1.0f, InitialRevision, Removed, ResultRevision));
+    TestEqual(TEXT("Weak tool does not mutate revision"), Chunk->GetDensityRevision(), InitialRevision);
+
+    const FGuid OutsideOperation = FGuid::NewGuid();
+    TestFalse(TEXT("Sphere outside permitted edit region rejected"),
+        Chunk->TryApplyBoundedDig(OutsideOperation, FVector(1450.0f, 800.0f, 800.0f), 100.0f,
+            3.0f, InitialRevision, Removed, ResultRevision));
+    TestEqual(TEXT("Out of bounds edit does not mutate revision"), Chunk->GetDensityRevision(), InitialRevision);
+
+    const FGuid ValidOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Sufficient tool can excavate within the bounded pocket"),
+        Chunk->TryApplyBoundedDig(ValidOperation, FVector(800.0f), 100.0f,
+            3.0f, InitialRevision, Removed, ResultRevision));
+    TestTrue(TEXT("Accepted excavation removes material volume"), Removed > 0.0f);
+    TestEqual(TEXT("Successful excavation increments revision once"),
+        Chunk->GetDensityRevision(), InitialRevision + 1);
+    TestEqual(TEXT("Result revision matches committed revision"), ResultRevision, Chunk->GetDensityRevision());
+
+    const int64 CommittedRevision = Chunk->GetDensityRevision();
+    float RetryRemoved = 0.0f;
+    int64 RetryRevision = 0;
+    TestTrue(TEXT("Identical operation retry returns its receipt"),
+        Chunk->TryApplyBoundedDig(ValidOperation, FVector(800.0f), 100.0f,
+            3.0f, InitialRevision, RetryRemoved, RetryRevision));
+    TestEqual(TEXT("Retry does not excavate twice"), Chunk->GetDensityRevision(), CommittedRevision);
+    TestTrue(TEXT("Retry returns the same material amount"),
+        FMath::IsNearlyEqual(RetryRemoved, Removed, KINDA_SMALL_NUMBER));
+    TestEqual(TEXT("Retry returns the original resulting revision"), RetryRevision, CommittedRevision);
+
+    TestFalse(TEXT("Reusing operation ID with different parameters is rejected"),
+        Chunk->TryApplyBoundedDig(ValidOperation, FVector(800.0f), 125.0f,
+            3.0f, InitialRevision, RetryRemoved, RetryRevision));
+    const FGuid StaleOperation = FGuid::NewGuid();
+    TestFalse(TEXT("Stale expected revision is rejected"),
+        Chunk->TryApplyBoundedDig(StaleOperation, FVector(800.0f), 100.0f,
+            3.0f, InitialRevision, RetryRemoved, RetryRevision));
+    TestEqual(TEXT("Rejected retries preserve committed revision"), Chunk->GetDensityRevision(), CommittedRevision);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelChunkDensitySnapshotRoundTripTest,
+    "MyProject3.Terrain.Voxel.DensitySnapshotRoundTrip", TestFlags)
+bool FVoxelChunkDensitySnapshotRoundTripTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Source = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    UVoxelTerrainChunkComponent* Restored = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    if (!TestNotNull(TEXT("Source chunk"), Source) || !TestNotNull(TEXT("Restore target chunk"), Restored))
+        return false;
+
+    Source->InitializeFlatGround(800.0f);
+    Source->RebuildMesh();
+    float Removed = 0.0f;
+    int64 ResultRevision = 0;
+    const int64 InitialRevision = Source->GetDensityRevision();
+    TestTrue(TEXT("Bounded excavation succeeds before snapshot"),
+        Source->TryApplyBoundedDig(FGuid::NewGuid(), FVector(800.0f), 150.0f,
+            1.0f, InitialRevision, Removed, ResultRevision));
+    Source->RebuildMesh();
+
+    TArray<float> Density;
+    TArray<FVoxelTerrainDigReceipt> Receipts;
+    int64 Revision = 0;
+    TestTrue(TEXT("Initialized chunk exports a density snapshot"),
+        Source->ExportDensitySnapshot(Density, Revision, Receipts));
+    TestEqual(TEXT("Snapshot carries the committed revision"), Revision, Source->GetDensityRevision());
+    TestEqual(TEXT("Snapshot carries the committed dig receipt count"), Receipts.Num(), 1);
+
+    TestTrue(TEXT("Snapshot is validated before restore"),
+        Restored->ValidateDensitySnapshot(Source->CellsPerAxis, Source->VoxelSizeCm,
+            Revision, Density, Receipts));
+    TestTrue(TEXT("Restore replaces density and rebuilds mesh/collision"),
+        Restored->RestoreDensitySnapshot(Source->CellsPerAxis, Source->VoxelSizeCm,
+            Revision, Density, Receipts));
+    TestEqual(TEXT("Density revision restored"), Restored->GetDensityRevision(), Revision);
+    TestTrue(TEXT("Solid volume is stable through snapshot round trip"),
+        FMath::IsNearlyEqual(Restored->GetSolidVolumeCubicMetres(),
+            Source->GetSolidVolumeCubicMetres(), KINDA_SMALL_NUMBER));
+    TestTrue(TEXT("A point in the excavated region has the restored density"),
+        FMath::IsNearlyEqual(Restored->SampleDensity(FVector(800.0f, 800.0f, 800.0f)),
+            Source->SampleDensity(FVector(800.0f, 800.0f, 800.0f)), KINDA_SMALL_NUMBER));
+    return true;
+}
+
 // DEMO-01: the vertical slice builds with the real imported log meshes; a
 // real 600 cm log cuts into two 300 cm pieces, the missing 3/4 mesh blocks
 // that cut with a reason, the stone footing carries a log, and the ground digs.
