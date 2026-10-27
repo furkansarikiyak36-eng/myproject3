@@ -16,6 +16,7 @@
   "interactionType": "PHYSICAL_RESOURCE",
   "meshVariantSetId": "MSH_LOG_600_WHOLE",
   "feedbackEventIds": [
+    "SFX_WOOD_CUT",
     "SFX_WOOD_SPLIT"
   ],
   "lodPolicy": "StandardStatic",
