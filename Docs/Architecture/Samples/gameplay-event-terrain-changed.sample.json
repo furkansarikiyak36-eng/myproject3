@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "TERRAIN_CHANGED",
+  "domainEventType": "TerrainChanged",
+  "producerSystem": "TERRAIN",
+  "commitTiming": "AfterAuthoritativeCommit",
+  "operationIdRequired": true,
+  "payloadFieldIds": [
+    "OPERATION_ID",
+    "TERRAIN_CELL",
+    "MATERIAL_DEFINITION_ID",
+    "TERRAIN_REVISION"
+  ],
+  "affectedObjectIdsIncluded": true,
+  "deliveryPolicy": "TransientNotificationWithSnapshotState",
+  "mustNotMutateOwnerState": true,
+  "notes": "Example event contract. Terrain actor/cell state remains authoritative; event delivery is transient."
+}
