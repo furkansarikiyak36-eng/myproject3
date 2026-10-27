@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "OBJECT_PROCESSED",
+  "domainEventType": "ObjectProcessed",
+  "producerSystem": "WOOD_PROCESSING",
+  "commitTiming": "AfterAuthoritativeCommit",
+  "operationIdRequired": true,
+  "payloadFieldIds": [
+    "OPERATION_ID",
+    "SOURCE_INSTANCE_ID",
+    "RESULT_DEFINITION_ID",
+    "RESULT_STATE_ID"
+  ],
+  "affectedObjectIdsIncluded": true,
+  "deliveryPolicy": "TransientNotification",
+  "mustNotMutateOwnerState": true,
+  "notes": "Stable catalog key mapped to current EWorldCommittedEventType::ObjectProcessed. The notification is not itself persistent world state."
+}
