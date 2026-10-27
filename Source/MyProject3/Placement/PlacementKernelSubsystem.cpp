@@ -526,6 +526,25 @@ void UPlacementKernelSubsystem::SolveStack(const FPlacementProfile& Profile, con
     Candidate.Score = FVector::Dist(Pose.Centre, Intent.AimPoint);
     Candidate.PieceTransform = HeldProvider->MakeBodyTransform(Intent.Held, Pose);
     Candidate.Links.Add(MakeBodyLink(Intent.Held, Target, EPlacementLinkRole::Primary));
+    // It also rests on every other built body it lies across (the far wall of a corner).
+    if (!Intent.bUpright)
+    {
+        const FVector UpperA = Pose.Centre - Pose.Axis * Upper.HalfLength;
+        const FVector UpperB = Pose.Centre + Pose.Axis * Upper.HalfLength;
+        TArray<AActor*> Nearby;
+        GatherPlacedBodies(Pose.Centre, Upper.HalfLength + 200.0f, Nearby);
+        for (AActor* Other : Nearby)
+        {
+            FPlacementBody Below;
+            if (Other == Target || Other == Intent.Held || !IsStructurallyPlaced(Other) ||
+                !FPlacementProviderRegistry::GetBody(Other, Below) || !Below.IsLying() || Below.Centre.Z >= Pose.Centre.Z - 1.0f)
+                continue;
+            FVector OnUpper, OnBelow;
+            FMath::SegmentDistToSegmentSafe(UpperA, UpperB, Below.EndA(), Below.EndB(), OnUpper, OnBelow);
+            if (FVector::Dist(OnUpper, OnBelow) <= Upper.Radius + Below.Radius + 2.0f)
+                Candidate.Links.Add(MakeBodyLink(Intent.Held, Other, EPlacementLinkRole::Secondary));
+        }
+    }
     Offer(MoveTemp(Candidate), InOutBest);
 }
 
@@ -1044,7 +1063,132 @@ bool UPlacementKernelSubsystem::CommitPlacement(AActor* Piece, const FPlacementS
     }
     Tx.Commit();
     Provider->ApplyPlacedState(Piece, PrimaryTarget);
+    AddContactSupports(Piece);
     OnPlacementCommitted.Broadcast(Piece, Solution);
+    return true;
+}
+
+FPlacementSolution UPlacementKernelSubsystem::MakeJointSolution(AActor* Piece, const FTransform& Transform, FName ProfileId,
+    AActor* Target, FName TargetFeatureId, FName OwnFeatureId) const
+{
+    FPlacementSolution Solution = MakeDirectSolution(Piece, Transform, ProfileId, nullptr);
+    const IPlacementFeatureProvider* PieceProvider = ProviderOf(Piece);
+    const IPlacementFeatureProvider* TargetProvider = ProviderOf(Target);
+    if (!PieceProvider || !TargetProvider)
+    {
+        Solution.bValid = false;
+        Solution.Reason = TEXT("Nothing to join.");
+        return Solution;
+    }
+    FPlacementLink Link;
+    Link.Role = EPlacementLinkRole::Primary;
+    Link.Source.Piece = Piece;
+    Link.Source.FeatureId = OwnFeatureId;
+    Link.Source.Revision = PieceProvider->GetGeometryRevision(Piece);
+    Link.Target.Piece = Target;
+    Link.Target.FeatureId = TargetFeatureId;
+    Link.Target.Revision = TargetProvider->GetGeometryRevision(Target);
+    Solution.Links.Add(Link);
+    return Solution;
+}
+
+bool UPlacementKernelSubsystem::CommitReseat(AActor* Piece, const FTransform& NewTransform, AActor* NewSupport, FString& OutReason)
+{
+    if (!ProviderOf(Piece) || NewTransform.ContainsNaN() || !GetWorld())
+    {
+        OutReason = TEXT("Nothing to move.");
+        return false;
+    }
+    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    const FGuid NodeId = NodeOf(Piece);
+    FPlacementTransaction Tx;
+    const FTransform Previous = Piece->GetActorTransform();
+    Tx.Step(TEXT("Transform"),
+        [&] { Piece->SetActorTransform(NewTransform, false, nullptr, ETeleportType::TeleportPhysics); return true; },
+        [Piece, Previous] { Piece->SetActorTransform(Previous, false, nullptr, ETeleportType::TeleportPhysics); });
+    FStructuralNodeRecord Node;
+    if (Graph && NewSupport && NewSupport != Piece && IsStructurallyPlaced(NewSupport) && Graph->GetNode(NodeId, Node))
+    {
+        const FGuid SupportId = NodeOf(NewSupport);
+        const bool bAlready = Node.ParentNodeId == SupportId ||
+            Node.SecondarySupports.ContainsByPredicate([&](const FStructuralSupportLink& Link) { return Link.SupportNodeId == SupportId; });
+        if (!bAlready && Node.ParentNodeId.IsValid())
+        {
+            const FName Joint(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString()));
+            const FName Own(*FString::Printf(TEXT("RestOn_%s"), *SupportId.ToString()));
+            Tx.Step(TEXT("New support"),
+                [&] { return Graph->TryAddSecondarySupport(NodeId, SupportId, Joint, Own); },
+                [Graph, NodeId, SupportId] { Graph->TryRemoveSecondarySupport(NodeId, SupportId); });
+        }
+        else if (!bAlready)
+        {
+            const FName Joint(*FString::Printf(TEXT("Joint_%s"), *NodeId.ToString()));
+            Tx.Step(TEXT("New support"),
+                [&] { return Graph->TryConnect(SupportId, Joint, NodeId, TEXT("Base")); },
+                [Graph, NodeId] { Graph->TryDisconnect(NodeId); });
+        }
+    }
+    if (Tx.Failed())
+    {
+        OutReason = FString::Printf(TEXT("Cannot rest it there (%s)."), *Tx.GetFailedStep().ToLower());
+        return false;
+    }
+    Tx.Commit();
+    return true;
+}
+
+int32 UPlacementKernelSubsystem::AddContactSupports(AActor* Piece)
+{
+    UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    FPlacementBody Body;
+    FStructuralNodeRecord Node;
+    const FGuid NodeId = NodeOf(Piece);
+    if (!Graph || !FPlacementProviderRegistry::GetBody(Piece, Body) || !Graph->GetNode(NodeId, Node))
+        return 0;
+    int32 Added = 0;
+    TSet<const AActor*> Seen;
+    TArray<AActor*> Nearby;
+    GatherPlacedBodies(Body.Centre, Body.HalfLength + 300.0f, Nearby);
+    for (const FVector& End : { Body.EndA(), Body.EndB() })
+    {
+        for (AActor* Other : Nearby)
+        {
+            FPlacementBody OtherBody;
+            if (Other == Piece || Seen.Contains(Other) || !IsStructurallyPlaced(Other) || !FPlacementProviderRegistry::GetBody(Other, OtherBody))
+                continue;
+            const FGuid OtherId = NodeOf(Other);
+            if (OtherId == Node.ParentNodeId)
+                continue;
+            const FVector Closest = FMath::ClosestPointOnSegment(End, OtherBody.EndA(), OtherBody.EndB());
+            if (FVector::Dist(Closest, End) > Body.Radius + OtherBody.Radius + 12.0f)
+                continue;
+            Seen.Add(Other);
+            if (OtherBody.Centre.Z > End.Z + 5.0f)
+            {
+                // This end props up the piece above it (a brace or strut).
+                Added += Graph->TryAddSecondarySupport(OtherId, NodeId,
+                    FName(*FString::Printf(TEXT("Contact_%s"), *OtherId.ToString())),
+                    FName(*FString::Printf(TEXT("BraceOn_%s"), *NodeId.ToString()))) ? 1 : 0;
+            }
+            else if (Node.ParentNodeId.IsValid())
+            {
+                // This end rests on the piece under it.
+                Added += Graph->TryAddSecondarySupport(NodeId, OtherId,
+                    FName(*FString::Printf(TEXT("Contact_%s"), *NodeId.ToString())),
+                    FName(*FString::Printf(TEXT("EndOn_%s"), *OtherId.ToString()))) ? 1 : 0;
+            }
+        }
+    }
+    return Added;
+}
+
+bool UPlacementKernelSubsystem::GetFeatureFrame(const AActor* Piece, FName FeatureId, const FVector& Toward,
+    FTransform& OutFrame, float StepDeg) const
+{
+    FPlacementFeature Feature;
+    if (!FPlacementProviderRegistry::FindFeature(Piece, FeatureId, Feature))
+        return false;
+    OutFrame = ResolveFeatureFrame(Feature, Toward, StepDeg);
     return true;
 }
 

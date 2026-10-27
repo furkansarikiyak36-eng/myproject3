@@ -1,4 +1,6 @@
 #include "VerticalSliceBWorldActor.h"
+#include "Placement/PlacementKernelSubsystem.h"
+#include "Placement/PlacementFeatureProvider.h"
 
 #include "CarryLoadComponent.h"
 #include "HarvestableTreeActor.h"
@@ -842,9 +844,9 @@ void AVerticalSliceBWorldActor::BuildConstructionYard(const FLogProcessingMeshSe
     if (!Log)
         return;
 
-    // This beam is authored as placed so physics cannot drop it off the footing
-    // before the world graph has completed actor registration during PIE.
-    Log->SetPlacedState(true);
+    // Held still until the joint is made: physics must not drop it off the footing
+    // before the world graph has registered both pieces.
+    Log->GetLogMesh()->SetSimulatePhysics(false);
     Log->AddCustomSnapPoint(TEXT("Bottom"), TEXT("LogEnd"),
         FTransform(FVector(0.0f, 0.0f, -17.5f)), true, false, true, false);
     DemoFootingLog = Log;
@@ -861,9 +863,23 @@ void AVerticalSliceBWorldActor::TryConnectFooting()
     if (!Connections)
         return;
 
+    // The log's Bottom on the footing's Top, through the placement kernel.
+    UPlacementKernelSubsystem* Kernel = GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
     FString Reason;
-    bFootingConnectionReady = Connections->TryConnect(
-        DemoFooting, TEXT("Top"), DemoFootingLog, TEXT("Bottom"), Reason);
+    FTransform Top;
+    FPlacementFeature Bottom;
+    if (Kernel && Kernel->GetFeatureFrame(DemoFooting, TEXT("Top"), FVector::ZeroVector, Top) &&
+        FPlacementProviderRegistry::FindFeature(DemoFootingLog, TEXT("Bottom"), Bottom))
+    {
+        const FVector Scale = DemoFootingLog->GetActorScale3D();
+        const FTransform At(DemoFootingLog->GetActorQuat(),
+            Top.GetLocation() - DemoFootingLog->GetActorQuat().RotateVector(Bottom.LocalFrame.GetLocation() * Scale), Scale);
+        FPlacementCommitOptions Options;
+        Options.FromOwner = EWorldItemOwnerKind::World;
+        Options.FromLifecycle = EWorldObjectLifecycleState::World;
+        bFootingConnectionReady = Kernel->CommitPlacement(DemoFootingLog,
+            Kernel->MakeJointSolution(DemoFootingLog, At, TEXT("scene.built"), DemoFooting, TEXT("Top"), TEXT("Bottom")), Options, Reason);
+    }
     if (bFootingConnectionReady)
     {
         LastActionMessage = TEXT("Construction check passed: the log is connected to the stone footing.");
@@ -1251,7 +1267,15 @@ void AVerticalSliceBWorldActor::BuildConstructionFeatures(const FLogProcessingMe
         if (ALogBuildPiece* Post = SpawnLog(Family, PostBase + FVector(0, 0, 160.0f), FRotator(90.0f, 0.0f, 0.0f)))
         {
             Post->GetLogMesh()->SetSimulatePhysics(false);
-            Post->SetPlacedState(true);
+            if (UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>())
+            {
+                FPlacementCommitOptions Options;
+                Options.FromOwner = EWorldItemOwnerKind::World;
+                Options.FromLifecycle = EWorldObjectLifecycleState::World;
+                FString Reason;
+                Kernel->CommitPlacement(Post, Kernel->MakeDirectSolution(Post, Post->GetActorTransform(), TEXT("scene.built"), nullptr),
+                    Options, Reason);
+            }
             FVector Origin, Extent;
             Post->GetActorBounds(true, Origin, Extent);
             const FVector Top(Origin.X, Origin.Y, Origin.Z + Extent.Z - 10.0f);

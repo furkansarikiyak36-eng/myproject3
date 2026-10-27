@@ -181,16 +181,25 @@ void ULogBuildToolsComponent::DropReleasedPiece(AActor* Piece) const
     }
 }
 
-void ULogBuildToolsComponent::MakePlaced(ALogBuildPiece* Log) const
+void ULogBuildToolsComponent::MakePlaced(ALogBuildPiece* Log, const ALogBuildPiece* CutFrom) const
 {
-    if (!Log)
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!Log || !Kernel)
         return;
-    if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
-    {
-        if (Identity->GetLifecycleState() == EWorldObjectLifecycleState::World)
-            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Placed);
-    }
-    Log->SetPlacedState(true);
+    // The part stays built where it is, resting on what the log it was cut from rested on.
+    AActor* Support = nullptr;
+    FStructuralNodeRecord Node, Parent;
+    if (Graph && CutFrom && Graph->GetNode(CutFrom->GetStructuralNodeId(), Node) && Node.ParentNodeId.IsValid() &&
+        Graph->GetNode(Node.ParentNodeId, Parent))
+        Support = Parent.Actor.Get();
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
+    FString Reason;
+    if (!Kernel->CommitPlacement(Log, Kernel->MakeDirectSolution(Log, Log->GetActorTransform(), TEXT("opening.part"), Support),
+        Options, Reason) && Log->GetLogMesh())
+        Log->GetLogMesh()->SetSimulatePhysics(true);
 }
 
 // ---------------------------------------------------------------- interact
@@ -1055,7 +1064,7 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
             if (ALogBuildPiece* RightPart = SpawnLogCopy(Entry.Log, Entry.Log->GetActorTransform()))
             {
                 TrimLogToRange(RightPart, ToLog(OverlapTo), ToLog(B));
-                MakePlaced(RightPart);
+                MakePlaced(RightPart, Entry.Log);
             }
             TrimLogToRange(Entry.Log, ToLog(A), ToLog(OverlapFrom));
         }

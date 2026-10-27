@@ -2599,15 +2599,10 @@ void ULogCarryComponent::SettleHingeSwing(FSwingingLog& Swing)
     bool bGround = false;
     EvaluateFarEndSupport(Piece, Swing.OwnSnapIndex, Support, bGround);
     const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
-    UWorldStructuralGraphSubsystem* Graph =
-        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    if (SupportPiece && Graph && SupportPiece->IsStructurallyPlaced() && Support != Parent)
-    {
-        const FGuid NodeId = Piece->GetStructuralNodeId();
-        Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-            FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
-    }
-    else
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    FString Reason;
+    if (!(SupportPiece && Kernel && SupportPiece->IsStructurallyPlaced() && Support != Parent &&
+        Kernel->CommitReseat(Piece, Piece->GetActorTransform(), Support, Reason)))
     {
         RegisterDroopingLog(Piece, Swing.OwnSnapIndex);
     }
@@ -2688,7 +2683,7 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
         return 0;
     const FVector Top = PostShape.EndA().Z > PostShape.EndB().Z ? PostShape.EndA() : PostShape.EndB();
     const float PostBottom = FMath::Min(PostShape.EndA().Z, PostShape.EndB().Z);
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    UPlacementKernelSubsystem* Kernel = GetKernel();
     int32 Raised = 0;
     for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
     {
@@ -2721,12 +2716,11 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
                 // The end already rests on something: the new post is cut to meet it and props it up.
                 const float Keep = Bottom - PostBottom;
                 const bool bPostALow = PostShape.EndA().Z <= PostShape.EndB().Z;
+                FString Reason;
                 if (Keep > 25.0f && TrimLogToRange(Post, bPostALow ? -PostShape.HalfLength : PostShape.HalfLength - Keep,
-                    bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength))
+                    bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength) &&
+                    Kernel && Kernel->CommitReseat(Beam, Beam->GetActorTransform(), Post, Reason))
                 {
-                    if (Graph)
-                        Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
-                            FName(*FString::Printf(TEXT("Prop_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("PropEnd"));
                     PlacementStatus = FString::Printf(TEXT("Post cut to %.0f cm to fit under the beam."), Keep);
                     ++Raised;
                 }
@@ -2744,13 +2738,10 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
             FTransform Moved = Beam->GetActorTransform();
             Moved.SetRotation(Turn * Moved.GetRotation());
             Moved.SetLocation(Other + Turn.RotateVector(Moved.GetLocation() - Other));
-            Beam->SetActorTransform(Moved, false, nullptr, ETeleportType::TeleportPhysics);
-            if (Graph)
-            {
-                Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Raised_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("RaisedEnd"));
-            }
-            ++Raised;
+            // The end rises and the post carries it, or the beam stays as it was.
+            FString Reason;
+            if (Kernel && Kernel->CommitReseat(Beam, Moved, Post, Reason))
+                ++Raised;
             break;
         }
         if (Raised > RaisedBefore)
@@ -2766,11 +2757,12 @@ int32 ULogCarryComponent::RaiseBeamsOntoPost(ALogBuildPiece* Post)
             if (Keep < PostShape.Length() - 1.0f)
                 TrimLogToRange(Post, bPostALow ? -PostShape.HalfLength : PostShape.HalfLength - Keep,
                     bPostALow ? -PostShape.HalfLength + Keep : PostShape.HalfLength);
-            if (Graph)
-                Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Post->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Prop_%s"), *Beam->GetStructuralNodeId().ToString())), TEXT("PropMid"));
-            PlacementStatus = FString::Printf(TEXT("Post fitted under the beam (%.0f cm)."), Keep);
-            ++Raised;
+            FString Reason;
+            if (Kernel && Kernel->CommitReseat(Beam, Beam->GetActorTransform(), Post, Reason))
+            {
+                PlacementStatus = FString::Printf(TEXT("Post fitted under the beam (%.0f cm)."), Keep);
+                ++Raised;
+            }
         }
     }
     return Raised;
@@ -2781,8 +2773,7 @@ bool ULogCarryComponent::LiftDroopingEndsOnto(AActor* NewSupport)
     // A new post under the end of a placed beam lifts that end onto its top.
     RaiseBeamsOntoPost(Cast<ALogBuildPiece>(NewSupport));
     bool bLifted = false;
-    UWorldStructuralGraphSubsystem* Graph =
-        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UPlacementKernelSubsystem* Kernel = GetKernel();
     for (int32 Index = DroopingLogs.Num() - 1; Index >= 0; --Index)
     {
         ALogBuildPiece* Piece = DroopingLogs[Index].Piece.Get();
@@ -2796,17 +2787,12 @@ bool ULogCarryComponent::LiftDroopingEndsOnto(AActor* NewSupport)
         if (!ComputeDroopLift(Piece, DroopingLogs[Index].OwnSnapIndex, NewSupport, Rotation, Pivot))
             continue;
 
-        // Turn the log about its joint; the joint itself stays where it is.
-        Piece->SetActorLocationAndRotation(Pivot + Rotation.RotateVector(Piece->GetActorLocation() - Pivot),
-            Rotation * Piece->GetActorQuat(), false, nullptr, ETeleportType::TeleportPhysics);
-
-        const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(NewSupport);
-        if (Graph && SupportPiece && SupportPiece->IsStructurallyPlaced())
-        {
-            const FGuid NodeId = Piece->GetStructuralNodeId();
-            Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
-        }
+        // Turn the log about its joint (the joint stays) onto the new piece, which carries it.
+        const FTransform Lifted(Rotation * Piece->GetActorQuat(),
+            Pivot + Rotation.RotateVector(Piece->GetActorLocation() - Pivot), Piece->GetActorScale3D());
+        FString Reason;
+        if (!Kernel || !Kernel->CommitReseat(Piece, Lifted, NewSupport, Reason))
+            continue;
         DroopingLogs.RemoveAt(Index);
         bLifted = true;
     }
@@ -2849,19 +2835,18 @@ void ULogCarryComponent::UpdateHeldLifts()
 
 void ULogCarryComponent::CommitHeldLifts(AActor* NewSupport)
 {
-    UWorldStructuralGraphSubsystem* Graph =
-        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(NewSupport);
+    UPlacementKernelSubsystem* Kernel = GetKernel();
     for (const FHeldLift& Lift : HeldLifts)
     {
         ALogBuildPiece* Piece = Lift.Piece.Get();
         if (!Piece)
             continue;
-        if (Graph && SupportPiece && SupportPiece->IsStructurallyPlaced())
+        // The lifted end stays up only if the new piece carries it.
+        FString Reason;
+        if (!Kernel || !Kernel->CommitReseat(Piece, Piece->GetActorTransform(), NewSupport, Reason))
         {
-            const FGuid NodeId = Piece->GetStructuralNodeId();
-            Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
+            Piece->SetActorTransform(Lift.Original, false, nullptr, ETeleportType::TeleportPhysics);
+            continue;
         }
         DroopingLogs.RemoveAll([Piece](const FDroopingLog& Droop) { return Droop.Piece.Get() == Piece; });
     }
@@ -2965,66 +2950,34 @@ bool ULogCarryComponent::ThrowHeldPiece()
 
 void ULogCarryComponent::ApplyEndContactSupports(ALogBuildPiece* Piece)
 {
+    // Pieces touching the ends are supports already (the kernel's AddContactSupports).
+    // A standing trunk at an end holds the log like the ground does, until it is felled.
     using namespace MyProject3Construction;
     FLogGeometry Shape;
     UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    if (!Graph || !GetLogGeometry(Piece, Shape))
-        return;
-    const FGuid NodeId = Piece->GetStructuralNodeId();
     FStructuralNodeRecord Node;
-    if (!Graph->GetNode(NodeId, Node))
+    if (!Graph || !GetLogGeometry(Piece, Shape) || !Graph->GetNode(Piece->GetStructuralNodeId(), Node) ||
+        Piece->FindComponentByClass<UTreeAnchorComponent>())
         return;
-
-    const FVector Ends[2] = { Shape.EndA(), Shape.EndB() };
-    TSet<AActor*> Seen;
-    for (const FVector& End : Ends)
+    for (const FVector& End : { Shape.EndA(), Shape.EndB() })
     {
         TArray<FOverlapResult> Overlaps;
-        FCollisionQueryParams Params(SCENE_QUERY_STAT(LogEndContact), false, Piece);
-        if (GetOwner())
-            Params.AddIgnoredActor(GetOwner());
+        FCollisionQueryParams Params(SCENE_QUERY_STAT(LogEndTree), false, Piece);
         GetWorld()->OverlapMultiByObjectType(Overlaps, End, FQuat::Identity,
             FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects),
             FCollisionShape::MakeSphere(Shape.Radius + 12.0f), Params);
         for (const FOverlapResult& Overlap : Overlaps)
         {
-            AActor* Other = Overlap.GetActor();
-            if (!Other || Seen.Contains(Other))
+            AHarvestableTreeActor* Tree = Cast<AHarvestableTreeActor>(Overlap.GetActor());
+            if (!Tree || !Tree->CanBeChopped())
                 continue;
-            Seen.Add(Other);
-            if (AHarvestableTreeActor* Tree = Cast<AHarvestableTreeActor>(Other))
-            {
-                // A standing trunk holds the log like the ground does, until it is felled.
-                if (Tree->CanBeChopped() && !Piece->FindComponentByClass<UTreeAnchorComponent>())
-                {
-                    UTreeAnchorComponent* Anchor = NewObject<UTreeAnchorComponent>(Piece);
-                    Anchor->SetTree(Tree);
-                    Anchor->RegisterComponent();
-                    if (!Node.ParentNodeId.IsValid())
-                        Graph->SetGroundSupported(NodeId, true);
-                    PlacementStatus += TEXT("  Resting on the tree.");
-                }
-                continue;
-            }
-            const IStructuralPieceInterface* OtherPiece = Cast<IStructuralPieceInterface>(Other);
-            if (!OtherPiece || !OtherPiece->IsStructurallyPlaced())
-                continue;
-            const FGuid OtherId = OtherPiece->GetStructuralNodeId();
-            if (OtherId == Node.ParentNodeId)
-                continue;
-            FVector OtherOrigin, OtherExtent;
-            Other->GetActorBounds(true, OtherOrigin, OtherExtent);
-            const FName Link(*FString::Printf(TEXT("Contact_%s"), *NodeId.ToString()));
-            if (OtherOrigin.Z > End.Z + 5.0f)
-            {
-                // This end props up the piece above it (a brace or strut).
-                if (Graph->TryAddSecondarySupport(OtherId, NodeId, Link, TEXT("BraceTop")))
-                    PlacementStatus += TEXT("  Bracing the piece above.");
-            }
-            else if (Node.ParentNodeId.IsValid())
-            {
-                Graph->TryAddSecondarySupport(NodeId, OtherId, Link, TEXT("EndRest"));
-            }
+            UTreeAnchorComponent* Anchor = NewObject<UTreeAnchorComponent>(Piece);
+            Anchor->SetTree(Tree);
+            Anchor->RegisterComponent();
+            if (!Node.ParentNodeId.IsValid())
+                Graph->SetGroundSupported(Piece->GetStructuralNodeId(), true);
+            PlacementStatus += TEXT("  Resting on the tree.");
+            return;
         }
     }
 }

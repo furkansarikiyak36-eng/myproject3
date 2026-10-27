@@ -141,7 +141,10 @@ private:
     /** Spawns a log from a named demo mesh with its centre at Centre lying along Axis. */
     ALogBuildPiece* SpawnLog(const TCHAR* MeshName, const FVector& Centre, const FVector& Axis,
         bool bPlaced, float LengthCm = 0.0f);
-    void Connect(ALogBuildPiece* Parent, ALogBuildPiece* Child, ALogBuildPiece* SecondParent = nullptr);
+    /** Builds a log in through the placement kernel at its transform, resting on Primary (and Secondary) or the ground. */
+    bool CommitBuilt(ALogBuildPiece* Log, AActor* Primary = nullptr, AActor* Secondary = nullptr);
+    /** Builds Log onto Lower as the player's stacking would (a station crossing), aimed at AimPoint. */
+    bool CommitStacked(ALogBuildPiece* Log, ALogBuildPiece* Lower, const FVector& AimPoint, float CarryYaw);
 
     void SetupPlayer();
     void ChopInput();

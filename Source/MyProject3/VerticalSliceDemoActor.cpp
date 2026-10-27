@@ -1,4 +1,6 @@
 #include "VerticalSliceDemoActor.h"
+#include "Placement/PlacementFeatureProvider.h"
+#include "Placement/PlacementKernelSubsystem.h"
 
 #include "CarryLoadComponent.h"
 #include "HeatSourceComponent.h"
@@ -257,12 +259,23 @@ void AVerticalSliceDemoActor::BuildFootingWithLog(const FLogProcessingMeshSet& F
     Footing->SetActorScale3D(FVector(1.2, 1.2, 0.4));
     Footing->AddCustomAnchor(TEXT("Top"), TEXT("Stone"), FTransform(FVector(0.0, 0.0, 50.0)), true, false);
     Footing->SetHeldState(true);
-    Footing->TryCommitGroundPlacement(Footing->GetActorLocation(), FRotator::ZeroRotator);
-
     Log->AddCustomSnapPoint(TEXT("Bottom"), TEXT("LogEnd"), FTransform(FVector(0.0, 0.0, -17.5)),
         true, false, true, false);
+    // Both through the placement kernel: the footing on the ground, the log's Bottom on its Top.
+    UPlacementKernelSubsystem* Kernel = GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
     FString Reason;
-    bFootingJointBuilt = Connections->TryConnect(Footing, TEXT("Top"), Log, TEXT("Bottom"), Reason);
+    FTransform Top;
+    FPlacementFeature Bottom;
+    bFootingJointBuilt = Kernel &&
+        Kernel->CommitGroundPlacement(Footing, FTransform(FRotator::ZeroRotator, Footing->GetActorLocation(), Footing->GetActorScale3D()), Options, Reason) &&
+        Kernel->GetFeatureFrame(Footing, TEXT("Top"), FVector::ZeroVector, Top) &&
+        FPlacementProviderRegistry::FindFeature(Log, TEXT("Bottom"), Bottom) &&
+        Kernel->CommitPlacement(Log, Kernel->MakeJointSolution(Log,
+            FTransform(Log->GetActorQuat(), Top.GetLocation() - Log->GetActorQuat().RotateVector(Bottom.LocalFrame.GetLocation() * Log->GetActorScale3D()),
+                Log->GetActorScale3D()), TEXT("scene.built"), Footing, TEXT("Top"), TEXT("Bottom")), Options, Reason);
     if (!bFootingJointBuilt)
         UE_LOG(LogTemp, Warning, TEXT("Vertical slice: stone footing joint failed: %s"), *Reason);
 }

@@ -132,7 +132,8 @@ private:
     bool GetSupportLine(const AActor* Support, FVector& OutA, FVector& OutB, float& OutRadius) const;
     AConstructionOpeningActor* FindOpening(const FHitResult& Hit) const;
     ALogContainerActor* FindContainer(const FHitResult& Hit) const;
-    void MakePlaced(ALogBuildPiece* Log) const;
+    /** A part cut out of a built log stays built, through the placement kernel. */
+    void MakePlaced(ALogBuildPiece* Log, const ALogBuildPiece* CutFrom) const;
     void DropReleasedPiece(AActor* Piece) const;
     bool CutGate(ALogBuildPiece* Post, const FVector& AimPoint, AConstructionOpeningActor*& OutOpening);
     void UpdatePreview();

@@ -11,8 +11,10 @@
 #include "Placement/PlacementProfiles.h"
 #include "Placement/PlacementSolvers.h"
 #include "Placement/PlacementTransaction.h"
+#include "VerticalSliceCWorldActor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "EngineUtils.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
@@ -388,6 +390,82 @@ bool FPlacementSaveTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("It rests on the first beam again"), Node.ParentNodeId, BeamA->GetStructuralNodeId());
     TestTrue(TEXT("And on the second beam"), Node.SecondarySupports.Num() == 1 &&
         Node.SecondarySupports[0].SupportNodeId == BeamB->GetStructuralNodeId());
+    return true;
+}
+
+// The scene too: every built log in VerticalSlice_C went in through the kernel,
+// and the cabin is stacked like the player stacks: corners cross at stations of
+// both logs and every row above the first rests on both walls under it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementSceneTest, "MyProject3.Placement.SliceCBuiltThroughKernel", Flags)
+bool FPlacementSceneTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Graph"), Graph))
+        return false;
+    TSet<AActor*> Announced;
+    const FDelegateHandle Handle = Kernel->OnPlacementCommitted.AddLambda(
+        [&Announced](AActor* Piece, const FPlacementSolution&) { Announced.Add(Piece); });
+    AVerticalSliceCWorldActor* Slice = World->SpawnActor<AVerticalSliceCWorldActor>();
+    if (Slice)
+        Slice->BuildWorld();
+    Kernel->OnPlacementCommitted.Remove(Handle);
+    if (!TestNotNull(TEXT("Slice C"), Slice))
+        return false;
+
+    int32 Placed = 0;
+    TArray<ALogBuildPiece*> Cabin;
+    const FVector2D CabinCentre(-1350.0f, 380.0f);
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
+    {
+        if (!It->IsPlaced())
+            continue;
+        ++Placed;
+        TestTrue(FString::Printf(TEXT("%s was built through the kernel"), *It->GetName()), Announced.Contains(*It));
+        MyProject3Construction::FLogGeometry Shape;
+        if (MyProject3Construction::GetLogGeometry(*It, Shape) && Shape.Length() > 400.0f && FMath::Abs(Shape.Axis.Z) < 0.1f &&
+            FVector2D::Distance(FVector2D(Shape.Centre), CabinCentre) < 300.0f)
+            Cabin.Add(*It);
+    }
+    TestTrue(FString::Printf(TEXT("Built pieces exist (%d)"), Placed), Placed > 55);
+    TestEqual(TEXT("The cabin has 6 rows of 4 logs"), Cabin.Num(), 24);
+
+    float Lowest = TNumericLimits<float>::Max();
+    for (ALogBuildPiece* Log : Cabin)
+        Lowest = FMath::Min(Lowest, Log->GetLogMesh()->Bounds.Origin.Z);
+    int32 Crossings = 0;
+    for (ALogBuildPiece* Log : Cabin)
+    {
+        MyProject3Construction::FLogGeometry Shape;
+        MyProject3Construction::GetLogGeometry(Log, Shape);
+        FStructuralNodeRecord Node;
+        Graph->GetNode(Log->GetStructuralNodeId(), Node);
+        if (Shape.Centre.Z > Lowest + 5.0f)
+            TestTrue(FString::Printf(TEXT("%s rests on both walls under it"), *Log->GetName()),
+                Node.ParentNodeId.IsValid() && Node.SecondarySupports.Num() >= 1);
+        for (ALogBuildPiece* Other : Cabin)
+        {
+            MyProject3Construction::FLogGeometry Under;
+            MyProject3Construction::GetLogGeometry(Other, Under);
+            if (Other == Log || FMath::Abs(FVector::DotProduct(Shape.Axis, Under.Axis)) > 0.1f || Under.Centre.Z >= Shape.Centre.Z ||
+                Shape.Centre.Z - Under.Centre.Z > Shape.Radius + Under.Radius)
+                continue;
+            FVector OnLog, OnUnder;
+            FMath::SegmentDistToSegmentSafe(Shape.EndA(), Shape.EndB(), Under.EndA(), Under.EndB(), OnLog, OnUnder);
+            auto OnStation = [](const FVector& Point, const FVector& Start)
+            {
+                const float Along = FVector::Dist2D(Point, Start);
+                return FMath::Abs(FMath::Fmod(Along, 75.0f) - 37.5f) < 1.0f;
+            };
+            ++Crossings;
+            TestTrue(FString::Printf(TEXT("%s crosses %s at stations of both"), *Log->GetName(), *Other->GetName()),
+                OnStation(OnLog, Shape.EndA()) && OnStation(OnUnder, Under.EndA()));
+        }
+    }
+    // 12 short logs cross 2 long ones each, and 10 long logs (rows 2-6) cross 2 short ones each.
+    TestEqual(TEXT("Every log above the first row crosses the two under it"), Crossings, 12 * 2 + 10 * 2);
     return true;
 }
 

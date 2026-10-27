@@ -71,6 +71,27 @@ public:
     FPlacementSolution MakeDirectSolution(AActor* Piece, const FTransform& Transform, FName ProfileId,
         AActor* Primary, AActor* Secondary = nullptr, AActor* Carried = nullptr) const;
 
+    /** A solution joining Piece's OwnFeatureId to Target's TargetFeatureId with Piece at Transform. */
+    FPlacementSolution MakeJointSolution(AActor* Piece, const FTransform& Transform, FName ProfileId,
+        AActor* Target, FName TargetFeatureId, FName OwnFeatureId) const;
+
+    /**
+     * A built piece moves (a beam end rises onto a new post, a fallen end comes to
+     * rest) and NewSupport now carries it too: the move and the support together,
+     * or neither.
+     */
+    bool CommitReseat(AActor* Piece, const FTransform& NewTransform, AActor* NewSupport, FString& OutReason);
+
+    /**
+     * Built pieces touching the ends of Piece become supports: one under an end
+     * carries it, one above an end rests on it (a brace). Best effort; returns how
+     * many were added. CommitPlacement does this for every placement.
+     */
+    int32 AddContactSupports(AActor* Piece);
+
+    /** World frame of a piece's feature; a station's side is the one facing Toward. */
+    bool GetFeatureFrame(const AActor* Piece, FName FeatureId, const FVector& Toward, FTransform& OutFrame, float StepDeg = 90.0f) const;
+
     /** Actor transform that lays Piece's body along Pose (through its provider). */
     FTransform MakeBodyTransform(const AActor* Piece, const FPlacementPose& Pose) const;
 

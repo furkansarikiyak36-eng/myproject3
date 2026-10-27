@@ -1,4 +1,5 @@
 #include "VerticalSliceCWorldActor.h"
+#include "Placement/PlacementKernelSubsystem.h"
 
 #include "ConstructionHelpers.h"
 #include "HarvestableTreeActor.h"
@@ -421,33 +422,55 @@ ALogBuildPiece* AVerticalSliceCWorldActor::SpawnLog(const TCHAR* MeshName, const
         FMath::Abs(Axis.GetSafeNormal().Z) > 0.9f ? FVector::XAxisVector : FVector::UpVector)));
     if (LengthCm > 0.0f)
         TrimLogToRange(Log, -0.5f * LengthCm, 0.5f * LengthCm);
-    if (bPlaced)
-    {
-        if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
-            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Placed);
-        Log->SetPlacedState(true);
-        PlacedLogs.Add(Log);
-    }
-    else
-    {
+    // Built pieces go in through the placement kernel like the player's; loose ones fall.
+    if (!bPlaced || !CommitBuilt(Log))
         Log->GetLogMesh()->SetSimulatePhysics(true);
-    }
     return Log;
 }
 
-void AVerticalSliceCWorldActor::Connect(ALogBuildPiece* Parent, ALogBuildPiece* Child, ALogBuildPiece* SecondParent)
+bool AVerticalSliceCWorldActor::CommitBuilt(ALogBuildPiece* Log, AActor* Primary, AActor* Secondary)
 {
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!Graph || !Parent || !Child)
-        return;
-    const FGuid ChildId = Child->GetStructuralNodeId();
-    const FName Anchor(*FString::Printf(TEXT("Built_%s"), *ChildId.ToString()));
-    if (Graph->TryConnect(Parent->GetStructuralNodeId(), Anchor, ChildId, TEXT("Base")))
+    UPlacementKernelSubsystem* Kernel = GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!Kernel || !Log)
+        return false;
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
+    FString Reason;
+    if (!Kernel->CommitPlacement(Log, Kernel->MakeDirectSolution(Log, Log->GetActorTransform(), TEXT("scene.built"), Primary, Secondary),
+        Options, Reason))
     {
-        Child->AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform);
-        if (SecondParent)
-            Graph->TryAddSecondarySupport(ChildId, SecondParent->GetStructuralNodeId(), Anchor, TEXT("Second"));
+        UE_LOG(LogTemp, Warning, TEXT("VerticalSlice_C: %s was not built: %s"), *Log->GetName(), *Reason);
+        return false;
     }
+    PlacedLogs.AddUnique(Log);
+    return true;
+}
+
+bool AVerticalSliceCWorldActor::CommitStacked(ALogBuildPiece* Log, ALogBuildPiece* Lower, const FVector& AimPoint, float CarryYaw)
+{
+    UPlacementKernelSubsystem* Kernel = GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!Kernel || !Log || !Lower)
+        return false;
+    FPlacementIntent Intent;
+    Intent.Held = Log;
+    Intent.AimActor = Lower;
+    Intent.AimPoint = AimPoint;
+    Intent.CarryYawDeg = CarryYaw;
+    Intent.AllowedProfiles = { TEXT("log.parallel_stack") };
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
+    FString Reason = Solution.Reason;
+    if (!Solution.bValid || !Kernel->CommitPlacement(Log, Solution, Options, Reason))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("VerticalSlice_C: %s was not stacked: %s"), *Log->GetName(), *Reason);
+        Log->GetLogMesh()->SetSimulatePhysics(true);
+        return false;
+    }
+    PlacedLogs.AddUnique(Log);
+    return true;
 }
 
 // ---------------------------------------------------------------- places
@@ -570,17 +593,39 @@ void AVerticalSliceCWorldActor::BuildCamp()
         SpawnLog(TEXT("SM_RawLog_75_Quarter_04"), Fire + FVector(-120.0f, 60.0f + Index * 22.0f, 20.0f), FVector(1, 0.2f * Index, 0), false);
 
     // A lean-to that has started to give way: one roof pole lies on the ground.
+    // A 450 cm ridge rests on two posts at its Station.00 and Station.04 (300 cm
+    // apart), and the roof poles lean on its Station.01-03.
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
     const float H = GetGroundHeight(-260.0f, 330.0f);
-    ALogBuildPiece* PostA = SpawnLog(TEXT("SM_RawLog_300"), FVector(-420.0f, 330.0f, H + 95.0f), FVector::UpVector, true, 190.0f);
-    ALogBuildPiece* PostB = SpawnLog(TEXT("SM_RawLog_300"), FVector(-100.0f, 330.0f, H + 95.0f), FVector::UpVector, true, 190.0f);
-    ALogBuildPiece* Ridge = SpawnLog(TEXT("SM_RawLog_600"), FVector(-260.0f, 330.0f, H + 205.0f), FVector::XAxisVector, true, 400.0f);
-    Connect(PostA, Ridge, PostB);
-    for (int32 Index = 0; Index < 3; ++Index)
+    constexpr float Module = 75.0f;
+    const float RidgeStartX = -440.0f;
+    ALogBuildPiece* PostA = SpawnLog(TEXT("SM_RawLog_300"), FVector(RidgeStartX + 0.5f * Module, 330.0f, H + 95.0f), FVector::UpVector, true, 190.0f);
+    ALogBuildPiece* PostB = SpawnLog(TEXT("SM_RawLog_300"), FVector(RidgeStartX + 4.5f * Module, 330.0f, H + 95.0f), FVector::UpVector, true, 190.0f);
+    ALogBuildPiece* Ridge = SpawnLog(TEXT("SM_RawLog_450"), FVector(RidgeStartX + 225.0f, 330.0f, H + 200.0f), FVector::XAxisVector, false);
+    MyProject3Construction::FLogGeometry PostShape, RidgeShape;
+    if (PostA && PostB && Ridge && Kernel && MyProject3Construction::GetLogGeometry(PostA, PostShape) &&
+        MyProject3Construction::GetLogGeometry(Ridge, RidgeShape))
     {
-        const float X = -390.0f + Index * 120.0f;
-        ALogBuildPiece* Pole = SpawnLog(TEXT("SM_RawLog_300"), FVector(X, 430.0f, H + 115.0f),
-            FVector(0.0f, 1.0f, -1.05f).GetSafeNormal(), true, 270.0f);
-        Connect(Ridge, Pole);
+        Ridge->GetLogMesh()->SetSimulatePhysics(false);
+        Ridge->SetActorLocation(Ridge->GetActorLocation() +
+            FVector(0, 0, FMath::Max(PostShape.EndA().Z, PostShape.EndB().Z) + RidgeShape.Radius - RidgeShape.Centre.Z));
+        CommitBuilt(Ridge, PostA, PostB);
+        for (int32 Index = 1; Index <= 3; ++Index)
+        {
+            FTransform Frame;
+            if (!Kernel->GetFeatureFrame(Ridge, FName(*FString::Printf(TEXT("Station.%02d"), Index)),
+                RidgeShape.Centre + FVector(0, 0, 1000.0f), Frame))
+                continue;
+            const FVector Down = FVector(0.0f, 1.0f, -1.05f).GetSafeNormal();
+            ALogBuildPiece* Pole = SpawnLog(TEXT("SM_RawLog_300"), Frame.GetLocation(), Down, false, 270.0f);
+            MyProject3Construction::FLogGeometry PoleShape;
+            if (!Pole || !MyProject3Construction::GetLogGeometry(Pole, PoleShape))
+                continue;
+            Pole->GetLogMesh()->SetSimulatePhysics(false);
+            // Its upper end on the ridge's top at that station.
+            Pole->SetActorLocation(Pole->GetActorLocation() + Down * PoleShape.HalfLength + FVector(0, 0, PoleShape.Radius));
+            CommitBuilt(Pole, Ridge);
+        }
     }
     SpawnLog(TEXT("SM_RawLog_300"), FVector(-80.0f, 560.0f, H + 20.0f), FVector(1, 0.35f, 0), false, 270.0f);
 
@@ -615,28 +660,49 @@ void AVerticalSliceCWorldActor::BuildCamp()
 
 void AVerticalSliceCWorldActor::BuildCabin()
 {
-    // Six rows of notched walls (the most a log wall stands), no door, no window and no roof yet.
+    // Six rows of notched walls (the most a log wall stands), no door, no window
+    // and no roof yet, built the way the player stacks: 600 cm logs along X and
+    // 450 cm logs along Y, crossing at stations (Station.00 and Station.07 of the
+    // long logs, Station.00 and Station.05 of the short ones), so the walls stand
+    // 525 x 375 cm apart. Every row rests on both walls under it.
     const float Base = GetGroundHeight(CabinCentre.X, CabinCentre.Y);
-    const float HalfLong = 170.0f;  // Walls along X at Y = centre +- this.
-    const float HalfShort = 215.0f; // Walls along Y at X = centre +- this.
-    float Radius = 18.0f;
+    constexpr float Module = 75.0f;
+    const float HalfLong = 2.5f * Module;   // Long walls at Y = centre +- this.
+    const float HalfShort = 3.5f * Module;  // Short walls at X = centre +- this.
+    ALogBuildPiece* Below[2] = {};
     for (int32 Row = 0; Row < 6; ++Row)
     {
-        const float Step = 2.0f * Radius * 0.88f;
-        const float LongZ = Base + Radius + Row * Step;
-        const float ShortZ = LongZ + 0.5f * Step;
-        for (const float Side : { -1.0f, 1.0f })
+        ALogBuildPiece* Longs[2] = {};
+        for (int32 Side = 0; Side < 2; ++Side)
         {
-            ALogBuildPiece* Long = SpawnLog(TEXT("SM_RawLog_600"),
-                FVector(CabinCentre.X, CabinCentre.Y + Side * HalfLong, LongZ), FVector::XAxisVector, true, 2.0f * HalfShort + 70.0f);
-            if (Row == 0 && Long)
+            const float Y = CabinCentre.Y + (Side == 0 ? -HalfLong : HalfLong);
+            ALogBuildPiece* Long = SpawnLog(TEXT("SM_RawLog_600"), FVector(CabinCentre.X, Y, Base + 600.0f + Row * 80.0f), FVector::XAxisVector, false);
+            if (!Long)
+                continue;
+            Long->GetLogMesh()->SetSimulatePhysics(false);
+            if (Row == 0)
             {
                 MyProject3Construction::FLogGeometry Shape;
-                if (MyProject3Construction::GetLogGeometry(Long, Shape))
-                    Radius = Shape.Radius;
+                MyProject3Construction::GetLogGeometry(Long, Shape);
+                Long->SetActorLocation(Long->GetActorLocation() + FVector(0, 0, Base + Shape.Radius - Shape.Centre.Z));
+                CommitBuilt(Long);
             }
-            SpawnLog(TEXT("SM_RawLog_600"), FVector(CabinCentre.X + Side * HalfShort, CabinCentre.Y, ShortZ),
-                FVector::YAxisVector, true, 2.0f * HalfLong + 70.0f);
+            else if (Below[0])
+            {
+                // Across the short walls, crossing them at their end stations.
+                CommitStacked(Long, Below[0], FVector(CabinCentre.X, Y, Base), 0.0f);
+            }
+            Longs[Side] = Long;
+        }
+        for (int32 Side = 0; Side < 2; ++Side)
+        {
+            const float X = CabinCentre.X + (Side == 0 ? -HalfShort : HalfShort);
+            ALogBuildPiece* Short = SpawnLog(TEXT("SM_RawLog_450"), FVector(X, CabinCentre.Y, Base + 640.0f + Row * 80.0f), FVector::YAxisVector, false);
+            if (!Short || !Longs[0])
+                continue;
+            Short->GetLogMesh()->SetSimulatePhysics(false);
+            CommitStacked(Short, Longs[0], FVector(X, CabinCentre.Y, Base), 90.0f);
+            Below[Side] = Short;
         }
     }
     // Split boards for a door and long poles for the roof, stacked by the cabin.
