@@ -28,6 +28,8 @@ SCHEMA_DIR = ARCH / "Schemas"
 SAMPLE_DIR = ARCH / "Samples"
 REGISTRY_PATH = ARCH / "MECHANIC_REGISTRY_119.json"
 REGISTRY_SCHEMA_PATH = ARCH / "MECHANIC_REGISTRY_SCHEMA.json"
+ACCEPTANCE_CASES_PATH = ARCH / "PHASE_00_M001_M119_ACCEPTANCE_CASES.json"
+ACCEPTANCE_CASE_SCHEMA_PATH = SCHEMA_DIR / "mechanic-acceptance-case.schema.json"
 
 
 def load_json(path: Path) -> Any:
@@ -149,6 +151,145 @@ def main() -> int:
     except Exception as exc:
         failures += 1
         show_errors("mechanic registry", [str(exc)])
+
+    # Validate the proposed per-mechanic acceptance catalogue separately from pass/fail evidence.
+    # Every row must correspond to one canonical ID and remains PROPOSED_NOT_RUN by design.
+    try:
+        acceptance_doc = load_json(ACCEPTANCE_CASES_PATH)
+        acceptance_schema = load_json(ACCEPTANCE_CASE_SCHEMA_PATH)
+        Draft202012Validator.check_schema(acceptance_schema)
+        acceptance_validator = Draft202012Validator(acceptance_schema)
+        acceptance_errors = sorted(
+            acceptance_validator.iter_errors(acceptance_doc),
+            key=lambda err: list(err.absolute_path),
+        )
+        if acceptance_errors:
+            failures += 1
+            show_errors(
+                ACCEPTANCE_CASES_PATH.relative_to(ROOT).as_posix(),
+                [
+                    f"{'/'.join(map(str, err.absolute_path)) or '    sample_files = sorted(SAMPLE_DIR.glob("*.json"))
+    if not sample_files:
+        failures += 1
+        print(f"FAIL no sample files found under {SAMPLE_DIR}")
+    sample_ids: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    validated_samples = 0
+    for path in sample_files:
+        key = schema_name_for_sample(path.name)
+        label = path.relative_to(ROOT).as_posix()
+        if key is None or key not in schemas:
+            failures += 1
+            print(f"FAIL {label}: no schema mapping for sample")
+            continue
+        try:
+            sample = load_json(path)
+            validator = Draft202012Validator(schemas[key])
+            errors = sorted(validator.iter_errors(sample), key=lambda err: list(err.absolute_path))
+            if errors:
+                failures += 1
+                show_errors(
+                    label,
+                    [
+                        f"{'/'.join(map(str, err.absolute_path)) or '$'}: {err.message}"
+                        for err in errors
+                    ],
+                )
+                continue
+            validated_samples += 1
+            definition_id = sample.get("id") if isinstance(sample, dict) else None
+            if isinstance(definition_id, str):
+                sample_ids[key].append((definition_id, label))
+        except Exception as exc:
+            failures += 1
+            show_errors(label, [str(exc)])
+
+    duplicate_ids: list[str] = []
+    for schema_key, entries in sample_ids.items():
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for definition_id, label in entries:
+            grouped[definition_id].append(label)
+        for definition_id, paths in grouped.items():
+            if len(paths) > 1:
+                duplicate_ids.append(f"{schema_key}: {definition_id} in {', '.join(paths)}")
+    if duplicate_ids:
+        failures += 1
+        show_errors("sample definition ID uniqueness", duplicate_ids)
+
+    if validated_samples == len(sample_files) and not duplicate_ids:
+        print(
+            f"PASS {validated_samples} sample definitions validate; "
+            "sample IDs are unique within each schema family"
+        )
+    print(
+        "INFO Sample files are representative examples, not the complete data catalogue; "
+        "cross-references to definitions absent from the sample set are not treated as errors."
+    )
+    print(
+        "INFO Acceptance cases are proposed test designs only; PROPOSED_NOT_RUN never means "
+        "the mechanic passed static review, automated testing, Unreal build, PIE or save/load."
+    )
+    if failures:
+        print(f"FAILED: {failures} issue(s) found")
+        return 1
+    print("SUCCESS: design-time catalogue validation passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+}: {err.message}"
+                    for err in acceptance_errors
+                ],
+            )
+
+        cases = acceptance_doc.get("cases", [])
+        expected_case_ids = [f"M{i:03d}" for i in range(1, 120)]
+        case_mechanic_ids = [
+            case.get("mechanicId")
+            for case in cases
+            if isinstance(case, dict) and isinstance(case.get("mechanicId"), str)
+        ]
+        if len(cases) != 119:
+            failures += 1
+            print(f"FAIL acceptance catalogue contains {len(cases)} cases; expected 119")
+        if sorted(case_mechanic_ids) != expected_case_ids:
+            failures += 1
+            duplicates = sorted({value for value in case_mechanic_ids if case_mechanic_ids.count(value) > 1})
+            missing = sorted(set(expected_case_ids) - set(case_mechanic_ids))
+            extra = sorted(set(case_mechanic_ids) - set(expected_case_ids))
+            print(f"FAIL acceptance mechanic coverage; missing={missing}, duplicate={duplicates}, extra={extra}")
+
+        case_ids = [
+            case.get("caseId")
+            for case in cases
+            if isinstance(case, dict) and isinstance(case.get("caseId"), str)
+        ]
+        duplicates_case_ids = sorted({value for value in case_ids if case_ids.count(value) > 1})
+        if duplicates_case_ids:
+            failures += 1
+            show_errors("acceptance case ID uniqueness", duplicates_case_ids)
+
+        # Every case must remain a proposed, not-run test plan. This cannot pass a mechanic.
+        non_proposed = [
+            str(case.get("mechanicId"))
+            for case in cases
+            if isinstance(case, dict) and case.get("verificationStatus") != "PROPOSED_NOT_RUN"
+        ]
+        if non_proposed:
+            failures += 1
+            show_errors("acceptance case status", [f"{item} is not PROPOSED_NOT_RUN" for item in non_proposed])
+
+        if (
+            not acceptance_errors
+            and len(cases) == 119
+            and sorted(case_mechanic_ids) == expected_case_ids
+            and not duplicates_case_ids
+            and not non_proposed
+        ):
+            print("PASS proposed acceptance cases: 119 unique cases cover M001-M119; all remain not run")
+    except Exception as exc:
+        failures += 1
+        show_errors("acceptance case catalogue", [str(exc)])
 
     # Validate representative sample records against the matching schema.
     sample_files = sorted(SAMPLE_DIR.glob("*.json"))
