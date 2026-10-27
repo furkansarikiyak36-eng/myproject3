@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_POTATO",
+  "displayNameKey": "item.potato",
+  "inventoryCategory": "Consumable",
+  "family": "Food",
+  "representation": "StackablePickup",
+  "unitMassKg": 0.2,
+  "unitVolumeLiters": 0.3,
+  "maxStack": 20,
+  "requiresUniqueInstance": false,
+  "durability": {
+    "model": "Freshness",
+    "maximum": 86400,
+    "defaultValue": 86400,
+    "unit": "seconds"
+  },
+  "stateModel": "Freshness",
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Store",
+    "Consume"
+  ],
+  "tags": [
+    "FOOD",
+    "CROP_POTATO"
+  ],
+  "persistencePolicy": "SaveWhenOwned",
+  "notes": "Example crop output; spoilage runtime behavior is not yet validated."
+}
