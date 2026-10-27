@@ -12,7 +12,7 @@
   "durability": {
     "model": "None"
   },
-  "stateModel": "ContaminationState",
+  "stateModel": "Contamination",
   "allowedActions": [
     "Pickup",
     "Drop",
