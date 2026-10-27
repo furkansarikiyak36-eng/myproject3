@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/myproject3/feedback-event-catalog.schema.json",
+  "$id": "urn:myproject3:schema:feedback-event-catalog:v1",
   "title": "MyProject3 Gameplay and Feedback Event Catalog",
   "description": "Separates committed gameplay facts from audio, VFX, animation and music cues. Planning schema only; no runtime loader is claimed.",
   "type": "object",
