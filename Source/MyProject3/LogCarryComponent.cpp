@@ -3069,10 +3069,15 @@ void ULogCarryComponent::UpdateStackPlacement()
     if (!TraceFromView(PlacementTraceDistance, Hit))
         return;
 
-    TArray<AActor*> ContextCandidates;
-    ALogBuildPiece* Target = nullptr;
-    GatherContextualSnapCandidates(Hit.ImpactPoint, Hit.GetActor(), ContextCandidates, Target);
-    if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced())
+    ALogBuildPiece* Target = Cast<ALogBuildPiece>(Hit.GetActor());
+    if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced() || Target->IsHeld())
+    {
+        // The common path is a direct hit and costs no extra query. Only when
+        // the crosshair misses a usable log do we search the bounded nearby context.
+        TArray<AActor*> ContextCandidates;
+        GatherContextualSnapCandidates(Hit.ImpactPoint, Hit.GetActor(), ContextCandidates, Target);
+    }
+    if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced() || Target->IsHeld())
         return;
 
     // Stack intent is inferred from the surface being aimed at. Aiming beside a
