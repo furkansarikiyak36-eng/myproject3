@@ -50,3 +50,10 @@ developer; replies in Turkish. Main test level: /Game/DemoAssets/Maps/VerticalSl
 - Terrain integration gap confirmed in source: `WorldTerrainStateSubsystem` snapshots logical cell records, while `VoxelTerrainChunkComponent` owns density edits and mesh/collision rebuild without a direct adapter in the inspected files. Terrain operation receipts are transient and cleared on cell snapshot restore.
 - Generic `WorldOperationLedgerSubsystem::TryBeginOperation/CompleteOperation` is not called by the inspected domain operation paths; domain-specific ownership/split receipts exist. Some actor transfer helpers create operation GUIDs internally, limiting caller-controlled retry identity. These are open design/code-review tasks, not runtime findings.
 - Catalogue CI is green, but Phase 00/01 remains open for full M001–M119 call-chain mapping, candidate public API/Blueprint compatibility review, full cross-reference validation, UE 5.8 build/UHT/PIE, and save/load.
+
+## Phase 00–01 consolidation follow-up (2026-10-28)
+
+- Canonical references: `Docs/Architecture/PHASE_00_BASELINE_AUDIT.md`, `PHASE_00_M001_M119_BASELINE.csv`, `PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv`, `PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md`, `Docs/Architecture/Schemas/`, and `Docs/Production/PHASED_IMPLEMENTATION_PLAN.md`.
+- Removed duplicate lower-case `docs/PRODUCTION/` audit, contract, traceability and schema files because the uppercase `Docs/` catalogue is the canonical source. Do not recreate duplicates under a different path casing.
+- Verified workflow run 40583305901's job result directly: `validate-catalogue` succeeded for the schema/sample/registry validation scope. This is not a UE build/UHT/PIE/save-load result.
+- Phase 00 and Phase 01 remain open for full per-mechanic call-chain/API review and target-engine validation. Preferred candidate implementation line is `feature/simple-intent`; keep this planning branch documentation-only.
