@@ -403,7 +403,8 @@ private:
     float TimeUntilSnapRefresh = 0.0f;
     FGuid CarryOwnerId;
     float HeldYawOffset = 0.0f;
-    ELogCutAction SelectedCutAction = ELogCutAction::SplitHalf;
+    // Default to aim-resolved length cutting; recipe operations remain optional overrides via CycleCutAction().
+    ELogCutAction SelectedCutAction = ELogCutAction::SplitLengthHalf;
     FTransform CurrentSnapActorTransform = FTransform::Identity;
     /** The placement kernel's answer shown now; E commits exactly this. */
     FPlacementSolution CurrentSolution;
