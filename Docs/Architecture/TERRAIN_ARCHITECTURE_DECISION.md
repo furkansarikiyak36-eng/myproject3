@@ -34,7 +34,7 @@ Prototip: `Source/MyProject3/VoxelTerrainChunkComponent.*`
 | 32³ hücre, 50 cm | 16 × 16 × 16 m | ~141 KB | 40–54 ms | 38–47 ms |
 | 64³ hücre, 50 cm | 32 × 32 × 32 m | ~1,1 MB | — | 95–113 ms |
 
-Beş ayrı çalıştırmanın aralığı. Hepsi oyun iş parçacığında ve eşzamanlı.
+Beş ayrı çalıştırmanın aralığı. Hepsi oyun iş parçacığında ve eşzamanlı. Bu değerler daha önce ölçülen prototip tabanıdır; `integration/phase-02-14-closure` dalındaki yeni sınırlandırılmış kazı ve kayıt kodu için yeniden ölçüm yapılmadı.
 
 Doğrulanan davranış:
 
@@ -69,7 +69,7 @@ Prototipte bulunan iki hata, kalıcı olarak düzeltildi:
 - Prototip, kazı + collision döngüsünün motorun kendi parçalarıyla ve ~350 satırla kurulabildiğini gösterdi.
 - Harici bir eklenti lisans, UE 5.8 uyumu, kayıt formatı denetimi ve kaynak koda erişim riski taşır. Prototip bu ihtiyacı göstermedi.
 
-## Öneri
+## Karara dayalı teknik seçim
 
 1. **7D-V01 → (b) hibrit.** Makro arazi Landscape. Kazının oynanışın merkezinde olduğu yerler (kazı cepleri, mağaralar, madenler, hendek ve set bölgeleri, baskın yaklaşma yolları) smooth voxel chunk. Böylece "smooth voxel kazı" talebi oyunun anlamlı yerlerinde tam karşılanır; bellek ve yükleme bütçesi de kontrol altında kalır.
 2. **7D-V02 → kendi çekirdeğimiz:** motorun `FMarchingCubes` + `ProceduralMeshComponent` parçaları. Gerekirse sonra `GeometryScripting`/`UDynamicMeshComponent`'e geçilebilir; veri modeli (yoğunluk ızgarası) değişmez.
@@ -78,7 +78,7 @@ Prototipte bulunan iki hata, kalıcı olarak düzeltildi:
 
 - **Asenkron mesh üretimi:** 32³ chunk'ta ~45 ms, kare bütçesinin (16,7 ms) üç katı. Kazı yüzeyi bir arka plan görevinde üretilmeli, collision güncellemesi tek commit'te yayınlanmalı. Alternatif: 16³ chunk'lar (tahmini ~6 ms, ayrıca ölçülmeli).
 - **Chunk sınırları:** Komşu chunk örnekleri ve dikişsiz yüzey (7D-V04).
-- **Kalıcılık:** Seed'den temel + değişen chunk delta'ları (7D-V10). `WorldTerrainStateSubsystem`'in kalıcı makbuz sorunu (TERR-12) de burada çözülmeli.
+- **Kalıcılık:** Seed'den temel + değişen chunk delta'ları (7D-V10). `WorldTerrainStateSubsystem` içindeki mantıksal hücre işlemlerinin kalıcı makbuz ve fiziksel yoğunlukla atomik uzlaştırma sorunu (TERR-12) de burada çözülmeli.
 - **Navmesh:** Değişen sınırlarda yerel yeniden oluşturma (7D-V06).
 - **Kazı → item:** Hacim değişimi zaten ölçülüyor; malzeme kimliği ve item üretimi tek işlemde bağlanmalı (7D-V08).
 - **Landscape birleşimi:** Cep sınırında Landscape deliği ve geçiş dikişi.
