@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MyProject3 Gameplay Feedback Event Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "trigger_id",
+    "when",
+    "channels",
+    "priority",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "trigger_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "when": {
+      "enum": [
+        "PreviewValid",
+        "PreviewInvalid",
+        "ActionAccepted",
+        "ActionRejected",
+        "ActionCommitted",
+        "StateThresholdCrossed",
+        "AmbientStateChanged"
+      ]
+    },
+    "channels": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "UI",
+          "SFX",
+          "VFX",
+          "Animation",
+          "MusicLayer",
+          "Haptic"
+        ]
+      }
+    },
+    "ui_key": {
+      "type": "string"
+    },
+    "sfx_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "vfx_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "animation_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "music_layer_id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+    },
+    "spatial_audio": {
+      "type": "boolean",
+      "default": true
+    },
+    "audio_bus": {
+      "enum": [
+        "Master",
+        "WorldAmbience",
+        "Weather",
+        "Foley",
+        "ToolsAndConstruction",
+        "Threat",
+        "UI",
+        "Music",
+        "VoiceOrRecordings"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "concurrency_group": {
+      "type": "string"
+    },
+    "min_interval_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "gameplay_authority": {
+      "const": false,
+      "description": "Feedback never owns or commits gameplay state."
+    },
+    "accessibility_notes": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "planned",
+        "implemented_unverified",
+        "verified",
+        "deferred"
+      ]
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
