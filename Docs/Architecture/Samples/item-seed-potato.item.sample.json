@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_SEED_POTATO",
+  "displayNameKey": "item.seed_potato",
+  "inventoryCategory": "Resource",
+  "family": "CropSeed",
+  "representation": "StackablePickup",
+  "unitMassKg": 0.01,
+  "unitVolumeLiters": 0.02,
+  "maxStack": 50,
+  "requiresUniqueInstance": false,
+  "durability": {
+    "model": "None"
+  },
+  "stateModel": "None",
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Store",
+    "Craft",
+    "Use"
+  ],
+  "tags": [
+    "SEED",
+    "CROP_POTATO"
+  ],
+  "persistencePolicy": "SaveWhenOwned",
+  "notes": "Example crop seed item."
+}
