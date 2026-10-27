@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/gameplay-action-definition.schema.json",
+  "title": "MyProject3 Gameplay Action Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "ownerSystem",
+    "targetKinds",
+    "operationMode",
+    "operationIdRequired",
+    "transactionPolicy",
+    "successEventId",
+    "failureResultCodes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ownerSystem": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "targetKinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "PhysicalItem",
+          "InventoryItem",
+          "ResourceSource",
+          "TerrainCell",
+          "Crop",
+          "Animal",
+          "BuildPart",
+          "Equipment",
+          "WorkStation",
+          "Region"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "targetFamilies": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "Wood",
+          "Stone",
+          "Soil",
+          "Clay",
+          "PlantFiber",
+          "Food",
+          "Water",
+          "Tool",
+          "Protection",
+          "Metal",
+          "Electronics",
+          "Other"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "allowedTargetStateIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiredToolDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiredToolTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "sourceDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "recipeIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "processTransitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "outputItemDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "operationMode": {
+      "enum": [
+        "Instant",
+        "HitProgress",
+        "HoldProgress",
+        "TimedWorldProcess"
+      ]
+    },
+    "operationIdRequired": {
+      "const": true
+    },
+    "transactionPolicy": {
+      "const": "AtomicAtCommit"
+    },
+    "successEventId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "failureResultCodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "InvalidTarget",
+          "OutOfRange",
+          "MissingTool",
+          "MissingMaterial",
+          "InvalidState",
+          "PrerequisiteNotMet",
+          "BlockedByPlacement",
+          "UnsupportedSurface",
+          "CapacityExceeded",
+          "NotPermitted",
+          "MissingConfiguration",
+          "InsufficientResources",
+          "Conflict",
+          "Unsupported",
+          "InternalError"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "requiresGroundContact": {
+      "type": "boolean",
+      "default": false
+    },
+    "requiresLooseTarget": {
+      "type": "boolean",
+      "default": true
+    },
+    "minimumRangeCm": {
+      "type": "number",
+      "minimum": 0
+    },
+    "maximumRangeCm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "progressResumePolicy": {
+      "enum": [
+        "KeepProgress",
+        "ResetProgress",
+        "CancelAndRefund"
+      ]
+    },
+    "noiseLevel": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "lightLevel": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
