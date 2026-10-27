@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "TOOL_SHOVEL_BASIC",
+  "itemDefinitionId": "ITEM_SHOVEL_BASIC",
+  "displayNameKey": "tool.shovel_basic",
+  "durabilityModel": "Durability",
+  "capabilities": [
+    {
+      "actionIds": [
+        "ACTION_EXCAVATE_SOIL"
+      ],
+      "validTargetFamilies": [
+        "Soil",
+        "Clay",
+        "Sand"
+      ],
+      "validTargetStateIds": [
+        "STATE_SOIL_CONTAMINATED"
+      ],
+      "requiredMaterialTags": [
+        "SOIL"
+      ],
+      "workRate": 1,
+      "durabilityCostPerWork": 0.15,
+      "maxRangeCm": 180,
+      "requiresGroundContact": true,
+      "requiresLooseTarget": false,
+      "allowsProgressResume": true,
+      "feedbackEventIds": [
+        "SFX_SOIL_DIG"
+      ]
+    }
+  ],
+  "notes": "Schema fixture; runtime excavation/tool capability routing is not yet verified."
+}
