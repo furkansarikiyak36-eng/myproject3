@@ -10,9 +10,7 @@
         "ACTION_EXCAVATE_SOIL"
       ],
       "validTargetFamilies": [
-        "Soil",
-        "Clay",
-        "Sand"
+        "Soil"
       ],
       "validTargetStateIds": [
         "STATE_SOIL_CONTAMINATED"
