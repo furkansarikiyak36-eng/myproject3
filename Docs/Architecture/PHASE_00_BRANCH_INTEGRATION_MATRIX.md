@@ -42,3 +42,25 @@ This matrix records where source work lives and the safe integration order. A br
 - Do not assume 696 commits ahead means 696 completed features.
 - Do not claim current main includes source systems that are only present on the candidate branch.
 - Do not set any mechanic to VERIFIED without actual corresponding evidence.
+
+
+## Canonical registry evidence snapshot
+
+Use `MECHANIC_REGISTRY_119.json/.csv/.md` as the registry source and `PHASE_00_M001_M119_BASELINE.csv` as the separate current-main/candidate mapping. Do not substitute the earlier all-unreviewed Phase 1 snapshot or copy verification fields between versions.
+
+The current candidate registry snapshot records:
+
+- 119 unique mechanic IDs, M001–M119.
+- 90 `implemented_unverified`; 29 `unreviewed`.
+- `static_review=fail` for all 119. This means the complete mechanic acceptance criterion is not yet satisfied by available evidence; it is not a compiler-error report.
+- Automated tests: 17 pass, 102 not run.
+- Unreal build evidence: 90 pass, 29 not run. The recorded UE 5.8.4 Editor build is on `integration/canonical-log-model` dated 2026-10-26; it does not independently prove that the current `feature/simple-intent` HEAD builds.
+- Runtime/PIE tests: not run for all 119.
+
+The older `phase-01-foundation-v2` closeout prose says every item is unreviewed, which conflicts with this newer registry snapshot. Preserve the newer JSON/CSV evidence and document the prose discrepancy; do not silently rewrite history. The registry's `phase` field is 1 for every entry and is not the later implementation-phase assignment.
+
+## Phase 00/01 status
+
+- Phase 00 has a baseline audit and a 119-row mapping CSV; complete per-mechanic source/caller review is still open.
+- Phase 01 has canonical data schemas and 45 representative sample records validated by GitHub Actions (run 40583305901). These are design-time catalogue checks, not runtime JSON loading or Unreal validation.
+- Phase 01 remains open on full cross-reference validation, ownership/transfer integration, split-output transaction consistency, terrain ledger-to-voxel-chunk synchronization, save/load failure injection, and UE 5.8 UHT/UBT/Editor/PIE evidence. See `PHASE_01_SHARED_DATA_CONTRACTS_RECONCILIATION.md` and `PHASE_01_ACCEPTANCE_CHECKLIST.md`.
