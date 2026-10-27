@@ -1158,7 +1158,9 @@ void ALogBuildPiece::GenerateDefaultSideSnapPoints()
         // From the log's -axis end, in the world, back into the mesh's own units.
         const float LocalOffset = (Offsets[Index] - 0.5f * WorldLength) / AxisScale;
         Point.LocalTransform = FTransform(MakeOutwardRotation(Axis), Bounds.Origin + Axis * LocalOffset);
-        Point.bCanSource = false;
+        // A logical station may be the moving side or the receiving side.
+        // Profile filters and the provider's geometry rules decide which pairing is legal.
+        Point.bCanSource = true;
         Point.bCanReceive = true;
         Point.bAcceptAnyPieceType = true;
         Point.bFlipIncomingOrientation = true;
