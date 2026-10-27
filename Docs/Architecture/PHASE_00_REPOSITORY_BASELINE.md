@@ -31,11 +31,18 @@ The prior Phase 1 foundation branch provides the machine-readable registry now c
 - `MECHANIC_REGISTRY_119.md` — human-readable catalogue and invariants.
 - `MECHANIC_REGISTRY_SCHEMA.json` — entry validation schema.
 
-The registry contains exactly 119 unique IDs, M001–M119. The registry's own provenance says this is an explicit scope baseline established by that work, **not a verified recovery of the exact historical 119-test list**. All 119 entries remain `unreviewed`; static/automated/build/runtime evidence columns are `not_run`. Do not treat the number 119, the registry, or an earlier "119 passed" report as proof that these current definitions pass one-to-one.
+The registry contains exactly 119 unique IDs, M001–M119. Its own provenance says this is an explicit scope baseline established by prior work, **not a verified recovery of the exact historical 119-test list**. The versions differ across branch snapshots:
 
-The older `MECHANIC_COVERAGE_AUDIT_PASS_01.md` was based on the `phase-06-inventory-crafting` source snapshot. Its 119 rows classify 43 as `partial`, 1 as `contract-only`, 1 as `present-in-layer`, 1 as `transient-only`, and 73 as `not-found`. **This is a historical coverage snapshot, not a current classification of the full `feature/simple-intent` tree.** The new traceability matrix preserves that snapshot and adds a per-mechanic candidate source-path review field; every row still requires exact function/caller validation.
+- The older `phase-01-foundation-v2` CSV snapshot had all 119 entries marked `unreviewed` with verification fields `not_run`.
+- The currently inspected `feature/simple-intent` registry records **90 `implemented_unverified` and 29 `unreviewed`**.
+- In that current candidate CSV, static review is `fail` for all 119; automated tests are `pass` for 17 and `not_run` for 102; the registry's Unreal build field is `pass` for 90 and `not_run` for 29; runtime tests are `not_run` for all 119.
+- The 90 build claims cite a recorded UE 5.8.4 build on `integration/canonical-log-model` dated 2026-10-26. That is **historical branch-specific evidence**, not a fresh build of `feature/simple-intent` or this planning branch. It must not be interpreted as proving this branch compiles.
 
-A more recent gap analysis reports that 99 of the 119 acceptance criteria still use a generic template and only 20 are mechanic-specific. That is a scope-quality gap to fix before treating the registry as an executable test plan.
+Do not treat the number 119, the registry, or the older "119 passed" report as proof that the current accepted behavior passes one-to-one.
+
+The older `MECHANIC_COVERAGE_AUDIT_PASS_01.md` was based on the `phase-06-inventory-crafting` source snapshot. Its 119 rows classify 43 as `partial`, 1 as `contract-only`, 1 as `present-in-layer`, 1 as `transient-only`, and 73 as `not-found`. **This is a historical coverage snapshot, not a current classification of the full `feature/simple-intent` tree.** The new traceability matrix preserves that snapshot and adds current registry evidence fields, candidate source-path groups, and explicit unverified review state; every row still requires exact function/caller validation.
+
+The gap-analysis document reports that 99 of 119 acceptance criteria use generic template wording and 20 are mechanic-specific. Its sentence saying all 119 statuses are `unreviewed` belongs to an earlier snapshot and is stale relative to the current candidate registry; the generic-criterion finding remains relevant. This is a scope-quality gap to fix before treating the registry as an executable test plan.
 
 ## 3. Branch landscape and decision
 
