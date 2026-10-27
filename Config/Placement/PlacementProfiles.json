@@ -8,399 +8,71 @@
     "enabled=false marks a profile that is designed but not yet used by the game."
   ],
   "profiles": [
-    {
-      "id": "log.end_to_end",
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "End",
-        "tags": [
-          "LogEnd"
-        ]
-      },
-      "target": {
-        "family": "log",
-        "kind": "End"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 250,
-      "priority": 2
-    },
-    {
-      "id": "log.end_to_station",
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "End",
-        "tags": [
-          "LogEnd"
-        ]
-      },
-      "target": {
-        "family": "log",
-        "kind": "Station",
-        "tags": [
-          "LogRoundStation"
-        ]
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 250,
-      "priority": 1
-    },
-    {
-      "id": "log.authored",
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "Authored"
-      },
-      "target": {
-        "family": "log",
-        "kind": "Authored"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 250,
-      "priority": 0
-    },
-    {
-      "id": "log.parallel_stack",
-      "solver": "AlignParallel",
-      "mode": "stack",
-      "source": {
-        "family": "log"
-      },
-      "target": {
-        "family": "log"
-      },
-      "angle": {
-        "policy": "Grid",
-        "values": [
-          0,
-          90
-        ]
-      },
-      "params": {
-        "moduleCm": 75,
-        "interlock": 0.82,
-        "postSeat": 0.6,
-        "maxRows": 6,
-        "slotRadiusShare": 0.5
-      }
-    },
-    {
-      "id": "log.deck",
-      "solver": "AlignParallel",
-      "mode": "deck",
-      "source": {
-        "family": "log"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          90
-        ]
-      },
-      "params": {
-        "lineReachCm": 80,
-        "minGapCm": 30,
-        "spanMarginCm": 20,
-        "slotRadiusShare": 0.7,
-        "stairs": 0
-      }
-    },
-    {
-      "id": "log.stairs",
-      "solver": "AlignParallel",
-      "mode": "deck",
-      "source": {
-        "family": "log"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          90
-        ]
-      },
-      "params": {
-        "lineReachCm": 80,
-        "minGapCm": 30,
-        "spanMarginCm": 20,
-        "slotRadiusShare": 0.7,
-        "stairs": 1,
-        "pitchCm": 40
-      }
-    },
-    {
-      "id": "log.step",
-      "solver": "AlignParallel",
-      "mode": "step",
-      "source": {
-        "family": "log"
-      },
-      "target": {
-        "family": "log"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "params": {
-        "lengthCm": 150,
-        "gapCm": 25,
-        "dropCm": 25
-      }
-    },
-    {
-      "id": "log.gable",
-      "solver": "AlignParallel",
-      "mode": "gable",
-      "source": {
-        "family": "log"
-      },
-      "target": {
-        "family": "log"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "params": {
-        "minLengthCm": 40,
-        "maxRows": 24,
-        "minSlope": 0.15,
-        "maxSlope": 0.9
-      }
-    },
-    {
-      "id": "log.strut",
-      "solver": "SpanTwo",
-      "mode": "strut",
-      "source": {
-        "family": "log"
-      },
-      "target": {
-        "family": "log"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 250,
-      "params": {
-        "legCm": 75,
-        "moduleCm": 75,
-        "minLengthCm": 40
-      }
-    },
-    {
-      "id": "log.post_on_ground",
-      "operation": "SurfacePlace",
-      "solver": "RestOnSurface",
-      "mode": "post",
-      "source": {
-        "family": "log"
-      },
-      "structural": false,
-      "params": {
-        "spanStepCm": 150,
-        "spanCount": 4,
-        "maxErrorCm": 30
-      }
-    },
-    {
-      "id": "piece.free_place",
-      "operation": "SurfacePlace",
-      "solver": "RestOnSurface",
-      "mode": "free",
-      "structural": true
-    },
-    {
-      "id": "stone.on_anchor",
-      "solver": "AlignOne",
-      "mode": "anchor",
-      "source": {
-        "family": "stone",
-        "kind": "Authored"
-      },
-      "target": {
-        "kind": "Any"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 120,
-      "params": {
-        "keepTargetRotation": 1
-      }
-    },
-    {
-      "id": "stick.on_anchor",
-      "solver": "AlignOne",
-      "mode": "anchor",
-      "source": {
-        "family": "stick",
-        "kind": "Authored"
-      },
-      "target": {
-        "kind": "Any"
-      },
-      "angle": {
-        "policy": "Grid",
-        "values": [
-          0,
-          45,
-          90
-        ]
-      },
-      "searchRadiusCm": 120
-    },
-    {
-      "id": "log.station_cross",
-      "enabled": true,
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "Station",
-        "tags": [
-          "LogRoundStation"
-        ]
-      },
-      "target": {
-        "family": "log",
-        "kind": "Station",
-        "tags": [
-          "LogRoundStation"
-        ]
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          90
-        ]
-      },
-      "searchRadiusCm": 200,
-      "priority": 2,
-      "params": {
-        "sourceCenterBiasWeight": 0.02
-      }
-    },
-    {
-      "id": "log.ground_rest",
-      "enabled": false,
-      "operation": "SurfacePlace",
-      "solver": "RestOnSurface",
-      "mode": "free",
-      "structural": false,
-      "physics": "Rest"
-    },
-    {
-      "id": "log.station_to_end",
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "Station",
-        "tags": [
-          "LogRoundStation"
-        ]
-      },
-      "target": {
-        "family": "log",
-        "kind": "End",
-        "tags": [
-          "LogEnd"
-        ]
-      },
-      "angle": {
-        "policy": "Grid",
-        "values": [
-          0,
-          90,
-          180,
-          270
-        ]
-      },
-      "searchRadiusCm": 250,
-      "priority": 1,
-      "params": {
-        "sourceCenterBiasWeight": 0.02
-      }
-    },
-    {
-      "id": "log.end_to_authored",
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "End",
-        "tags": [
-          "LogEnd"
-        ]
-      },
-      "target": {
-        "family": "log",
-        "kind": "Authored"
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 250,
-      "priority": 0
-    },
-    {
-      "id": "log.authored_to_end",
-      "solver": "AlignOne",
-      "mode": "snap",
-      "source": {
-        "family": "log",
-        "kind": "Authored"
-      },
-      "target": {
-        "family": "log",
-        "kind": "End",
-        "tags": [
-          "LogEnd"
-        ]
-      },
-      "angle": {
-        "policy": "Fixed",
-        "values": [
-          0
-        ]
-      },
-      "searchRadiusCm": 250,
-      "priority": 0
-    }
+    { "id": "log.end_to_end", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
+      "target": { "family": "log", "kind": "End" },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 2 },
+    { "id": "log.end_to_station", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
+      "target": { "family": "log", "kind": "Station", "tags": ["LogRoundStation"] },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 1 },
+    { "id": "log.authored", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "Authored" },
+      "target": { "family": "log", "kind": "Authored" },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 0 },
+    { "id": "log.parallel_stack", "solver": "AlignParallel", "mode": "stack",
+      "source": { "family": "log" }, "target": { "family": "log" },
+      "angle": { "policy": "Grid", "values": [0, 90] },
+      "params": { "moduleCm": 75, "interlock": 0.82, "postSeat": 0.6, "maxRows": 6, "slotRadiusShare": 0.5 } },
+    { "id": "log.deck", "solver": "AlignParallel", "mode": "deck",
+      "source": { "family": "log" },
+      "angle": { "policy": "Fixed", "values": [90] },
+      "params": { "lineReachCm": 80, "minGapCm": 30, "spanMarginCm": 20, "slotRadiusShare": 0.7, "stairs": 0 } },
+    { "id": "log.stairs", "solver": "AlignParallel", "mode": "deck",
+      "source": { "family": "log" },
+      "angle": { "policy": "Fixed", "values": [90] },
+      "params": { "lineReachCm": 80, "minGapCm": 30, "spanMarginCm": 20, "slotRadiusShare": 0.7, "stairs": 1, "pitchCm": 40 } },
+    { "id": "log.step", "solver": "AlignParallel", "mode": "step",
+      "source": { "family": "log" }, "target": { "family": "log" },
+      "angle": { "policy": "Fixed", "values": [0] },
+      "params": { "lengthCm": 150, "gapCm": 25, "dropCm": 25 } },
+    { "id": "log.gable", "solver": "AlignParallel", "mode": "gable",
+      "source": { "family": "log" }, "target": { "family": "log" },
+      "angle": { "policy": "Fixed", "values": [0] },
+      "params": { "minLengthCm": 40, "maxRows": 24, "minSlope": 0.15, "maxSlope": 0.9 } },
+    { "id": "log.strut", "solver": "SpanTwo", "mode": "strut",
+      "source": { "family": "log" }, "target": { "family": "log" },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250,
+      "params": { "legCm": 75, "moduleCm": 75, "minLengthCm": 40 } },
+    { "id": "log.post_on_ground", "operation": "SurfacePlace", "solver": "RestOnSurface", "mode": "post",
+      "source": { "family": "log" }, "structural": false,
+      "params": { "spanStepCm": 150, "spanCount": 4, "maxErrorCm": 30 } },
+    { "id": "piece.free_place", "operation": "SurfacePlace", "solver": "RestOnSurface", "mode": "free",
+      "structural": true },
+    { "id": "stone.on_anchor", "solver": "AlignOne", "mode": "anchor",
+      "source": { "family": "stone", "kind": "Authored" }, "target": { "kind": "Any" },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 120,
+      "params": { "keepTargetRotation": 1 } },
+    { "id": "stick.on_anchor", "solver": "AlignOne", "mode": "anchor",
+      "source": { "family": "stick", "kind": "Authored" }, "target": { "kind": "Any" },
+      "angle": { "policy": "Grid", "values": [0, 45, 90] }, "searchRadiusCm": 120 },
+    { "id": "log.station_cross", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "Station", "tags": ["LogRoundStation"] },
+      "target": { "family": "log", "kind": "Station", "tags": ["LogRoundStation"] },
+      "angle": { "policy": "Fixed", "values": [90] }, "searchRadiusCm": 200, "priority": 2,
+      "params": { "sourceCenterBiasWeight": 0.02 } },
+    { "id": "log.station_to_end", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "Station", "tags": ["LogRoundStation"] },
+      "target": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
+      "angle": { "policy": "Grid", "values": [0, 90, 180, 270] }, "searchRadiusCm": 250, "priority": 1,
+      "params": { "sourceCenterBiasWeight": 0.02 } },
+    { "id": "log.end_to_authored", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "End", "tags": ["LogEnd"] }, "target": { "family": "log", "kind": "Authored" },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 0 },
+    { "id": "log.authored_to_end", "solver": "AlignOne", "mode": "snap",
+      "source": { "family": "log", "kind": "Authored" }, "target": { "family": "log", "kind": "End", "tags": ["LogEnd"] },
+      "angle": { "policy": "Fixed", "values": [0] }, "searchRadiusCm": 250, "priority": 0 },
+    { "id": "log.ground_rest", "enabled": false, "operation": "SurfacePlace", "solver": "RestOnSurface", "mode": "free",
+      "structural": false, "physics": "Rest" }
   ]
 }
