@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "SFX_WOOD_SPLIT",
   "eventType": "SFX",
-  "triggerId": "ObjectProcessed",
+  "triggerId": "OBJECT_PROCESSED",
   "spatialization": "World3D",
   "priority": 70,
   "concurrencyGroup": "WOOD_TOOLS",
@@ -11,5 +11,5 @@
   "fallbackPolicy": "GenericPlaceholder",
   "accessibilitySignal": "AudioAndVisual",
   "mustNotMaskThreatAudio": true,
-  "notes": "Logical sound cue ID only; no sound asset is included."
+  "notes": "Logical sound cue ID only; triggerId maps to the committed gameplay event contract (currently EWorldCommittedEventType::ObjectProcessed); no sound asset is included."
 }
