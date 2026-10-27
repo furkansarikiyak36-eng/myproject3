@@ -655,6 +655,42 @@ bool FPlacementContextCandidatesTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Aim-resolved cutting is the default: the resolved ring follows the aimed
+// position on a loose log instead of requiring the player to cycle to a cut mode.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementAimCutTest,
+    "MyProject3.Placement.AimChoosesDefaultCutPosition", Flags)
+bool FPlacementAimCutTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    AActor* Owner = World ? World->SpawnActor<AActor>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Owner"), Owner))
+        return false;
+
+    ULogCarryComponent* Carry = NewObject<ULogCarryComponent>(Owner);
+    if (!TestNotNull(TEXT("Carry component"), Carry))
+        return false;
+    Owner->AddInstanceComponent(Carry);
+    Carry->RegisterComponent();
+
+    TestEqual(TEXT("Length cutting is the default action"), Carry->GetSelectedCutAction(),
+        ELogCutAction::SplitLengthHalf);
+
+    ALogBuildPiece* Log = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Loose log"), Log))
+        return false;
+
+    ELogCutAction Action = ELogCutAction::SplitHalf;
+    float Share = -1.0f;
+    bool bFlip = false;
+    const FVector QuarterPoint = Log->GetActorLocation() + FVector(-75.0f, 0.0f, 0.0f);
+    TestTrue(TEXT("An aimed quarter position resolves"), Carry->ResolveCutAtPoint(Log, QuarterPoint, Action, Share, bFlip));
+    TestTrue(FString::Printf(TEXT("The cut ring follows the quarter point (share %.3f)"), Share),
+        FMath::IsNearlyEqual(Share, 0.25f, 0.02f));
+    TestTrue(TEXT("The result differs from the default midpoint"), !FMath::IsNearlyEqual(Share, 0.5f, 0.02f));
+    return true;
+}
+
 // Real notched joints come from the imported joinery meshes: the cross-lap
 // pieces carry a NotchCradle socket, a log made with one has that joint point,
 // and two of them cross notch in notch, the upper one turned over and across.
