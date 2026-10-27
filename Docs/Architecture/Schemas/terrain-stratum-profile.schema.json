@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/terrain-stratum-profile.schema.json",
+  "title": "MyProject3 Terrain Stratum Profile",
+  "description": "Design-time schema for data-driven smooth voxel geology and depth-gated excavation policy. Not a runtime loader.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "displayNameKey",
+    "referenceSurface",
+    "profileDepthCm",
+    "boundaryVariationCm",
+    "regionTags",
+    "strata"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": { "type": "string", "minLength": 1 },
+    "referenceSurface": {
+      "const": "OriginalBaseSurface",
+      "description": "All stratum depths are measured from the deterministic unedited surface, never a carved surface."
+    },
+    "profileDepthCm": { "type": "number", "exclusiveMinimum": 0 },
+    "boundaryVariationCm": { "type": "number", "minimum": 0, "maximum": 200 },
+    "boundaryVariationScaleCm": { "type": "number", "exclusiveMinimum": 0 },
+    "regionTags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" }
+    },
+    "strata": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "minDepthCm",
+          "maxDepthCm",
+          "materialBlend",
+          "digPermission",
+          "requiredToolTags",
+          "excavationResistance",
+          "digTimeMultiplier",
+          "supportRisk",
+          "visualTransitionWidthCm"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
+          "minDepthCm": { "type": "number", "minimum": 0 },
+          "maxDepthCm": { "type": "number", "exclusiveMinimum": 0 },
+          "materialBlend": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["materialId", "weight"],
+              "properties": {
+                "materialId": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
+                "weight": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+              }
+            }
+          },
+          "digPermission": {
+            "enum": ["Allowed", "ToolGated", "Blocked"]
+          },
+          "requiredToolTags": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" }
+          },
+          "excavationResistance": { "type": "number", "minimum": 0, "maximum": 1 },
+          "digTimeMultiplier": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 },
+          "supportRisk": {
+            "enum": ["None", "Low", "Medium", "High", "Critical"]
+          },
+          "resourceYieldProfileId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "visualTransitionWidthCm": { "type": "number", "minimum": 0, "maximum": 200 },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}
