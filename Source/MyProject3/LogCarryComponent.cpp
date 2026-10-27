@@ -2159,6 +2159,116 @@ bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
     return true;
 }
 
+bool ULogCarryComponent::ConsumeHeldItemForReceiver(
+    AActor* ExpectedPiece, FGuid OperationId, FString& OutFailureReason)
+{
+    OutFailureReason.Reset();
+    if (!OperationId.IsValid() || !IsValid(ExpectedPiece) ||
+        (HeldPiece.Get() != ExpectedPiece && HeldMaterialPiece.Get() != ExpectedPiece))
+    {
+        OutFailureReason = TEXT("The requested fuel item is not the item currently held by this carrier.");
+        return false;
+    }
+
+    UWorldObjectIdentityComponent* Identity =
+        ExpectedPiece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    const IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(ExpectedPiece);
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord Item;
+    if (!Identity || !Structural || !Ownership ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        !Identity->HasValidIdentity() ||
+        !Ownership->TryGetItem(Identity->GetInstanceId(), Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::Held ||
+        Item.OwnerId != CarryOwnerId || Item.Quantity != 1)
+    {
+        OutFailureReason = TEXT("The held item identity or ownership record is not valid for consumption.");
+        return false;
+    }
+
+    // The item is already in Held state, but remove active physics before the
+    // ledger commit so it cannot collide while the receiver consumes it.
+    const bool bIsLog = Cast<ALogBuildPiece>(ExpectedPiece) != nullptr;
+    if (bIsLog)
+    {
+        if (!Cast<ALogBuildPiece>(ExpectedPiece)->SetHeldState(false))
+        {
+            OutFailureReason = TEXT("The held log refused to leave the carry state.");
+            return false;
+        }
+    }
+    else if (!SetMaterialHeld(ExpectedPiece, false))
+    {
+        OutFailureReason = TEXT("The held material refused to leave the carry state.");
+        return false;
+    }
+    ExpectedPiece->SetActorEnableCollision(false);
+    if (UStaticMeshComponent* Mesh = ExpectedPiece->FindComponentByClass<UStaticMeshComponent>())
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+
+    if (!Ownership->TryConsumeItem(
+        OperationId, Item.ItemId, Item.Revision, EWorldItemOwnerKind::Held))
+    {
+        if (bIsLog)
+            Cast<ALogBuildPiece>(ExpectedPiece)->SetHeldState(true);
+        else
+            SetMaterialHeld(ExpectedPiece, true);
+        ExpectedPiece->SetActorEnableCollision(false);
+        OutFailureReason = TEXT("The ownership ledger rejected the receiver consumption.");
+        return false;
+    }
+
+    // Held -> Consumed is legal after the successful ledger receipt. Under
+    // Unreal's game-thread mutation model this is deterministic after the
+    // lifecycle precondition above; failure is treated as a world consistency fault.
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Consumed))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("Fuel item %s was consumed in the ownership ledger but rejected the lifecycle transition."),
+            *GetNameSafe(ExpectedPiece));
+        if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr)
+        {
+            Coordinator->MarkSimulationFaulted(
+                TEXT("Receiver consumption committed in the item ledger but lifecycle state failed to commit."));
+        }
+        ExpectedPiece->SetActorHiddenInGame(true);
+        if (UCarryLoadComponent* Load = GetOwner()
+            ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
+        {
+            Load->UnregisterCarried(ExpectedPiece);
+        }
+        HeldPiece = nullptr;
+        HeldMaterialPiece = nullptr;
+        return false;
+    }
+
+    ExpectedPiece->SetActorHiddenInGame(true);
+    ExpectedPiece->SetActorEnableCollision(false);
+    if (UCarryLoadComponent* Load = GetOwner()
+        ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
+    {
+        Load->UnregisterCarried(ExpectedPiece);
+    }
+    if (bIsLog)
+        HeldPiece = nullptr;
+    else
+        HeldMaterialPiece = nullptr;
+
+    bHasPlacementSurface = false;
+    bMaterialGroundPreview = false;
+    MaterialSnapTarget = nullptr;
+    MaterialSnapAnchor = NAME_None;
+    ClearSnapCandidate();
+    PlacementStatus = TEXT("Consumed by receiver.");
+    return true;
+}
+
 FTransform ULogCarryComponent::MakeUprightTransform(AActor* Piece, const FVector& BottomWorldPoint) const
 {
     FVector ViewLocation;

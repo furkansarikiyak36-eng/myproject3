@@ -219,6 +219,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Carry|Materials")
     bool TryPickupMaterialPiece(AActor* Piece);
 
+    /** Consumes the held physical item under an idempotent receiver operation ID. */
+    bool ConsumeHeldItemForReceiver(AActor* ExpectedPiece, FGuid OperationId, FString& OutFailureReason);
+
     /** Places the held stone/stick on a receiving anchor of a placed piece. */
     UFUNCTION(BlueprintCallable, Category = "Log Carry|Materials")
     bool TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnchorId);

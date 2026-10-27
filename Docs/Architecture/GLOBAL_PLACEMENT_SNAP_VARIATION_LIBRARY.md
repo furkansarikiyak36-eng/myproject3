@@ -39,7 +39,7 @@ An ordinary unsupported end does not automatically start hinge physics. Only an 
 - Wood uses actual length/cross-section geometry and explicit joinery profiles.
 - Stone uses face/edge/corner features; irregular resting contact is not a structural socket.
 - Sticks use typed end/body features and explicit cross-material compatibility.
-- Fire surface placement, fuel receiver, and heat/interaction regions are different capability types.
+- Fire surface placement, fuel receiver, and heat/interaction regions are different capability types. The existing `UHeatSourceComponent` now exposes `TryAddFuelFromHeldItem`: it gates through `fire.fuel_receiver`, accepts a carried wood/stick piece, consumes the carrier/ledger/lifecycle state once, adds burn time up to capacity and persists a bounded receipt map. This is a component-level API; it does not assert that every campfire actor/Blueprint is already wired to call it.
 - Voxel edits and neighbor relations use integer grid/cell coordinates, never one physical snap actor per cell.
 
 The catalog includes the initial planned families and variation profiles. Some operations (especially irregular stone surface fitting, joinery-specific collision allowances and voxel-world mutation) still depend on their own provider/operation adapters; their presence in the data catalog is a contract, not proof those domain runtimes already perform every behavior.

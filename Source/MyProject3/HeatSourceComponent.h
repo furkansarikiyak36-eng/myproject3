@@ -5,6 +5,25 @@
 #include "HeatSourceComponent.generated.h"
 
 enum class EWorldWeatherState : uint8;
+class ULogCarryComponent;
+
+USTRUCT()
+struct FHeatFuelOperationReceipt
+{
+    GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    FGuid OperationId;
+
+    UPROPERTY(SaveGame)
+    FGuid FuelItemId;
+
+    UPROPERTY(SaveGame)
+    float RequestedBurnSeconds = 0.0f;
+
+    UPROPERTY(SaveGame)
+    float AddedBurnSeconds = 0.0f;
+};
 
 /**
  * One heat source model for campfires, hearths, fireplaces and kilns
@@ -42,9 +61,19 @@ public:
     UFUNCTION(BlueprintPure, Category="Heat")
     float GetFuelSeconds() const { return FuelSeconds; }
 
-    /** Adds burn time; the total never exceeds MaxFuelSeconds. */
+    /** Adds burn time; the total never exceeds MaxFuelSeconds (script/setup helper). */
     UFUNCTION(BlueprintCallable, Category="Heat")
     bool AddFuel(float BurnSeconds);
+
+    /**
+     * Consumes the specified held wood/stick item through the global
+     * fire.fuel_receiver profile and adds its configured burn time.
+     * OperationId makes retries idempotent and receipts are SaveGame data.
+     */
+    UFUNCTION(BlueprintCallable, Category="Heat")
+    bool TryAddFuelFromHeldItem(ULogCarryComponent* Carrier, AActor* FuelActor,
+        FGuid OperationId, float BurnSeconds, float& OutAddedBurnSeconds,
+        FString& OutFailureReason);
 
     /** Lights the source if it has fuel. */
     UFUNCTION(BlueprintCallable, Category="Heat")
@@ -66,4 +95,12 @@ private:
 
     UPROPERTY(SaveGame, VisibleAnywhere, Category="Heat")
     bool bLit = false;
+
+    UPROPERTY(SaveGame)
+    TMap<FGuid, FHeatFuelOperationReceipt> FuelOperationReceipts;
+
+    UPROPERTY(SaveGame)
+    TArray<FGuid> FuelOperationOrder;
+
+    void RememberFuelReceipt(const FHeatFuelOperationReceipt& Receipt);
 };
