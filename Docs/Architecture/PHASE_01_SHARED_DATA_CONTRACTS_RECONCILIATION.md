@@ -119,3 +119,45 @@ Phase 1 therefore defines stable keys and ownership/revision expectations but do
 3. Resolve naming and owner boundaries before moving fields across classes.
 4. Keep one shared placement kernel; domain-specific providers own compatibility.
 5. No mechanic changes to `main` and no engine-validation claim is made by this documentation branch.
+
+## 9. Targeted source/API review against `feature/simple-intent`
+
+**Review kind:** static inspection of selected headers and implementation paths only. No file was compiled, no Unreal Header Tool was run, and no Editor/PIE/save-load scenario was executed in this task.
+
+Inspected candidate source file revisions:
+- `GameplayCoreTypes.h` — `fa8f98620d74d9f04f103cc890aa67f72cb31bb4`
+- `WorldOperationLedgerSubsystem.cpp` — `3a68798d2d5fc5204bcd5050aa659a86fc7610b1`
+- `WorldItemOwnershipSubsystem.cpp` — `37a700dac17c5d2284e724f055aa4bd7aae5aa60`
+- `InventoryCraftingComponent.cpp` — `2f1f825797836f9d3f6372d89af030dcaf9c396d`
+- `LogBuildPiece.cpp` — `37ac9e8c1fab2cbca7ad65520b273280e3835830`
+- `WorldStructuralGraphSubsystem.cpp` — `c470923d0c18a113700175b2fcbc5ceac69ac1f8`
+- `WorldTerrainStateSubsystem.cpp` — `74acbe755d9a083ea664d1a914b996b7a9201451`
+- `VoxelTerrainChunkComponent.cpp` — `ebafb128a3c9021c4b7bf22092fec3096f2a168b`
+- `WorldSaveCoordinatorSubsystem.cpp` — `ade371ce09cd50771e214692312b99d158a10ec0`
+
+### Confirmed from the inspected source surface
+
+1. **Core result and request types exist.** `GameplayCoreTypes.h` declares the shared operation-result code enum, `FWorldOperationResult`, `FWorldOperationRequest`, `FWorldResourceAmount`, committed-event payload, and generic lifecycle enum.
+2. **Ownership and item definition are distinct.** `FInventoryStack.ItemId` is a definition key; `OwnedWorldItemId` is a physical-item GUID. `UWorldItemOwnershipSubsystem` exposes transfer, consume, definition update, split receipts, and snapshot APIs.
+3. **Physical log splitting has a domain-owned receipt path.** `ALogBuildPiece::TryCommitPhysicalSplitOutputs` calls the ownership ledger's split operation using the logical operation ID, validates returned outputs, updates physical piece state, and publishes an `ObjectProcessed` notification after commit. The caller can recover previous split output IDs through the split receipt path.
+4. **Inventory/physical actor bridging exists as candidate source.** `UInventoryCraftingComponent::TryStorePhysicalActor` transfers a registered world item to an inventory owner and guards the inventory row/lifecycle transition; `TryDropOwnedItem` stages an actor, assigns the existing item identity, transfers ownership, then activates the actor. These are multi-step compensation flows, not yet verified in Unreal.
+5. **A save coordinator exists at the logical/source level.** `UWorldSaveCoordinatorSubsystem::CaptureCurrentState` rejects saves with pending operations or held items, captures physical actor snapshots, reconciles them with ownership records, snapshots the structural graph, inventory components, terrain cells and other simulation domains. `ApplySnapshot` validates schema/actor compatibility, restores identity/ownership and graph links in a deliberate order, and the load entry point attempts to restore a pre-load snapshot if applying the candidate save fails. Its own code reports simulation fault if rollback also fails.
+6. **Terrain has two distinct representations.** `UWorldTerrainStateSubsystem::TryApplyCellEdit/ExportSnapshot/RestoreSnapshot` maintains bounded logical cell state. Separately, `UVoxelTerrainChunkComponent::ApplySphereEdit/RebuildMesh` changes a density field and rebuilds mesh/collision. In the inspected implementation files, the chunk component does not call the terrain-state subsystem. A single authoritative edit transaction joining cell state, chunk density, collision/navigation and persistence was not found in this spot-check.
+
+### Concrete contract gaps to resolve before Phase 01 closeout
+
+| Gap | Source evidence | Why this blocks closure | Required next action |
+|---|---|---|---|
+| Generic operation ledger adoption is incomplete | `WorldOperationLedgerSubsystem.cpp` defines `TryBeginOperation/CompleteOperation`; inspected domain files `LogBuildPiece.cpp`, `InventoryCraftingComponent.cpp`, `WorldItemOwnershipSubsystem.cpp`, `WorldStructuralGraphSubsystem.cpp`, and `WorldTerrainStateSubsystem.cpp` do not call those entry points. The save coordinator does inspect the ledger and restores its snapshot. | The ledger must not be assumed to make domain operations idempotent/atomic merely because it exists. Item-transfer and split receipts are separate mechanisms. | Build a per-operation table: global ledger receipt, domain receipt, expected revision, commit boundary, and retry behavior. Adopt the global ledger only where it supplies value; do not blindly wrap every call. |
+| Some actor transfer helpers generate their own operation ID | `ALogBuildPiece::TryTransferOwnership` calls `TryTransferItem(FGuid::NewGuid(), ...)`; inspected inventory world/storage/drop helpers also create IDs internally. | A caller retry cannot reuse its original operation ID for those helper calls; revision/owner checks may reject a second transfer, but they cannot return the same receipt under the caller's ID. | Prefer passing a stable caller operation ID into multi-step commands, or document that those APIs are intentionally non-retryable and enforce a stable owner/revision conflict result. |
+| Logical terrain edits are not connected to voxel chunk density in the inspected source | `WorldTerrainStateSubsystem.cpp` owns cell records; `VoxelTerrainChunkComponent.cpp` owns `Density`, `ApplySphereEdit` and `RebuildMesh`. No direct adapter is present in these two files. | A logical edit could be saved without its visible density/collision change, or a visual edit could exist without the logical state record. | Create one bounded terrain-edit service/adapter that preflights, applies logical and chunk changes together, rebuilds collision/navigation, and saves enough data to reproduce the result. |
+| Inventory runtime types are smaller than the design-time recipe schema | `FInventoryStack` has definition ID, quantity, category, max stack and optional owned-world-item GUID; `FCraftingRecipe` has ingredients, output, by-products and enabled flag. Recipe version, tool/station preconditions, duration/interruption and other schema fields are not all represented in these structs. | The schema cannot be treated as an implemented runtime data model yet. | Decide which fields are runtime recipe data, which belong to process/production owners, and whether definitions use Data Assets/Data Tables/validated import. Record that mapping before data-driven production is implemented. |
+| Full persistence remains engine-unverified | Snapshot APIs include actor, ownership, graph, inventory and terrain-cell data, but this source review did not validate actor creation/order, physical attachment restore, terrain density reconstruction or rollback under injected failure. | Source existence is not proof that a saved world reproduces the same playable state. | Keep UHT/UBT, Editor load, PIE round-trip and fault-injection tests as independent gates. |
+
+### Status decision
+
+- **Design schemas:** CI-validated for schema shape and representative fixtures.
+- **Header/source mapping:** targeted static review performed for the listed contracts.
+- **All M001–M119 source call paths:** still open; broad symbol matches do not close each mechanic.
+- **Unreal compile/UHT/Editor/PIE/save-load:** not run in this planning task.
+- **Phase 01:** remains open until the remaining field/API caller mapping and ownership/terrain contract decisions are recorded. Do not upgrade registry mechanics or claim runtime completion from this source review.
