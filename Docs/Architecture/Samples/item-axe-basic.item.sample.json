@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_AXE_BASIC",
+  "displayNameKey": "item.axe_basic",
+  "inventoryCategory": "Tool",
+  "family": "Tool",
+  "representation": "PhysicalActor",
+  "unitMassKg": 1.2,
+  "unitVolumeLiters": 2,
+  "maxStack": 1,
+  "requiresUniqueInstance": true,
+  "durability": {
+    "model": "Durability",
+    "maximum": 100,
+    "defaultValue": 100,
+    "unit": "condition_percent"
+  },
+  "stateModel": "ToolWear",
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Equip",
+    "Use",
+    "Repair"
+  ],
+  "tags": [
+    "TOOL",
+    "WOODWORKING"
+  ],
+  "persistencePolicy": "SaveWhenInWorld",
+  "notes": "Example definition for schema tests; not a claim that the in-game axe actor is fully integrated."
+}
