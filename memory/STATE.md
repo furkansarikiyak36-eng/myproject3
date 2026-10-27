@@ -10,8 +10,9 @@ developer; replies in Turkish. Main test level: /Game/DemoAssets/Maps/VerticalSl
 | main | Behind; the snap work is not merged yet. |
 | feature/global-snap-kernel | Pushed. One placement kernel for all materials. |
 | feature/contextual-interaction-resolver | Work on top of the kernel (contextual targets, aim cuts). |
-| feature/simple-intent | Preferred candidate implementation line: current contextual placement/snap kernel; branch history descends from phase-06-inventory-crafting and mechanic-detailing-pass-h. Ahead of main with 3 newer main commits to reconcile (primarily memory/docs/screenshots). Must still pass UE build/PIE/save validation. |
-| planning/gdd-inventory-production-roadmap | Documentation-only branch based on main. Adds GDD/catalogues, Phase 00 baseline/branch audit, 119-row source-evidence matrix, Phase 01 shared data contracts, JSON schemas, and wood transition contract. No gameplay C++ or Unreal content changed. |
+| feature/simple-intent | Preferred candidate implementation line: current contextual placement/snap kernel; branch history descends from phase-06-inventory-crafting and mechanic-detailing-pass-h. Must still pass UE build/PIE/save validation. |
+| feature/voxel-terrain-policy-spike | Created from feature/simple-intent for the first bounded voxel task. Currently a clean implementation branch; DeepSeek policy code has not been added or reviewed yet. |
+| planning/gdd-inventory-production-roadmap | Documentation-only branch based on main. Adds GDD/catalogues, Phase 00 baseline/branch audit, 119-row source-evidence matrix, Phase 01 shared data contracts, schemas, voxel stratum design, DeepSeek task protocol and VXL-02A packet. No gameplay C++ or Unreal content changed. |
 | PR #34 architecture/global-snap-variation-library | Has a second, conflicting kernel. Recommended: close it. |
 
 ## Works (as recorded in project memory; verify the correct branch before relying on it)
@@ -25,6 +26,8 @@ developer; replies in Turkish. Main test level: /Game/DemoAssets/Maps/VerticalSl
 
 ## Open
 
+- VXL-02: implement and review a pure deterministic stratum-policy query first; do not connect it to live terrain mutation until the policy contracts and tests pass review.
+- Terrain candidate has two disconnected representations: VoxelTerrainChunkComponent density/mesh/collision and WorldTerrainStateSubsystem logical cell state/receipts. A single edit transaction remains a required follow-up.
 - Main is behind the newer snap work; compare branch histories before integration.
 - Snap work was checked by eye with mp3.SnapGallery (screenshots), not yet by the user in PIE.
 - Two mirrored wall diagonals of full-length logs clip into each other where they cross.
