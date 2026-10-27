@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "SFX_SOIL_DIG",
+  "eventType": "SFX",
+  "triggerId": "TERRAIN_CHANGED",
+  "spatialization": "World3D",
+  "priority": 55,
+  "concurrencyGroup": "TERRAIN_TOOLS",
+  "maxConcurrentInstances": 6,
+  "mixBus": "ToolsAndConstruction",
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "AudioAndVisual",
+  "mustNotMaskThreatAudio": true,
+  "notes": "Logical cue only; no audio file authored."
+}
