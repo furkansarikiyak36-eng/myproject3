@@ -111,3 +111,21 @@ This table records candidate ownership from staged branch filenames, not final a
 - [ ] Approve a single base commit before source implementation continues.
 
 Until the unchecked items are done, Phase 00 is **partially closed at repository-documentation level**, not fully closed for implementation.
+
+## 8. Per-mechanic traceability file added
+
+See [MECHANIC_TRACEABILITY_119.csv](MECHANIC_TRACEABILITY_119.csv). It contains one row for each canonical ID and separates:
+
+- coverage observed on current `main` (source baseline at commit prefix `65faad8`);
+- candidate coverage on `mechanic-detailing-pass-h-integrated-world-systems`;
+- exact source path families reviewed;
+- the remaining source-level gap;
+- canonical registry status and the engine/runtime evidence fields.
+
+The matrix contains 119 mechanic rows plus a header. Current `main` classification counts: `not-found` 101, `partial` 18. Candidate-stack classifications: `partial` 88, `contract-only` 4, `present-in-layer` 1, `transient-only` 1, `not-found` 25.
+
+**Important interpretation:** candidate-stack classifications are a working static review, not a pass/fail judgment. They never change canonical registry rows away from `unreviewed`, and build/PIE fields remain `not_run`. Some rows are assigned a broad candidate status from source-layer evidence; the notes specify the missing end-to-end behavior. Review the named source/callers before implementation or merging.
+
+## 9. Phase 00 status update
+
+The documentation-level snapshot and first 119-row traceability matrix now exist. Phase 00 is still **partially closed** because full file-by-file diff review, selection of the integration base, local Unreal 5.8 compilation, Editor/PIE verification and final caller/Blueprint review have not been completed.
