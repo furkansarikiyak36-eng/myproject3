@@ -172,3 +172,10 @@ Inspected candidate source file revisions:
 - **All M001–M119 source call paths:** still open; broad symbol matches do not close each mechanic.
 - **Unreal compile/UHT/Editor/PIE/save-load:** not run in this planning task.
 - **Phase 01:** remains open until the remaining field/API caller mapping and ownership/terrain contract decisions are recorded. Do not upgrade registry mechanics or claim runtime completion from this source review.
+
+## 10. Consolidation follow-up — 2026-10-28
+
+- The authoritative authoring schemas and samples live under `Docs/Architecture/Schemas/` and `Docs/Architecture/Samples/`; the validator is `Tools/Validation/validate_gameplay_catalogue.py`. Do not add parallel lower-case schema copies or treat JSON Schema authoring records as runtime-loaded game data.
+- The canonical per-mechanic source/status matrix is `Docs/Architecture/PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv`; registry status and source-review status are separate fields.
+- The planning PR is still a draft, documentation/tooling-only change. No gameplay C++ or Unreal content was changed by this consolidation. Source APIs and domain operations remain candidate-branch evidence, not proof of current-main integration.
+- Phase 01 remains open until the ownership/transaction/terrain gaps above receive explicit implementation decisions, all relevant callers and Blueprint contracts are reviewed, and UHT/UBT, Editor/PIE, save/load and failure-path checks are recorded separately.
