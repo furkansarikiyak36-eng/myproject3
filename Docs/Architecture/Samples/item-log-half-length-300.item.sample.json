@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "id": "ITEM_LOG_HALF_LENGTH_300",
+  "displayNameKey": "item.log.half_length_300",
+  "inventoryCategory": "Resource",
+  "family": "Wood",
+  "representation": "PhysicalActor",
+  "unitMassKg": 6,
+  "unitVolumeLiters": 25,
+  "maxStack": 1,
+  "requiresUniqueInstance": true,
+  "durability": {
+    "model": "None"
+  },
+  "stateModel": "WoodProcessing",
+  "baseDefinitionId": "ITEM_LOG_WHOLE_600",
+  "meshVariantSetId": "MSH_LOG_300_WHOLE",
+  "acquisitionSourceIds": [
+    "SRC_TREE_FALLEN"
+  ],
+  "allowedActions": [
+    "Pickup",
+    "Drop",
+    "Process",
+    "Place"
+  ],
+  "feedbackEventIds": [
+    "SFX_WOOD_CUT"
+  ],
+  "tags": [
+    "WOOD",
+    "LOG",
+    "HALF_LENGTH"
+  ],
+  "persistencePolicy": "SaveWhenInWorld",
+  "notes": "Half-length piece cut across the log's long axis. This is not a longitudinal split-half-round."
+}
