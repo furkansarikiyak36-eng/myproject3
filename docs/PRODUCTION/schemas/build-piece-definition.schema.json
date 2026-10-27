@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/myproject3/schemas/build-piece-definition.schema.json",
+  "title": "MyProject3 Build Piece Definition",
+  "description": "Authoring-time schema for physical pieces and semantic anchors; not yet wired to Unreal runtime loading.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "definitionId",
+    "materialDefinitionId",
+    "pieceType",
+    "dimensionsCm",
+    "localLongitudinalAxis",
+    "meshVariants",
+    "collisionPolicy",
+    "placementProfileId",
+    "anchors",
+    "status"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "definitionId": {
+      "type": "string",
+      "pattern": "^BLD_[A-Z0-9_]+$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "materialDefinitionId": {
+      "type": "string",
+      "pattern": "^MAT_[A-Z0-9_]+$"
+    },
+    "pieceType": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "dimensionsCm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "y": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "z": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "localLongitudinalAxis": {
+      "enum": [
+        "None",
+        "X",
+        "Y",
+        "Z"
+      ]
+    },
+    "meshVariants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stateId",
+          "assetRef"
+        ],
+        "properties": {
+          "stateId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "assetRef": {
+            "type": "string",
+            "minLength": 1
+          },
+          "pivotNotes": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "collisionPolicy": {
+      "enum": [
+        "PhysicalSolid",
+        "QueryOnly",
+        "NoCollision",
+        "TerrainAdapterOwned"
+      ]
+    },
+    "placementProfileId": {
+      "type": "string",
+      "pattern": "^PROFILE_[A-Z0-9_]+$"
+    },
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "anchorId",
+          "localPositionCm",
+          "localRotationDegrees",
+          "role",
+          "tags"
+        ],
+        "properties": {
+          "anchorId": {
+            "type": "string",
+            "pattern": "^ANCHOR_[A-Z0-9_]+$"
+          },
+          "localPositionCm": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          },
+          "localRotationDegrees": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          },
+          "role": {
+            "enum": [
+              "Source",
+              "Receiver",
+              "Both",
+              "TerrainSupport"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          },
+          "acceptedPieceTypes": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          },
+          "occupiedByInstanceId": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    "supportClass": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    },
+    "maximumSupportedLoad": {
+      "type": "number",
+      "minimum": 0
+    },
+    "status": {
+      "enum": [
+        "PROPOSED",
+        "PLANNED",
+        "IMPLEMENTED_UNVERIFIED",
+        "VERIFIED",
+        "DEFERRED"
+      ]
+    }
+  }
+}
