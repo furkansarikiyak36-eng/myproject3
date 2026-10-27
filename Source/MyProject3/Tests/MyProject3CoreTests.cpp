@@ -1547,9 +1547,7 @@ bool FAimedLengthCutTest::RunTest(const FString& Parameters)
     Log->GetLogMesh()->SetSimulatePhysics(false);
 
     FPlayerTools Player(World);
-    // From the split cut, eight presses of C reach the length cut.
-    for (int32 Press = 0; Press < 8; ++Press)
-        Player.Carry->CycleCutAction();
+    // The aim-resolved length cut is the default; recipes are reached with C.
     TestEqual(TEXT("Length cut selected"), Player.Carry->GetSelectedCutAction(), ELogCutAction::SplitLengthHalf);
 
     MyProject3Construction::FLogGeometry Shape;
@@ -1736,8 +1734,8 @@ bool FPostShortenTest::RunTest(const FString& Parameters)
     SpawnBeam(World, FVector(150, 0, 215), FRotator::ZeroRotator, 340.0f, 30.0f, true);
     ALogBuildPiece* Free = SpawnBeam(World, FVector(0, 500, 100), FRotator(90, 0, 0), 200.0f, 30.0f, true);
     FPlayerTools Player(World);
-    for (int32 Press = 0; Press < 8; ++Press)
-        Player.Carry->CycleCutAction();
+    // The aim-resolved length cut is the default.
+    TestEqual(TEXT("Length cut selected"), Player.Carry->GetSelectedCutAction(), ELogCutAction::SplitLengthHalf);
 
     FLogCutChoice Choice;
     FString Reason;
