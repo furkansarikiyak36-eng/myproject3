@@ -1120,6 +1120,17 @@ bool ULogCarryComponent::TryPlaceHeldLogOnStructuralSurface(ALogBuildPiece* Piec
     const bool bWasStartsPlaced = PieceToPlace->bStartsPlaced;
     UWorldObjectIdentityComponent* Identity =
         PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>();
+
+    // Register state restoration before any domain connection can change held,
+    // placed, collision or parent state.
+    Transaction.AddUndo([PieceToPlace, bWasHeld, bWasPlaced, bWasStartsPlaced]()
+    {
+        PieceToPlace->SetHeldState(bWasHeld);
+        PieceToPlace->SetPlacedState(bWasPlaced);
+        PieceToPlace->bStartsPlaced = bWasStartsPlaced;
+        return true;
+    });
+
     PieceToPlace->SetActorTransform(
         Solution.ActorWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 
@@ -1176,13 +1187,6 @@ bool ULogCarryComponent::TryPlaceHeldLogOnStructuralSurface(ALogBuildPiece* Piec
             CarryOwnerId, PreviousLocation, RestoredRecord);
     });
 
-    Transaction.AddUndo([PieceToPlace, bWasHeld, bWasPlaced, bWasStartsPlaced]()
-    {
-        PieceToPlace->SetHeldState(bWasHeld);
-        PieceToPlace->SetPlacedState(bWasPlaced);
-        PieceToPlace->bStartsPlaced = bWasStartsPlaced;
-        return true;
-    });
     PieceToPlace->SetHeldState(false);
     if (!bCrossMaterial)
         PieceToPlace->SetPlacedState(true);
