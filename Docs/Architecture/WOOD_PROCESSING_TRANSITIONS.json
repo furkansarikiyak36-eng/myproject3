@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "status": "planning_contract",
+  "targetBranch": "feature/simple-intent",
+  "authorityNote": "The candidate implementation uses ELogLengthFraction and ELogCrossSectionProfile as independent geometry dimensions while retaining ELogPieceType for compatibility. This JSON formalizes target invariants; it is not a statement that every listed path is verified.",
+  "lengthFractions": [
+    "FullLength",
+    "ThreeQuarterLength",
+    "HalfLength",
+    "QuarterLength",
+    "EighthLength",
+    "Other"
+  ],
+  "crossSectionProfiles": [
+    "Round",
+    "HalfRound",
+    "QuarterRound",
+    "Hewn",
+    "HewnTwoFaces",
+    "SquareBeam",
+    "GroovedHalfRound",
+    "Trough",
+    "Plank",
+    "Notched",
+    "Joint",
+    "Other"
+  ],
+  "invariants": [
+    "Never infer mesh length from a filename substring; use the authored length/profile mapping.",
+    "A processed output must have an exact configured variant for its length fraction and cross-section profile.",
+    "A longitudinal split creates two physical child outputs with complementary local center/rotation offsets; it is not a half-length cut.",
+    "A length cut changes longitudinal fraction but preserves the cross-section profile unless the operation explicitly defines otherwise.",
+    "Groove, trough, quarter-section and plank outputs require a split-half-round-compatible source state.",
+    "Reject a missing mesh variant, invalid source state, held/placed/supporting piece, invalid output offset, or invalid ownership transition before mutation.",
+    "Preview, commit, actor state and mesh geometry must describe the same result.",
+    "On failure, do not mutate the source piece, reserve anchors, lose inputs or spawn partial child outputs."
+  ],
+  "transitions": [
+    {
+      "transitionId": "WOOD_LENGTH_HALF",
+      "action": "SplitLengthHalf",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength"
+      ],
+      "sourceProfiles": [
+        "Round",
+        "HalfRound",
+        "QuarterRound",
+        "Hewn",
+        "HewnTwoFaces",
+        "SquareBeam",
+        "GroovedHalfRound",
+        "Trough",
+        "Plank"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "HalfLength",
+          "crossSectionProfile": "preserve_source"
+        },
+        {
+          "lengthFraction": "HalfLength",
+          "crossSectionProfile": "preserve_source"
+        }
+      ],
+      "requirements": [
+        "Exact authored output mesh and center/rotation offsets for both pieces"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_LENGTH_THREE_QUARTER_PLUS_QUARTER",
+      "action": "SplitLengthThreeQuarter",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength"
+      ],
+      "sourceProfiles": [
+        "Round",
+        "HalfRound",
+        "QuarterRound",
+        "Hewn",
+        "HewnTwoFaces",
+        "SquareBeam",
+        "GroovedHalfRound",
+        "Trough",
+        "Plank"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "ThreeQuarterLength",
+          "crossSectionProfile": "preserve_source"
+        },
+        {
+          "lengthFraction": "QuarterLength",
+          "crossSectionProfile": "preserve_source"
+        }
+      ],
+      "requirements": [
+        "Exact authored output meshes and center/rotation offsets"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_HALF_TO_TWO_QUARTER_LENGTHS",
+      "action": "SplitHalfLengthIntoQuarters",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "HalfLength"
+      ],
+      "sourceProfiles": [
+        "Round",
+        "HalfRound",
+        "QuarterRound",
+        "Hewn",
+        "HewnTwoFaces",
+        "SquareBeam",
+        "GroovedHalfRound",
+        "Trough",
+        "Plank"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "QuarterLength",
+          "crossSectionProfile": "preserve_source"
+        },
+        {
+          "lengthFraction": "QuarterLength",
+          "crossSectionProfile": "preserve_source"
+        }
+      ],
+      "requirements": [
+        "Exact authored output meshes and center/rotation offsets"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_QUARTER_TO_TWO_EIGHTH_LENGTHS",
+      "action": "SplitQuarterLengthIntoEighths",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "QuarterLength"
+      ],
+      "sourceProfiles": [
+        "Round",
+        "HalfRound",
+        "QuarterRound",
+        "Hewn",
+        "HewnTwoFaces",
+        "SquareBeam",
+        "GroovedHalfRound",
+        "Trough",
+        "Plank"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "EighthLength",
+          "crossSectionProfile": "preserve_source"
+        },
+        {
+          "lengthFraction": "EighthLength",
+          "crossSectionProfile": "preserve_source"
+        }
+      ],
+      "requirements": [
+        "Exact authored output meshes and center/rotation offsets"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_SPLIT_LONGITUDINAL",
+      "action": "SplitHalf",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "Round"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "HalfRound"
+        },
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "HalfRound"
+        }
+      ],
+      "requirements": [
+        "Split-half meshes, non-zero complementary center offset and authored second-piece rotation"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_QUARTER_SECTION",
+      "action": "Quarter",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "HalfRound"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "QuarterRound"
+        },
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "QuarterRound"
+        }
+      ],
+      "requirements": [
+        "Exact quarter-section output meshes and non-overlapping offsets"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_HEW_FIRST_FACE",
+      "action": "Hewn",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "Round"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "Hewn"
+        }
+      ],
+      "requirements": [
+        "Exact hewn variant for the selected length/profile"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_HEW_SECOND_FACE",
+      "action": "HewSecondFace",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "Hewn"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "HewnTwoFaces"
+        }
+      ],
+      "requirements": [
+        "Exact two-face hewn mesh; do not silently fall back to another length"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_SQUARE_BEAM",
+      "action": "Kalas",
+      "status": "candidate_action_enum_needs_state-review",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "Round",
+        "Hewn",
+        "HewnTwoFaces"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "SquareBeam"
+        }
+      ],
+      "requirements": [
+        "Exact squared-beam variant; source prerequisites must be confirmed against current TryApplyCutAction implementation"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_GROOVE",
+      "action": "Gutter",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "HalfRound"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "GroovedHalfRound"
+        }
+      ],
+      "requirements": [
+        "Source must already be split longitudinally; exact groove mesh is mandatory"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_TROUGH",
+      "action": "Trough",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "HalfRound"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "Trough"
+        }
+      ],
+      "requirements": [
+        "Source must already be split longitudinally; exact trough mesh is mandatory"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_PLANK",
+      "action": "Plank",
+      "status": "candidate_action_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "HalfRound"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "Plank"
+        }
+      ],
+      "requirements": [
+        "Source must already be split longitudinally; exact plank mesh is mandatory"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    },
+    {
+      "transitionId": "WOOD_NOTCH",
+      "action": "Notch",
+      "status": "planned_not_present_in_current_ELogCutAction_enum",
+      "sourceLengthFractions": [
+        "FullLength",
+        "ThreeQuarterLength",
+        "HalfLength",
+        "QuarterLength",
+        "EighthLength",
+        "Other"
+      ],
+      "sourceProfiles": [
+        "Round",
+        "Hewn",
+        "HewnTwoFaces",
+        "SquareBeam"
+      ],
+      "outputs": [
+        {
+          "lengthFraction": "preserve_source",
+          "crossSectionProfile": "Notched"
+        }
+      ],
+      "requirements": [
+        "Geometry-specific authored notch mesh/anchor validation; no claim of procedural notch cutting"
+      ],
+      "feedbackEventId": "EVT_OBJECT_PROCESSED"
+    }
+  ]
+}
