@@ -1,6 +1,11 @@
 #include "VoxelTerrainChunkComponent.h"
 
 #include "Generators/MarchingCubes.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 UVoxelTerrainChunkComponent::UVoxelTerrainChunkComponent(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -183,6 +188,49 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
         !ChunkBounds.IsInsideOrOn(Min) || !ChunkBounds.IsInsideOrOn(Max))
         return false;
 
+    // Do not undermine a registered, ground-supported structural root. The
+    // graph is authoritative for support topology; actor locations are used
+    // only as a conservative spatial exclusion zone, never to infer support.
+    if (UWorld* World = GetWorld())
+    {
+        if (UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        {
+            if (Graph->GetNodeCount() > 0)
+            {
+                TArray<FWorldStructuralNodeSnapshot> GraphSnapshot;
+                if (!Graph->ExportSnapshot(GraphSnapshot))
+                    return false;
+
+                TMap<FGuid, AActor*> ActorsByIdentity;
+                for (TActorIterator<AActor> It(World); It; ++It)
+                {
+                    AActor* Candidate = *It;
+                    UWorldObjectIdentityComponent* Identity =
+                        IsValid(Candidate) ? Candidate->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+                    if (!IsValid(Identity) || !Identity->InstanceId.IsValid())
+                        continue;
+                    if (ActorsByIdentity.Contains(Identity->InstanceId))
+                        return false;
+                    ActorsByIdentity.Add(Identity->InstanceId, Candidate);
+                }
+
+                const FVector WorldDigCenter = GetComponentTransform().TransformPosition(LocalCenter);
+                const float SafeDistance = RadiusCm + FMath::Max(0.0f, SupportSafetyMarginCm);
+                const float SafeDistanceSquared = FMath::Square(SafeDistance);
+                for (const FWorldStructuralNodeSnapshot& Node : GraphSnapshot)
+                {
+                    if (!Node.bGroundSupported)
+                        continue;
+                    AActor* SupportActor = ActorsByIdentity.FindRef(Node.ActorIdentityId);
+                    if (!IsValid(SupportActor))
+                        return false;
+                    if (FVector::DistSquared(SupportActor->GetActorLocation(), WorldDigCenter) <= SafeDistanceSquared)
+                        return false;
+                }
+            }
+        }
+    }
+
     // Keep only the bounded samples needed for a rollback if the edit makes no
     // material-volume change. This avoids copying the entire density grid.
     const int32 N = PointsPerAxis();
@@ -195,7 +243,7 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
     TArray<int32> AffectedIndices;
     TArray<float> PreviousValues;
     AffectedIndices.Reserve((MaxX - MinX + 1) * (MaxY - MinY + 1) * (MaxZ - MinZ + 1));
-    PreviousValues.Reserve(AffectedIndices.Max());
+    PreviousValues.Reserve((MaxX - MinX + 1) * (MaxY - MinY + 1) * (MaxZ - MinZ + 1));
     for (int32 Z = MinZ; Z <= MaxZ; ++Z)
         for (int32 Y = MinY; Y <= MaxY; ++Y)
             for (int32 X = MinX; X <= MaxX; ++X)
