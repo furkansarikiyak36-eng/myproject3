@@ -104,7 +104,7 @@ The comparisons establish that:
 
 - [x] Correct repository and current main SHA recorded.
 - [x] Current main README and key log source headers inspected.
-- [x] Existing registry located and checked for 119 unique IDs and current unreviewed/not-run status.
+- [x] Registry revisions compared: same 119 IDs, but status/evidence fields differ; current phase-field and per-mechanic evidence gaps recorded.
 - [x] Candidate phase branches and their history relationships compared.
 - [x] Current-main evidence separated from non-main candidate source layers.
 - [ ] Full M001–M119 line-by-line source audit on the preferred candidate branch.
