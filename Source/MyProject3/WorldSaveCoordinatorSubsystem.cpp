@@ -10,6 +10,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
+#include "VoxelTerrainChunkComponent.h"
 #include "WorldAgricultureSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
@@ -129,6 +130,114 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
                     ComponentState.StaticMeshAsset = FSoftObjectPath(MeshAsset);
             }
         }
+    }
+    return true;
+}
+
+bool CaptureVoxelChunkSnapshots(UWorld* World, TArray<FWorldVoxelChunkSnapshot>& OutSnapshots)
+{
+    if (!World)
+        return false;
+
+    OutSnapshots.Reset();
+    TSet<FGuid> SeenIds;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        UVoxelTerrainChunkComponent* Chunk =
+            IsValid(Actor) ? Actor->FindComponentByClass<UVoxelTerrainChunkComponent>() : nullptr;
+        if (!IsValid(Chunk) || !Chunk->HasInitializedDensity())
+            continue;
+
+        UWorldObjectIdentityComponent* Identity = Actor->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (!IsValid(Identity) || !Identity->InstanceId.IsValid() || SeenIds.Contains(Identity->InstanceId))
+            return false;
+
+        FWorldVoxelChunkSnapshot& Snapshot = OutSnapshots.AddDefaulted_GetRef();
+        Snapshot.ActorIdentityId = Identity->InstanceId;
+        Snapshot.CellsPerAxis = Chunk->CellsPerAxis;
+        Snapshot.VoxelSizeCm = Chunk->VoxelSizeCm;
+        if (!Chunk->ExportDensitySnapshot(Snapshot.DensitySamples, Snapshot.DensityRevision, Snapshot.DigReceipts))
+        {
+            OutSnapshots.Pop();
+            return false;
+        }
+        SeenIds.Add(Identity->InstanceId);
+    }
+
+    OutSnapshots.Sort([](const FWorldVoxelChunkSnapshot& A, const FWorldVoxelChunkSnapshot& B)
+    {
+        return A.ActorIdentityId.ToString() < B.ActorIdentityId.ToString();
+    });
+    return true;
+}
+
+bool BuildInitializedVoxelChunkActorMap(UWorld* World, TMap<FGuid, AActor*>& OutActors)
+{
+    OutActors.Reset();
+    if (!World)
+        return false;
+
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        UVoxelTerrainChunkComponent* Chunk =
+            IsValid(Actor) ? Actor->FindComponentByClass<UVoxelTerrainChunkComponent>() : nullptr;
+        if (!IsValid(Chunk) || !Chunk->HasInitializedDensity())
+            continue;
+
+        UWorldObjectIdentityComponent* Identity = Actor->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (!IsValid(Identity) || !Identity->InstanceId.IsValid() || OutActors.Contains(Identity->InstanceId))
+            return false;
+        OutActors.Add(Identity->InstanceId, Actor);
+    }
+    return true;
+}
+
+bool ValidateVoxelChunkSnapshotSet(UWorld* World, const TArray<FWorldVoxelChunkSnapshot>& Snapshots)
+{
+    TMap<FGuid, AActor*> CurrentActors;
+    if (!BuildInitializedVoxelChunkActorMap(World, CurrentActors) || CurrentActors.Num() != Snapshots.Num())
+        return false;
+
+    TSet<FGuid> SeenSnapshotIds;
+    for (const FWorldVoxelChunkSnapshot& Snapshot : Snapshots)
+    {
+        if (!Snapshot.ActorIdentityId.IsValid() || SeenSnapshotIds.Contains(Snapshot.ActorIdentityId))
+            return false;
+        AActor* const* ActorPtr = CurrentActors.Find(Snapshot.ActorIdentityId);
+        AActor* Actor = ActorPtr ? *ActorPtr : nullptr;
+        UVoxelTerrainChunkComponent* Chunk =
+            IsValid(Actor) ? Actor->FindComponentByClass<UVoxelTerrainChunkComponent>() : nullptr;
+        if (!IsValid(Chunk) || !Chunk->ValidateDensitySnapshot(
+            Snapshot.CellsPerAxis, Snapshot.VoxelSizeCm, Snapshot.DensityRevision,
+            Snapshot.DensitySamples, Snapshot.DigReceipts))
+            return false;
+        SeenSnapshotIds.Add(Snapshot.ActorIdentityId);
+    }
+    return SeenSnapshotIds.Num() == CurrentActors.Num();
+}
+
+bool ApplyVoxelChunkSnapshots(UWorld* World, const TArray<FWorldVoxelChunkSnapshot>& Snapshots)
+{
+    if (!ValidateVoxelChunkSnapshotSet(World, Snapshots))
+        return false;
+
+    TMap<FGuid, AActor*> CurrentActors;
+    if (!BuildInitializedVoxelChunkActorMap(World, CurrentActors))
+        return false;
+
+    // The complete set was validated before any component is changed. A failed
+    // later restore is handled by the save coordinator's pre-load rollback path.
+    for (const FWorldVoxelChunkSnapshot& Snapshot : Snapshots)
+    {
+        AActor* Actor = CurrentActors.FindRef(Snapshot.ActorIdentityId);
+        UVoxelTerrainChunkComponent* Chunk =
+            IsValid(Actor) ? Actor->FindComponentByClass<UVoxelTerrainChunkComponent>() : nullptr;
+        if (!IsValid(Chunk) || !Chunk->RestoreDensitySnapshot(
+            Snapshot.CellsPerAxis, Snapshot.VoxelSizeCm, Snapshot.DensityRevision,
+            Snapshot.DensitySamples, Snapshot.DigReceipts))
+            return false;
     }
     return true;
 }
@@ -370,6 +479,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         }
     }
     if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors) ||
+        !CaptureVoxelChunkSnapshots(World, OutSave->VoxelChunks) ||
         !ReconcilePhysicalActorSnapshotsWithItems(OutSave->PhysicalActors, OutSave->Items))
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor state could not be reconciled with item ownership."));
@@ -593,6 +703,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Schema v13 persists structural graph edges, anchors, loads, damage and revisions.
         // Missing historical graph data is not synthesized from the currently loaded world.
         Candidate->SchemaVersion = 13;
+    }
+    if (Candidate->SchemaVersion == 13)
+    {
+        // Schema v14 adds explicit per-chunk density samples and dig receipts.
+        // Legacy saves lack physical voxel state; fail closed if initialized chunks exist.
+        Candidate->VoxelChunks.Reset();
+        Candidate->SchemaVersion = 14;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
