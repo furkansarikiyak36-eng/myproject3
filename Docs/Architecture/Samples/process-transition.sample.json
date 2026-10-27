@@ -7,8 +7,7 @@
     "STATE_WOOD_WHOLE"
   ],
   "requiredToolDefinitionIds": [
-    "TOOL_AXE_BASIC",
-    "TOOL_WOOD_WEDGE"
+    "TOOL_AXE_BASIC"
   ],
   "requiredToolTags": [
     "WOODWORKING"
