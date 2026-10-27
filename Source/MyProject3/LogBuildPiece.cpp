@@ -1107,8 +1107,8 @@ void ALogBuildPiece::RegenerateAutomaticSnapPoints()
     SnapPoints.RemoveAll([](const FLogSnapPoint& Point)
     {
         const FString Id = Point.PointId.ToString();
-        return Id.StartsWith(TEXT("AutoEnd_")) ||
-            Id.StartsWith(TEXT("AutoSide_")) || Id.StartsWith(TEXT("Station."));
+        return Id.StartsWith(TEXT("AutoEnd_")) || Id.StartsWith(TEXT("AutoSide_")) ||
+            Id.StartsWith(TEXT("End.")) || Id.StartsWith(TEXT("Station."));
     });
 
     if (bAutoGenerateEndSnapPoints)
@@ -1167,6 +1167,38 @@ void ALogBuildPiece::GenerateDefaultSideSnapPoints()
     }
 }
 
+int32 ALogBuildPiece::FindSnapPointIndex(FName PointId) const
+{
+    if (PointId.IsNone())
+        return INDEX_NONE;
+    FName Wanted = PointId;
+    // Saves from before the station layout name the ends differently.
+    if (PointId == TEXT("AutoEnd_Negative"))
+        Wanted = TEXT("End.A");
+    else if (PointId == TEXT("AutoEnd_Positive"))
+        Wanted = TEXT("End.B");
+    int32 Found = INDEX_NONE;
+    for (int32 Index = 0; Index < SnapPoints.Num(); ++Index)
+    {
+        if (SnapPoints[Index].PointId != Wanted)
+            continue;
+        if (Found != INDEX_NONE)
+            return INDEX_NONE; // An ambiguous name fails closed.
+        Found = Index;
+    }
+    return Found;
+}
+
+bool ALogBuildPiece::CanJoinById(FName TargetPointId, const ALogBuildPiece* Source, FName SourcePointId) const
+{
+    return Source && CanSnapPointAccept(FindSnapPointIndex(TargetPointId), Source, Source->FindSnapPointIndex(SourcePointId));
+}
+
+bool ALogBuildPiece::TryJoinById(FName TargetPointId, ALogBuildPiece* Source, FName SourcePointId)
+{
+    return Source && TryReserveSnapPoints(FindSnapPointIndex(TargetPointId), Source, Source->FindSnapPointIndex(SourcePointId));
+}
+
 void ALogBuildPiece::RefreshStationsIfStale()
 {
     if (!bAutoGenerateSideSnapPoints || FMath::IsNearlyEqual(GetWorldLengthCm(), StationsBuiltForLengthCm, 0.5f))
@@ -1203,7 +1235,8 @@ void ALogBuildPiece::GenerateDefaultEndSnapPoints()
     const FVector NegativeLocation = Bounds.Origin - Axis * HalfLength;
 
     FLogSnapPoint PositiveEnd;
-    PositiveEnd.PointId = FName(TEXT("AutoEnd_Positive"));
+    // The two end faces: End.A at the -axis end, End.B at the +axis end.
+    PositiveEnd.PointId = FName(TEXT("End.B"));
     PositiveEnd.SnapTag = DefaultEndSnapTag;
     PositiveEnd.LocalTransform = FTransform(MakeOutwardRotation(Axis), PositiveLocation);
     PositiveEnd.bCanSource = true;
@@ -1213,7 +1246,7 @@ void ALogBuildPiece::GenerateDefaultEndSnapPoints()
     SnapPoints.Add(PositiveEnd);
 
     FLogSnapPoint NegativeEnd;
-    NegativeEnd.PointId = FName(TEXT("AutoEnd_Negative"));
+    NegativeEnd.PointId = FName(TEXT("End.A"));
     NegativeEnd.SnapTag = DefaultEndSnapTag;
     NegativeEnd.LocalTransform = FTransform(MakeOutwardRotation(-Axis), NegativeLocation);
     NegativeEnd.bCanSource = true;
@@ -2537,6 +2570,7 @@ void ALogBuildPiece::AddCustomSnapPoint(
     if (PointId.IsNone() ||
         IdString.StartsWith(TEXT("AutoEnd_"), ESearchCase::IgnoreCase) ||
         IdString.StartsWith(TEXT("AutoSide_"), ESearchCase::IgnoreCase) ||
+        IdString.StartsWith(TEXT("End."), ESearchCase::IgnoreCase) ||
         IdString.StartsWith(TEXT("Station."), ESearchCase::IgnoreCase))
     {
         UE_LOG(LogTemp, Warning,
@@ -2951,26 +2985,9 @@ bool ALogBuildPiece::RestoreActorLocalSnapLinkFromGraph(
         ParentSnapPointIndex != INDEX_NONE || OwnSnapPointIndexUsed != INDEX_NONE)
         return false;
 
-    int32 ParentIndex = INDEX_NONE;
-    int32 OwnIndex = INDEX_NONE;
-    for (int32 Index = 0; Index < Parent->SnapPoints.Num(); ++Index)
-    {
-        if (Parent->SnapPoints[Index].PointId == ParentAnchorId)
-        {
-            if (ParentIndex != INDEX_NONE)
-                return false; // Ambiguous authored anchor names fail closed.
-            ParentIndex = Index;
-        }
-    }
-    for (int32 Index = 0; Index < SnapPoints.Num(); ++Index)
-    {
-        if (SnapPoints[Index].PointId == OwnAnchorId)
-        {
-            if (OwnIndex != INDEX_NONE)
-                return false;
-            OwnIndex = Index;
-        }
-    }
+    // By id; ambiguous names fail closed, and older end names still resolve.
+    const int32 ParentIndex = Parent->FindSnapPointIndex(ParentAnchorId);
+    const int32 OwnIndex = FindSnapPointIndex(OwnAnchorId);
     if (ParentIndex == INDEX_NONE || OwnIndex == INDEX_NONE ||
         Parent->SnapPoints[ParentIndex].bOccupied || SnapPoints[OwnIndex].bOccupied)
         return false;

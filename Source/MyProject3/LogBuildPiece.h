@@ -266,6 +266,17 @@ public:
      * cut scales it). Only on a log nothing is joined to, so no joint moves.
      */
     void RefreshStationsIfStale();
+
+    /**
+     * Index of the joint point with this id (End.A, End.B, Station.00 ...), or
+     * INDEX_NONE. Ids from saves made before the station layout (AutoEnd_*) map
+     * to the matching end.
+     */
+    int32 FindSnapPointIndex(FName PointId) const;
+    /** True when SourcePointId of Source can join this log's TargetPointId now. */
+    bool CanJoinById(FName TargetPointId, const ALogBuildPiece* Source, FName SourcePointId) const;
+    /** Joins Source's SourcePointId to this log's TargetPointId (attach, reserve, graph edge), or changes nothing. */
+    bool TryJoinById(FName TargetPointId, ALogBuildPiece* Source, FName SourcePointId);
     /** The log's length in the world, scale included. */
     float GetWorldLengthCm() const;
 

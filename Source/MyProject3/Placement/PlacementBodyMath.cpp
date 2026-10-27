@@ -2,24 +2,33 @@
 
 namespace PlacementBodyMath
 {
-    bool SolveStack(const FPlacementBody& Lower, const FPlacementBody& Upper, const FVector& AimPoint,
-        float CarryYawDeg, bool bUpright, float GridCm, float Interlock, float PostSeat, FPlacementPose& OutPose)
+    float NearestStation(float LengthCm, float ModuleCm, float Along)
     {
-        if (GridCm <= 1.0f)
+        const int32 Count = ModuleCm > KINDA_SMALL_NUMBER ? FMath::FloorToInt((LengthCm + 0.5f) / ModuleCm) : 0;
+        if (Count <= 0)
+            return 0.5f * LengthCm;
+        const int32 Index = FMath::Clamp(FMath::RoundToInt(Along / ModuleCm - 0.5f), 0, Count - 1);
+        return ModuleCm * (Index + 0.5f);
+    }
+
+    bool SolveStack(const FPlacementBody& Lower, const FPlacementBody& Upper, const FVector& AimPoint,
+        float CarryYawDeg, bool bUpright, float ModuleCm, float Interlock, float PostSeat, FPlacementPose& OutPose)
+    {
+        if (ModuleCm <= 1.0f)
             return false;
         FVector Along(Lower.Axis.X, Lower.Axis.Y, 0.0f);
         if (!Along.Normalize())
             return false;
-        const float EndA = -Lower.HalfLength;
+        // Positions along the lower body, from its centre; its stations are counted from its -axis end.
+        const float StartA = -Lower.HalfLength;
         const float AimAlong = FVector::DotProduct(AimPoint - Lower.Centre, Along);
-        auto OnGrid = [&](float S) { return EndA + FMath::RoundToFloat((S - EndA) / GridCm) * GridCm; };
+        const float StationAlong = StartA + NearestStation(Lower.Length(), ModuleCm, AimAlong - StartA);
         const FVector Up = FVector::UpVector;
 
         if (bUpright)
         {
-            // A post standing on the body at a grid point, seated in a shallow notch.
-            const float S = FMath::Clamp(OnGrid(AimAlong), EndA, -EndA);
-            OutPose.Centre = Lower.Centre + Along * S + Up * (Lower.Radius * PostSeat + Upper.HalfLength);
+            // A post standing on a station, seated in a shallow notch.
+            OutPose.Centre = Lower.Centre + Along * StationAlong + Up * (Lower.Radius * PostSeat + Upper.HalfLength);
             OutPose.Axis = Up;
             OutPose.Up = Along;
             return true;
@@ -30,24 +39,25 @@ namespace PlacementBodyMath
         const float StackZ = Lower.Centre.Z + (Lower.Radius + Upper.Radius) * Interlock;
         if (FMath::Abs(Alignment) >= 0.7071f)
         {
-            // Along the lower body, like the next row of a wall: its start sits on a
-            // grid point; it may run past the lower body's end.
-            const float Start = OnGrid(AimAlong - Upper.HalfLength);
+            // Along the lower body, the next row of a wall: it starts on a module
+            // boundary, so every upper station sits over a lower one. It may run
+            // past the lower body's end.
+            const float Start = StartA + FMath::RoundToFloat((AimAlong - Upper.HalfLength - StartA) / ModuleCm) * ModuleCm;
             OutPose.Centre = Lower.Centre + Along * (Start + Upper.HalfLength);
             OutPose.Axis = Along * FMath::Sign(Alignment);
         }
         else
         {
-            // Across it, as at a corner: one of the upper body's own grid points sits
-            // on the lower body's grid point under the crosshair.
+            // Across it, as at a corner: a station of the upper body crosses the
+            // lower station under the crosshair.
             FVector Across = FVector::CrossProduct(Up, Along);
             if (FVector::DotProduct(Across, Want) < 0.0f)
                 Across = -Across;
-            const FVector Crossing = Lower.Centre + Along * FMath::Clamp(OnGrid(AimAlong), EndA, -EndA);
-            const float AimAcross = FVector::DotProduct(AimPoint - Crossing, Across);
-            const int32 Steps = FMath::Max(0, FMath::RoundToInt(Upper.Length() / GridCm));
-            const int32 Step = FMath::Clamp(FMath::RoundToInt((Upper.HalfLength - AimAcross) / GridCm), 0, Steps);
-            OutPose.Centre = Crossing + Across * (Upper.HalfLength - Step * GridCm);
+            const FVector Crossing = Lower.Centre + Along * StationAlong;
+            // Measured from the upper body's far (+Across) end, which lies past the crossing.
+            const float FromFarEnd = Upper.HalfLength - FVector::DotProduct(AimPoint - Crossing, Across);
+            const float UpperStation = NearestStation(Upper.Length(), ModuleCm, FromFarEnd);
+            OutPose.Centre = Crossing + Across * (Upper.HalfLength - UpperStation);
             OutPose.Axis = Across;
         }
         OutPose.Centre.Z = StackZ;
@@ -56,7 +66,8 @@ namespace PlacementBodyMath
     }
 
     bool SolveStrut(const FPlacementBody& Post, const FPlacementBody& Beam, const FPlacementBody& Strut,
-        const FVector& AimPoint, float LegCm, float MinLengthCm, FPlacementPose& OutPose, float& OutLength, FVector& OutBeamPoint)
+        const FVector& AimPoint, float LegCm, float ModuleCm, float MinLengthCm, FPlacementPose& OutPose, float& OutLength,
+        FVector& OutBeamPoint)
     {
         const FVector Top = Post.Top();
         FVector Along = Beam.Axis;
@@ -66,19 +77,31 @@ namespace PlacementBodyMath
             return false;
         if (FVector::DotProduct(AimPoint - Top, Along) < 0.0f)
             Along = -Along;
+        const FVector BeamAxis = Beam.Axis.GetSafeNormal();
         const FVector OnBeam = FMath::ClosestPointOnSegment(Top, Beam.EndA(), Beam.EndB());
-        const float AlongFromPost = FVector::DotProduct(OnBeam - Beam.Centre, Beam.Axis.GetSafeNormal()) +
-            (FVector::DotProduct(Along, Beam.Axis) > 0.0f ? LegCm : -LegCm);
-        if (FMath::Abs(AlongFromPost) > Beam.HalfLength)
+        const float PostFromStart = FVector::DotProduct(OnBeam - Beam.EndA(), BeamAxis);
+        const float Direction = FVector::DotProduct(Along, BeamAxis) > 0.0f ? 1.0f : -1.0f;
+        // Where the strut meets the beam: on the beam station nearest one leg out.
+        float MeetFromStart = PostFromStart + Direction * LegCm;
+        if (ModuleCm > KINDA_SMALL_NUMBER)
+        {
+            MeetFromStart = NearestStation(Beam.Length(), ModuleCm, MeetFromStart);
+            if (FMath::Abs(MeetFromStart - PostFromStart) < 0.5f * ModuleCm)
+                MeetFromStart = NearestStation(Beam.Length(), ModuleCm, MeetFromStart + Direction * ModuleCm);
+        }
+        const float Leg = FMath::Abs(MeetFromStart - PostFromStart);
+        if (MeetFromStart < 0.0f || MeetFromStart > Beam.Length() || Leg < 0.5f * ModuleCm ||
+            FVector::DotProduct(BeamAxis * (MeetFromStart - PostFromStart), Along) <= 0.0f)
             return false;
-        // Ends: on the post's side face below the beam, and under the beam out along it.
-        const FVector Low = Top - FVector(0, 0, LegCm + Beam.Radius) + Along * (Post.Radius + Strut.Radius * 0.5f);
-        const FVector High = OnBeam + Along * LegCm - FVector(0, 0, Beam.Radius + Strut.Radius * 0.5f);
+        const FVector Meet = Beam.EndA() + BeamAxis * MeetFromStart;
+        // Ends: under the beam at that station, and on the post's side face as far below the beam.
+        const FVector Low = Top - FVector(0, 0, Leg + Beam.Radius) + Along * (Post.Radius + Strut.Radius * 0.5f);
+        const FVector High = Meet - FVector(0, 0, Beam.Radius + Strut.Radius * 0.5f);
         const FVector Axis = High - Low;
         OutLength = Axis.Size();
         if (OutLength < MinLengthCm)
             return false;
-        OutBeamPoint = OnBeam + Along * LegCm - FVector(0, 0, Beam.Radius);
+        OutBeamPoint = Meet - FVector(0, 0, Beam.Radius);
         OutPose.Centre = 0.5f * (Low + High);
         OutPose.Axis = Axis.GetSafeNormal();
         OutPose.Up = FVector::CrossProduct(OutPose.Axis, FVector::CrossProduct(FVector::UpVector, OutPose.Axis)).GetSafeNormal();

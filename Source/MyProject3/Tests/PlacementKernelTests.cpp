@@ -170,7 +170,8 @@ bool FPlacementAngleTest::RunTest(const FString& Parameters)
     return true;
 }
 
-// Body stations every 75 cm from the log's real world length: 8/6/4/2/1 plus two ends.
+// The station map of a log: End.A, End.B and a station per 75 cm module of its
+// real (scaled) length: 600/450/300/150/75 cm give 8/6/4/2/1, 400 cm gives 5.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementStationsTest, "MyProject3.Placement.LogStationsFromRealLength", Flags)
 bool FPlacementStationsTest::RunTest(const FString& Parameters)
 {
@@ -181,17 +182,24 @@ bool FPlacementStationsTest::RunTest(const FString& Parameters)
         ALogBuildPiece* Log = SpawnCubeLog(TestWorld.World, FVector(0, 0, 100), FRotator::ZeroRotator, Case.Key, 30.0f, false);
         if (!TestNotNull(TEXT("Log"), Log))
             return false;
+        // The game's own features of the log: End.A, End.B and Station.00 ...
         TArray<FPlacementFeature> Features;
-        FLogFeatureProvider::BuildModularFeatures(Log, 75.0f, Features);
+        FPlacementProviderRegistry::Find(Log)->GetFeatures(Log, Features);
         TestEqual(FString::Printf(TEXT("%.0f cm: stations"), Case.Key), CountKind(Features, EPlacementFeatureKind::Station), Case.Value);
         TestEqual(FString::Printf(TEXT("%.0f cm: ends"), Case.Key), CountKind(Features, EPlacementFeatureKind::End), 2);
-        // First station 37.5 cm from the -X end, the next one 75 cm on, in the world.
-        const FVector EndA = Features[0].WorldFrame.GetLocation();
-        TestTrue(FString::Printf(TEXT("%.0f cm: first station at 37.5"), Case.Key),
-            FMath::IsNearlyEqual(FVector::Dist(EndA, Features[2].WorldFrame.GetLocation()), 37.5f, 0.5f));
-        if (Case.Value > 1)
+        FPlacementFeature EndA, EndB, First, Second;
+        TestTrue(FString::Printf(TEXT("%.0f cm: End.A and End.B"), Case.Key),
+            FPlacementProviderRegistry::FindFeature(Log, TEXT("End.A"), EndA) && FPlacementProviderRegistry::FindFeature(Log, TEXT("End.B"), EndB));
+        TestTrue(FString::Printf(TEXT("%.0f cm: End.A is the -X end"), Case.Key),
+            EndA.WorldFrame.GetLocation().X < EndB.WorldFrame.GetLocation().X);
+        // Station.00 is 37.5 cm from End.A, the next one 75 cm on, in the world.
+        TestTrue(FString::Printf(TEXT("%.0f cm: Station.00 exists"), Case.Key), FPlacementProviderRegistry::FindFeature(Log, TEXT("Station.00"), First));
+        TestTrue(FString::Printf(TEXT("%.0f cm: first station at 37.5 (%.1f)"), Case.Key,
+            FVector::Dist(EndA.WorldFrame.GetLocation(), First.WorldFrame.GetLocation())),
+            FMath::IsNearlyEqual(FVector::Dist(EndA.WorldFrame.GetLocation(), First.WorldFrame.GetLocation()), 37.5f, 0.5f));
+        if (Case.Value > 1 && FPlacementProviderRegistry::FindFeature(Log, TEXT("Station.01"), Second))
             TestTrue(FString::Printf(TEXT("%.0f cm: 75 cm between stations"), Case.Key),
-                FMath::IsNearlyEqual(FVector::Dist(Features[2].WorldFrame.GetLocation(), Features[3].WorldFrame.GetLocation()), 75.0f, 0.5f));
+                FMath::IsNearlyEqual(FVector::Dist(First.WorldFrame.GetLocation(), Second.WorldFrame.GetLocation()), 75.0f, 0.5f));
         Log->Destroy();
     }
     return true;

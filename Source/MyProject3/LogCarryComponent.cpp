@@ -594,7 +594,8 @@ void ULogCarryComponent::FindBestSnapCandidate()
         return;
     }
     CurrentSolution = Solution;
-    SetSnapCandidate(Target, SourceFeature.LegacyIndex, TargetFeature.LegacyIndex, Solution.PieceTransform);
+    SetSnapCandidate(Target, HeldPiece->FindSnapPointIndex(SourceFeature.Id), Target->FindSnapPointIndex(TargetFeature.Id),
+        Solution.PieceTransform);
 }
 
 void ULogCarryComponent::SetSnapCandidate(

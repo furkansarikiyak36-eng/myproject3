@@ -505,7 +505,7 @@ void UPlacementKernelSubsystem::SolveStack(const FPlacementProfile& Profile, con
     }
     FPlacementPose Pose;
     if (!PlacementBodyMath::SolveStack(Lower, Upper, Intent.AimPoint, Intent.CarryYawDeg, Intent.bUpright,
-        GetParam(Profile, Intent, TEXT("gridCm"), 75.0f), GetParam(Profile, Intent, TEXT("interlock"), 0.82f),
+        GetParam(Profile, Intent, TEXT("moduleCm"), 75.0f), GetParam(Profile, Intent, TEXT("interlock"), 0.82f),
         GetParam(Profile, Intent, TEXT("postSeat"), 0.6f), Pose))
         return;
     // A wall stands at most maxRows logs high (Sons of the Forest: six).
@@ -778,8 +778,8 @@ void UPlacementKernelSubsystem::SolveStrut(const FPlacementProfile& Profile, con
     FPlacementPose Pose;
     float Length = 0.0f;
     FVector BeamPoint;
-    if (!PlacementBodyMath::SolveStrut(PostBody, BeamBody, Strut, Intent.AimPoint, GetParam(Profile, Intent, TEXT("legCm"), 90.0f),
-        GetParam(Profile, Intent, TEXT("minLengthCm"), 40.0f), Pose, Length, BeamPoint))
+    if (!PlacementBodyMath::SolveStrut(PostBody, BeamBody, Strut, Intent.AimPoint, GetParam(Profile, Intent, TEXT("legCm"), 75.0f),
+        GetParam(Profile, Intent, TEXT("moduleCm"), 75.0f), GetParam(Profile, Intent, TEXT("minLengthCm"), 40.0f), Pose, Length, BeamPoint))
         return;
     Candidate.bValid = true;
     Candidate.ProfileId = Profile.Id;

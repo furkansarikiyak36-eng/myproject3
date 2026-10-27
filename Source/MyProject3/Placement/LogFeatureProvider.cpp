@@ -14,19 +14,13 @@ namespace
 {
     const ALogBuildPiece* AsLog(const AActor* Piece) { return Cast<ALogBuildPiece>(Piece); }
 
-    /** Old snap points: automatic side points are body stations, other end tags are ends. */
-    EPlacementFeatureKind ClassifyLegacyPoint(const ALogBuildPiece* Log, const FLogSnapPoint& Point)
+    EPlacementFeatureKind ClassifyPoint(const FLogSnapPoint& Point)
     {
-        if (Point.PointId.ToString().StartsWith(TEXT("Station.")))
+        const FString Id = Point.PointId.ToString();
+        if (Id.StartsWith(TEXT("End.")))
+            return EPlacementFeatureKind::End;
+        if (Id.StartsWith(TEXT("Station.")))
             return EPlacementFeatureKind::Station;
-        MyProject3Construction::FLogGeometry Shape;
-        if (Point.SnapTag == TEXT("LogEnd") && MyProject3Construction::GetLogGeometry(Log, Shape) && Shape.HalfLength > KINDA_SMALL_NUMBER)
-        {
-            const FVector World = (Point.LocalTransform * Log->GetActorTransform()).GetLocation();
-            const float Along = FMath::Abs(FVector::DotProduct(World - Shape.Centre, Shape.Axis));
-            if (Along > 0.5f * Shape.HalfLength)
-                return EPlacementFeatureKind::End;
-        }
         return EPlacementFeatureKind::Authored;
     }
 }
@@ -72,7 +66,7 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
         const FLogSnapPoint& Point = Points[Index];
         FPlacementFeature Feature;
         Feature.Id = Point.PointId.IsNone() ? FName(*FString::Printf(TEXT("Point.%02d"), Index)) : Point.PointId;
-        Feature.Kind = ClassifyLegacyPoint(Log, Point);
+        Feature.Kind = ClassifyPoint(Point);
         Feature.Tag = Point.SnapTag;
         Feature.LocalFrame = Point.LocalTransform;
         Feature.WorldFrame = Log->GetSnapPointWorldTransform(Index);
@@ -80,7 +74,6 @@ void FLogFeatureProvider::GetFeatures(const AActor* Piece, TArray<FPlacementFeat
         Feature.bCanSource = Point.bCanSource;
         Feature.bCanReceive = Point.bCanReceive;
         Feature.bOccupied = Point.bOccupied;
-        Feature.LegacyIndex = Index;
         if (Feature.Kind == EPlacementFeatureKind::Station)
         {
             Feature.bRadialFree = true;
@@ -97,7 +90,7 @@ bool FLogFeatureProvider::CanLink(const AActor* Target, const FPlacementFeature&
     const ALogBuildPiece* SourceLog = AsLog(Source);
     if (!TargetLog || !SourceLog || TargetLog == SourceLog || !TargetLog->IsPlaced() || TargetLog->IsHeld())
         return false;
-    return TargetLog->CanSnapPointAccept(TargetFeature.LegacyIndex, SourceLog, SourceFeature.LegacyIndex);
+    return TargetLog->CanJoinById(TargetFeature.Id, SourceLog, SourceFeature.Id);
 }
 
 bool FLogFeatureProvider::CommitLink(AActor* Target, const FPlacementFeature& TargetFeature,
@@ -106,8 +99,7 @@ bool FLogFeatureProvider::CommitLink(AActor* Target, const FPlacementFeature& Ta
     ALogBuildPiece* TargetLog = Cast<ALogBuildPiece>(Target);
     ALogBuildPiece* SourceLog = Cast<ALogBuildPiece>(Source);
     // Attaches, reserves both points and adds the graph edge, or changes nothing.
-    return TargetLog && SourceLog &&
-        TargetLog->TryReserveSnapPoints(TargetFeature.LegacyIndex, SourceLog, SourceFeature.LegacyIndex);
+    return TargetLog && SourceLog && TargetLog->TryJoinById(TargetFeature.Id, SourceLog, SourceFeature.Id);
 }
 
 void FLogFeatureProvider::RevertLink(AActor* Target, const FPlacementFeature& TargetFeature,
@@ -181,42 +173,4 @@ void FLogFeatureProvider::ApplyPlacedState(AActor* Piece, AActor* Parent) const
     // A snap joint attaches by itself; a piece resting on a support follows it.
     if (Parent && !Log->GetAttachParentActor())
         Log->AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform);
-}
-
-void FLogFeatureProvider::BuildModularFeatures(const ALogBuildPiece* Log, float ModuleCm, TArray<FPlacementFeature>& OutFeatures)
-{
-    using namespace MyProject3Construction;
-    OutFeatures.Reset();
-    FLogGeometry Shape;
-    if (!Log || !GetLogGeometry(Log, Shape) || Shape.HalfLength <= KINDA_SMALL_NUMBER)
-        return;
-    const FTransform ActorTransform = Log->GetActorTransform();
-    const FVector Axis = Shape.Axis.GetSafeNormal();
-    const FVector Up = FMath::Abs(Axis.Z) > 0.9f ? FVector::XAxisVector : FVector::UpVector;
-
-    auto MakeFeature = [&](FName Id, EPlacementFeatureKind Kind, const FVector& Location, const FVector& Out)
-    {
-        FPlacementFeature Feature;
-        Feature.Id = Id;
-        Feature.Kind = Kind;
-        Feature.Tag = TEXT("LogEnd");
-        Feature.WorldFrame = FTransform(FRotationMatrix::MakeFromXZ(Out, Up).ToQuat(), Location);
-        Feature.LocalFrame = Feature.WorldFrame.GetRelativeTransform(ActorTransform);
-        Feature.bCanSource = Kind == EPlacementFeatureKind::End;
-        Feature.bCanReceive = true;
-        OutFeatures.Add(Feature);
-    };
-
-    MakeFeature(TEXT("End.A"), EPlacementFeatureKind::End, Shape.EndA(), -Axis);
-    MakeFeature(TEXT("End.B"), EPlacementFeatureKind::End, Shape.EndB(), Axis);
-
-    TArray<float> Offsets;
-    PlacementMath::ComputeStationOffsets(Shape.Length(), ModuleCm, Offsets);
-    for (int32 Index = 0; Index < Offsets.Num(); ++Index)
-    {
-        // A station has no fixed direction: its frame points along the log and
-        // the solver turns the joint about it.
-        MakeFeature(FName(*FString::Printf(TEXT("Station.%02d"), Index)), EPlacementFeatureKind::Station,
-            Shape.EndA() + Axis * Offsets[Index], Axis);
-    }
 }

@@ -11,19 +11,31 @@
 namespace PlacementBodyMath
 {
     /**
-     * A body on a lying body: along it (the next row of a wall), across it (a
-     * corner), or standing on it as a post. Grid positions are counted from the
-     * lower body's -axis end. CarryYawDeg is the direction the body is carried.
+     * Distance from a body's start end to its station nearest Along (also
+     * measured from the start). Stations sit at the centre of each complete
+     * module: 37.5, 112.5 ... for 75 cm. A body shorter than a module has one at
+     * its middle.
+     */
+    MYPROJECT3_API float NearestStation(float LengthCm, float ModuleCm, float Along);
+
+    /**
+     * A body on a lying body, on the stations of both: along it (the next row of a
+     * wall: the upper stations sit over the lower ones), across it (a corner: a
+     * station of each crosses the other), or standing on a station as a post.
+     * CarryYawDeg is the direction the body is carried.
      */
     MYPROJECT3_API bool SolveStack(const FPlacementBody& Lower, const FPlacementBody& Upper, const FVector& AimPoint,
-        float CarryYawDeg, bool bUpright, float GridCm, float Interlock, float PostSeat, FPlacementPose& OutPose);
+        float CarryYawDeg, bool bUpright, float ModuleCm, float Interlock, float PostSeat, FPlacementPose& OutPose);
 
     /**
      * A strut from the side of a post up to the beam resting on it, on the aimed
-     * side: from LegCm down the post to LegCm along the beam.
+     * side. It meets the beam under the beam station nearest LegCm from the post
+     * (never the post's own station) and goes as far down the post, at 45 degrees.
+     * ModuleCm 0 uses LegCm as it is.
      */
     MYPROJECT3_API bool SolveStrut(const FPlacementBody& Post, const FPlacementBody& Beam, const FPlacementBody& Strut,
-        const FVector& AimPoint, float LegCm, float MinLengthCm, FPlacementPose& OutPose, float& OutLength, FVector& OutBeamPoint);
+        const FVector& AimPoint, float LegCm, float ModuleCm, float MinLengthCm, FPlacementPose& OutPose, float& OutLength,
+        FVector& OutBeamPoint);
 
     /**
      * A board across two parallel supports A and B at the aimed place along A.

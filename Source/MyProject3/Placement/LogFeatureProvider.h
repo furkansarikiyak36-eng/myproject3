@@ -6,9 +6,11 @@
 class ALogBuildPiece;
 
 /**
- * Logs for the placement kernel. Until the 75 cm switch (plan, step 8) the
- * features are the log's existing snap points, so the game behaves exactly as
- * before; BuildModularFeatures is the 75 cm model the switch will use.
+ * Logs for the placement kernel. A log has two end faces (End.A at the -axis
+ * end, End.B) and one body station per complete 75 cm module of its real
+ * length (Station.00 at 37.5 cm from End.A, then every 75 cm: a 600 cm log has
+ * 8). Hand-made points on a mesh come along as Authored features. Joints are
+ * made by id, never by array position.
  */
 class MYPROJECT3_API FLogFeatureProvider : public IPlacementFeatureProvider
 {
@@ -33,10 +35,4 @@ public:
 
     static const FName Family;
 
-    /**
-     * Two end features (End.A at the -axis end, End.B) and one body station per
-     * complete module (Station.00 ...), from the log's real world length, so a
-     * log shortened by scale keeps 75 cm between stations in the world.
-     */
-    static void BuildModularFeatures(const ALogBuildPiece* Log, float ModuleCm, TArray<FPlacementFeature>& OutFeatures);
 };
