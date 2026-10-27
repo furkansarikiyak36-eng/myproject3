@@ -172,7 +172,7 @@ bool CaptureVoxelChunkSnapshots(UWorld* World, TArray<FWorldVoxelChunkSnapshot>&
     return true;
 }
 
-bool BuildInitializedVoxelChunkActorMap(UWorld* World, TMap<FGuid, AActor*>& OutActors)
+bool BuildVoxelChunkActorMap(UWorld* World, TMap<FGuid, AActor*>& OutActors)
 {
     OutActors.Reset();
     if (!World)
@@ -183,11 +183,19 @@ bool BuildInitializedVoxelChunkActorMap(UWorld* World, TMap<FGuid, AActor*>& Out
         AActor* Actor = *It;
         UVoxelTerrainChunkComponent* Chunk =
             IsValid(Actor) ? Actor->FindComponentByClass<UVoxelTerrainChunkComponent>() : nullptr;
-        if (!IsValid(Chunk) || !Chunk->HasInitializedDensity())
+        if (!IsValid(Chunk))
             continue;
 
         UWorldObjectIdentityComponent* Identity = Actor->FindComponentByClass<UWorldObjectIdentityComponent>();
-        if (!IsValid(Identity) || !Identity->InstanceId.IsValid() || OutActors.Contains(Identity->InstanceId))
+        if (!IsValid(Identity) || !Identity->InstanceId.IsValid())
+        {
+            // Uninitialized editor placeholders do not yet contribute world state.
+            // Every initialized/persisted chunk must carry a stable identity.
+            if (Chunk->HasInitializedDensity())
+                return false;
+            continue;
+        }
+        if (OutActors.Contains(Identity->InstanceId))
             return false;
         OutActors.Add(Identity->InstanceId, Actor);
     }
@@ -197,7 +205,7 @@ bool BuildInitializedVoxelChunkActorMap(UWorld* World, TMap<FGuid, AActor*>& Out
 bool ValidateVoxelChunkSnapshotSet(UWorld* World, const TArray<FWorldVoxelChunkSnapshot>& Snapshots)
 {
     TMap<FGuid, AActor*> CurrentActors;
-    if (!BuildInitializedVoxelChunkActorMap(World, CurrentActors) || CurrentActors.Num() != Snapshots.Num())
+    if (!BuildVoxelChunkActorMap(World, CurrentActors))
         return false;
 
     TSet<FGuid> SeenSnapshotIds;
@@ -215,7 +223,17 @@ bool ValidateVoxelChunkSnapshotSet(UWorld* World, const TArray<FWorldVoxelChunkS
             return false;
         SeenSnapshotIds.Add(Snapshot.ActorIdentityId);
     }
-    return SeenSnapshotIds.Num() == CurrentActors.Num();
+
+    // Already-initialized chunks in the target level must all be represented.
+    // An uninitialized chunk may be restored from a snapshot, so it is allowed
+    // to appear in the save even though it has no density grid yet.
+    for (const TPair<FGuid, AActor*>& Pair : CurrentActors)
+    {
+        UVoxelTerrainChunkComponent* Chunk = Pair.Value->FindComponentByClass<UVoxelTerrainChunkComponent>();
+        if (IsValid(Chunk) && Chunk->HasInitializedDensity() && !SeenSnapshotIds.Contains(Pair.Key))
+            return false;
+    }
+    return true;
 }
 
 bool ApplyVoxelChunkSnapshots(UWorld* World, const TArray<FWorldVoxelChunkSnapshot>& Snapshots)
@@ -224,7 +242,7 @@ bool ApplyVoxelChunkSnapshots(UWorld* World, const TArray<FWorldVoxelChunkSnapsh
         return false;
 
     TMap<FGuid, AActor*> CurrentActors;
-    if (!BuildInitializedVoxelChunkActorMap(World, CurrentActors))
+    if (!BuildVoxelChunkActorMap(World, CurrentActors))
         return false;
 
     // The complete set was validated before any component is changed. A failed
