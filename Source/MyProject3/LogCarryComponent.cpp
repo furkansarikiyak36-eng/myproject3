@@ -2088,9 +2088,14 @@ bool ULogCarryComponent::TransferMaterialOwnership(
 
 bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
 {
-    const IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
-    if (!Structural || Cast<ALogBuildPiece>(Piece) || IsValid(HeldPiece) || IsValid(HeldMaterialPiece))
+    IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
+    UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+        ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    if (!Structural || !Identity || Cast<ALogBuildPiece>(Piece) ||
+        IsValid(HeldPiece) || IsValid(HeldMaterialPiece))
+    {
         return false;
+    }
     if (Structural->IsStructurallyPlaced())
     {
         PlacementStatus = TEXT("This piece is part of a structure.");
@@ -2099,21 +2104,46 @@ bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
     if (!CarryOwnerId.IsValid())
         CarryOwnerId = FGuid::NewGuid();
 
-    UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr;
+    UCarryLoadComponent* Load = GetOwner()
+        ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr;
     FString Reason;
     if (Load && !Load->CanCarryMore(Piece, Reason))
     {
         PlacementStatus = Reason;
         return false;
     }
-    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation()))
+
+    const EWorldObjectLifecycleState PreviousLifecycle = Identity->GetLifecycleState();
+    if ((PreviousLifecycle != EWorldObjectLifecycleState::World &&
+         PreviousLifecycle != EWorldObjectLifecycleState::Placed) ||
+        !Identity->TryTransitionLifecycle(
+            PreviousLifecycle, EWorldObjectLifecycleState::Held))
     {
+        PlacementStatus = TEXT("The object lifecycle rejected the pickup.");
+        return false;
+    }
+
+    if (!TransferMaterialOwnership(
+        Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation()))
+    {
+        Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, PreviousLifecycle);
         PlacementStatus = TEXT("The ownership ledger rejected the pickup.");
         return false;
     }
+
     if (!SetMaterialHeld(Piece, true))
     {
-        TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
+        const bool bOwnerRestored = TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
+        const bool bLifecycleRestored = Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Held, PreviousLifecycle);
+        if (!bOwnerRestored || !bLifecycleRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error,
+                TEXT("Material pickup rollback failed for %s."), *GetNameSafe(Piece));
+        }
         PlacementStatus = TEXT("The piece refused to be held.");
         return false;
     }
@@ -2335,12 +2365,23 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
     AActor* Piece = HeldMaterialPiece;
     IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
     IStructuralPieceInterface* HeldStructural = Cast<IStructuralPieceInterface>(Piece);
-    if (!IsValid(Piece) || !IsValid(Target) || Target == Piece || !TargetPiece || !HeldStructural)
+    UWorld* World = GetWorld();
+    UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+        ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    if (!IsValid(Piece) || !IsValid(Target) || Target == Piece ||
+        !TargetPiece || !HeldStructural || !Identity || !World ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held)
+    {
         return false;
+    }
+    if (!TargetPiece->IsStructurallyPlaced())
+    {
+        PlacementStatus = TEXT("The target is not part of a valid placed structure.");
+        return false;
+    }
 
     EnsureMaterialAnchors(Target);
-    UPlacementKernelSubsystem* Kernel = GetWorld()
-        ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
     if (!Kernel || !Kernel->IsCatalogReady())
     {
         PlacementStatus = TEXT("Placement profiles are not loaded; material placement is unavailable.");
@@ -2368,15 +2409,15 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
         return false;
     }
 
-    UMaterialConnectionSubsystem* Connections =
-        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
+    UMaterialConnectionSubsystem* Connections = World->GetSubsystem<UMaterialConnectionSubsystem>();
     FString Reason;
     if (SourceKind != TargetKind)
     {
         if (!Connections ||
             !Connections->CanConnect(Target, TargetAnchorId, Piece, TEXT("AutoBottom"), Reason))
         {
-            PlacementStatus = FString::Printf(TEXT("No explicit material rule permits this joint: %s"), *Reason);
+            PlacementStatus = FString::Printf(
+                TEXT("No explicit material rule permits this joint: %s"), *Reason);
             return false;
         }
     }
@@ -2386,7 +2427,8 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
         return false;
     }
 
-    const FTransform TargetWorldFeature = TargetAnchor.LocalTransform * Target->GetActorTransform();
+    const FTransform TargetWorldFeature =
+        TargetAnchor.LocalTransform * Target->GetActorTransform();
     FPlacementSolution Solution;
     FString SolveFailure;
     if (!Kernel->SolveAnchorPair(ProfileId, SourceAnchor.LocalTransform,
@@ -2401,87 +2443,94 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
         TArray<AActor*> IgnoredActors;
         IgnoredActors.Add(Target);
         FString CollisionFailure;
-        if (!Kernel->ValidateCandidatePose(Piece, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
+        if (!Kernel->ValidateCandidatePose(
+            Piece, Solution.ActorWorldTransform, IgnoredActors, CollisionFailure))
         {
             PlacementStatus = TEXT("The material placement is blocked by another object.");
             return false;
         }
     }
 
-    // Move the unique item record before committing its physical/graph relation.
-    // Every failure path must restore this same record to Held.
-    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
-        EWorldItemOwnerKind::World, Solution.ActorWorldTransform.GetLocation()))
+    FPlacementTransactionJournal Transaction(World);
+    if (!Transaction.RecordActor(Piece) ||
+        !Transaction.RecordActor(Target) ||
+        !Transaction.CaptureStructuralGraph())
     {
-        PlacementStatus = TEXT("The ownership ledger rejected the material placement.");
+        PlacementStatus = TEXT("The material placement transaction could not capture the world state.");
         return false;
     }
+
+    // Restore the Held actor state after graph restore on every failed branch.
+    Transaction.AddUndo([Piece]()
+    {
+        return SetMaterialHeld(Piece, true);
+    });
+
+    Piece->SetActorTransform(
+        Solution.ActorWorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 
     bool bConnected = false;
     if (SourceKind != TargetKind)
     {
-        if (Connections)
-            bConnected = Connections->TryConnectAt(
-                Target, TargetAnchorId, Piece, TEXT("AutoBottom"),
-                Solution.ActorWorldTransform, Reason);
+        bConnected = Connections->TryConnectAt(
+            Target, TargetAnchorId, Piece, TEXT("AutoBottom"),
+            Solution.ActorWorldTransform, Reason);
     }
     else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
     {
-        bConnected = Stone->TryConnectToAnchorAt(
-            Cast<AStoneBuildingPiece>(Target), TargetAnchorId, TEXT("AutoBottom"),
-            Solution.ActorWorldTransform);
+        AStoneBuildingPiece* TargetStone = Cast<AStoneBuildingPiece>(Target);
+        bConnected = TargetStone && Stone->TryConnectToAnchorAt(
+            TargetStone, TargetAnchorId, TEXT("AutoBottom"), Solution.ActorWorldTransform);
         if (!bConnected)
             Reason = TEXT("The stone anchors are incompatible or the attachment failed.");
     }
     else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
     {
-        Stick->SetHeldState(false);
-        if (UStaticMeshComponent* Mesh = Piece->FindComponentByClass<UStaticMeshComponent>())
-            Mesh->SetSimulatePhysics(false);
-        bConnected = Stick->TryConnectToAnchorAt(
-            Cast<AStickPrimitivePiece>(Target), TargetAnchorId, TEXT("AutoBottom"),
-            Solution.ActorWorldTransform);
+        AStickPrimitivePiece* TargetStick = Cast<AStickPrimitivePiece>(Target);
+        bConnected = TargetStick && Stick->TryConnectToAnchorAt(
+            TargetStick, TargetAnchorId, TEXT("AutoBottom"), Solution.ActorWorldTransform);
         if (!bConnected)
             Reason = TEXT("The stick anchors are incompatible or the attachment failed.");
     }
 
     if (!bConnected)
     {
-        const bool bOwnershipRestored = TransferMaterialOwnership(
-            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
-        SetMaterialHeld(Piece, true);
-        if (!bOwnershipRestored)
-        {
-            Piece->SetActorHiddenInGame(true);
-            Piece->SetActorEnableCollision(false);
-            UE_LOG(LogTemp, Error,
-                TEXT("Material placement rollback could not restore ownership for %s."),
-                *GetNameSafe(Piece));
-        }
+        Transaction.Rollback();
         PlacementStatus = FString::Printf(TEXT("Cannot place here: %s"), *Reason);
         return false;
     }
 
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("The object lifecycle rejected the structural placement.");
+        return false;
+    }
+    Transaction.AddUndo([Identity]()
+    {
+        return Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+    });
+
+    if (!TransferMaterialOwnership(
+        Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World,
+        Solution.ActorWorldTransform.GetLocation()))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("The ownership ledger rejected the structural placement.");
+        return false;
+    }
+    Transaction.AddUndo([this, Piece, PreviousLocation = Transaction.GetRecordedWorldLocation(Piece)]()
+    {
+        return TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, PreviousLocation);
+    });
+
+    Transaction.Commit();
     if (!FinishMaterialPlacement(Piece, true))
     {
-        if (SourceKind != TargetKind && Connections)
-            Connections->TryDisconnect(Piece);
-        else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
-            Stone->RemoveConnection();
-        else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
-            Stick->RemoveConnection();
-
-        const bool bOwnershipRestored = TransferMaterialOwnership(
-            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
-        SetMaterialHeld(Piece, true);
-        if (!bOwnershipRestored)
-        {
-            Piece->SetActorHiddenInGame(true);
-            Piece->SetActorEnableCollision(false);
-            UE_LOG(LogTemp, Error,
-                TEXT("Material finalization rollback could not restore ownership for %s."),
-                *GetNameSafe(Piece));
-        }
+        PlacementStatus = TEXT("The connection committed, but carry finalization could not complete.");
         return false;
     }
 
@@ -2494,10 +2543,16 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
 {
     AActor* Piece = HeldMaterialPiece;
     IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
-    if (!IsValid(Piece) || !Structural || GroundPoint.ContainsNaN() || !GetWorld())
+    UWorld* World = GetWorld();
+    UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+        ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    if (!IsValid(Piece) || !Structural || !Identity || GroundPoint.ContainsNaN() || !World ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held)
+    {
         return false;
+    }
 
-    UPlacementKernelSubsystem* Kernel = GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
     if (!Kernel || !Kernel->IsCatalogReady())
     {
         PlacementStatus = TEXT("Placement profiles are not loaded; surface placement is unavailable.");
@@ -2522,7 +2577,7 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
         Params.AddIgnoredActor(GetOwner());
     const FVector Start = GroundPoint + FVector::UpVector * 100.0f;
     const FVector End = GroundPoint - FVector::UpVector * 250.0f;
-    if (!GetWorld()->LineTraceSingleByChannel(SurfaceHit, Start, End, ECC_Visibility, Params) ||
+    if (!World->LineTraceSingleByChannel(SurfaceHit, Start, End, ECC_Visibility, Params) ||
         !SurfaceHit.bBlockingHit || Cast<IStructuralPieceInterface>(SurfaceHit.GetActor()))
     {
         PlacementStatus = TEXT("The selected point is not a valid ground surface.");
@@ -2558,40 +2613,68 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
         return false;
     }
 
-    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
-        EWorldItemOwnerKind::World, Solution.ActorWorldTransform.GetLocation()))
+    FPlacementTransactionJournal Transaction(World);
+    if (!Transaction.RecordActor(Piece) || !Transaction.CaptureStructuralGraph())
     {
-        PlacementStatus = TEXT("The ownership ledger rejected the ground placement.");
+        PlacementStatus = TEXT("The ground placement transaction could not capture the world state.");
         return false;
     }
 
+    Transaction.AddUndo([Piece]()
+    {
+        return SetMaterialHeld(Piece, true);
+    });
+
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("The object lifecycle rejected ground placement.");
+        return false;
+    }
+    Transaction.AddUndo([Identity]()
+    {
+        return Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+    });
+
+    if (!TransferMaterialOwnership(
+        Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World,
+        Solution.ActorWorldTransform.GetLocation()))
+    {
+        Transaction.Rollback();
+        PlacementStatus = TEXT("The ownership ledger rejected ground placement.");
+        return false;
+    }
+    Transaction.AddUndo([this, Piece, PreviousLocation = Transaction.GetRecordedWorldLocation(Piece)]()
+    {
+        return TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, PreviousLocation);
+    });
+
     bool bPlaced = false;
     if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
+    {
         bPlaced = Stone->TryCommitGroundPlacement(
             Solution.ActorWorldTransform.GetLocation(), Solution.ActorWorldTransform.Rotator());
+    }
     else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
+    {
         bPlaced = Stick->TryCommitGroundPlacement(
             Solution.ActorWorldTransform.GetLocation(), Solution.ActorWorldTransform.Rotator());
+    }
 
     if (!bPlaced)
     {
-        const bool bOwnershipRestored = TransferMaterialOwnership(
-            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
-        if (!bOwnershipRestored)
-        {
-            Piece->SetActorHiddenInGame(true);
-            Piece->SetActorEnableCollision(false);
-            UE_LOG(LogTemp, Error,
-                TEXT("Ground placement rollback could not restore ownership for %s."),
-                *GetNameSafe(Piece));
-        }
+        Transaction.Rollback();
         PlacementStatus = TEXT("Cannot place on the ground here.");
         return false;
     }
 
+    Transaction.Commit();
     if (!FinishMaterialPlacement(Piece, true))
     {
-        PlacementStatus = TEXT("Ground placement was committed but carry finalization failed.");
+        PlacementStatus = TEXT("Ground placement committed, but carry finalization could not complete.");
         return false;
     }
 
@@ -2624,26 +2707,69 @@ bool ULogCarryComponent::PlaceHeldMaterialPiece()
 void ULogCarryComponent::DropHeldMaterialPiece()
 {
     AActor* Piece = HeldMaterialPiece;
-    if (!Piece)
+    UWorldObjectIdentityComponent* Identity = IsValid(Piece)
+        ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    if (!IsValid(Piece) || !Identity ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held)
+    {
         return;
+    }
+
     FVector ViewLocation;
     FRotator ViewRotation;
     const FVector DropLocation = GetViewPoint(ViewLocation, ViewRotation)
         ? ViewLocation + ViewRotation.Vector() * 110.0f : Piece->GetActorLocation();
-    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, DropLocation))
+
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World))
+    {
+        PlacementStatus = TEXT("The object lifecycle rejected the drop.");
         return;
+    }
+
+    if (!TransferMaterialOwnership(
+        Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, DropLocation))
+    {
+        Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held);
+        PlacementStatus = TEXT("The ownership ledger rejected the drop.");
+        return;
+    }
+
+    if (!SetMaterialHeld(Piece, false))
+    {
+        const bool bOwnershipRestored = TransferMaterialOwnership(
+            Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        const bool bLifecycleRestored = Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held);
+        if (!bOwnershipRestored || !bLifecycleRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error,
+                TEXT("Material drop rollback failed for %s."), *GetNameSafe(Piece));
+        }
+        return;
+    }
+
     Piece->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics);
     Piece->SetActorEnableCollision(true);
-    SetMaterialHeld(Piece, false);
     if (UStaticMeshComponent* Mesh = Piece->FindComponentByClass<UStaticMeshComponent>())
     {
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
         Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
         Mesh->SetSimulatePhysics(true);
     }
-    if (UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
+    if (UCarryLoadComponent* Load = GetOwner()
+        ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
+    {
         Load->UnregisterCarried(Piece);
+    }
+
     HeldMaterialPiece = nullptr;
+    MaterialSnapTarget = nullptr;
+    MaterialSnapAnchor = NAME_None;
+    bMaterialGroundPreview = false;
     PlacementStatus = TEXT("Dropped.");
 }
 
