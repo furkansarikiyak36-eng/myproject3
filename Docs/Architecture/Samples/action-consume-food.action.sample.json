@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_CONSUME_FOOD",
+  "displayNameKey": "action.consume_food",
+  "ownerSystem": "SURVIVAL",
+  "targetKinds": [
+    "InventoryItem"
+  ],
+  "targetFamilies": [
+    "Food"
+  ],
+  "outputItemDefinitionIds": [],
+  "operationMode": "Instant",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "RESOURCE_CONSUMED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "MissingMaterial",
+    "InvalidState",
+    "InsufficientResources",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresLooseTarget": false,
+  "noiseLevel": 0,
+  "lightLevel": 0,
+  "feedbackEventIds": [],
+  "notes": "Input consumption and survival-state update must commit as one defined outcome."
+}
