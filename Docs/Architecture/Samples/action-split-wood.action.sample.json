@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_SPLIT_WOOD",
+  "displayNameKey": "action.split_wood",
+  "ownerSystem": "WOOD_PROCESSING",
+  "targetKinds": [
+    "PhysicalItem"
+  ],
+  "targetFamilies": [
+    "Wood"
+  ],
+  "allowedTargetStateIds": [
+    "STATE_WOOD_WHOLE"
+  ],
+  "requiredToolDefinitionIds": [
+    "TOOL_AXE_BASIC"
+  ],
+  "processTransitionIds": [
+    "PROC_LOG_SPLIT"
+  ],
+  "operationMode": "HitProgress",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "OBJECT_PROCESSED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "MissingTool",
+    "InvalidState",
+    "PrerequisiteNotMet",
+    "MissingConfiguration",
+    "InsufficientResources",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresGroundContact": true,
+  "requiresLooseTarget": true,
+  "maximumRangeCm": 220,
+  "progressResumePolicy": "ResetProgress",
+  "noiseLevel": 0.4,
+  "lightLevel": 0,
+  "feedbackEventIds": [
+    "SFX_WOOD_SPLIT",
+    "VFX_WOOD_CHIP"
+  ],
+  "notes": "Splitting is an explicit state transition; it must not be confused with a half-length cross-cut."
+}
