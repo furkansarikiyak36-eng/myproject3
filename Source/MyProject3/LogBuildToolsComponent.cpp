@@ -6,6 +6,7 @@
 #include "LogBuildPiece.h"
 #include "LogCarryComponent.h"
 #include "LogContainerActor.h"
+#include "Placement/PlacementKernelSubsystem.h"
 #include "StickPrimitivePiece.h"
 #include "HarvestableTreeActor.h"
 #include "RopeLineActor.h"
@@ -445,127 +446,41 @@ void ULogBuildToolsComponent::TickComponent(float DeltaTime, ELevelTick TickType
 
 // ---------------------------------------------------------------- floors, roofs, bridges, stairs
 
+UPlacementKernelSubsystem* ULogBuildToolsComponent::GetKernel() const
+{
+    return GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+}
+
+FPlacementSolution ULogBuildToolsComponent::SolveDeck(ALogBuildPiece* Board, AActor* Support, const FVector& AimPoint,
+    const FVector& ViewDirection, bool bStairs) const
+{
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    FPlacementSolution Solution;
+    if (!Board || !Kernel)
+    {
+        Solution.Reason = TEXT("Carry a log or board.");
+        return Solution;
+    }
+    FPlacementIntent Intent;
+    Intent.Held = Board;
+    Intent.AimActor = Support;
+    Intent.AimPoint = AimPoint;
+    Intent.ViewDirection = ViewDirection;
+    Intent.AllowedProfiles = { bStairs ? FName(TEXT("log.stairs")) : FName(TEXT("log.deck")) };
+    return Kernel->Solve(Intent);
+}
+
 bool ULogBuildToolsComponent::ComputeDeckPlacement(ALogBuildPiece* Board, AActor* Support, const FVector& AimPoint,
     const FVector& ViewDirection, bool bStairs, FTransform& OutTransform, AActor*& OutSecondSupport,
     float& OutSpan, FString& OutReason) const
 {
-    FLogGeometry BoardShape;
-    if (!GetLogGeometry(Board, BoardShape))
-    {
-        OutReason = TEXT("Carry a log or board.");
+    const FPlacementSolution Solution = SolveDeck(Board, Support, AimPoint, ViewDirection, bStairs);
+    OutReason = Solution.Reason;
+    if (!Solution.bValid)
         return false;
-    }
-    const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
-    FVector A0, A1;
-    float R1 = 0.0f;
-    if (!SupportPiece || !SupportPiece->IsStructurallyPlaced() || !GetSupportLine(Support, A0, A1, R1))
-    {
-        OutReason = TEXT("Floor mode: aim at a placed beam, stringer or rope.");
-        return false;
-    }
-    FVector Axis1 = (A1 - A0).GetSafeNormal();
-    if (Axis1.Z < 0.0f)
-    {
-        Axis1 = -Axis1;
-        Swap(A0, A1);
-    }
-    if (Axis1.Z > 0.95f)
-    {
-        OutReason = TEXT("Boards rest on beams, not on standing posts.");
-        return false;
-    }
-    const bool bSloped = Axis1.Z > 0.3f;
-    const FVector Horizontal1 = FVector(Axis1.X, Axis1.Y, 0.0f).GetSafeNormal();
-    const FVector Perp = FVector::CrossProduct(FVector::UpVector, Horizontal1).GetSafeNormal();
-    const FVector P = ClosestPointOnSegment(AimPoint, A0, A1);
-    const float MaxSpan = BoardShape.Length() - 20.0f;
-
-    AActor* Best = nullptr;
-    float BestScore = TNumericLimits<float>::Max();
-    float BestOffset = 0.0f;
-    auto Consider = [&](AActor* Candidate)
-    {
-        if (!Candidate || Candidate == Support || Candidate == Board)
-            return;
-        const IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Candidate);
-        FVector C0, C1;
-        float Rc = 0.0f;
-        if (!Piece || !Piece->IsStructurallyPlaced() || !GetSupportLine(Candidate, C0, C1, Rc))
-            return;
-        if (FMath::Abs(FVector::DotProduct((C1 - C0).GetSafeNormal(), Axis1)) < 0.9f)
-            return; // Not parallel.
-        const FVector Delta = ClosestPointOnSegment(P, C0, C1) - P;
-        const float Offset = FVector::DotProduct(Delta, Perp);
-        if ((Delta - Perp * Offset).Size() > 80.0f || FMath::Abs(Offset) < 30.0f || FMath::Abs(Offset) > MaxSpan)
-            return;
-        // Prefer the side the player looks toward, then the nearer one.
-        const float Score = FMath::Abs(Offset) - (FVector::DotProduct(Perp * FMath::Sign(Offset), ViewDirection) > 0.0f ? 10000.0f : 0.0f);
-        if (Score < BestScore)
-        {
-            BestScore = Score;
-            Best = Candidate;
-            BestOffset = Offset;
-        }
-    };
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
-    {
-        if (FVector::Dist(It->GetActorLocation(), P) < 2.0f * BoardShape.Length() + 600.0f)
-            Consider(*It);
-    }
-    for (TActorIterator<ARopeLineActor> It(GetWorld()); It; ++It)
-        Consider(*It);
-    if (!Best)
-    {
-        OutReason = FString::Printf(TEXT("Needs a second parallel beam within %.0f cm (the board's length)."), MaxSpan);
-        return false;
-    }
-
-    const float Pitch = bStairs ? StairStepSpacing : 2.0f * BoardShape.Radius + 1.0f;
-    const float SupportLength = FVector::Dist(A0, A1);
-    const float Along = FMath::Clamp(FMath::RoundToFloat(FVector::DotProduct(P - A0, Axis1) / Pitch) * Pitch,
-        BoardShape.Radius, FMath::Max(BoardShape.Radius, SupportLength - BoardShape.Radius));
-    const FVector P2 = A0 + Axis1 * Along;
-    FVector C0, C1;
-    float R2 = 0.0f;
-    GetSupportLine(Best, C0, C1, R2);
-    const FVector Q2 = ClosestPointOnSegment(P2, C0, C1);
-    FVector BoardAxis = Q2 - P2;
-    BoardAxis.Z = 0.0f;
-    if (!BoardAxis.Normalize())
-    {
-        OutReason = TEXT("The supports are on top of each other.");
-        return false;
-    }
-    FVector Centre = 0.5f * (P2 + Q2);
-    Centre.Z = FMath::Max(P2.Z + R1, Q2.Z + R2) + BoardShape.Radius;
-    FVector UpHint = FVector::UpVector;
-    if (bSloped && !bStairs)
-    {
-        // Ramp boards tilt with the slope so their faces form one surface.
-        UpHint = FVector::CrossProduct(BoardAxis, Axis1).GetSafeNormal();
-        if (UpHint.Z < 0.0f)
-            UpHint = -UpHint;
-    }
-    OutTransform = MakeLogTransform(Board, Centre, MakeLogRotation(Board, BoardAxis, UpHint));
-    OutSecondSupport = Best;
-    OutSpan = FVector::Dist2D(P2, Q2);
-
-    TArray<FOverlapResult> Overlaps;
-    FCollisionQueryParams Params(SCENE_QUERY_STAT(DeckSlot), false, Board);
-    Params.AddIgnoredActor(Support);
-    Params.AddIgnoredActor(Best);
-    Params.AddIgnoredActor(GetOwner());
-    GetWorld()->OverlapMultiByObjectType(Overlaps, Centre, FQuat::Identity,
-        FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects),
-        FCollisionShape::MakeSphere(BoardShape.Radius * 0.7f), Params);
-    for (const FOverlapResult& Overlap : Overlaps)
-    {
-        if (Cast<ALogBuildPiece>(Overlap.GetActor()))
-        {
-            OutReason = TEXT("This spot already has a board.");
-            return false;
-        }
-    }
+    OutTransform = Solution.PieceTransform;
+    OutSecondSupport = Solution.GetTarget(EPlacementLinkRole::Secondary);
+    OutSpan = Solution.SpanCm;
     return true;
 }
 
@@ -573,21 +488,13 @@ bool ULogBuildToolsComponent::TryPlaceDeck(AActor* Support, const FVector& AimPo
 {
     ULogCarryComponent* Carry = GetCarry();
     ALogBuildPiece* Board = Carry ? Carry->HeldPiece.Get() : nullptr;
-    FTransform Transform;
-    AActor* Second = nullptr;
-    float Span = 0.0f;
-    FString Reason;
-    if (!ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs, Transform, Second, Span, Reason))
+    FPlacementSolution Solution = SolveDeck(Board, Support, AimPoint, ViewDirection, bStairs);
+    if (!Solution.bValid)
     {
         // No second support: on a floor or beam edge it becomes a single step.
         if (TryPlaceSingleStep(Cast<ALogBuildPiece>(Support), AimPoint))
             return true;
-        SetStatus(Reason);
-        return true;
-    }
-    if (Carry->IsBadlyDamaged(Support) || Carry->IsBadlyDamaged(Second))
-    {
-        SetStatus(TEXT("This piece is damaged: repair it before building on it (LMB with the axe)."));
+        SetStatus(Solution.Reason);
         return true;
     }
     // Floors, ramps and steps are made of split logs: a full log is split on the spot.
@@ -596,26 +503,30 @@ bool ULogBuildToolsComponent::TryPlaceDeck(AActor* Support, const FVector& AimPo
     {
         Board = Carry->HeldPiece;
         SplitNote = TEXT(" Split in half; the other half is on your shoulder.");
-        if (!Board || !ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs, Transform, Second, Span, Reason))
+        Solution = SolveDeck(Board, Support, AimPoint, ViewDirection, bStairs);
+        if (!Board || !Solution.bValid)
         {
-            SetStatus(Reason);
+            SetStatus(Solution.Reason);
             return true;
         }
     }
     // A board much longer than the gap is cut to fit; the offcut drops at the feet.
     FLogGeometry Shape;
     GetLogGeometry(Board, Shape);
-    const float Fit = Span + 4.0f * Shape.Radius + 30.0f;
+    const float Fit = Solution.SpanCm + 4.0f * Shape.Radius + 30.0f;
     FString Note;
-    if (Shape.Length() > Fit * 1.15f)
+    if (Shape.Length() > Fit * 1.15f &&
+        CutOffRemainder(Board, Fit, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f))
     {
-        if (CutOffRemainder(Board, Fit, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f))
+        Note = FString::Printf(TEXT(" Cut to %.0f cm."), Fit);
+        Solution = SolveDeck(Board, Support, AimPoint, ViewDirection, bStairs);
+        if (!Solution.bValid)
         {
-            Note = FString::Printf(TEXT(" Cut to %.0f cm."), Fit);
-            ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs, Transform, Second, Span, Reason);
+            SetStatus(Solution.Reason);
+            return true;
         }
     }
-    if (!Carry->CommitHeldLogAt(Transform, Support, Second))
+    if (!Carry->CommitHeldSolution(Solution))
     {
         SetStatus(TEXT("The board could not be placed."));
         return true;
@@ -627,9 +538,22 @@ bool ULogBuildToolsComponent::TryPlaceDeck(AActor* Support, const FVector& AimPo
 bool ULogBuildToolsComponent::TryPlaceSingleStep(ALogBuildPiece* Edge, const FVector& AimPoint)
 {
     ULogCarryComponent* Carry = GetCarry();
-    FLogGeometry Floor;
-    if (!Carry || !Carry->HeldPiece || !Edge || !Edge->IsPlaced() || !IsHorizontalLog(Edge) || !GetLogGeometry(Edge, Floor) ||
-        Carry->IsBadlyDamaged(Edge))
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Carry || !Carry->HeldPiece || !Edge || !Kernel)
+        return false;
+    // In front of the edge, on the player's side, a little lower than its top.
+    auto Solve = [&]()
+    {
+        FPlacementIntent Intent;
+        Intent.Held = Carry->HeldPiece;
+        Intent.AimActor = Edge;
+        Intent.AimPoint = AimPoint;
+        Intent.PlacerLocation = GetOwner() ? GetOwner()->GetActorLocation() : FVector::ZeroVector;
+        Intent.AllowedProfiles = { TEXT("log.step") };
+        return Kernel->Solve(Intent);
+    };
+    FPlacementSolution Solution = Solve();
+    if (!Solution.bValid)
         return false;
     if (Carry->HeldPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
         Carry->SplitCarriedLogInHalf();
@@ -637,29 +561,10 @@ bool ULogBuildToolsComponent::TryPlaceSingleStep(ALogBuildPiece* Edge, const FVe
     FLogGeometry Step;
     if (!Board || !GetLogGeometry(Board, Step))
         return false;
-    // In front of the edge, on the player's side, a little lower than its top.
-    const FVector OnEdge = ClosestPointOnSegment(AimPoint, Floor.EndA(), Floor.EndB());
-    FVector Out = GetOwner()->GetActorLocation() - OnEdge;
-    Out.Z = 0.0f;
-    const FVector Along = Floor.Axis.GetSafeNormal2D();
-    Out = (Out - Along * FVector::DotProduct(Out, Along)).GetSafeNormal();
-    if (Out.IsNearlyZero())
-    {
-        // Otherwise the side of the edge the player aimed at.
-        Out = AimPoint - OnEdge;
-        Out.Z = 0.0f;
-        Out = (Out - Along * FVector::DotProduct(Out, Along)).GetSafeNormal();
-    }
-    if (Out.IsNearlyZero())
-        return false;
-    constexpr float StepLength = 150.0f;
-    if (Step.Length() > StepLength + 10.0f)
-        CutOffRemainder(Board, StepLength, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
-    GetLogGeometry(Board, Step);
-    FVector Centre = OnEdge + Out * (Floor.Radius + Step.Radius + 25.0f);
-    Centre.Z = Floor.Centre.Z + Floor.Radius - 25.0f - Step.Radius;
-    const FTransform Target = MakeLogTransform(Board, Centre, MakeLogRotation(Board, Along, FVector::UpVector));
-    if (!Carry->CommitHeldLogAt(Target, Edge, nullptr))
+    if (Step.Length() > Solution.RequiredLengthCm + 10.0f)
+        CutOffRemainder(Board, Solution.RequiredLengthCm, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+    Solution = Solve();
+    if (!Solution.bValid || !Carry->CommitHeldSolution(Solution))
         return false;
     SetStatus(TEXT("Single step placed."), 2.5f);
     return true;
@@ -775,66 +680,51 @@ ABuildPlanActor* ULogBuildToolsComponent::PlaceDefenseLine(const FVector& From, 
 
 bool ULogBuildToolsComponent::TryFillApex(ALogBuildPiece* SlopedBeam)
 {
+    static const TCHAR* AimHelp = TEXT("Carry a log and aim at a sloped beam to fill the gable under it.");
+    static const TCHAR* SlopeHelp = TEXT("A gable is filled under a sloped beam.");
     ULogCarryComponent* Carry = GetCarry();
     ALogBuildPiece* Log = Carry ? Carry->HeldPiece.Get() : nullptr;
-    FLogGeometry Beam, Held;
-    if (!Log || !SlopedBeam || !SlopedBeam->IsPlaced() || !GetLogGeometry(SlopedBeam, Beam) || !GetLogGeometry(Log, Held))
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Log || !Kernel)
     {
-        SetStatus(TEXT("Carry a log and aim at a sloped beam to fill the gable under it."));
+        SetStatus(AimHelp);
         return false;
     }
-    const float Slope = FMath::Abs(Beam.Axis.Z);
-    if (Slope < 0.15f || Slope > 0.9f)
+    auto Solve = [&]()
     {
-        SetStatus(TEXT("A gable is filled under a sloped beam."));
-        return false;
+        FPlacementIntent Intent;
+        Intent.Held = Carry->HeldPiece;
+        Intent.AimActor = SlopedBeam;
+        Intent.AllowedProfiles = { TEXT("log.gable") };
+        return Kernel->Solve(Intent);
+    };
+    // Rows from the beam's low end upwards; the next free one, cut to where it meets the slope.
+    FPlacementSolution Solution = Solve();
+    if (!Solution.bValid)
+    {
+        SetStatus(Solution.Reason);
+        return Solution.Reason != AimHelp && Solution.Reason != SlopeHelp;
     }
-    FVector Low = Beam.EndA(), High = Beam.EndB();
-    if (Low.Z > High.Z)
-        Swap(Low, High);
-    const FVector Run = High - Low;
-    const FVector Along = Run.GetSafeNormal2D();
-    const float Span = Run.Size2D();
-    const float Tan = (High.Z - Low.Z) / FMath::Max(Span, 1.0f);
-    const float Step = 2.0f * Held.Radius * 0.9f;
-
-    // Rows from the beam's low end upwards; each ends where it meets the slope.
-    for (int32 Row = 0; Row < 24; ++Row)
+    const int32 Row = FMath::RoundToInt(Solution.Score);
+    const float Length = Solution.RequiredLengthCm;
+    FLogGeometry Held;
+    GetLogGeometry(Log, Held);
+    if (Held.Length() > Length + 10.0f)
     {
-        const float Z = Low.Z - Beam.Radius + Held.Radius + Row * Step;
-        const float Start = (Z + Held.Radius + Beam.Radius - Low.Z) / Tan;
-        const float Length = Span - Start;
-        if (Length < 40.0f)
-            break;
-        FVector Centre = Low + Along * (Start + 0.5f * Length);
-        Centre.Z = Z;
-        bool bTaken = false;
-        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It && !bTaken; ++It)
+        CutOffRemainder(Log, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+        Solution = Solve();
+        if (!Solution.bValid)
         {
-            FLogGeometry Other;
-            if (*It == SlopedBeam || *It == Log || !It->IsPlaced() || !GetLogGeometry(*It, Other))
-                continue;
-            bTaken = FVector::Dist(ClosestPointOnSegment(Centre, Other.EndA(), Other.EndB()), Centre) < Held.Radius;
-        }
-        if (bTaken)
-            continue;
-        if (Held.Length() < Length * 0.85f)
-        {
-            SetStatus(FString::Printf(TEXT("Too short: this gable row needs about %.0f cm."), Length));
+            SetStatus(Solution.Reason);
             return true;
         }
-        if (Held.Length() > Length + 10.0f)
-            CutOffRemainder(Log, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
-        const FTransform Target = MakeLogTransform(Log, Centre, MakeLogRotation(Log, Along, FVector::UpVector));
-        if (!Carry->CommitHeldLogAt(Target, SlopedBeam, nullptr))
-        {
-            SetStatus(TEXT("The log could not be placed."));
-            return true;
-        }
-        SetStatus(FString::Printf(TEXT("Gable row %d placed (%.0f cm)."), Row + 1, Length));
+    }
+    if (!Carry->CommitHeldSolution(Solution))
+    {
+        SetStatus(TEXT("The log could not be placed."));
         return true;
     }
-    SetStatus(TEXT("The gable under this beam is full."));
+    SetStatus(FString::Printf(TEXT("Gable row %d placed (%.0f cm)."), Row + 1, Length));
     return true;
 }
 
@@ -872,8 +762,14 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
         Note = FString::Printf(TEXT(" Cut to %.0f cm."), Needed);
     }
     const FTransform SlotWorld = Plan->GetSlotWorld(SlotIndex);
-    const FTransform Target = MakeLogTransform(Log, SlotWorld.GetLocation(),
-        MakeLogRotation(Log, SlotWorld.GetRotation().GetAxisX(), SlotWorld.GetRotation().GetAxisZ()));
+    FPlacementPose Pose;
+    Pose.Centre = SlotWorld.GetLocation();
+    Pose.Axis = SlotWorld.GetRotation().GetAxisX();
+    Pose.Up = SlotWorld.GetRotation().GetAxisZ();
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Kernel)
+        return true;
+    const FTransform Target = Kernel->MakeBodyTransform(Log, Pose);
     if (!Carry->CommitHeldLogAt(Target, Plan->GetSupportPiece(SlotIndex), nullptr))
     {
         SetStatus(TEXT("The log could not be placed."));

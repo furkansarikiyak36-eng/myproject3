@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "BuildPlanActor.h"
 #include "ConstructionOpeningActor.h"
+#include "Placement/PlacementTypes.h"
 #include "LogBuildToolsComponent.generated.h"
 
 class ALogBuildPiece;
@@ -28,10 +29,6 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools")
     float InteractRange = 400.0f;
-
-    /** Distance between stair steps along the stringers (cm). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools")
-    float StairStepSpacing = 40.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build Tools|Openings")
     float DoorWidth = 100.0f;
@@ -111,6 +108,11 @@ public:
     static FString GetHelpText();
 
 private:
+    /** Floor or stairs across Support and a parallel support, as the placement kernel solves it. */
+    FPlacementSolution SolveDeck(ALogBuildPiece* Board, AActor* Support, const FVector& AimPoint,
+        const FVector& ViewDirection, bool bStairs) const;
+    class UPlacementKernelSubsystem* GetKernel() const;
+
     FString Status;
     float StatusHold = 0.0f;
     bool bShowHelp = false;

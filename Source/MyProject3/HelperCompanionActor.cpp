@@ -1,4 +1,5 @@
 #include "HelperCompanionActor.h"
+#include "Placement/PlacementKernelSubsystem.h"
 
 #include "BuildPlanActor.h"
 #include "HarvestableTreeActor.h"
@@ -354,7 +355,8 @@ bool AHelperCompanionActor::PlaceInPlan(ABuildPlanActor* Plan, int32 Slot)
 {
     FString Reason;
     ALogBuildPiece* Log = Carried.Get();
-    if (!Plan || !Log || !Plan->CanFillSlot(Slot, Reason))
+    UPlacementKernelSubsystem* Kernel = GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+    if (!Plan || !Log || !Kernel || !Plan->CanFillSlot(Slot, Reason))
         return false;
     Carried.Reset();
     Log->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
@@ -371,23 +373,23 @@ bool AHelperCompanionActor::PlaceInPlan(ABuildPlanActor* Plan, int32 Slot)
     if (GetLogGeometry(Log, Shape) && Shape.Length() > Needed * 1.1f)
         CutOffRemainder(Log, Needed, GetActorLocation() + GetActorForwardVector() * 80.0f + FVector(0, 0, 30.0f));
 
+    // The same commit as the player's: all or nothing, resting on the part below it.
     const FTransform SlotWorld = Plan->GetSlotWorld(Slot);
-    Log->SetActorTransform(MakeLogTransform(Log, SlotWorld.GetLocation(),
-        MakeLogRotation(Log, SlotWorld.GetRotation().GetAxisX(), SlotWorld.GetRotation().GetAxisZ())),
-        false, nullptr, ETeleportType::TeleportPhysics);
-    if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
-        Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Placed);
-    Log->SetPlacedState(true);
-
-    // Rest on the part below it in the structural graph, as the player's placement does.
-    ALogBuildPiece* Support = Plan->GetSupportPiece(Slot);
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    const FGuid NodeId = Log->GetStructuralNodeId();
-    if (Graph && Support && Support->IsStructurallyPlaced() &&
-        Graph->TryConnect(Support->GetStructuralNodeId(), FName(*FString::Printf(TEXT("Helper_%s"), *NodeId.ToString())),
-            NodeId, TEXT("HelperBase")))
+    FPlacementPose Pose;
+    Pose.Centre = SlotWorld.GetLocation();
+    Pose.Axis = SlotWorld.GetRotation().GetAxisX();
+    Pose.Up = SlotWorld.GetRotation().GetAxisZ();
+    const FPlacementSolution Solution = Kernel->MakeDirectSolution(Log, Kernel->MakeBodyTransform(Log, Pose),
+        TEXT("plan.slot"), Plan->GetSupportPiece(Slot));
+    FPlacementCommitOptions Options;
+    Options.FromOwner = EWorldItemOwnerKind::World;
+    Options.FromLifecycle = EWorldObjectLifecycleState::World;
+    if (!Solution.bValid || !Kernel->CommitPlacement(Log, Solution, Options, Reason))
     {
-        Log->AttachToActor(Support, FAttachmentTransformRules::KeepWorldTransform);
+        Status = FString::Printf(TEXT("Could not build this part: %s"), *Reason);
+        if (UStaticMeshComponent* LogMesh = Log->GetLogMesh())
+            LogMesh->SetSimulatePhysics(true);
+        return false;
     }
     Plan->MarkFilled(Slot, Log);
     ++Delivered;

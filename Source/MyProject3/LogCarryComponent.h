@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "LogBuildingTypes.h"
+#include "Placement/PlacementTypes.h"
 #include "LogCarryComponent.generated.h"
 
 class ALogBuildPiece;
@@ -46,6 +47,7 @@ public:
     ULogCarryComponent();
 
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType,
         FActorComponentTickFunction* ThisTickFunction) override;
 
@@ -80,10 +82,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Trace",
         meta = (ClampMin = "100.0"))
     float PlacementTraceDistance = 4500.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement",
-        meta = (ClampMin = "20.0"))
-    float SnapSearchRadius = 250.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement",
         meta = (ClampMin = "50.0"))
@@ -284,9 +282,8 @@ public:
     void PromoteShoulderLog();
     int32 GetCarriedLogCount() const { return (HeldPiece ? 1 : 0) + (ShoulderPiece ? 1 : 0); }
 
-    /** A wall of logs laid along each other stands at most this many rows high. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "1"))
-    int32 MaxWallRows = 6;
+    /** A wall of logs stands at most this many rows high (profile log.parallel_stack, param maxRows). */
+    int32 GetMaxWallRows() const;
 
     /** Rows in the wall Target belongs to, counting Target and the parallel logs under it. */
     int32 CountWallRows(const ALogBuildPiece* Target) const;
@@ -362,8 +359,13 @@ public:
     /** Picks up a specific loose piece without aiming at it. */
     bool TryPickupPiece(AActor* Target);
 
-    /** Places the carried log at an exact transform resting on PrimarySupport (and SecondarySupport). */
-    bool CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport);
+    /**
+     * Places the carried log at an exact transform resting on PrimarySupport (and
+     * SecondarySupport). RestingOnPiece will also rest on the placed log (a beam on
+     * a strut). All or nothing: when any of these links fails, the log stays in the hands.
+     */
+    bool CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport,
+        AActor* RestingOnPiece = nullptr);
 
     /** Hands the carried piece to a tool (storage, fire, zipline); it stays held in the ledger. */
     AActor* ReleaseHeldToTool();
@@ -373,13 +375,12 @@ public:
 
     void SetPlacementStatus(const FString& NewStatus) { PlacementStatus = NewStatus; }
 
-    /** Logs stack on placed logs on a grid of this step along the lower log (600 cm = 8 steps). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "10.0"))
-    float StackGridCm = 75.0f;
-
-    /** How far a stacked log sits down into the one below, as a share of the two radii. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.5", ClampMax = "1.0"))
-    float StackInterlock = 0.82f;
+    /**
+     * Places the carried log exactly as the placement kernel solved it (stack,
+     * floor, strut, step, plan slot ...), all or nothing. The grid, interlock and
+     * other numbers live in Config/Placement/PlacementProfiles.json.
+     */
+    bool CommitHeldSolution(const FPlacementSolution& Solution);
 
     /**
      * Where Held would lie on the placed horizontal log Target: lying along it or
@@ -399,6 +400,20 @@ private:
     float HeldYawOffset = 0.0f;
     ELogCutAction SelectedCutAction = ELogCutAction::SplitHalf;
     FTransform CurrentSnapActorTransform = FTransform::Identity;
+    /** The placement kernel's answer shown now; E commits exactly this. */
+    FPlacementSolution CurrentSolution;
+    FPlacementSolution StackSolution;
+    FPlacementSolution StrutSolution;
+    FPlacementSolution MaterialSolution;
+    FDelegateHandle PlacementCommittedHandle;
+
+    class UPlacementKernelSubsystem* GetKernel() const;
+    FPlacementSolution SolveStackOn(ALogBuildPiece* Held, ALogBuildPiece* Target, const FVector& AimPoint, float CarryYaw) const;
+    FPlacementSolution SolveStrut(const ALogBuildPiece* Held, const ALogBuildPiece* Aimed, const ALogBuildPiece* Beam,
+        const FVector& AimPoint) const;
+    FPlacementSolution SolveMaterialOn(AActor* Target, const FVector& AimPoint) const;
+    /** Every placement, by anyone: end contacts become supports, beams rise onto new posts, fallen ends lift. */
+    void HandlePlacementCommitted(AActor* Piece, const FPlacementSolution& Solution);
     TWeakObjectPtr<ALogBuildPiece> DraggedPiece;
     bool bIsDraggingLog = false;
 

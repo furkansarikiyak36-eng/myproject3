@@ -8,6 +8,9 @@
 #include "LogAttachmentComponents.h"
 #include "LogBuildToolsComponent.h"
 #include "LogSnapCharacter.h"
+#include "Placement/PlacementFeatureProvider.h"
+#include "Placement/PlacementKernelSubsystem.h"
+#include "Placement/PlacementTransaction.h"
 #include "ThrownImpactComponent.h"
 #include "Engine/OverlapResult.h"
 #include "MaterialConnectionSubsystem.h"
@@ -42,6 +45,28 @@ void ULogCarryComponent::BeginPlay()
 {
     Super::BeginPlay();
     if (!CarryOwnerId.IsValid()) CarryOwnerId = FGuid::NewGuid();
+    if (UPlacementKernelSubsystem* Kernel = GetKernel())
+        PlacementCommittedHandle = Kernel->OnPlacementCommitted.AddUObject(this, &ULogCarryComponent::HandlePlacementCommitted);
+}
+
+void ULogCarryComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (UPlacementKernelSubsystem* Kernel = GetKernel())
+        Kernel->OnPlacementCommitted.Remove(PlacementCommittedHandle);
+    Super::EndPlay(EndPlayReason);
+}
+
+UPlacementKernelSubsystem* ULogCarryComponent::GetKernel() const
+{
+    return GetWorld() ? GetWorld()->GetSubsystem<UPlacementKernelSubsystem>() : nullptr;
+}
+
+void ULogCarryComponent::HandlePlacementCommitted(AActor* Piece, const FPlacementSolution& Solution)
+{
+    if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
+        ApplyEndContactSupports(Log);
+    // A new post under a beam end lifts it; a fallen end over the new piece rests on it.
+    LiftDroopingEndsOnto(Piece);
 }
 
 void ULogCarryComponent::TickComponent(
@@ -540,105 +565,37 @@ void ULogCarryComponent::FindBestSnapCandidate()
         return;
     }
 
-    ALogBuildPiece* BestTarget = nullptr;
-    int32 BestSourceIndex = INDEX_NONE;
-    int32 BestTargetIndex = INDEX_NONE;
-    float BestDistance = SnapSearchRadius;
-    FTransform BestActorTransform = HeldPiece->GetActorTransform();
-
-    const TArray<FLogSnapPoint>& SourcePoints = HeldPiece->GetSnapPoints();
-    const FTransform HeldActorTransform = HeldPiece->GetActorTransform();
-
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
-    {
-        ALogBuildPiece* TargetPiece = *It;
-        if (!IsValid(TargetPiece) || TargetPiece != AimedTarget ||
-            TargetPiece == HeldPiece || !TargetPiece->IsPlaced() || TargetPiece->IsHeld())
-        {
-            continue;
-        }
-
-        const TArray<FLogSnapPoint>& TargetPoints = TargetPiece->GetSnapPoints();
-
-        for (int32 SourceIndex = 0; SourceIndex < SourcePoints.Num(); ++SourceIndex)
-        {
-            const FLogSnapPoint& SourcePoint = SourcePoints[SourceIndex];
-            if (!SourcePoint.bCanSource || SourcePoint.bOccupied)
-            {
-                continue;
-            }
-
-            const FTransform SourceWorldTransform =
-                SourcePoint.LocalTransform * HeldActorTransform;
-
-            for (int32 TargetIndex = 0; TargetIndex < TargetPoints.Num(); ++TargetIndex)
-            {
-                if (!TargetPiece->CanSnapPointAccept(
-                    TargetIndex, HeldPiece, SourceIndex))
-                {
-                    continue;
-                }
-
-                const FLogSnapPoint& TargetPoint = TargetPoints[TargetIndex];
-                const FTransform TargetWorldTransform =
-                    TargetPiece->GetSnapPointWorldTransform(TargetIndex);
-
-                const float AnchorDistance = FVector::Distance(
-                    SourceWorldTransform.GetLocation(),
-                    TargetWorldTransform.GetLocation());
-
-                // The carried actor's free-preview origin may be offset from
-                // the intended socket by half a log length. Aiming directly
-                // at a target's anchor should still acquire it, then the exact
-                // source-to-target transform is computed below.
-                const float AimToAnchorDistance = FVector::Distance(
-                    AimHit.ImpactPoint,
-                    TargetWorldTransform.GetLocation());
-
-                const float CandidateDistance =
-                    FMath::Min(AnchorDistance, AimToAnchorDistance);
-
-                if (CandidateDistance > BestDistance)
-                {
-                    continue;
-                }
-
-                FTransform DesiredAnchorWorld = TargetWorldTransform;
-                if (TargetPoint.bFlipIncomingOrientation)
-                {
-                    const FTransform FlipIncoming(
-                        FRotator(0.0f, 180.0f, 0.0f),
-                        FVector::ZeroVector,
-                        FVector::OneVector);
-                    DesiredAnchorWorld = FlipIncoming * TargetWorldTransform;
-                }
-
-                const FTransform DesiredActorWorld =
-                    SourcePoint.LocalTransform.Inverse() * DesiredAnchorWorld;
-
-                BestDistance = CandidateDistance;
-                BestTarget = TargetPiece;
-                BestSourceIndex = SourceIndex;
-                BestTargetIndex = TargetIndex;
-                BestActorTransform = DesiredActorWorld;
-            }
-        }
-    }
-
-    if (IsValid(BestTarget) &&
-        BestSourceIndex != INDEX_NONE &&
-        BestTargetIndex != INDEX_NONE)
-    {
-        SetSnapCandidate(
-            BestTarget,
-            BestSourceIndex,
-            BestTargetIndex,
-            BestActorTransform);
-    }
-    else
+    // The placement kernel picks the joint; this component only feeds it the
+    // player's aim and shows the result.
+    UPlacementKernelSubsystem* Kernel = GetWorld()->GetSubsystem<UPlacementKernelSubsystem>();
+    if (!Kernel)
     {
         ClearSnapCandidate();
+        return;
     }
+    FVector ViewLocation;
+    FRotator ViewRotation;
+    GetViewPoint(ViewLocation, ViewRotation);
+    FPlacementIntent Intent;
+    Intent.Held = HeldPiece;
+    Intent.AimActor = AimedTarget;
+    Intent.AimPoint = AimHit.ImpactPoint;
+    Intent.ViewDirection = ViewRotation.Vector();
+    Intent.HeldAngleDeg = HeldYawOffset;
+    const FPlacementSolution Solution = Kernel->Solve(Intent, bHasValidSnap ? &CurrentSolution : nullptr);
+    const FPlacementLink* Link = Solution.GetPrimaryLink();
+    FPlacementFeature SourceFeature;
+    FPlacementFeature TargetFeature;
+    ALogBuildPiece* Target = Link ? Cast<ALogBuildPiece>(Link->Target.Piece.Get()) : nullptr;
+    if (!Solution.bValid || !Target ||
+        !FPlacementProviderRegistry::FindFeature(HeldPiece, Link->Source.FeatureId, SourceFeature) ||
+        !FPlacementProviderRegistry::FindFeature(Target, Link->Target.FeatureId, TargetFeature))
+    {
+        ClearSnapCandidate();
+        return;
+    }
+    CurrentSolution = Solution;
+    SetSnapCandidate(Target, SourceFeature.LegacyIndex, TargetFeature.LegacyIndex, Solution.PieceTransform);
 }
 
 void ULogCarryComponent::SetSnapCandidate(
@@ -723,6 +680,7 @@ void ULogCarryComponent::ClearSnapCandidate()
     CurrentSourceSnapPointIndex = INDEX_NONE;
     CurrentTargetSnapPointIndex = INDEX_NONE;
     CurrentSnapActorTransform = FTransform::Identity;
+    CurrentSolution = FPlacementSolution();
 
     if (bWasSnapping)
     {
@@ -739,169 +697,63 @@ bool ULogCarryComponent::PlaceHeldPiece()
         PlacementStatus = TEXT("Split pieces cannot stand as posts: use a round or hewn log.");
         return false;
     }
-    if (bHasStackPlacement && StackTarget.IsValid() && IsValid(HeldPiece))
+    if (bHasStackPlacement && StackSolution.bValid && IsValid(HeldPiece))
     {
-        ALogBuildPiece* Target = StackTarget.Get();
+        const FPlacementSolution Solution = StackSolution;
         bHasStackPlacement = false;
         StackTarget.Reset();
-        return CommitHeldLogAt(StackTransform, Target, nullptr);
+        return CommitHeldSolution(Solution);
     }
-    if (!IsValid(HeldPiece))
-    {
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!IsValid(HeldPiece) || !Kernel)
         return false;
-    }
 
     ALogBuildPiece* PieceToPlace = HeldPiece;
-
-    if (bHasValidSnap &&
-        IsValid(CurrentSnapTarget) &&
-        CurrentSourceSnapPointIndex != INDEX_NONE &&
-        CurrentTargetSnapPointIndex != INDEX_NONE)
+    if (bHasValidSnap && IsValid(CurrentSnapTarget) && CurrentSolution.bValid)
     {
-        const FTransform PreviousTransform = PieceToPlace->GetActorTransform();
+        // The joint the preview shows, plus what the far end rests on: one commit.
+        const int32 OwnSnapIndex = CurrentSourceSnapPointIndex;
+        FPlacementSolution Solution = CurrentSolution;
+        Solution.PieceTransform = CurrentSnapActorTransform;
         PieceToPlace->SetActorTransform(CurrentSnapActorTransform);
-
-        if (CurrentSnapTarget->TryReserveSnapPoints(
-            CurrentTargetSnapPointIndex,
-            PieceToPlace,
-            CurrentSourceSnapPointIndex))
+        AActor* Support = nullptr;
+        bool bGround = false;
+        const bool bFarEndHeld = EvaluateFarEndSupport(PieceToPlace, OwnSnapIndex, Support, bGround);
+        const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
+        if (Support && Support != CurrentSnapTarget && FPlacementProviderRegistry::Find(Support) &&
+            SupportPiece && SupportPiece->IsStructurallyPlaced())
         {
-            if (UWorldObjectIdentityComponent* Identity =
-                PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-            {
-                if (!Identity->TryTransitionLifecycle(
-                    EWorldObjectLifecycleState::Held,
-                    EWorldObjectLifecycleState::Placed))
-                {
-                    PieceToPlace->DetachFromSnapParent();
-                    PieceToPlace->SetActorTransform(PreviousTransform);
-                    return false;
-                }
-            }
-
-            FWorldOwnedItemRecord WorldRecord;
-            if (!PieceToPlace->TryTransferOwnership(EWorldItemOwnerKind::Held,
-                EWorldItemOwnerKind::World, FGuid(), PieceToPlace->GetActorLocation(), WorldRecord))
-            {
-                if (UWorldObjectIdentityComponent* Identity =
-                    PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-                {
-                    Identity->TryTransitionLifecycle(
-                        EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
-                }
-                PieceToPlace->DetachFromSnapParent();
-                PieceToPlace->SetActorTransform(PreviousTransform);
-                return false;
-            }
-
-            PieceToPlace->SetHeldState(false);
-            PieceToPlace->SetPlacedState(true);
-
-            const int32 OwnSnapIndex = CurrentSourceSnapPointIndex;
-            ReleaseHeldFromLoad();
-            HeldPiece = nullptr;
-            bHasPlacementSurface = false;
-            ClearSnapCandidate();
-
-            // A horizontal log joined at one end must rest on something at the
-            // other end; otherwise it tips off its joint and falls.
-            AActor* Support = nullptr;
-            bool bGround = false;
-            if (!EvaluateFarEndSupport(PieceToPlace, OwnSnapIndex, Support, bGround))
-            {
-                // Like a board nailed at one end: the joint holds, the free end swings down.
-                if (StartHingeSwing(PieceToPlace, OwnSnapIndex))
-                {
-                    PlacementStatus = TEXT("Placed.");
-                    return true;
-                }
-                if (UWorldObjectIdentityComponent* Identity =
-                    PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-                {
-                    Identity->TryTransitionLifecycle(
-                        EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
-                }
-                PieceToPlace->DetachFromSnapParent(true);
-                PieceToPlace->SetPlacedState(false);
-                PlacementStatus = TEXT("The other end had no support: the log fell.");
-                return false;
-            }
-            const IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support);
-            UWorldStructuralGraphSubsystem* Graph =
-                GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-            if (SupportPiece && Graph && SupportPiece->IsStructurallyPlaced())
-            {
-                const FGuid NodeId = PieceToPlace->GetStructuralNodeId();
-                Graph->TryAddSecondarySupport(NodeId, SupportPiece->GetStructuralNodeId(),
-                    FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), TEXT("FarEnd"));
-            }
-            PlacementStatus = TEXT("Placed.");
-            ApplyEndContactSupports(PieceToPlace);
-            CommitHeldLifts(PieceToPlace);
-            LiftDroopingEndsOnto(PieceToPlace);
-            return true;
+            Solution.Links.Add(UPlacementKernelSubsystem::MakeBodyLink(PieceToPlace, Support, EPlacementLinkRole::Secondary));
         }
-
-        // A snap candidate was explicitly attempted but its anchors failed
-        // revalidation. Do not reinterpret that failed structural operation as
-        // free placement, and do not leave the held piece at the stale snap pose.
-        PieceToPlace->SetActorTransform(PreviousTransform);
-        ClearSnapCandidate();
-        return false;
-    }
-
-    if (!bAllowFreePlacement ||
-        (bRequireSurfaceForFreePlacement && !bHasPlacementSurface))
-    {
-        return false;
-    }
-
-    // A free-placed log becomes a stable building piece and can receive
-    // subsequent logs at its available snap points.
-    if (UWorldObjectIdentityComponent* Identity =
-        PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
-    {
-        if (!Identity->TryTransitionLifecycle(
-            EWorldObjectLifecycleState::Held,
-            EWorldObjectLifecycleState::Placed))
+        if (!CommitHeldSolution(Solution))
         {
+            // Never reinterpret a failed joint as a free placement.
+            ClearSnapCandidate();
             return false;
         }
-    }
-    FWorldOwnedItemRecord WorldRecord;
-    if (!PieceToPlace->TryTransferOwnership(EWorldItemOwnerKind::Held,
-        EWorldItemOwnerKind::World, FGuid(), PieceToPlace->GetActorLocation(), WorldRecord))
-    {
-        if (UWorldObjectIdentityComponent* Identity =
-            PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
+        if (!bFarEndHeld)
         {
-            Identity->TryTransitionLifecycle(
-                EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+            // Like a board nailed at one end: the joint holds, the free end swings down.
+            if (StartHingeSwing(PieceToPlace, OwnSnapIndex))
+            {
+                PlacementStatus = TEXT("Placed.");
+                return true;
+            }
+            if (UWorldObjectIdentityComponent* Identity = PieceToPlace->FindComponentByClass<UWorldObjectIdentityComponent>())
+                Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
+            PieceToPlace->DetachFromSnapParent(true);
+            PieceToPlace->SetPlacedState(false);
+            PlacementStatus = TEXT("The other end had no support: the log fell.");
+            return false;
         }
-        return false;
-    }
-    PieceToPlace->SetHeldState(false);
-    PieceToPlace->SetPlacedState(true);
-    if (const IStructuralPieceInterface* Surface = Cast<IStructuralPieceInterface>(PlacementSurfaceActor.Get()))
-    {
-        UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-        const FGuid NodeId = PieceToPlace->GetStructuralNodeId();
-        if (Graph && Surface->IsStructurallyPlaced() && Graph->TryConnect(Surface->GetStructuralNodeId(),
-            FName(*FString::Printf(TEXT("Rest_%s"), *NodeId.ToString())), NodeId, TEXT("Base")))
-        {
-            PieceToPlace->AttachToActor(PlacementSurfaceActor.Get(), FAttachmentTransformRules::KeepWorldTransform);
-        }
+        return true;
     }
 
-    ReleaseHeldFromLoad();
-    HeldPiece = nullptr;
-    bHasPlacementSurface = false;
-    ClearSnapCandidate();
-    PlacementStatus = TEXT("Placed.");
-    ApplyEndContactSupports(PieceToPlace);
-    CommitHeldLifts(PieceToPlace);
-    LiftDroopingEndsOnto(PieceToPlace);
-    return true;
+    if (!bAllowFreePlacement || (bRequireSurfaceForFreePlacement && !bHasPlacementSurface))
+        return false;
+    // Free placement: on the ground, or resting on the built piece under it (a post on a floor).
+    return CommitHeldSolution(Kernel->MakeDirectSolution(PieceToPlace, PieceToPlace->GetActorTransform(),
+        TEXT("piece.free_place"), PlacementSurfaceActor.Get()));
 }
 
 void ULogCarryComponent::DropHeldPiece()
@@ -1526,11 +1378,31 @@ FTransform ULogCarryComponent::MakeUprightTransform(AActor* Piece, const FVector
     return FTransform(Rotation, BottomWorldPoint + FVector::UpVector * Lift - Rotation.RotateVector(BottomLocal * Scale), Scale);
 }
 
+FPlacementSolution ULogCarryComponent::SolveMaterialOn(AActor* Target, const FVector& AimPoint) const
+{
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Kernel || !IsValid(HeldMaterialPiece))
+        return FPlacementSolution();
+    FVector ViewLocation;
+    FRotator ViewRotation;
+    const float Yaw = GetViewPoint(ViewLocation, ViewRotation) ? ViewRotation.Yaw : 0.0f;
+    FPlacementIntent Intent;
+    Intent.Held = HeldMaterialPiece;
+    Intent.AimActor = Target;
+    Intent.AimPoint = AimPoint;
+    Intent.CarryYawDeg = Yaw + HeldYawOffset;
+    // Sticks lean by the placement mode (upright, 45 degrees, lying).
+    Intent.HeldAngleDeg = GetStickTiltDegrees();
+    Intent.AllowedProfiles = { TEXT("stone.on_anchor"), TEXT("stick.on_anchor") };
+    return Kernel->Solve(Intent);
+}
+
 void ULogCarryComponent::UpdateHeldMaterialPreview()
 {
     AActor* Piece = HeldMaterialPiece;
     MaterialSnapTarget = nullptr;
     MaterialSnapAnchor = NAME_None;
+    MaterialSolution = FPlacementSolution();
     bMaterialGroundPreview = false;
 
     FHitResult Hit;
@@ -1545,68 +1417,23 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
     }
 
     AActor* Target = Hit.GetActor();
-    const IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
-    if (TargetPiece && TargetPiece->IsStructurallyPlaced())
+    if (Cast<IStructuralPieceInterface>(Target))
     {
-        // Choose the free, upward-facing receiving anchor nearest to the crosshair.
+        // The placement kernel picks the free, upward-facing point nearest the crosshair.
         EnsureMaterialAnchors(Target);
-        TArray<FName> AnchorIds;
-        TargetPiece->GetStructuralAnchorIds(AnchorIds);
-        FVector Origin, Extent;
-        Target->GetActorBounds(true, Origin, Extent);
-        const bool bSameKind = Cast<IStructuralPieceInterface>(Piece)->GetStructuralKind() == TargetPiece->GetStructuralKind();
-        UMaterialConnectionSubsystem* Connections = GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>();
-
-        float BestDistance = 120.0f;
-        for (const FName& AnchorId : AnchorIds)
+        const FPlacementSolution Solution = SolveMaterialOn(Target, Hit.ImpactPoint);
+        if (const FPlacementLink* Link = Solution.bValid ? Solution.GetPrimaryLink() : nullptr)
         {
-            FStructuralAnchorView Anchor;
-            if (!TargetPiece->GetStructuralAnchor(AnchorId, Anchor) || !Anchor.bCanReceive || Anchor.bOccupied)
-                continue;
-            const FVector AnchorWorld = (Anchor.LocalTransform * Target->GetActorTransform()).GetLocation();
-            if (AnchorWorld.Z < Origin.Z - 1.0f)
-                continue; // Bottom anchors cannot hold a piece resting on them.
-            FString Reason;
-            if (!bSameKind && (!Connections || !Connections->CanConnect(Target, AnchorId, Piece, TEXT("AutoBottom"), Reason)))
-                continue;
-            const float Distance = FVector::Dist(AnchorWorld, Hit.ImpactPoint);
-            if (Distance >= BestDistance)
-                continue;
-            BestDistance = Distance;
             MaterialSnapTarget = Target;
-            MaterialSnapAnchor = AnchorId;
-            MaterialPreviewTransform = MakeUprightTransform(Piece, AnchorWorld);
-            if (bSameKind && Cast<AStickPrimitivePiece>(Piece) && GetStickTiltDegrees() > 0.0f)
-            {
-                // Stick on stick: the preview leans like the placed stick will.
-                MaterialPreviewTransform = MakeUprightTransform(Piece, AnchorWorld);
-            }
-            else if (bSameKind)
-            {
-                // Same-material stacks keep the lower piece's orientation.
-                FStructuralAnchorView Bottom;
-                Cast<IStructuralPieceInterface>(Piece)->GetStructuralAnchor(TEXT("AutoBottom"), Bottom);
-                const FQuat Rotation = Target->GetActorQuat();
-                const FVector Scale = Piece->GetActorScale3D();
-                MaterialPreviewTransform = FTransform(Rotation,
-                    AnchorWorld - Rotation.RotateVector(Bottom.LocalTransform.GetLocation() * Scale), Scale);
-            }
-        }
-        if (MaterialSnapTarget)
-        {
+            MaterialSnapAnchor = Link->Target.FeatureId;
+            MaterialPreviewTransform = Solution.PieceTransform;
+            MaterialSolution = Solution;
             Piece->SetActorTransform(MaterialPreviewTransform);
             PlacementStatus = FString::Printf(TEXT("Snap to %s: E to place."), *MaterialSnapAnchor.ToString());
             return;
         }
         Piece->SetActorLocation(ViewLocation + ViewRotation.Vector() * CarryDistance);
-        PlacementStatus = TEXT("No free top anchor here for this material.");
-        return;
-    }
-
-    if (TargetPiece)
-    {
-        Piece->SetActorLocation(ViewLocation + ViewRotation.Vector() * CarryDistance);
-        PlacementStatus = TEXT("That piece is loose; place on the ground or a placed piece.");
+        PlacementStatus = Solution.Reason.IsEmpty() ? TEXT("No free top anchor here for this material.") : Solution.Reason;
         return;
     }
 
@@ -1618,96 +1445,60 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
 
 void ULogCarryComponent::FinishMaterialPlacement(AActor* Piece)
 {
-    TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
+    // The kernel already moved it to the world in the ledger.
     Piece->SetActorEnableCollision(true);
     if (UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
         Load->UnregisterCarried(Piece);
     HeldMaterialPiece = nullptr;
     MaterialSnapTarget = nullptr;
     MaterialSnapAnchor = NAME_None;
+    MaterialSolution = FPlacementSolution();
 }
 
 bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnchorId)
 {
     AActor* Piece = HeldMaterialPiece;
-    const IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
-    const IStructuralPieceInterface* HeldStructural = Cast<IStructuralPieceInterface>(Piece);
-    if (!Piece || !TargetPiece || !HeldStructural || Target == Piece)
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Piece || !Target || Target == Piece || !Kernel || !Cast<IStructuralPieceInterface>(Target))
         return false;
     EnsureMaterialAnchors(Target);
-
-    bool bConnected = false;
+    // Aim straight at the asked point so the kernel takes that one.
+    FPlacementFeature Wanted;
+    FPlacementSolution Solution;
+    if (FPlacementProviderRegistry::FindFeature(Target, TargetAnchorId, Wanted))
+        Solution = SolveMaterialOn(Target, Wanted.WorldFrame.GetLocation());
+    const FPlacementLink* Link = Solution.bValid ? Solution.GetPrimaryLink() : nullptr;
+    if (!Link || Link->Target.FeatureId != TargetAnchorId)
+    {
+        PlacementStatus = FString::Printf(TEXT("Cannot place here: %s"),
+            Solution.Reason.IsEmpty() || Solution.bValid ? TEXT("the anchor is taken or does not match.") : *Solution.Reason);
+        return false;
+    }
     FString Reason;
-    if (HeldStructural->GetStructuralKind() != TargetPiece->GetStructuralKind())
-    {
-        FStructuralAnchorView Anchor;
-        UMaterialConnectionSubsystem* Connections = GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>();
-        if (Connections && TargetPiece->GetStructuralAnchor(TargetAnchorId, Anchor))
-        {
-            const FVector AnchorWorld = (Anchor.LocalTransform * Target->GetActorTransform()).GetLocation();
-            bConnected = Connections->TryConnectAt(Target, TargetAnchorId, Piece, TEXT("AutoBottom"),
-                MakeUprightTransform(Piece, AnchorWorld), Reason);
-        }
-    }
-    else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
-    {
-        bConnected = Stone->TryConnectToAnchor(Cast<AStoneBuildingPiece>(Target), TargetAnchorId, TEXT("AutoBottom"));
-        Reason = TEXT("The stone anchor is taken or does not match.");
-    }
-    else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
-    {
-        // Stick joints take a loose stick; keep physics off so it can attach.
-        Stick->SetHeldState(false);
-        if (UStaticMeshComponent* Mesh = Stick->FindComponentByClass<UStaticMeshComponent>())
-            Mesh->SetSimulatePhysics(false);
-        bConnected = Stick->TryConnectToAnchor(Cast<AStickPrimitivePiece>(Target), TargetAnchorId, TEXT("AutoBottom"));
-        if (!bConnected)
-        {
-            Stick->SetHeldState(true);
-        }
-        else if (const float Tilt = GetStickTiltDegrees(); Tilt > 0.0f)
-        {
-            // Lean the new stick about its joint (45 degrees or lying across).
-            FStructuralAnchorView Bottom;
-            Stick->GetStructuralAnchor(TEXT("AutoBottom"), Bottom);
-            const FVector Pivot = (Bottom.LocalTransform * Stick->GetActorTransform()).GetLocation();
-            const FQuat Lean = MakeTiltAroundView(Tilt);
-            Stick->SetActorLocationAndRotation(Pivot + Lean.RotateVector(Stick->GetActorLocation() - Pivot),
-                Lean * Stick->GetActorQuat(), false, nullptr, ETeleportType::TeleportPhysics);
-        }
-        Reason = TEXT("The stick anchor is taken or does not match.");
-    }
-
-    if (!bConnected)
+    if (!Kernel->CommitPlacement(Piece, Solution, FPlacementCommitOptions(), Reason))
     {
         PlacementStatus = FString::Printf(TEXT("Cannot place here: %s"), *Reason);
         return false;
     }
     FinishMaterialPlacement(Piece);
     PlacementStatus = TEXT("Placed.");
-    LiftDroopingEndsOnto(Piece);
     return true;
 }
 
 bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
 {
     AActor* Piece = HeldMaterialPiece;
-    if (!Piece || GroundPoint.ContainsNaN())
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Piece || GroundPoint.ContainsNaN() || !Kernel)
         return false;
-    const FTransform Upright = MakeUprightTransform(Piece, GroundPoint);
-    bool bPlaced = false;
-    if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
-        bPlaced = Stone->TryCommitGroundPlacement(Upright.GetLocation(), Upright.Rotator());
-    else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
-        bPlaced = Stick->TryCommitGroundPlacement(Upright.GetLocation(), Upright.Rotator());
-    if (!bPlaced)
+    FString Reason;
+    if (!Kernel->CommitGroundPlacement(Piece, MakeUprightTransform(Piece, GroundPoint), FPlacementCommitOptions(), Reason))
     {
-        PlacementStatus = TEXT("Cannot place on the ground here.");
+        PlacementStatus = Reason;
         return false;
     }
     FinishMaterialPlacement(Piece);
     PlacementStatus = TEXT("Placed on the ground.");
-    LiftDroopingEndsOnto(Piece);
     return true;
 }
 
@@ -2294,32 +2085,15 @@ void ULogCarryComponent::LowerPiecesOnPost(ALogBuildPiece* Post, const FVector& 
 
 int32 ULogCarryComponent::CountWallRows(const ALogBuildPiece* Target) const
 {
-    using namespace MyProject3Construction;
-    FLogGeometry Top;
-    if (!GetLogGeometry(Target, Top) || !IsHorizontalLog(Target))
-        return 0;
-    // Distinct heights of parallel placed logs in the same wall line, at or below Target.
-    TArray<float> Heights;
-    Heights.Add(Top.Centre.Z);
-    const FVector Line = Top.Axis.GetSafeNormal2D();
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
-    {
-        FLogGeometry Shape;
-        if (*It == Target || !It->IsPlaced() || !IsHorizontalLog(*It) || !GetLogGeometry(*It, Shape))
-            continue;
-        if (FMath::Abs(FVector::DotProduct(Shape.Axis.GetSafeNormal2D(), Line)) < 0.95f ||
-            Shape.Centre.Z > Top.Centre.Z + 1.0f || Top.Centre.Z - Shape.Centre.Z > 2.0f * Top.Radius * MaxWallRows + 50.0f)
-            continue;
-        FVector Offset = Shape.Centre - Top.Centre;
-        Offset.Z = 0.0f;
-        const float Across = (Offset - Line * FVector::DotProduct(Offset, Line)).Size();
-        const float AlongGap = FMath::Abs(FVector::DotProduct(Offset, Line)) - Shape.HalfLength - Top.HalfLength;
-        if (Across > Top.Radius || AlongGap > 0.0f)
-            continue;
-        if (!Heights.ContainsByPredicate([&Shape, &Top](float Z) { return FMath::Abs(Z - Shape.Centre.Z) < Top.Radius; }))
-            Heights.Add(Shape.Centre.Z);
-    }
-    return Heights.Num();
+    const UPlacementKernelSubsystem* Kernel = GetKernel();
+    return Kernel ? Kernel->CountParallelRows(Target, GetMaxWallRows()) : 0;
+}
+
+int32 ULogCarryComponent::GetMaxWallRows() const
+{
+    const UPlacementKernelSubsystem* Kernel = GetKernel();
+    const FPlacementProfile* Stack = Kernel ? Kernel->GetProfiles().Find(TEXT("log.parallel_stack")) : nullptr;
+    return Stack ? FMath::RoundToInt(Stack->GetParam(TEXT("maxRows"), 6.0f)) : 6;
 }
 
 bool ULogCarryComponent::TryShoulderLog(ALogBuildPiece* Target)
@@ -2365,20 +2139,14 @@ void ULogCarryComponent::PromoteShoulderLog()
 
 void ULogCarryComponent::FindBeamsOnPost(const ALogBuildPiece* Post, TArray<ALogBuildPiece*>& OutBeams) const
 {
-    using namespace MyProject3Construction;
     OutBeams.Reset();
-    FLogGeometry PostShape;
-    if (!IsValid(Post) || !GetLogGeometry(Post, PostShape))
-        return;
-    const FVector Top = PostShape.EndA().Z > PostShape.EndB().Z ? PostShape.EndA() : PostShape.EndB();
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    TArray<AActor*> Pieces;
+    if (const UPlacementKernelSubsystem* Kernel = GetKernel())
+        Kernel->FindRestingOnTop(Post, Pieces);
+    for (AActor* Piece : Pieces)
     {
-        FLogGeometry Shape;
-        if (*It == Post || !It->IsPlaced() || IsVerticalLog(*It) || !GetLogGeometry(*It, Shape))
-            continue;
-        const FVector Closest = ClosestPointOnSegment(Top, Shape.EndA(), Shape.EndB());
-        if (Closest.Z >= Top.Z - 5.0f && FVector::Dist(Closest, Top) < PostShape.Radius + Shape.Radius + 20.0f)
-            OutBeams.Add(*It);
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
+            OutBeams.Add(Log);
     }
 }
 
@@ -2402,28 +2170,15 @@ bool ULogCarryComponent::PostHoldsAnything(const ALogBuildPiece* Post) const
 
 bool ULogCarryComponent::CanStandAsPost(const ALogBuildPiece* Log)
 {
-    if (!Log)
-        return false;
-    switch (Log->GetCrossSectionProfile())
-    {
-    case ELogCrossSectionProfile::HalfRound:
-    case ELogCrossSectionProfile::QuarterRound:
-    case ELogCrossSectionProfile::Plank:
-    case ELogCrossSectionProfile::GroovedHalfRound:
-    case ELogCrossSectionProfile::Trough:
-        return false;
-    default:
-        return true;
-    }
+    // The material decides (FLogFeatureProvider::CanStandUpright).
+    const IPlacementFeatureProvider* Provider = FPlacementProviderRegistry::Find(Log);
+    return Provider && Provider->CanStandUpright(Log);
 }
 
 bool ULogCarryComponent::IsBadlyDamaged(const AActor* Piece) const
 {
-    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
-    const UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    FStructuralNodeRecord Node;
-    return Structural && Graph && Graph->GetNode(Structural->GetStructuralNodeId(), Node) &&
-        Node.DamageThreshold > 0.0f && Node.Damage >= 0.5f * Node.DamageThreshold;
+    const UPlacementKernelSubsystem* Kernel = GetKernel();
+    return Kernel && Kernel->IsDamaged(Piece);
 }
 
 bool ULogCarryComponent::SplitCarriedLogInHalf()
@@ -2487,38 +2242,32 @@ bool ULogCarryComponent::SplitCarriedLogInHalf()
     return bSplit;
 }
 
+FPlacementSolution ULogCarryComponent::SolveStrut(const ALogBuildPiece* Held, const ALogBuildPiece* Aimed,
+    const ALogBuildPiece* Beam, const FVector& AimPoint) const
+{
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Kernel || !Held)
+        return FPlacementSolution();
+    FPlacementIntent Intent;
+    Intent.Held = const_cast<ALogBuildPiece*>(Held);
+    Intent.AimActor = const_cast<ALogBuildPiece*>(Aimed);
+    Intent.AimPoint = AimPoint;
+    if (Beam)
+        Intent.Candidates.Add(const_cast<ALogBuildPiece*>(Beam));
+    Intent.AllowedProfiles = { TEXT("log.strut") };
+    return Kernel->Solve(Intent);
+}
+
 bool ULogCarryComponent::ComputeStrutPlacement(const ALogBuildPiece* Held, const ALogBuildPiece* Post, const ALogBuildPiece* Beam,
     const FVector& AimPoint, FTransform& OutTransform, float& OutLength, FVector& OutBeamPoint) const
 {
-    using namespace MyProject3Construction;
-    FLogGeometry PostShape, BeamShape, HeldShape;
-    if (!Held || !GetLogGeometry(Post, PostShape) || !GetLogGeometry(Beam, BeamShape) || !GetLogGeometry(Held, HeldShape))
+    const FPlacementSolution Solution = SolveStrut(Held, Post, Beam, AimPoint);
+    if (!Solution.bValid || Solution.GetTarget(EPlacementLinkRole::Carries) != Beam)
         return false;
-    const FVector Top = PostShape.EndA().Z > PostShape.EndB().Z ? PostShape.EndA() : PostShape.EndB();
-    FVector Along = BeamShape.Axis;
-    Along.Z = 0.0f;
-    Along = Along.GetSafeNormal();
-    if (Along.IsNearlyZero())
-        return false;
-    if (FVector::DotProduct(AimPoint - Top, Along) < 0.0f)
-        Along = -Along;
-    constexpr float Leg = 90.0f;
-    const FVector OnBeam = ClosestPointOnSegment(Top, BeamShape.EndA(), BeamShape.EndB());
-    const float AlongFromPost = FVector::DotProduct(OnBeam - BeamShape.Centre, BeamShape.Axis.GetSafeNormal()) +
-        (FVector::DotProduct(Along, BeamShape.Axis) > 0.0f ? Leg : -Leg);
-    if (FMath::Abs(AlongFromPost) > BeamShape.HalfLength)
-        return false;
-    // Ends: on the post's side face below the beam, and under the beam out along it.
-    const FVector Low = Top - FVector(0, 0, Leg + BeamShape.Radius) + Along * (PostShape.Radius + HeldShape.Radius * 0.5f);
-    const FVector High = OnBeam + Along * Leg - FVector(0, 0, BeamShape.Radius + HeldShape.Radius * 0.5f);
-    const FVector Axis = High - Low;
-    OutLength = Axis.Size();
-    if (OutLength < 40.0f)
-        return false;
-    OutBeamPoint = OnBeam + Along * Leg - FVector(0, 0, BeamShape.Radius);
-    OutTransform = MakeLogTransform(Held, 0.5f * (Low + High), MakeLogRotation(Held, Axis.GetSafeNormal(),
-        FVector::CrossProduct(Axis.GetSafeNormal(), FVector::CrossProduct(FVector::UpVector, Axis.GetSafeNormal())).GetSafeNormal()));
-    return !OutTransform.ContainsNaN();
+    OutTransform = Solution.PieceTransform;
+    OutLength = Solution.RequiredLengthCm;
+    OutBeamPoint = Solution.MarkerPoint;
+    return true;
 }
 
 void ULogCarryComponent::UpdateStrutPlacement()
@@ -2527,6 +2276,7 @@ void ULogCarryComponent::UpdateStrutPlacement()
     bHasStrutPlacement = false;
     StrutPost.Reset();
     StrutBeam.Reset();
+    StrutSolution = FPlacementSolution();
     if (!IsValid(HeldPiece) || PlacementMode != ELogPlacementMode::Diagonal)
         return;
     FHitResult Hit;
@@ -2535,62 +2285,25 @@ void ULogCarryComponent::UpdateStrutPlacement()
     ALogBuildPiece* Aimed = Cast<ALogBuildPiece>(Hit.GetActor());
     if (!IsValid(Aimed) || !Aimed->IsPlaced() || Aimed == HeldPiece)
         return;
-    ALogBuildPiece* Post = nullptr;
-    ALogBuildPiece* Beam = nullptr;
-    if (IsVerticalLog(Aimed))
+    const FPlacementSolution Solution = SolveStrut(HeldPiece, Aimed, nullptr, Hit.ImpactPoint);
+    if (!Solution.bValid)
     {
-        TArray<ALogBuildPiece*> Beams;
-        FindBeamsOnPost(Aimed, Beams);
-        if (Beams.Num() > 0)
-        {
-            Post = Aimed;
-            Beam = Beams[0];
-        }
-    }
-    else if (IsHorizontalLog(Aimed, 0.5f))
-    {
-        // The post under this beam nearest to where the player looks.
-        float Best = 250.0f;
-        for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
-        {
-            if (*It == Aimed || !It->IsPlaced() || !IsVerticalLog(*It))
-                continue;
-            TArray<ALogBuildPiece*> Beams;
-            FindBeamsOnPost(*It, Beams);
-            const float Distance = FVector::Dist2D(It->GetActorLocation(), Hit.ImpactPoint);
-            if (Beams.Contains(Aimed) && Distance < Best)
-            {
-                Best = Distance;
-                Post = *It;
-            }
-        }
-        Beam = Post ? Aimed : nullptr;
-    }
-    if (!Post || !Beam)
-        return;
-    if (IsBadlyDamaged(Post) || IsBadlyDamaged(Beam))
-    {
-        PlacementStatus = TEXT("This piece is damaged: repair it before building on it (LMB with the axe).");
+        if (!Solution.Reason.IsEmpty())
+            PlacementStatus = Solution.Reason;
         return;
     }
-    FTransform Transform;
-    float Length = 0.0f;
-    FVector Joint;
-    if (!ComputeStrutPlacement(HeldPiece, Post, Beam, Hit.ImpactPoint, Transform, Length, Joint))
-        return;
     bHasStrutPlacement = true;
-    StrutTransform = Transform;
-    StrutLength = Length;
-    StrutJoint = Joint;
-    StrutPost = Post;
-    StrutBeam = Beam;
+    StrutSolution = Solution;
+    StrutTransform = Solution.PieceTransform;
+    StrutLength = Solution.RequiredLengthCm;
+    StrutJoint = Solution.MarkerPoint;
+    StrutPost = Cast<ALogBuildPiece>(Solution.GetTarget(EPlacementLinkRole::Primary));
+    StrutBeam = Cast<ALogBuildPiece>(Solution.GetTarget(EPlacementLinkRole::Carries));
     ClearSnapCandidate();
-    HeldPiece->SetActorTransform(Transform);
-    FLogGeometry Held;
-    GetLogGeometry(HeldPiece, Held);
+    HeldPiece->SetActorTransform(StrutTransform);
     PlacementStatus = HeldPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::Round
-        ? FString::Printf(TEXT("Strut (split in half and cut to %.0f cm): E to place."), Length)
-        : FString::Printf(TEXT("Strut (cut to %.0f cm): E to place."), Length);
+        ? FString::Printf(TEXT("Strut (split in half and cut to %.0f cm): E to place."), StrutLength)
+        : FString::Printf(TEXT("Strut (cut to %.0f cm): E to place."), StrutLength);
 }
 
 bool ULogCarryComponent::PlaceStrut()
@@ -2605,61 +2318,48 @@ bool ULogCarryComponent::PlaceStrut()
     // Struts are made from half logs: a round log is split first.
     if (HeldPiece->GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
         SplitCarriedLogInHalf();
-    FTransform Transform;
-    float Length = 0.0f;
-    FVector Joint;
-    if (!IsValid(HeldPiece) || !ComputeStrutPlacement(HeldPiece, Post, Beam, Aim, Transform, Length, Joint))
+    FPlacementSolution Solution = IsValid(HeldPiece) ? SolveStrut(HeldPiece, Post, Beam, Aim) : FPlacementSolution();
+    if (!Solution.bValid)
         return false;
     FLogGeometry Held;
     GetLogGeometry(HeldPiece, Held);
+    const float Length = Solution.RequiredLengthCm;
     if (Held.Length() < Length * 0.85f)
     {
         PlacementStatus = FString::Printf(TEXT("Too short: the strut needs about %.0f cm."), Length);
         return false;
     }
     if (Held.Length() > Length + 10.0f && GetOwner())
-        CutOffRemainder(HeldPiece, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
-    ComputeStrutPlacement(HeldPiece, Post, Beam, Aim, Transform, Length, Joint);
-    ALogBuildPiece* Strut = HeldPiece;
-    if (!CommitHeldLogAt(Transform, Post, nullptr))
-        return false;
-    // The beam now also rests on the strut.
-    if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
     {
-        Graph->TryAddSecondarySupport(Beam->GetStructuralNodeId(), Strut->GetStructuralNodeId(),
-            FName(*FString::Printf(TEXT("Strut_%s"), *Strut->GetStructuralNodeId().ToString())), TEXT("StrutTop"));
+        CutOffRemainder(HeldPiece, Length, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+        Solution = SolveStrut(HeldPiece, Post, Beam, Aim);
+        if (!Solution.bValid)
+            return false;
     }
+    // Both ends at once: on the post, and the beam resting on it. One failing places nothing.
+    if (!CommitHeldSolution(Solution))
+        return false;
     PlacementStatus = TEXT("Strut placed: the beam also rests on it.");
     return true;
 }
 
 bool ULogCarryComponent::SnapPostSpacing(const FVector& Base, FVector& OutBase, ALogBuildPiece*& OutPartner, float& OutSpan) const
 {
-    using namespace MyProject3Construction;
     OutPartner = nullptr;
-    float BestError = 30.0f;
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
-    {
-        FLogGeometry Shape;
-        if (*It == HeldPiece || !It->IsPlaced() || !IsVerticalLog(*It) || !GetLogGeometry(*It, Shape))
-            continue;
-        const FVector Foot = Shape.EndA().Z < Shape.EndB().Z ? Shape.EndA() : Shape.EndB();
-        const float Distance = FVector::Dist2D(Foot, Base);
-        for (const float Span : { 150.0f, 300.0f, 450.0f, 600.0f })
-        {
-            const float Error = FMath::Abs(Distance - Span);
-            if (Error < BestError)
-            {
-                BestError = Error;
-                OutPartner = *It;
-                OutSpan = Span;
-                FVector Direction = Base - Foot;
-                Direction.Z = 0.0f;
-                Direction = Direction.GetSafeNormal();
-                OutBase = FVector(Foot.X, Foot.Y, Base.Z) + Direction * Span;
-            }
-        }
-    }
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Kernel)
+        return false;
+    FPlacementIntent Intent;
+    Intent.Held = HeldPiece;
+    Intent.AimPoint = Base;
+    Intent.AllowedProfiles = { TEXT("log.post_on_ground") };
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    const FPlacementLink* Reference = Solution.bValid ? Solution.FindLink(EPlacementLinkRole::Secondary) : nullptr;
+    if (!Reference)
+        return false;
+    OutBase = Solution.MarkerPoint;
+    OutPartner = Cast<ALogBuildPiece>(Reference->Target.Piece.Get());
+    OutSpan = Solution.SpanCm;
     return OutPartner != nullptr;
 }
 
@@ -3168,57 +2868,45 @@ void ULogCarryComponent::CommitHeldLifts(AActor* NewSupport)
     HeldLifts.Reset();
 }
 
-bool ULogCarryComponent::CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport)
+bool ULogCarryComponent::CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport,
+    AActor* RestingOnPiece)
+{
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!IsValid(HeldPiece) || !Kernel || WorldTransform.ContainsNaN())
+        return false;
+    const FPlacementSolution Solution = Kernel->MakeDirectSolution(HeldPiece, WorldTransform, TEXT("piece.direct"),
+        PrimarySupport, SecondarySupport, RestingOnPiece);
+    if (!Solution.bValid)
+    {
+        PlacementStatus = Solution.Reason;
+        return false;
+    }
+    return CommitHeldSolution(Solution);
+}
+
+bool ULogCarryComponent::CommitHeldSolution(const FPlacementSolution& Solution)
 {
     ALogBuildPiece* Piece = HeldPiece;
-    if (!IsValid(Piece) || WorldTransform.ContainsNaN() || !GetWorld())
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!IsValid(Piece) || !Kernel)
         return false;
-    const FTransform Previous = Piece->GetActorTransform();
-    Piece->SetActorTransform(WorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
-
-    UWorldObjectIdentityComponent* Identity = Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
-    if (Identity && !Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    // Set first: what reacts to the placement (lifted ends, braces) adds to it.
+    PlacementStatus = TEXT("Placed.");
+    FString Reason;
+    if (!Kernel->CommitPlacement(Piece, Solution, FPlacementCommitOptions(), Reason))
     {
-        Piece->SetActorTransform(Previous);
-        return false;
-    }
-    FWorldOwnedItemRecord WorldRecord;
-    if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
-        Piece->GetActorLocation(), WorldRecord))
-    {
-        if (Identity)
-            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
-        Piece->SetActorTransform(Previous);
+        PlacementStatus = Reason;
         return false;
     }
-    Piece->SetHeldState(false);
-    Piece->SetPlacedState(true);
-
-    // Rest on the supports in the structural graph; without them it stands on the ground.
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    const FGuid NodeId = Piece->GetStructuralNodeId();
-    const IStructuralPieceInterface* Primary = Cast<IStructuralPieceInterface>(PrimarySupport);
-    if (Graph && Primary && Primary->IsStructurallyPlaced() &&
-        Graph->TryConnect(Primary->GetStructuralNodeId(), FName(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString())),
-            NodeId, TEXT("DeckA")))
-    {
-        Piece->AttachToActor(PrimarySupport, FAttachmentTransformRules::KeepWorldTransform);
-        const IStructuralPieceInterface* Secondary = Cast<IStructuralPieceInterface>(SecondarySupport);
-        if (Secondary && Secondary->IsStructurallyPlaced())
-        {
-            Graph->TryAddSecondarySupport(NodeId, Secondary->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString())), TEXT("DeckB"));
-        }
-    }
-
     ReleaseHeldFromLoad();
     HeldPiece = nullptr;
     bHasPlacementSurface = false;
+    bHasStackPlacement = false;
+    bHasStrutPlacement = false;
+    StackSolution = FPlacementSolution();
+    StrutSolution = FPlacementSolution();
     ClearSnapCandidate();
-    PlacementStatus = TEXT("Placed.");
-    ApplyEndContactSupports(Piece);
     CommitHeldLifts(Piece);
-    LiftDroopingEndsOnto(Piece);
     return true;
 }
 
@@ -3358,10 +3046,27 @@ FQuat ULogCarryComponent::MakeTiltAroundView(float Degrees) const
     return FQuat(Right, FMath::DegreesToRadians(Degrees));
 }
 
+FPlacementSolution ULogCarryComponent::SolveStackOn(ALogBuildPiece* Held, ALogBuildPiece* Target, const FVector& AimPoint,
+    float CarryYaw) const
+{
+    UPlacementKernelSubsystem* Kernel = GetKernel();
+    if (!Kernel || !Held)
+        return FPlacementSolution();
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Target;
+    Intent.AimPoint = AimPoint;
+    Intent.CarryYawDeg = CarryYaw;
+    Intent.bUpright = PlacementMode == ELogPlacementMode::Vertical;
+    Intent.AllowedProfiles = { TEXT("log.parallel_stack") };
+    return Kernel->Solve(Intent);
+}
+
 void ULogCarryComponent::UpdateStackPlacement()
 {
     bHasStackPlacement = false;
     StackTarget.Reset();
+    StackSolution = FPlacementSolution();
     if (!IsValid(HeldPiece) ||
         (PlacementMode != ELogPlacementMode::Horizontal && PlacementMode != ELogPlacementMode::Vertical))
         return;
@@ -3369,107 +3074,32 @@ void ULogCarryComponent::UpdateStackPlacement()
     if (!TraceFromView(PlacementTraceDistance, Hit))
         return;
     ALogBuildPiece* Target = Cast<ALogBuildPiece>(Hit.GetActor());
-    if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced() || !MyProject3Construction::IsHorizontalLog(Target))
-        return;
-    if (IsBadlyDamaged(Target))
-    {
-        PlacementStatus = TEXT("This piece is damaged: repair it before building on it (LMB with the axe).");
-        return;
-    }
-    if (PlacementMode == ELogPlacementMode::Vertical && !CanStandAsPost(HeldPiece))
+    if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced())
         return;
     FVector ViewLocation;
     FRotator ViewRotation;
     GetViewPoint(ViewLocation, ViewRotation);
-    FTransform Transform;
-    if (!ComputeStackPlacement(HeldPiece, Target, Hit.ImpactPoint, ViewRotation.Yaw + HeldYawOffset, Transform))
-        return;
-    // A log wall stands at most six logs high (Sons of the Forest).
-    const FVector NewAxis = Transform.TransformVectorNoScale(LocalAxisVector(HeldPiece->LongitudinalAxis));
-    MyProject3Construction::FLogGeometry TargetShape;
-    if (PlacementMode == ELogPlacementMode::Horizontal && MyProject3Construction::GetLogGeometry(Target, TargetShape) &&
-        FMath::Abs(FVector::DotProduct(NewAxis.GetSafeNormal2D(), TargetShape.Axis.GetSafeNormal2D())) > 0.95f &&
-        CountWallRows(Target) >= MaxWallRows)
+    const FPlacementSolution Solution = SolveStackOn(HeldPiece, Target, Hit.ImpactPoint, ViewRotation.Yaw + HeldYawOffset);
+    if (!Solution.bValid)
     {
-        PlacementStatus = FString::Printf(TEXT("A log wall stands at most %d logs high."), MaxWallRows);
+        if (!Solution.Reason.IsEmpty())
+            PlacementStatus = Solution.Reason;
         return;
     }
     bHasStackPlacement = true;
     StackTarget = Target;
-    StackTransform = Transform;
+    StackSolution = Solution;
+    StackTransform = Solution.PieceTransform;
     ClearSnapCandidate();
-    HeldPiece->SetActorTransform(Transform);
+    HeldPiece->SetActorTransform(StackTransform);
 }
 
 bool ULogCarryComponent::ComputeStackPlacement(ALogBuildPiece* Held, ALogBuildPiece* Target, const FVector& AimPoint,
     float CarryYaw, FTransform& OutTransform) const
 {
-    using namespace MyProject3Construction;
-    FLogGeometry Lower, Upper;
-    if (!GetLogGeometry(Target, Lower) || !GetLogGeometry(Held, Upper) || StackGridCm <= 1.0f)
+    const FPlacementSolution Solution = SolveStackOn(Held, Target, AimPoint, CarryYaw);
+    if (!Solution.bValid)
         return false;
-    FVector Along = FVector(Lower.Axis.X, Lower.Axis.Y, 0.0f);
-    if (!Along.Normalize())
-        return false;
-    const float EndA = -Lower.HalfLength;
-    const float AimAlong = FVector::DotProduct(AimPoint - Lower.Centre, Along);
-    auto OnGrid = [&](float S) { return EndA + FMath::RoundToFloat((S - EndA) / StackGridCm) * StackGridCm; };
-    const FVector Up = FVector::UpVector;
-
-    FVector Centre;
-    FQuat Rotation;
-    if (PlacementMode == ELogPlacementMode::Vertical)
-    {
-        // A post standing on the log at a grid point, seated in a shallow notch.
-        const float S = FMath::Clamp(OnGrid(AimAlong), EndA, -EndA);
-        Centre = Lower.Centre + Along * S + Up * (Lower.Radius * 0.6f + Upper.HalfLength);
-        Rotation = MakeLogRotation(Held, Up, Along);
-    }
-    else
-    {
-        const FVector Want = FRotator(0.0f, CarryYaw, 0.0f).Vector();
-        const float Alignment = FVector::DotProduct(Want, Along);
-        const float StackZ = Lower.Centre.Z + (Lower.Radius + Upper.Radius) * StackInterlock;
-        if (FMath::Abs(Alignment) >= 0.7071f)
-        {
-            // Lying along the lower log, like the next course of a wall: its
-            // start sits on a grid point; it may run past the lower log's end.
-            const float Start = OnGrid(AimAlong - Upper.HalfLength);
-            Centre = Lower.Centre + Along * (Start + Upper.HalfLength);
-            Rotation = MakeLogRotation(Held, Along * FMath::Sign(Alignment), Up);
-        }
-        else
-        {
-            // Crossing it, as at a corner: one of the upper log's own grid
-            // points sits on the lower log's grid point under the crosshair.
-            FVector Across = FVector::CrossProduct(Up, Along);
-            if (FVector::DotProduct(Across, Want) < 0.0f)
-                Across = -Across;
-            const FVector Crossing = Lower.Centre + Along * FMath::Clamp(OnGrid(AimAlong), EndA, -EndA);
-            const float AimAcross = FVector::DotProduct(AimPoint - Crossing, Across);
-            const int32 Steps = FMath::Max(0, FMath::RoundToInt(Upper.Length() / StackGridCm));
-            const int32 Step = FMath::Clamp(FMath::RoundToInt((Upper.HalfLength - AimAcross) / StackGridCm), 0, Steps);
-            Centre = Crossing + Across * (Upper.HalfLength - Step * StackGridCm);
-            Rotation = MakeLogRotation(Held, Across, Up);
-        }
-        Centre.Z = StackZ;
-    }
-    OutTransform = MakeLogTransform(Held, Centre, Rotation);
-
-    // Do not stack into a log that is already there.
-    TArray<FOverlapResult> Overlaps;
-    FCollisionQueryParams Params(SCENE_QUERY_STAT(LogStackSlot), false, Held);
-    Params.AddIgnoredActor(Target);
-    if (GetOwner())
-        Params.AddIgnoredActor(GetOwner());
-    GetWorld()->OverlapMultiByObjectType(Overlaps, Centre, FQuat::Identity,
-        FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects),
-        FCollisionShape::MakeSphere(Upper.Radius * 0.5f), Params);
-    for (const FOverlapResult& Overlap : Overlaps)
-    {
-        const ALogBuildPiece* Other = Cast<ALogBuildPiece>(Overlap.GetActor());
-        if (Other && Other->IsPlaced())
-            return false;
-    }
+    OutTransform = Solution.PieceTransform;
     return true;
 }

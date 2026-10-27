@@ -1767,7 +1767,7 @@ bool FWallRowLimitTest::RunTest(const FString& Parameters)
     FPlayerTools Player(World);
     TestEqual(TEXT("Third row counts three"), Player.Carry->CountWallRows(Rows[2]), 3);
     TestEqual(TEXT("Top row counts six"), Player.Carry->CountWallRows(Rows[5]), 6);
-    TestTrue(TEXT("The limit is six"), Player.Carry->CountWallRows(Rows[5]) >= Player.Carry->MaxWallRows);
+    TestTrue(TEXT("The limit is six"), Player.Carry->CountWallRows(Rows[5]) >= Player.Carry->GetMaxWallRows());
     return true;
 }
 

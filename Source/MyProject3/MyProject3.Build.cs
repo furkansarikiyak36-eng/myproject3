@@ -10,7 +10,8 @@ public class MyProject3 : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GeometryCore", "ProceduralMeshComponent" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		// Json: the placement profile catalogue (Config/Placement/PlacementProfiles.json).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
 
 		// Lets sources in subfolders (for example Tests/) include module headers directly.
 		PrivateIncludePaths.Add(ModuleDirectory);
