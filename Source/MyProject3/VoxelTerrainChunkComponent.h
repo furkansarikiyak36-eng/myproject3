@@ -85,6 +85,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Digging", meta=(ClampMin="1", ClampMax="100000"))
     int32 MaxRememberedDigOperations = 4096;
 
+    /** Conservative 3D clearance around grounded structural graph nodes. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Digging", meta=(ClampMin="0.0", ClampMax="1000.0"))
+    float SupportSafetyMarginCm = 200.0f;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Terrain|Voxel")
     int64 DensityRevision = 0;
 
