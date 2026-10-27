@@ -179,3 +179,11 @@ Inspected candidate source file revisions:
 - The canonical per-mechanic source/status matrix is `Docs/Architecture/PHASE_00_M001_M119_TRACEABILITY_MATRIX.csv`; registry status and source-review status are separate fields.
 - The planning PR is still a draft, documentation/tooling-only change. No gameplay C++ or Unreal content was changed by this consolidation. Source APIs and domain operations remain candidate-branch evidence, not proof of current-main integration.
 - Phase 01 remains open until the ownership/transaction/terrain gaps above receive explicit implementation decisions, all relevant callers and Blueprint contracts are reviewed, and UHT/UBT, Editor/PIE, save/load and failure-path checks are recorded separately.
+
+## 11. Core API/caller follow-up — 2026-10-28
+
+- Added [PHASE_01_CORE_API_CALLER_AUDIT.md](PHASE_01_CORE_API_CALLER_AUDIT.md), which follows selected candidate functions for operation results/identity, ownership transfers and split receipts, inventory transactions, structural graph edges, logical terrain edits, voxel density edits, save/load and fixed-step rollback.
+- A targeted callsite scan found no calls to the generic operation-ledger mutation entry points in the 17 reviewed domain implementation files. The ledger is used for pending checks and snapshot export/restore, but domain idempotency currently depends on narrower receipts and expected-revision rules.
+- The log split path accepts a caller-supplied operation ID and has a domain receipt; several inventory storage/drop/craft helpers generate fresh IDs internally. Stable retry identity is therefore not yet consistent across the full operation chain.
+- The logical terrain cell ledger and voxel chunk density/mesh component were inspected as separate owners; no connecting edit transaction was found in the inspected source path.
+- The audit is targeted source inspection only. All-M001–M119 call-chain review, public API/Blueprint compatibility, UE 5.8 build/UHT/PIE and full save/load validation remain open.
