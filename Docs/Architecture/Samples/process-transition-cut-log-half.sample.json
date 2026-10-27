@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "PROC_LOG_CUT_HALF",
+  "domain": "Wood",
+  "inputDefinitionId": "ITEM_LOG_WHOLE_600",
+  "allowedInputStateIds": [
+    "STATE_WOOD_WHOLE"
+  ],
+  "requiredToolDefinitionIds": [
+    "TOOL_AXE_BASIC"
+  ],
+  "requiredToolTags": [
+    "WOODWORKING"
+  ],
+  "requiresGroundContact": true,
+  "requiresLooseObject": true,
+  "rejectIfHasAttachedChildren": true,
+  "requiresSplitHalf": false,
+  "progressMode": "HitProgress",
+  "durationSeconds": 0,
+  "outputs": [
+    {
+      "definitionId": "ITEM_LOG_HALF_LENGTH_300",
+      "quantity": 2,
+      "resultStateId": "STATE_WOOD_HALF_LENGTH",
+      "meshVariantSetId": "MSH_LOG_300_WHOLE",
+      "physicalOutput": true
+    }
+  ],
+  "byproducts": [],
+  "commitPolicy": "AtomicAtCommit",
+  "interruptionPolicy": "ResetProgress",
+  "feedbackEventIds": [
+    "SFX_WOOD_CUT",
+    "VFX_WOOD_CHIP"
+  ],
+  "failureReasonIds": [
+    "INVALID_STATE",
+    "MISSING_TOOL",
+    "HAS_ATTACHED_CHILDREN"
+  ],
+  "notes": "Illustrative cut-through output contract; valid split location, mesh dimensions, output spawn spacing and actor rollback require source/PIE verification."
+}
