@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/crop-definition.schema.json",
+  "title": "MyProject3 Crop Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "seedItemDefinitionId",
+    "allowedSeasonIds",
+    "growthStages",
+    "soilRequirements",
+    "waterConsumptionPerDay",
+    "harvestOutputs",
+    "failurePolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "displayNameKey": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seedItemDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "allowedSeasonIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "growthStages": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stateId",
+          "durationSeconds"
+        ],
+        "properties": {
+          "stateId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "nextStateId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "visualAssetId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "stageFeedbackEventIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "soilRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimumQuality",
+        "maximumContamination",
+        "minimumMoisture",
+        "maximumMoisture"
+      ],
+      "properties": {
+        "minimumQuality": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maximumContamination": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "minimumMoisture": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maximumMoisture": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requiredSoilTags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "waterConsumptionPerDay": {
+      "type": "number",
+      "minimum": 0
+    },
+    "seasonGrowthMultipliers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    },
+    "harvestOutputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemDefinitionId",
+          "minimumQuantity",
+          "maximumQuantity"
+        ],
+        "properties": {
+          "itemDefinitionId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "minimumQuantity": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maximumQuantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "seedReturnItemDefinitionId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "seedReturnChance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "failurePolicy": {
+      "enum": [
+        "Wither",
+        "Dormant",
+        "RetryNextSeason",
+        "DieAndReturnNothing"
+      ]
+    },
+    "contaminationTolerance": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "restorationStageRequired": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
