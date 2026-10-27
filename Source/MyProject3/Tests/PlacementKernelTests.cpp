@@ -800,6 +800,19 @@ bool FPlacementContextTest::RunTest(const FString& Parameters)
     const FLogContextResult OnWall = Ask(Wall, FVector(600, 0, 115), -20.0f);
     TestTrue(FString::Printf(TEXT("Wall top: the next row (%s)"), *OnWall.Reason), OnWall.Action == ELogContextAction::Stack);
 
+    // Looking down at the last few cm of a log, carried outward at 45: it continues from the end, bent.
+    FLogContextAim NearEnd;
+    NearEnd.AimActor = Wall;
+    NearEnd.AimPoint = FVector(885, 0, 115);
+    NearEnd.ViewPitchDeg = -30.0f;
+    NearEnd.ViewDirection = FRotator(-30.0f, 45.0f, 0.0f).Vector();
+    NearEnd.CarryYawDeg = 45.0f;
+    const FLogContextResult Bent = Carry->ResolveContext(NearEnd);
+    TestTrue(FString::Printf(TEXT("Top of the end: it bends on from the end (%s, %.0f, %s)"), *Profile(Bent), Bent.Solution.AngleDeg, *Bent.Reason),
+        Bent.Action == ELogContextAction::Snap && Profile(Bent) == TEXT("log.end_to_end") && FMath::IsNearlyEqual(Bent.Solution.AngleDeg, 45.0f, 0.1f));
+    NearEnd.CarryYawDeg = 180.0f;
+    TestTrue(TEXT("Carried back over the log: it goes on top"), Carry->ResolveContext(NearEnd).Action == ELogContextAction::Stack);
+
     const FLogContextResult AtSide = Ask(Wall, FVector(600, -15, 100), -10.0f);
     TestTrue(FString::Printf(TEXT("Wall side: a T joint (%s, %s)"), *Profile(AtSide), *AtSide.Reason),
         AtSide.Action == ELogContextAction::Snap && Profile(AtSide) == TEXT("log.end_to_station"));

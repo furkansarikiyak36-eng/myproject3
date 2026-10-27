@@ -3122,6 +3122,13 @@ FLogContextResult ULogCarryComponent::ResolveContext(const FLogContextAim& Aim) 
 
     // A lying log: aimed at its top it goes on top, aimed at its side or end it joins there.
     const FVector OnAxis = FMath::ClosestPointOnSegment(Aim.AimPoint, Body.EndA(), Body.EndB());
+    // At its end, carried outward (not back over it): it continues from that end, straight or bent.
+    const float AlongAim = FVector::DotProduct(Aim.AimPoint - Body.Centre, Body.Axis);
+    const FVector Outward = (Body.Axis * FMath::Sign(AlongAim)).GetSafeNormal2D();
+    if (Body.HalfLength - FMath::Abs(AlongAim) <= EndZoneCm &&
+        FVector::DotProduct(FRotator(0.0f, Aim.CarryYawDeg, 0.0f).Vector(), Outward) > -0.8f &&
+        Try(ELogContextAction::Snap, { TEXT("log.end_to_end") }, false, AimedOnly))
+        return Result;
     const bool bWasOnTop = Aim.PreviousAction == ELogContextAction::Stack || Aim.PreviousAction == ELogContextAction::Deck;
     const float TopBand = FMath::Max(2.0f, Body.Radius * (bWasOnTop ? 0.15f : 0.35f));
     if (Aim.AimPoint.Z >= OnAxis.Z + TopBand)

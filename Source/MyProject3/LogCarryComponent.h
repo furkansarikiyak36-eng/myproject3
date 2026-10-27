@@ -160,6 +160,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.0"))
     float ContextReachCm = 40.0f;
 
+    /**
+     * Aiming within this far (cm) of a lying log's end, carried outward, the log
+     * continues from that end (straight or bent) instead of going on top. Kept
+     * below half a module so the corner station (37.5 cm in) still takes a crossing.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Placement", meta = (ClampMin = "0.0"))
+    float EndZoneCm = 30.0f;
+
     /** The axe chooses the cut from where it lands: an end face splits, the side cuts across. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Carry|Processing")
     bool bContextualCut = true;
