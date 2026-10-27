@@ -223,35 +223,110 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/profile"
+        "allOf": [
+          {
+            "$ref": "#/$defs/profile"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operationKind": {
+                "const": "connection"
+              }
+            },
+            "required": [
+              "operationKind"
+            ]
+          }
+        ]
       }
     },
     "surfacePlacementProfiles": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/profile"
+        "allOf": [
+          {
+            "$ref": "#/$defs/profile"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operationKind": {
+                "const": "surface_placement"
+              }
+            },
+            "required": [
+              "operationKind"
+            ]
+          }
+        ]
       }
     },
     "receiverInteractionProfiles": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/profile"
+        "allOf": [
+          {
+            "$ref": "#/$defs/profile"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operationKind": {
+                "const": "receiver_interaction"
+              }
+            },
+            "required": [
+              "operationKind"
+            ]
+          }
+        ]
       }
     },
     "voxelOperationProfiles": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/profile"
+        "allOf": [
+          {
+            "$ref": "#/$defs/profile"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operationKind": {
+                "const": "voxel_operation"
+              }
+            },
+            "required": [
+              "operationKind"
+            ]
+          }
+        ]
       }
     },
     "geometryProcessingProfiles": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/profile"
+        "allOf": [
+          {
+            "$ref": "#/$defs/profile"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operationKind": {
+                "const": "geometry_processing"
+              }
+            },
+            "required": [
+              "operationKind"
+            ]
+          }
+        ]
       }
     },
     "resolutionPipeline": {

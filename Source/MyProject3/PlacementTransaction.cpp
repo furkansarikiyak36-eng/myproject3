@@ -46,7 +46,7 @@ bool FPlacementTransactionJournal::CaptureStructuralGraph()
     if (!Graph.IsValid())
     {
         bHasGraphSnapshot = false;
-        return true;
+        return false;
     }
     if (!Graph->ExportSnapshot(GraphSnapshot))
         return false;

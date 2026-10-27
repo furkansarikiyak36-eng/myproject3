@@ -190,6 +190,8 @@ public:
 
     /** Resolves a radial station from the player's world-space contact hint. */
     FTransform GetSnapPointWorldTransformForAim(int32 Index, const FVector& WorldHint) const;
+    FTransform GetSnapPointWorldTransformForAim(
+        int32 Index, const FVector& WorldHint, const FTransform& ActorWorldTransform) const;
 
     UFUNCTION(BlueprintPure, Category = "Log Piece")
     bool CanBePickedUp() const;

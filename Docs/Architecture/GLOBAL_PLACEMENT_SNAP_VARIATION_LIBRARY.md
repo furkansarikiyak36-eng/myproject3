@@ -50,10 +50,12 @@ The catalog includes the initial planned families and variation profiles. Some o
 
 ## Migration boundaries
 
-Existing log snap now uses the kernel's paired-anchor solver, profile selection and runtime station transform. Existing stack placement remains a domain strategy using the 75 cm modular span set; it is intentionally not rewritten as a fake anchor socket. Strut support uses the transaction journal. The next migration pass should route remaining support-lift and custom material attachment entry points through the same transaction/adapter contract, then perform engine acceptance separately.
+Existing primary log snap now uses the kernel's paired-anchor solver, profile selection and runtime station transform. Existing stack placement remains a domain-specific grid strategy using the 75 cm modular span set; its commit path uses the transaction journal rather than pretending the preview grid is a pre-authored socket. Strut-to-post plus beam-secondary-support commits are grouped under one transaction. Remaining secondary-support lift helpers and material-specific connection APIs must finish migrating to provider-supplied feature frames before runtime integration can be called complete.
 
 ## Explicit verification status
 
+- The runtime catalogue, paired-anchor solver, rigid two-anchor constraint solver and placement rollback journal exist in source. Current player-driven wood single-anchor snap is routed through the kernel; material and domain-specific paths are still being migrated and are not all globally solved.
+- Two-support atomic helpers now check graph insertion return values; full two-anchor candidate discovery and all support-rest mutation paths are still an integration requirement, not claimed complete.
 - Runtime code: added, not yet Unreal-compiled in this change.
 - Unit/automation/PIE tests: intentionally not run, per scope.
 - Asset catalog script: added; it has not been run in Unreal Editor.

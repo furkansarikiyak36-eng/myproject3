@@ -449,24 +449,6 @@
       "allowsPhysicsFallback": false
     },
     {
-      "id": "stone.irregular_surface_rest",
-      "family": "stone",
-      "operationKind": "surface_placement",
-      "geometry": "irregular_surface_contact",
-      "description": "Let a loose irregular stone rest on suitable ground without creating a socket edge.",
-      "sourceFeatures": [],
-      "targetFeatures": [
-        "placement.surface"
-      ],
-      "solver": "contact_fit_then_physics_settle",
-      "orientationPolicy": "surface_normal",
-      "requiresCollisionValidation": true,
-      "requiresStructuralValidation": false,
-      "physicsPolicy": "physics_rest",
-      "failurePolicy": "reject_and_restore",
-      "createsStructuralAnchor": false
-    },
-    {
       "id": "stick.end_to_end",
       "family": "stick",
       "operationKind": "connection",
@@ -540,26 +522,6 @@
       "atomicCommit": true
     },
     {
-      "id": "stick.ground_stake",
-      "family": "stick",
-      "operationKind": "surface_placement",
-      "geometry": "ground_stake",
-      "description": "Place a sharpened stake into a permitted ground region with depth and slope rules.",
-      "sourceFeatures": [
-        "stick.point"
-      ],
-      "targetFeatures": [
-        "placement.terrain"
-      ],
-      "solver": "surface_normal_alignment",
-      "orientationPolicy": "surface_normal",
-      "requiresCollisionValidation": true,
-      "requiresStructuralValidation": true,
-      "physicsPolicy": "structural_support",
-      "failurePolicy": "reject_and_restore",
-      "createsStructuralAnchor": true
-    },
-    {
       "id": "stick.diagonal_brace",
       "family": "stick",
       "operationKind": "connection",
@@ -590,26 +552,6 @@
       "atomicCommit": true
     },
     {
-      "id": "stick.receiver",
-      "family": "stick",
-      "operationKind": "receiver_interaction",
-      "geometry": "named_receiver",
-      "description": "Transfer a compatible stick/tool/material to a named receiver; not a structural snap.",
-      "sourceFeatures": [
-        "item.interaction_anchor"
-      ],
-      "targetFeatures": [
-        "receiver.slot"
-      ],
-      "solver": "named_receiver_match",
-      "orientationPolicy": "receiver_defined",
-      "requiresMaterialCompatibility": true,
-      "physicsPolicy": "none",
-      "failurePolicy": "reject_without_ownership_change",
-      "usesOwnershipTransaction": true,
-      "atomicCommit": true
-    },
-    {
       "id": "stick.storage_slot",
       "family": "stick",
       "operationKind": "connection",
@@ -630,49 +572,6 @@
       "requiresStructuralValidation": false,
       "physicsPolicy": "placement_only",
       "failurePolicy": "reject_and_restore",
-      "atomicCommit": true
-    },
-    {
-      "id": "fire.ground_surface",
-      "family": "fire",
-      "operationKind": "surface_placement",
-      "geometry": "surface_placement",
-      "description": "Place a fire fixture on permitted ground with slope, clearance and collision checks.",
-      "sourceFeatures": [],
-      "targetFeatures": [
-        "placement.surface"
-      ],
-      "solver": "surface_normal_alignment",
-      "orientationPolicy": "surface_normal",
-      "requiresSurfaceTags": [
-        "fire.allowed_ground"
-      ],
-      "requiresCollisionValidation": true,
-      "requiresStructuralValidation": false,
-      "physicsPolicy": "placement_only",
-      "failurePolicy": "reject_and_restore",
-      "createsStructuralAnchor": false
-    },
-    {
-      "id": "fire.fuel_receiver",
-      "family": "fire",
-      "operationKind": "receiver_interaction",
-      "geometry": "receiver_slot",
-      "description": "Transfer compatible fuel into an explicitly named fire receiver.",
-      "sourceFeatures": [
-        "item.interaction_anchor"
-      ],
-      "targetFeatures": [
-        "fire.fuel_receiver"
-      ],
-      "solver": "named_receiver_match",
-      "orientationPolicy": "receiver_defined",
-      "requiresMaterialCompatibility": true,
-      "usesOwnershipTransaction": true,
-      "requiresCollisionValidation": false,
-      "requiresStructuralValidation": false,
-      "physicsPolicy": "none",
-      "failurePolicy": "reject_without_ownership_change",
       "atomicCommit": true
     },
     {
@@ -699,6 +598,209 @@
       "failurePolicy": "reject_and_restore",
       "atomicCommit": true
     },
+    {
+      "id": "log.surface_to_end",
+      "family": "log",
+      "operationKind": "connection",
+      "geometry": "surface_to_end",
+      "description": "Connect a logical surface station on the source log to a compatible target end feature; the source radial contact frame is resolved from the aim hint.",
+      "sourceFeatures": [
+        "log.surface_station"
+      ],
+      "targetFeatures": [
+        "log.end"
+      ],
+      "solver": "paired_anchor_transform",
+      "orientationPolicy": "geometry_derived",
+      "translationToleranceCm": 3,
+      "angularToleranceDeg": 12,
+      "minRequiredConnections": 1,
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "structural_support",
+      "failurePolicy": "reject_and_restore",
+      "atomicCommit": true,
+      "allowsPhysicsFallback": false
+    }
+  ],
+  "surfacePlacementProfiles": [
+    {
+      "id": "stone.irregular_surface_rest",
+      "family": "stone",
+      "operationKind": "surface_placement",
+      "geometry": "irregular_surface_contact",
+      "description": "Let a loose irregular stone rest on suitable ground without creating a socket edge.",
+      "sourceFeatures": [],
+      "targetFeatures": [
+        "placement.surface"
+      ],
+      "solver": "contact_fit_then_physics_settle",
+      "orientationPolicy": "surface_normal",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": false,
+      "physicsPolicy": "physics_rest",
+      "failurePolicy": "reject_and_restore",
+      "createsStructuralAnchor": false
+    },
+    {
+      "id": "stick.ground_stake",
+      "family": "stick",
+      "operationKind": "surface_placement",
+      "geometry": "ground_stake",
+      "description": "Place a sharpened stake into a permitted ground region with depth and slope rules.",
+      "sourceFeatures": [
+        "stick.point"
+      ],
+      "targetFeatures": [
+        "placement.terrain"
+      ],
+      "solver": "surface_normal_alignment",
+      "orientationPolicy": "surface_normal",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "structural_support",
+      "failurePolicy": "reject_and_restore",
+      "createsStructuralAnchor": true
+    },
+    {
+      "id": "fire.ground_surface",
+      "family": "fire",
+      "operationKind": "surface_placement",
+      "geometry": "surface_placement",
+      "description": "Place a fire fixture on permitted ground with slope, clearance and collision checks.",
+      "sourceFeatures": [],
+      "targetFeatures": [
+        "placement.surface"
+      ],
+      "solver": "surface_normal_alignment",
+      "orientationPolicy": "surface_normal",
+      "requiresSurfaceTags": [
+        "fire.allowed_ground"
+      ],
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": false,
+      "physicsPolicy": "placement_only",
+      "failurePolicy": "reject_and_restore",
+      "createsStructuralAnchor": false
+    },
+    {
+      "id": "voxel.terrain_surface",
+      "family": "voxel",
+      "operationKind": "surface_placement",
+      "geometry": "voxel_surface_contact",
+      "description": "Place a physical actor onto the current voxel surface revision.",
+      "sourceFeatures": [],
+      "targetFeatures": [
+        "voxel.surface"
+      ],
+      "solver": "surface_normal_alignment",
+      "orientationPolicy": "surface_normal",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "placement_only",
+      "failurePolicy": "reject_and_restore",
+      "createsStructuralAnchor": false
+    },
+    {
+      "id": "log.ground_rest",
+      "family": "log",
+      "operationKind": "surface_placement",
+      "geometry": "surface_contact_without_structural_snap",
+      "description": "Release a log onto a suitable surface without fabricating a structural socket.",
+      "sourceFeatures": [],
+      "targetFeatures": [
+        "placement.surface"
+      ],
+      "solver": "surface_fit_then_physics_settle",
+      "orientationPolicy": "surface_normal_or_free_axis",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": false,
+      "physicsPolicy": "physics_rest",
+      "failurePolicy": "reject_and_restore",
+      "createsStructuralAnchor": false
+    },
+    {
+      "id": "stone.ground_rest",
+      "family": "stone",
+      "operationKind": "surface_placement",
+      "geometry": "surface_contact_without_structural_snap",
+      "description": "Place loose stone on a suitable surface.",
+      "sourceFeatures": [],
+      "targetFeatures": [
+        "placement.surface"
+      ],
+      "solver": "contact_fit_then_physics_settle",
+      "orientationPolicy": "surface_normal",
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": false,
+      "physicsPolicy": "physics_rest",
+      "failurePolicy": "reject_and_restore",
+      "createsStructuralAnchor": false
+    }
+  ],
+  "receiverInteractionProfiles": [
+    {
+      "id": "stick.receiver",
+      "family": "stick",
+      "operationKind": "receiver_interaction",
+      "geometry": "named_receiver",
+      "description": "Transfer a compatible stick/tool/material to a named receiver; not a structural snap.",
+      "sourceFeatures": [
+        "item.interaction_anchor"
+      ],
+      "targetFeatures": [
+        "receiver.slot"
+      ],
+      "solver": "named_receiver_match",
+      "orientationPolicy": "receiver_defined",
+      "requiresMaterialCompatibility": true,
+      "physicsPolicy": "none",
+      "failurePolicy": "reject_without_ownership_change",
+      "usesOwnershipTransaction": true,
+      "atomicCommit": true
+    },
+    {
+      "id": "fire.fuel_receiver",
+      "family": "fire",
+      "operationKind": "receiver_interaction",
+      "geometry": "receiver_slot",
+      "description": "Transfer compatible fuel into an explicitly named fire receiver.",
+      "sourceFeatures": [
+        "item.interaction_anchor"
+      ],
+      "targetFeatures": [
+        "fire.fuel_receiver"
+      ],
+      "solver": "named_receiver_match",
+      "orientationPolicy": "receiver_defined",
+      "requiresMaterialCompatibility": true,
+      "usesOwnershipTransaction": true,
+      "requiresCollisionValidation": false,
+      "requiresStructuralValidation": false,
+      "physicsPolicy": "none",
+      "failurePolicy": "reject_without_ownership_change",
+      "atomicCommit": true
+    },
+    {
+      "id": "general.material_receiver",
+      "family": "general",
+      "operationKind": "receiver_interaction",
+      "geometry": "named_receiver",
+      "description": "Generic explicit receiver operation for compatible material or tools.",
+      "sourceFeatures": [
+        "item.interaction_anchor"
+      ],
+      "targetFeatures": [
+        "receiver.slot"
+      ],
+      "solver": "named_receiver_match",
+      "requiresMaterialCompatibility": true,
+      "usesOwnershipTransaction": true,
+      "atomicCommit": true,
+      "failurePolicy": "reject_without_ownership_change"
+    }
+  ],
+  "voxelOperationProfiles": [
     {
       "id": "voxel.cell_edit",
       "family": "voxel",
@@ -809,171 +911,6 @@
       "physicsPolicy": "none",
       "failurePolicy": "rollback_all",
       "atomicCommit": true
-    },
-    {
-      "id": "voxel.terrain_surface",
-      "family": "voxel",
-      "operationKind": "surface_placement",
-      "geometry": "voxel_surface_contact",
-      "description": "Place a physical actor onto the current voxel surface revision.",
-      "sourceFeatures": [],
-      "targetFeatures": [
-        "voxel.surface"
-      ],
-      "solver": "surface_normal_alignment",
-      "orientationPolicy": "surface_normal",
-      "requiresCollisionValidation": true,
-      "requiresStructuralValidation": true,
-      "physicsPolicy": "placement_only",
-      "failurePolicy": "reject_and_restore",
-      "createsStructuralAnchor": false
-    }
-  ],
-  "surfacePlacementProfiles": [
-    {
-      "id": "log.ground_rest",
-      "family": "log",
-      "operationKind": "surface_placement",
-      "geometry": "surface_contact_without_structural_snap",
-      "description": "Release a log onto a suitable surface without fabricating a structural socket.",
-      "sourceFeatures": [],
-      "targetFeatures": [
-        "placement.surface"
-      ],
-      "solver": "surface_fit_then_physics_settle",
-      "orientationPolicy": "surface_normal_or_free_axis",
-      "requiresCollisionValidation": true,
-      "requiresStructuralValidation": false,
-      "physicsPolicy": "physics_rest",
-      "failurePolicy": "reject_and_restore",
-      "createsStructuralAnchor": false
-    },
-    {
-      "id": "stone.ground_rest",
-      "family": "stone",
-      "operationKind": "surface_placement",
-      "geometry": "surface_contact_without_structural_snap",
-      "description": "Place loose stone on a suitable surface.",
-      "sourceFeatures": [],
-      "targetFeatures": [
-        "placement.surface"
-      ],
-      "solver": "contact_fit_then_physics_settle",
-      "orientationPolicy": "surface_normal",
-      "requiresCollisionValidation": true,
-      "requiresStructuralValidation": false,
-      "physicsPolicy": "physics_rest",
-      "failurePolicy": "reject_and_restore",
-      "createsStructuralAnchor": false
-    }
-  ],
-  "receiverInteractionProfiles": [
-    {
-      "id": "fire.fuel_receiver",
-      "family": "fire",
-      "operationKind": "receiver_interaction",
-      "geometry": "receiver_slot",
-      "description": "Transfer compatible fuel into a named receiver.",
-      "sourceFeatures": [
-        "item.interaction_anchor"
-      ],
-      "targetFeatures": [
-        "fire.fuel_receiver"
-      ],
-      "solver": "named_receiver_match",
-      "requiresMaterialCompatibility": true,
-      "usesOwnershipTransaction": true,
-      "atomicCommit": true,
-      "failurePolicy": "reject_without_ownership_change"
-    },
-    {
-      "id": "general.material_receiver",
-      "family": "general",
-      "operationKind": "receiver_interaction",
-      "geometry": "named_receiver",
-      "description": "Generic explicit receiver operation for compatible material or tools.",
-      "sourceFeatures": [
-        "item.interaction_anchor"
-      ],
-      "targetFeatures": [
-        "receiver.slot"
-      ],
-      "solver": "named_receiver_match",
-      "requiresMaterialCompatibility": true,
-      "usesOwnershipTransaction": true,
-      "atomicCommit": true,
-      "failurePolicy": "reject_without_ownership_change"
-    }
-  ],
-  "voxelOperationProfiles": [
-    {
-      "id": "voxel.cell_edit",
-      "family": "voxel",
-      "operationKind": "voxel_operation",
-      "geometry": "grid_cell_edit",
-      "description": "Address cells through integer coordinates.",
-      "solver": "integer_cell_coordinate",
-      "requiresCellStateValidation": true,
-      "usesVoxelTransaction": true,
-      "atomicCommit": true,
-      "failurePolicy": "reject_without_cell_mutation"
-    },
-    {
-      "id": "voxel.face_neighbor",
-      "family": "voxel",
-      "operationKind": "voxel_operation",
-      "geometry": "cell_face_adjacency",
-      "description": "Face neighbor lookup.",
-      "solver": "grid_face_adjacency",
-      "requiresGridCompatibility": true,
-      "atomicCommit": true,
-      "failurePolicy": "reject_without_cell_mutation"
-    },
-    {
-      "id": "voxel.edge_neighbor",
-      "family": "voxel",
-      "operationKind": "voxel_operation",
-      "geometry": "cell_edge_adjacency",
-      "description": "Edge neighbor lookup.",
-      "solver": "grid_edge_adjacency",
-      "requiresGridCompatibility": true,
-      "atomicCommit": true,
-      "failurePolicy": "reject_without_cell_mutation"
-    },
-    {
-      "id": "voxel.corner_neighbor",
-      "family": "voxel",
-      "operationKind": "voxel_operation",
-      "geometry": "cell_corner_adjacency",
-      "description": "Corner neighbor lookup.",
-      "solver": "grid_corner_adjacency",
-      "requiresGridCompatibility": true,
-      "atomicCommit": true,
-      "failurePolicy": "reject_without_cell_mutation"
-    },
-    {
-      "id": "voxel.grid_structure",
-      "family": "voxel",
-      "operationKind": "voxel_operation",
-      "geometry": "grid_aligned_structure",
-      "description": "Multi-cell structure footprint transaction.",
-      "solver": "integer_grid_footprint",
-      "requiresCellStateValidation": true,
-      "usesVoxelTransaction": true,
-      "atomicCommit": true,
-      "failurePolicy": "rollback_all"
-    },
-    {
-      "id": "voxel.multi_cell_edit",
-      "family": "voxel",
-      "operationKind": "voxel_operation",
-      "geometry": "multi_cell_edit",
-      "description": "Bounded multi-cell edit transaction.",
-      "solver": "integer_grid_region",
-      "requiresCellStateValidation": true,
-      "usesVoxelTransaction": true,
-      "atomicCommit": true,
-      "failurePolicy": "rollback_all"
     }
   ],
   "geometryProcessingProfiles": [
@@ -1107,8 +1044,8 @@
     "catalogueCreated": true,
     "runtimeKernelImplemented": true,
     "logSingleAnchorPathMigrated": true,
-    "logTwoSupportTransactionImplemented": true,
-    "legacyStackAndStrutAdaptersIntegrated": true,
+    "logTwoSupportTransactionImplemented": false,
+    "legacyStackAndStrutAdaptersIntegrated": "transactional_commit_path; domain preview solvers remain",
     "stoneStickAdaptersContracted": true,
     "fireVoxelOperationProfilesDefined": true,
     "assetCatalogAutomationAdded": true,

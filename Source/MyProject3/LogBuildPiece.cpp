@@ -1148,7 +1148,7 @@ void ALogBuildPiece::GenerateDefaultSideSnapPoints()
         Point.PointId = FName(*FString::Printf(TEXT("AutoSide_Station_%02d"), StationIndex));
         Point.SnapTag = SideSnapTag;
         Point.LocalTransform = FTransform(FRotator::ZeroRotator, Bounds.Origin + Axis * AlongOffset);
-        Point.bCanSource = false;
+        Point.bCanSource = true;
         Point.bCanReceive = true;
         Point.bAcceptAnyPieceType = true;
         Point.bFlipIncomingOrientation = true;
@@ -1220,17 +1220,24 @@ FTransform ALogBuildPiece::GetSnapPointWorldTransform(int32 Index) const
 FTransform ALogBuildPiece::GetSnapPointWorldTransformForAim(
     int32 Index, const FVector& WorldHint) const
 {
+    return GetSnapPointWorldTransformForAim(Index, WorldHint, GetActorTransform());
+}
+
+FTransform ALogBuildPiece::GetSnapPointWorldTransformForAim(
+    int32 Index, const FVector& WorldHint, const FTransform& ActorWorldTransform) const
+{
     if (!SnapPoints.IsValidIndex(Index) || !SnapPoints[Index].bRuntimeRadialFrame ||
-        !Mesh || !Mesh->GetStaticMesh() || WorldHint.ContainsNaN())
+        !Mesh || !Mesh->GetStaticMesh() || WorldHint.ContainsNaN() || ActorWorldTransform.ContainsNaN())
     {
-        return GetSnapPointWorldTransform(Index);
+        return SnapPoints.IsValidIndex(Index)
+            ? (SnapPoints[Index].LocalTransform * ActorWorldTransform)
+            : ActorWorldTransform;
     }
 
     const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
     const FVector Axis = GetLongitudinalAxisVector().GetSafeNormal();
-    const FTransform ActorWorld = GetActorTransform();
     const FTransform& Station = SnapPoints[Index].LocalTransform;
-    FVector HintLocal = ActorWorld.InverseTransformPosition(WorldHint);
+    const FVector HintLocal = ActorWorldTransform.InverseTransformPosition(WorldHint);
     FVector Radial = HintLocal - Station.GetLocation();
     Radial -= Axis * FVector::DotProduct(Radial, Axis);
 
@@ -1261,23 +1268,18 @@ FTransform ALogBuildPiece::GetSnapPointWorldTransformForAim(
     }
 
     if (Radial.IsNearlyZero())
-    {
         Radial = SideAxisA;
-    }
     Radial.Normalize();
 
     FVector ContactLocal = Station.GetLocation();
     FVector NormalLocal = Radial;
     if (GetCrossSectionProfile() == ELogCrossSectionProfile::Round)
     {
-        // A round log uses one continuous radial frame, not four authored faces.
         const float Radius = FMath::Min(ExtentA, ExtentB);
         ContactLocal += Radial * Radius;
     }
     else
     {
-        // Boxed/hewn forms resolve to the closest actual side face. They do not
-        // pretend to have a circular surface between their authored faces.
         const float DotA = FVector::DotProduct(Radial, SideAxisA);
         const float DotB = FVector::DotProduct(Radial, SideAxisB);
         if (FMath::Abs(DotA) >= FMath::Abs(DotB))
@@ -1294,8 +1296,7 @@ FTransform ALogBuildPiece::GetSnapPointWorldTransformForAim(
         }
     }
 
-    const FTransform LocalFrame(MakeOutwardRotation(NormalLocal), ContactLocal);
-    return LocalFrame * ActorWorld;
+    return FTransform(MakeOutwardRotation(NormalLocal), ContactLocal) * ActorWorldTransform;
 }
 
 void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)

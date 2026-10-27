@@ -203,6 +203,21 @@ bool UPlacementKernelSubsystem::LoadProfileArray(
             OutFailureReason = FString::Printf(TEXT("Array '%s' contains a profile missing id/family/operationKind/geometry/description."), *ArrayName);
             return false;
         }
+        const TMap<FString, FString> RequiredKinds = {
+            { TEXT("connectionProfiles"), TEXT("connection") },
+            { TEXT("surfacePlacementProfiles"), TEXT("surface_placement") },
+            { TEXT("receiverInteractionProfiles"), TEXT("receiver_interaction") },
+            { TEXT("voxelOperationProfiles"), TEXT("voxel_operation") },
+            { TEXT("geometryProcessingProfiles"), TEXT("geometry_processing") }
+        };
+        const FString* ExpectedKind = RequiredKinds.Find(ArrayName);
+        if (!ExpectedKind || Profile.OperationKindText != *ExpectedKind)
+        {
+            OutFailureReason = FString::Printf(
+                TEXT("Profile '%s' has operationKind '%s' but is stored in '%s'."),
+                *Profile.Id, *Profile.OperationKindText, *ArrayName);
+            return false;
+        }
         if (InOutProfiles.Contains(Profile.Id))
         {
             OutFailureReason = FString::Printf(TEXT("Duplicate placement profile ID: %s"), *Profile.Id);
@@ -346,12 +361,9 @@ bool UPlacementKernelSubsystem::SolveTwoAnchorAlignment(
 
     const FVector SourceVectorLocal =
         SourceLocalAnchorB.GetLocation() - SourceLocalAnchorA.GetLocation();
-    const FVector SourceVectorWorld =
-        (SourceLocalAnchorB * CurrentActorWorldTransform).GetLocation() -
-        (SourceLocalAnchorA * CurrentActorWorldTransform).GetLocation();
     const FVector TargetVector =
         TargetWorldAnchorB.GetLocation() - TargetWorldAnchorA.GetLocation();
-    const float SourceSpan = SourceVectorLocal.Size();
+    const float SourceSpan = SourceVectorLocal.Size() * CurrentActorWorldTransform.GetScale3D().GetAbs().GetMax();
     const float TargetSpan = TargetVector.Size();
     const float AllowedMismatch = Profile.MaxLengthMismatchCm > 0.0f
         ? Profile.MaxLengthMismatchCm : Profile.TranslationToleranceCm;
@@ -364,18 +376,20 @@ bool UPlacementKernelSubsystem::SolveTwoAnchorAlignment(
         return false;
     }
 
-    const FQuat DeltaRotation = FQuat::FindBetweenVectors(
-        SourceVectorWorld.GetSafeNormal(), TargetVector.GetSafeNormal());
-    FTransform DesiredActor = CurrentActorWorldTransform;
-    DesiredActor.SetRotation((DeltaRotation * CurrentActorWorldTransform.GetRotation()).GetNormalized());
-
-    const FVector SolvedAnchorA = (SourceLocalAnchorA * DesiredActor).GetLocation();
-    DesiredActor.AddToTranslation(TargetWorldAnchorA.GetLocation() - SolvedAnchorA);
+    // Anchor A fixes the full rigid transform (including roll). Anchor B is a
+    // hard constraint, not another opportunity to silently bend/scale the beam.
+    FTransform DesiredActor = SourceLocalAnchorA.Inverse() * TargetWorldAnchorA;
     const FVector SolvedAnchorB = (SourceLocalAnchorB * DesiredActor).GetLocation();
     const float Residual = FVector::Distance(SolvedAnchorB, TargetWorldAnchorB.GetLocation());
-    if (!IsUsableTransform(DesiredActor) || Residual > AllowedMismatch)
+    const FVector SolvedAxis = SolvedAnchorB - TargetWorldAnchorA.GetLocation();
+    const float AxisAngle = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
+        FVector::DotProduct(SolvedAxis.GetSafeNormal(), TargetVector.GetSafeNormal()), -1.0f, 1.0f)));
+    if (!IsUsableTransform(DesiredActor) || Residual > AllowedMismatch ||
+        !FMath::IsFinite(AxisAngle))
     {
-        OutFailureReason = FString::Printf(TEXT("Two-anchor solve residual %.2f cm exceeds %.2f cm."), Residual, AllowedMismatch);
+        OutFailureReason = FString::Printf(
+            TEXT("Second anchor residual %.2f cm exceeds %.2f cm; the rigid placement does not fit both supports."),
+            Residual, AllowedMismatch);
         return false;
     }
 
