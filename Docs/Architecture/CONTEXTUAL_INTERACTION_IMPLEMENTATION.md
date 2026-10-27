@@ -17,7 +17,7 @@
 
 | Adım | Durum | Kapsam |
 |---|---|---|
-| 1. Bağlamsal aday toplama | **Kaynak değişikliği yapıldı; Unreal doğrulaması bekliyor** | Nişan noktasının çevresindeki yerleştirilmiş kütükleri sınırlı overlap ile bulmak; doğrudan hedef yoksa en yakın gövdeyi tercih etmek; adayları `FPlacementIntent.Candidates` ile çekirdeğe geçirmek. |
+| 1. Bağlamsal aday toplama | **Kaynak ve otomasyon testi eklendi; Unreal doğrulaması bekliyor** | Nişan noktasının çevresindeki yerleştirilmiş kütükleri sınırlı overlap ile bulmak; doğrudan hedef yoksa en yakın gövdeyi tercih etmek; adayları `FPlacementIntent.Candidates` ile çekirdeğe geçirmek. `ContextCandidatesChooseBestFeature` testi, doğrudan hedef daha uzak olsa bile aday kümesindeki daha uygun hedefin seçilmesini denetler. |
 | 2. Snap kararlılığı | **Kaynak değişikliği yapıldı; Unreal doğrulaması bekliyor** | Önizleme geçerli çözümdeyken nişan noktasının yakın bağlam içinde hareket etmesine izin vermek; küçük hareketlerde hedefi aniden silmemek. |
 | 3. Nişanla kesme | **Varsayılan yol değiştirildi; Unreal doğrulaması bekliyor** | Varsayılan kesim `SplitLengthHalf` olur. `ResolveCutChoice` hedeflenen noktadan yarım/üç çeyrek/serbest uzunluk kesimini çözer; HUD mevcut `Share` değerini kesim halkası olarak gösterir. `C` ile özel işlem seçimi mevcut kalır. |
 | 4. Yerleştirme niyetini sınıflandırma | **Kısmen uygulandı** | Yatay hedefin üst yüzeyine nişan alındığında istif çözümü yakın bağlam hedefi kullanır; yan yüzeyde istif zorlanmaz. Snap/stack/strut/zemin arasında tam tek karar akışı henüz kurulmadı. |
