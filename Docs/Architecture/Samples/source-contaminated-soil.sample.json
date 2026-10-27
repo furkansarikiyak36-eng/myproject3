@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "SRC_SOIL_CONTAMINATED",
+  "displayNameKey": "source.contaminated_soil_patch",
+  "sourceType": "SoilPatch",
+  "materialDefinitionId": "MAT_CONTAMINATED_SOIL",
+  "regionTags": [
+    "TOXIC"
+  ],
+  "requiredToolTags": [
+    "TOOL_SHOVEL"
+  ],
+  "allowedOperationIds": [
+    "ACTION_EXCAVATE_SOIL"
+  ],
+  "yieldPolicy": "RepeatableWithCooldown",
+  "yields": [
+    {
+      "itemDefinitionId": "ITEM_SOIL_CONTAMINATED",
+      "minimumQuantity": 1,
+      "maximumQuantity": 6,
+      "resultStateId": "STATE_SOIL_CONTAMINATED"
+    }
+  ],
+  "regenerationSeconds": 0,
+  "notes": "Example source contract; voxel-to-inventory yield adapter is not yet verified."
+}
