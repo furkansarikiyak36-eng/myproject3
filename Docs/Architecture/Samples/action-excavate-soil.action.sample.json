@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "ACTION_EXCAVATE_SOIL",
+  "displayNameKey": "action.excavate_soil",
+  "ownerSystem": "TERRAIN",
+  "targetKinds": [
+    "TerrainCell",
+    "ResourceSource"
+  ],
+  "targetFamilies": [
+    "Soil"
+  ],
+  "sourceDefinitionIds": [
+    "SRC_SOIL_CONTAMINATED"
+  ],
+  "requiredToolTags": [
+    "TOOL_SHOVEL"
+  ],
+  "outputItemDefinitionIds": [
+    "ITEM_SOIL_CONTAMINATED"
+  ],
+  "operationMode": "HoldProgress",
+  "operationIdRequired": true,
+  "transactionPolicy": "AtomicAtCommit",
+  "successEventId": "TERRAIN_CHANGED",
+  "failureResultCodes": [
+    "InvalidTarget",
+    "MissingTool",
+    "InvalidState",
+    "PrerequisiteNotMet",
+    "MissingConfiguration",
+    "InsufficientResources",
+    "Conflict",
+    "InternalError"
+  ],
+  "requiresGroundContact": true,
+  "requiresLooseTarget": false,
+  "maximumRangeCm": 180,
+  "progressResumePolicy": "KeepProgress",
+  "noiseLevel": 0.15,
+  "lightLevel": 0,
+  "feedbackEventIds": [
+    "SFX_SOIL_DIG"
+  ],
+  "notes": "Terrain edit and resource yield must commit consistently; the chunk prototype alone does not satisfy this action."
+}
