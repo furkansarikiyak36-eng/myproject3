@@ -19,6 +19,7 @@ This is a source-layer increment, not a playable digging feature yet: no player/
 
 - [x] Soft soil / hard soil / rock have separate configurable minimum tool-strength thresholds (prototype defaults 1 / 3 / 5).
 - [x] Excavation is limited by configurable radius, editable local bounds, chunk bounds, and expected density revision.
+- [x] A successful bounded dig rebuilds mesh/collision before returning success; inability to rebuild rejects and rolls back the local density/revision.
 - [x] Replaying a matching operation ID returns its prior receipt; conflicting reuse is rejected.
 - [x] A registered grounded structure root inside the configured spatial clearance blocks the dig.
 - [x] SaveGame v14 stores per-chunk stable actor identity, dimensions, density samples, density revision and accepted dig receipts; restore regenerates mesh/collision for an already-present chunk.
