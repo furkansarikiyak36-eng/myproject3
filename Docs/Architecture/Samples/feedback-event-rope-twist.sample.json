@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "SFX_ROPE_TWIST",
+  "eventType": "SFX",
+  "triggerId": "RESOURCE_CONSUMED",
+  "spatialization": "World3D",
+  "priority": 40,
+  "concurrencyGroup": "CRAFTING_HANDS",
+  "maxConcurrentInstances": 4,
+  "mixBus": "ToolsAndConstruction",
+  "fallbackPolicy": "GenericPlaceholder",
+  "accessibilitySignal": "None",
+  "mustNotMaskThreatAudio": true,
+  "notes": "Logical cue definition only; no audio file is included."
+}
