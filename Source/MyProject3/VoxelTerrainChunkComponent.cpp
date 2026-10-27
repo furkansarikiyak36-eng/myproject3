@@ -155,6 +155,11 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
         LocalCenter.ContainsNaN() || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f ||
         !FMath::IsFinite(ToolStrength) || ToolStrength <= 0.0f ||
         !FMath::IsFinite(MaxDigRadiusCm) || MaxDigRadiusCm <= 0.0f ||
+        !FMath::IsFinite(SupportSafetyMarginCm) || SupportSafetyMarginCm < 0.0f ||
+        !FMath::IsFinite(SoftSoilToolStrength) || SoftSoilToolStrength <= 0.0f ||
+        !FMath::IsFinite(HardSoilToolStrength) || HardSoilToolStrength <= 0.0f ||
+        !FMath::IsFinite(RockToolStrength) || RockToolStrength <= 0.0f ||
+        static_cast<uint8>(SoilClass) > static_cast<uint8>(EVoxelSoilClass::Rock) ||
         RadiusCm > MaxDigRadiusCm || DensityRevision == MAX_int64 ||
         MaxRememberedDigOperations <= 0)
         return false;
@@ -263,6 +268,18 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
         return false;
     }
 
+    // Rendering and collision are part of the edit's visible commit, not a
+    // separate best-effort caller responsibility. If no surface can be rebuilt,
+    // restore the bounded density samples and revision before rejecting.
+    if (RebuildMesh() <= 0)
+    {
+        for (int32 Index = 0; Index < AffectedIndices.Num(); ++Index)
+            Density[AffectedIndices[Index]] = PreviousValues[Index];
+        DensityRevision = PreviousRevision;
+        RebuildMesh();
+        return false;
+    }
+
     FVoxelTerrainDigReceipt Receipt;
     Receipt.OperationId = OperationId;
     Receipt.LocalCenter = LocalCenter;
@@ -305,6 +322,11 @@ bool UVoxelTerrainChunkComponent::ValidateDensitySnapshot(
 {
     if (InCellsPerAxis < 4 || InCellsPerAxis > 128 ||
         !FMath::IsFinite(InVoxelSizeCm) || InVoxelSizeCm < 5.0f ||
+        !FMath::IsFinite(MaxDigRadiusCm) || MaxDigRadiusCm <= 0.0f ||
+        !FMath::IsFinite(SupportSafetyMarginCm) || SupportSafetyMarginCm < 0.0f ||
+        !FMath::IsFinite(SoftSoilToolStrength) || SoftSoilToolStrength <= 0.0f ||
+        !FMath::IsFinite(HardSoilToolStrength) || HardSoilToolStrength <= 0.0f ||
+        !FMath::IsFinite(RockToolStrength) || RockToolStrength <= 0.0f ||
         InRevision <= 0 || MaxRememberedDigOperations <= 0 ||
         InReceipts.Num() > MaxRememberedDigOperations)
         return false;
@@ -323,7 +345,8 @@ bool UVoxelTerrainChunkComponent::ValidateDensitySnapshot(
             Receipt.LocalCenter.ContainsNaN() || !FMath::IsFinite(Receipt.RadiusCm) ||
             Receipt.RadiusCm <= 0.0f || Receipt.RadiusCm > MaxDigRadiusCm ||
             !FMath::IsFinite(Receipt.ToolStrength) || Receipt.ToolStrength <= 0.0f ||
-            Receipt.ExpectedRevision <= 0 || Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+            Receipt.ExpectedRevision <= 0 || Receipt.ExpectedRevision == MAX_int64 ||
+            Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
             Receipt.ResultingRevision > InRevision ||
             !FMath::IsFinite(Receipt.RemovedVolumeCubicMetres) ||
             Receipt.RemovedVolumeCubicMetres <= 0.0f)
