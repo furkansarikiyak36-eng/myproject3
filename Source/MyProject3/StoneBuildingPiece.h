@@ -67,6 +67,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Stone|Anchors")
     bool TryConnectToAnchor(AStoneBuildingPiece* TargetPiece,
         FName TargetAnchorId, FName OwnAnchorId);
+    /** Global placement entry point; commits the exact previewed transform. */
+    bool TryConnectToAnchorAt(AStoneBuildingPiece* TargetPiece,
+        FName TargetAnchorId, FName OwnAnchorId, const FTransform& DesiredActorTransform);
 
     UFUNCTION(BlueprintCallable, Category = "Stone|Anchors")
     bool CanConnectToAnchor(const AStoneBuildingPiece* TargetPiece,

@@ -344,8 +344,26 @@ bool AStoneBuildingPiece::TryConnectToAnchor(
     FName TargetAnchorId,
     FName OwnAnchorId)
 {
+    if (!IsValid(TargetPiece))
+        return false;
+    const int32 OwnIndex = FindAnchorIndex(OwnAnchorId);
+    if (!Anchors.IsValidIndex(OwnIndex) ||
+        TargetPiece->FindAnchorIndex(TargetAnchorId) == INDEX_NONE)
+        return false;
+    const FTransform Desired = Anchors[OwnIndex].LocalTransform.Inverse() *
+        TargetPiece->GetAnchorWorldTransform(TargetAnchorId);
+    return TryConnectToAnchorAt(TargetPiece, TargetAnchorId, OwnAnchorId, Desired);
+}
+
+bool AStoneBuildingPiece::TryConnectToAnchorAt(
+    AStoneBuildingPiece* TargetPiece,
+    FName TargetAnchorId,
+    FName OwnAnchorId,
+    const FTransform& DesiredActorTransform)
+{
     if (!CanConnectToAnchor(TargetPiece, TargetAnchorId, OwnAnchorId) ||
-        !GetWorld() || !StructuralIdentity || !TargetPiece->StructuralIdentity)
+        !GetWorld() || !StructuralIdentity || !TargetPiece->StructuralIdentity ||
+        DesiredActorTransform.ContainsNaN())
     {
         return false;
     }
@@ -357,19 +375,14 @@ bool AStoneBuildingPiece::TryConnectToAnchor(
 
     const int32 TargetIndex = TargetPiece->FindAnchorIndex(TargetAnchorId);
     const int32 OwnIndex = FindAnchorIndex(OwnAnchorId);
+    if (!TargetPiece->Anchors.IsValidIndex(TargetIndex) || !Anchors.IsValidIndex(OwnIndex))
+        return false;
+
     const FTransform PreviousTransform = GetActorTransform();
-    const FTransform TargetWorldTransform =
-        TargetPiece->GetAnchorWorldTransform(TargetAnchorId);
-    const FTransform DesiredActorTransform =
-        Anchors[OwnIndex].LocalTransform.Inverse() * TargetWorldTransform;
-
-    SetActorTransform(DesiredActorTransform, false, nullptr,
-        ETeleportType::TeleportPhysics);
-
+    SetActorTransform(DesiredActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
     if (!AttachToActor(TargetPiece, FAttachmentTransformRules::KeepWorldTransform))
     {
-        SetActorTransform(PreviousTransform, false, nullptr,
-            ETeleportType::TeleportPhysics);
+        SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
         return false;
     }
 

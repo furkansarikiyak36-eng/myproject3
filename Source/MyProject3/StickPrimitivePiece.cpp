@@ -374,9 +374,25 @@ bool AStickPrimitivePiece::HasValidSupportChain() const
 bool AStickPrimitivePiece::TryConnectToAnchor(
     AStickPrimitivePiece* TargetPiece, FName TargetAnchorId, FName OwnAnchorId)
 {
+    if (!IsValid(TargetPiece))
+        return false;
+    const int32 OwnIndex = FindAnchorIndex(OwnAnchorId);
+    if (!Anchors.IsValidIndex(OwnIndex) ||
+        TargetPiece->FindAnchorIndex(TargetAnchorId) == INDEX_NONE)
+        return false;
+    const FTransform Desired = Anchors[OwnIndex].LocalTransform.Inverse() *
+        TargetPiece->GetAnchorWorldTransform(TargetAnchorId);
+    return TryConnectToAnchorAt(TargetPiece, TargetAnchorId, OwnAnchorId, Desired);
+}
+
+bool AStickPrimitivePiece::TryConnectToAnchorAt(
+    AStickPrimitivePiece* TargetPiece, FName TargetAnchorId, FName OwnAnchorId,
+    const FTransform& DesiredActorTransform)
+{
     if (!IsValid(TargetPiece) || TargetPiece == this || bIsHeld || bIsPlaced ||
         ParentPiece.IsValid() || !TargetPiece->HasValidSupportChain() ||
-        !GetWorld() || !StructuralIdentity || !TargetPiece->StructuralIdentity)
+        !GetWorld() || !StructuralIdentity || !TargetPiece->StructuralIdentity ||
+        DesiredActorTransform.ContainsNaN())
     {
         return false;
     }
@@ -388,25 +404,20 @@ bool AStickPrimitivePiece::TryConnectToAnchor(
 
     const int32 TargetIndex = TargetPiece->FindAnchorIndex(TargetAnchorId);
     const int32 OwnIndex = FindAnchorIndex(OwnAnchorId);
-    if (!TargetPiece->Anchors.IsValidIndex(TargetIndex) ||
-        !Anchors.IsValidIndex(OwnIndex))
-    {
+    if (!TargetPiece->Anchors.IsValidIndex(TargetIndex) || !Anchors.IsValidIndex(OwnIndex))
         return false;
-    }
 
     FPrimitiveAnchor& TargetAnchor = TargetPiece->Anchors[TargetIndex];
     FPrimitiveAnchor& OwnAnchor = Anchors[OwnIndex];
     if (TargetAnchor.bOccupied || OwnAnchor.bOccupied ||
+        !TargetAnchor.bCanReceive || !OwnAnchor.bCanConnect ||
         TargetAnchor.CompatibilityTag != OwnAnchor.CompatibilityTag)
     {
         return false;
     }
 
     const FTransform PreviousTransform = GetActorTransform();
-    const FTransform TargetWorld = TargetPiece->GetAnchorWorldTransform(TargetAnchorId);
-    const FTransform DesiredWorld = OwnAnchor.LocalTransform.Inverse() * TargetWorld;
-    SetActorTransform(DesiredWorld, false, nullptr, ETeleportType::TeleportPhysics);
-
+    SetActorTransform(DesiredActorTransform, false, nullptr, ETeleportType::TeleportPhysics);
     if (!AttachToActor(TargetPiece, FAttachmentTransformRules::KeepWorldTransform))
     {
         SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
@@ -430,6 +441,7 @@ bool AStickPrimitivePiece::TryConnectToAnchor(
         SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
         return false;
     }
+
     bIsPlaced = true;
     if (Mesh)
     {

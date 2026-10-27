@@ -302,9 +302,10 @@ bool UPlacementKernelSubsystem::SolveAnchorPair(
 {
     OutSolution = FPlacementSolution();
     FPlacementProfileDefinition Profile;
-    if (!GetProfile(ProfileId, Profile) || !Profile.IsConnection())
+    if (!GetProfile(ProfileId, Profile) ||
+        (!Profile.IsConnection() && Profile.OperationKindText != TEXT("surface_placement")))
     {
-        OutFailureReason = FString::Printf(TEXT("Connection profile '%s' is missing or has the wrong operation kind."), *ProfileId);
+        OutFailureReason = FString::Printf(TEXT("Profile '%s' is missing or cannot solve a feature-to-transform placement."), *ProfileId);
         return false;
     }
     if (!IsUsableTransform(SourceLocalAnchor) || !IsUsableTransform(TargetWorldAnchor) ||

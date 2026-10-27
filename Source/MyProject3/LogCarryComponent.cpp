@@ -180,6 +180,23 @@ namespace
     }
 }
 
+static FString ResolveMaterialPlacementProfile(
+    EStructuralNodeKind SourceKind, EStructuralNodeKind TargetKind)
+{
+    if (SourceKind == EStructuralNodeKind::Stone)
+    {
+        if (TargetKind == EStructuralNodeKind::Wood) return TEXT("stone.to_log");
+        if (TargetKind == EStructuralNodeKind::Stone) return TEXT("stone.face_to_face");
+        if (TargetKind == EStructuralNodeKind::Stick) return TEXT("stone.to_stick");
+    }
+    if (SourceKind == EStructuralNodeKind::Stick)
+    {
+        if (TargetKind == EStructuralNodeKind::Wood) return TEXT("stick.to_log");
+        if (TargetKind == EStructuralNodeKind::Stone) return TEXT("stick.to_stone");
+        if (TargetKind == EStructuralNodeKind::Stick) return TEXT("stick.end_to_end");
+    }
+    return FString();
+}
 
 namespace { FVector LocalAxisVector(ELogLongitudinalAxis Axis); }
 

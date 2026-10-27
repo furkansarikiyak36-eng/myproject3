@@ -621,6 +621,82 @@
       "failurePolicy": "reject_and_restore",
       "atomicCommit": true,
       "allowsPhysicsFallback": false
+    },
+    {
+      "id": "stone.to_log",
+      "family": "stone",
+      "operationKind": "connection",
+      "geometry": "cross_material_stone_to_log",
+      "description": "Place a loose stone onto a compatible log receiver using the feature-frame solver.",
+      "sourceFeatures": [
+        "stone.face"
+      ],
+      "targetFeatures": [
+        "log.surface_station",
+        "log.end"
+      ],
+      "solver": "feature_frame_alignment",
+      "orientationPolicy": "geometry_derived",
+      "translationToleranceCm": 2,
+      "angularToleranceDeg": 8,
+      "minRequiredConnections": 1,
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "structural_support",
+      "failurePolicy": "reject_and_restore",
+      "atomicCommit": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "stone.to_stick",
+      "family": "stone",
+      "operationKind": "connection",
+      "geometry": "cross_material_stone_to_stick",
+      "description": "Connect a stone feature to an explicitly compatible stick anchor.",
+      "sourceFeatures": [
+        "stone.face"
+      ],
+      "targetFeatures": [
+        "stick.end",
+        "stick.body"
+      ],
+      "solver": "feature_frame_alignment",
+      "orientationPolicy": "geometry_derived",
+      "translationToleranceCm": 2,
+      "angularToleranceDeg": 8,
+      "minRequiredConnections": 1,
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "structural_support",
+      "failurePolicy": "reject_and_restore",
+      "atomicCommit": true,
+      "allowsPhysicsFallback": false
+    },
+    {
+      "id": "stick.to_stone",
+      "family": "stick",
+      "operationKind": "connection",
+      "geometry": "cross_material_stick_to_stone",
+      "description": "Connect a stick feature to an explicitly compatible stone anchor.",
+      "sourceFeatures": [
+        "stick.end",
+        "stick.body"
+      ],
+      "targetFeatures": [
+        "stone.face",
+        "stone.edge"
+      ],
+      "solver": "feature_frame_alignment",
+      "orientationPolicy": "geometry_derived",
+      "translationToleranceCm": 2,
+      "angularToleranceDeg": 10,
+      "minRequiredConnections": 1,
+      "requiresCollisionValidation": true,
+      "requiresStructuralValidation": true,
+      "physicsPolicy": "structural_support",
+      "failurePolicy": "reject_and_restore",
+      "atomicCommit": true,
+      "allowsPhysicsFallback": false
     }
   ],
   "surfacePlacementProfiles": [

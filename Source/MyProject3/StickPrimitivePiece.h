@@ -87,6 +87,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="Primitive|Anchors")
     bool TryConnectToAnchor(AStickPrimitivePiece* TargetPiece, FName TargetAnchorId, FName OwnAnchorId);
+    /** Global placement entry point; commits the exact previewed transform. */
+    bool TryConnectToAnchorAt(AStickPrimitivePiece* TargetPiece, FName TargetAnchorId,
+        FName OwnAnchorId, const FTransform& DesiredActorTransform);
 
     UFUNCTION(BlueprintCallable, Category="Primitive|Anchors")
     /** Keeps actor anchors and the canonical graph edge synchronized. */

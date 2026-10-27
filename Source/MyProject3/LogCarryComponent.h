@@ -508,5 +508,5 @@ private:
     bool TransferMaterialOwnership(AActor* Piece, EWorldItemOwnerKind From, EWorldItemOwnerKind To,
         const FVector& Location) const;
     FTransform MakeUprightTransform(AActor* Piece, const FVector& BottomWorldPoint) const;
-    void FinishMaterialPlacement(AActor* Piece);
+    bool FinishMaterialPlacement(AActor* Piece, bool bOwnershipAlreadyTransferred = false);
 };
