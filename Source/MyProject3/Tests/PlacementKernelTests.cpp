@@ -458,6 +458,30 @@ bool FPlacementStationCrossRejectsNonRoundTest::RunTest(const FString& Parameter
     return true;
 }
 
+// Non-round automatic stations use a different tag and must not enter the round radial profile.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementEndToStationRejectsNonRoundTest, "MyProject3.Placement.EndToStationRejectsNonRound", Flags)
+bool FPlacementEndToStationRejectsNonRoundTest::RunTest(const FString& Parameters)
+{
+    FPlacementTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UPlacementKernelSubsystem* Kernel = World->GetSubsystem<UPlacementKernelSubsystem>();
+    ALogBuildPiece* Target = SpawnCubeLog(World, FVector(0, 0, 100), FRotator::ZeroRotator, 300.0f, 30.0f, true);
+    ALogBuildPiece* Held = SpawnCubeLog(World, FVector(0, 400, 100), FRotator::ZeroRotator, 150.0f, 30.0f, false);
+    if (!TestNotNull(TEXT("Kernel"), Kernel) || !TestNotNull(TEXT("Target"), Target) || !TestNotNull(TEXT("Held"), Held))
+        return false;
+
+    Target->bUseCanonicalGeometryDimensions = true;
+    Target->CrossSectionProfile = ELogCrossSectionProfile::HalfRound;
+    FPlacementIntent Intent;
+    Intent.Held = Held;
+    Intent.AimActor = Target;
+    Intent.AimPoint = FVector(37.5f, -15.0f, 100.0f);
+    Intent.AllowedProfiles = { TEXT("log.end_to_station") };
+    const FPlacementSolution Solution = Kernel->Solve(Intent);
+    TestFalse(TEXT("Round-only radial placement rejects a half-round receiver"), Solution.bValid);
+    return true;
+}
+
 // Step 10: every link the kernel makes lives in the structural graph, which the
 // save coordinator stores; a board on two beams comes back on both after a load.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlacementSaveTest, "MyProject3.Placement.LinksSurviveSaveAndLoad", Flags)
