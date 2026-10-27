@@ -15,9 +15,6 @@
   "stateModel": "WoodProcessing",
   "baseDefinitionId": "ITEM_LOG_WHOLE_600",
   "meshVariantSetId": "MSH_LOG_600_SPLIT_HALF",
-  "acquisitionSources": [
-    "SRC_TREE_FALLEN"
-  ],
   "allowedActions": [
     "Pickup",
     "Drop",
@@ -33,5 +30,8 @@
     "SPLIT_HALF_ROUND"
   ],
   "persistencePolicy": "SaveWhenInWorld",
-  "notes": "Example definition: a longitudinal split half-round; it is not a half-length log."
+  "notes": "Example definition: a longitudinal split half-round; it is not a half-length log.",
+  "acquisitionSourceIds": [
+    "SRC_TREE_FALLEN"
+  ]
 }
