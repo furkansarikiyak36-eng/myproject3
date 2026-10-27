@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/myproject3/SnapVariationLibrary.schema.json",
+  "title": "MyProject3 Snap Variation Library",
+  "description": "Schema for the data-driven global placement and snap variation catalogue.",
+  "type": "object",
+  "required": ["schemaVersion", "libraryId", "status", "units", "anchorGeneration", "profiles", "resolutionPipeline", "integrationStatus"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "libraryId": { "type": "string", "minLength": 1 },
+    "status": { "type": "string" },
+    "units": {
+      "type": "object",
+      "required": ["distance", "angle"],
+      "properties": {
+        "distance": { "const": "cm" },
+        "angle": { "const": "degrees" }
+      },
+      "additionalProperties": false
+    },
+    "designRules": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "anchorGeneration": {
+      "type": "object",
+      "required": ["log"],
+      "properties": {
+        "log": {
+          "type": "object",
+          "required": ["moduleLengthCm", "maximumStandardLengthCm", "standardLengthsCm", "endAnchors", "surfaceStations", "cutStations"],
+          "properties": {
+            "moduleLengthCm": { "type": "number", "exclusiveMinimum": 0 },
+            "maximumStandardLengthCm": { "type": "number", "exclusiveMinimum": 0 },
+            "standardLengthsCm": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "number", "exclusiveMinimum": 0 },
+              "uniqueItems": true
+            },
+            "endAnchors": {
+              "type": "object",
+              "required": ["count", "positionsRule", "roles", "generatedFromActualGeometry"],
+              "properties": {
+                "count": { "const": 2 },
+                "positionsRule": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string" } },
+                "roles": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "string" } },
+                "generatedFromActualGeometry": { "type": "boolean" }
+              },
+              "additionalProperties": true
+            },
+            "surfaceStations": {
+              "type": "object",
+              "required": ["countRule", "positionRule", "spacingCm", "maximumCountAt600Cm", "radialFrameRule", "doNotSpawnPerRotation"],
+              "properties": {
+                "countRule": { "type": "string" },
+                "positionRule": { "type": "string" },
+                "spacingCm": { "type": "number", "exclusiveMinimum": 0 },
+                "maximumCountAt600Cm": { "const": 8 },
+                "example600CmPositionsCm": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "type": "number" } },
+                "radialFrameRule": { "type": "string" },
+                "doNotSpawnPerRotation": { "type": "boolean" }
+              },
+              "additionalProperties": true
+            },
+            "cutStations": {
+              "type": "object",
+              "required": ["defaultStepCm", "targetRule", "snapAndCutAreSeparateCapabilities", "partialCutDoesNotChangePieceTopology", "completedCutRebuildsEndAnchorsAndSurfaceStations"],
+              "properties": {
+                "defaultStepCm": { "type": "number", "exclusiveMinimum": 0 },
+                "targetRule": { "type": "string" },
+                "snapAndCutAreSeparateCapabilities": { "type": "boolean" },
+                "partialCutDoesNotChangePieceTopology": { "type": "boolean" },
+                "completedCutRebuildsEndAnchorsAndSurfaceStations": { "type": "boolean" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "family", "geometry", "description"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9_]+)+$" },
+          "family": { "type": "string", "minLength": 1 },
+          "geometry": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "sourceAnchors": { "type": "array", "items": { "type": "string" } },
+          "targetAnchors": { "type": "array", "items": { "type": "string" } },
+          "solver": { "type": "string" },
+          "requiresStructuralValidation": { "type": "boolean" },
+          "requiresCollisionValidation": { "type": "boolean" },
+          "requiresSurfaceTags": { "type": "array", "items": { "type": "string" } },
+          "allowsPhysicsFallback": { "type": "boolean" },
+          "atomicCommit": { "type": "boolean" },
+          "partialCutChangesTopology": { "type": "boolean" },
+          "completedCutCreatesNewPieces": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "resolutionPipeline": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "candidateScoring": { "type": "object" },
+    "integrationStatus": {
+      "type": "object",
+      "required": ["catalogueCreated", "runtimeKernelImplemented", "existingLogPathsMigrated", "stoneFireVoxelAdaptersImplemented", "unrealBuildVerified", "pieGameplayVerified"],
+      "properties": {
+        "catalogueCreated": { "type": "boolean" },
+        "runtimeKernelImplemented": { "type": "boolean" },
+        "existingLogPathsMigrated": { "type": "boolean" },
+        "stoneFireVoxelAdaptersImplemented": { "type": "boolean" },
+        "unrealBuildVerified": { "type": "boolean" },
+        "pieGameplayVerified": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}
