@@ -869,6 +869,47 @@ bool FVoxelBoundedDigPolicyTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelStructureSupportGuardTest,
+    "MyProject3.Terrain.Voxel.DigRejectsNearGroundedStructure", TestFlags)
+bool FVoxelStructureSupportGuardTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Chunk = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    if (!TestNotNull(TEXT("Voxel chunk"), Chunk))
+        return false;
+    Chunk->InitializeFlatGround(800.0f);
+
+    AActor* SupportActor = TestWorld.World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Grounded support actor"), SupportActor))
+        return false;
+    SupportActor->SetActorLocation(FVector(800.0f, 800.0f, 800.0f));
+    UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(SupportActor);
+    if (!TestNotNull(TEXT("Support identity component"), Identity))
+        return false;
+    SupportActor->AddInstanceComponent(Identity);
+    Identity->RegisterComponent();
+    Identity->InstanceId = FGuid::NewGuid();
+
+    UWorldStructuralGraphSubsystem* Graph =
+        TestWorld.World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!TestNotNull(TEXT("Structural graph subsystem"), Graph))
+        return false;
+    const FGuid NodeId = FGuid::NewGuid();
+    TestTrue(TEXT("Grounded foundation enters the authoritative structure graph"),
+        Graph->RegisterNode(SupportActor, NodeId, EStructuralNodeKind::Foundation,
+            true, 0.0f, 10000.0f, 100.0f));
+
+    const int64 BeforeRevision = Chunk->GetDensityRevision();
+    float Removed = 0.0f;
+    int64 ResultRevision = 0;
+    TestFalse(TEXT("Excavation is refused inside grounded-support clearance"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(800.0f), 100.0f,
+            1.0f, BeforeRevision, Removed, ResultRevision));
+    TestEqual(TEXT("Support-protected terrain remains unchanged"),
+        Chunk->GetDensityRevision(), BeforeRevision);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelChunkDensitySnapshotRoundTripTest,
     "MyProject3.Terrain.Voxel.DensitySnapshotRoundTrip", TestFlags)
 bool FVoxelChunkDensitySnapshotRoundTripTest::RunTest(const FString& Parameters)
