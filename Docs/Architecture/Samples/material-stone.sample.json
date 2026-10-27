@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "MAT_STONE",
+  "displayNameKey": "material.stone",
+  "family": "Stone",
+  "hardnessClass": "Hard",
+  "hardnessValue": 0.9,
+  "densityKgPerM3": 2600,
+  "diggable": true,
+  "permittedDepthLayers": [
+    2,
+    3
+  ],
+  "terrainTags": [
+    "ROCK"
+  ],
+  "notes": "The profile's required tool tags impose the initial stone-rich layer gate."
+}
