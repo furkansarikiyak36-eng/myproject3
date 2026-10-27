@@ -37,6 +37,17 @@ float UVoxelTerrainChunkComponent::GetPoint(int32 X, int32 Y, int32 Z) const
 
 void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
 {
+    if (CellsPerAxis < 4 || CellsPerAxis > 128 ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm < 5.0f ||
+        !FMath::IsFinite(GroundHeightCm))
+    {
+        Density.Reset();
+        DensityRevision = 0;
+        DigReceipts.Reset();
+        ClearAllMeshSections();
+        return;
+    }
+
     const int32 N = PointsPerAxis();
     Density.SetNumUninitialized(N * N * N);
     for (int32 Z = 0; Z < N; ++Z)
@@ -47,6 +58,8 @@ void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
             for (int32 X = 0; X < N; ++X)
                 Density[PointIndex(X, Y, Z)] = AvoidIsoValue(Height - GroundHeightCm);
     }
+    DensityRevision = 1;
+    DigReceipts.Reset();
 }
 
 float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) const
@@ -66,12 +79,38 @@ float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) c
     return FMath::Lerp(FMath::Lerp(C00, C10, TY), FMath::Lerp(C01, C11, TY), TZ);
 }
 
+bool UVoxelTerrainChunkComponent::HasInitializedDensity() const
+{
+    if (CellsPerAxis < 4 || CellsPerAxis > 128 ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm < 5.0f)
+        return false;
+    const int64 N = static_cast<int64>(CellsPerAxis) + 1;
+    return Density.Num() == N * N * N && DensityRevision > 0;
+}
+
+float UVoxelTerrainChunkComponent::GetRequiredToolStrength() const
+{
+    switch (SoilClass)
+    {
+    case EVoxelSoilClass::SoftSoil:
+        return SoftSoilToolStrength;
+    case EVoxelSoilClass::HardSoil:
+        return HardSoilToolStrength;
+    case EVoxelSoilClass::Rock:
+        return RockToolStrength;
+    default:
+        return TNumericLimits<float>::Max();
+    }
+}
+
 float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float RadiusCm, bool bAdd)
 {
-    if (Density.IsEmpty() || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f || LocalCenter.ContainsNaN())
+    if (!HasInitializedDensity() || !FMath::IsFinite(RadiusCm) ||
+        RadiusCm <= 0.0f || LocalCenter.ContainsNaN() || DensityRevision == MAX_int64)
         return 0.0f;
 
     const float VolumeBefore = GetSolidVolumeCubicMetres();
+    bool bChangedDensity = false;
     const int32 N = PointsPerAxis();
     const int32 MinX = FMath::Max(0, FMath::FloorToInt((LocalCenter.X - RadiusCm) / VoxelSizeCm) - 1);
     const int32 MaxX = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.X + RadiusCm) / VoxelSizeCm) + 1);
@@ -87,9 +126,191 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
                 // Signed distance to the sphere, negative inside it.
                 const float Sphere = static_cast<float>(FVector::Dist(Point, LocalCenter)) - RadiusCm;
                 float& Value = Density[PointIndex(X, Y, Z)];
-                Value = AvoidIsoValue(bAdd ? FMath::Min(Value, Sphere) : FMath::Max(Value, -Sphere));
+                const float Updated = AvoidIsoValue(bAdd ? FMath::Min(Value, Sphere) : FMath::Max(Value, -Sphere));
+                if (Updated != Value)
+                {
+                    Value = Updated;
+                    bChangedDensity = true;
+                }
             }
+
+    if (bChangedDensity)
+        ++DensityRevision;
     return GetSolidVolumeCubicMetres() - VolumeBefore;
+}
+
+bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
+    const FGuid& OperationId, FVector LocalCenter, float RadiusCm, float ToolStrength,
+    int64 ExpectedRevision, float& OutRemovedVolumeCubicMetres, int64& OutResultingRevision)
+{
+    OutRemovedVolumeCubicMetres = 0.0f;
+    OutResultingRevision = DensityRevision;
+
+    if (!OperationId.IsValid() || !HasInitializedDensity() ||
+        LocalCenter.ContainsNaN() || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f ||
+        !FMath::IsFinite(ToolStrength) || ToolStrength <= 0.0f ||
+        !FMath::IsFinite(MaxDigRadiusCm) || MaxDigRadiusCm <= 0.0f ||
+        RadiusCm > MaxDigRadiusCm || DensityRevision == MAX_int64 ||
+        MaxRememberedDigOperations <= 0)
+        return false;
+
+    if (const FVoxelTerrainDigReceipt* ExistingReceipt = DigReceipts.Find(OperationId))
+    {
+        const bool bSameRequest =
+            ExistingReceipt->LocalCenter.Equals(LocalCenter, 0.01f) &&
+            FMath::IsNearlyEqual(ExistingReceipt->RadiusCm, RadiusCm, 0.01f) &&
+            FMath::IsNearlyEqual(ExistingReceipt->ToolStrength, ToolStrength, 0.01f) &&
+            ExistingReceipt->ExpectedRevision == ExpectedRevision;
+        if (!bSameRequest)
+            return false;
+        OutRemovedVolumeCubicMetres = ExistingReceipt->RemovedVolumeCubicMetres;
+        OutResultingRevision = ExistingReceipt->ResultingRevision;
+        return true;
+    }
+
+    if (ExpectedRevision != DensityRevision ||
+        ToolStrength < GetRequiredToolStrength() ||
+        DigReceipts.Num() >= MaxRememberedDigOperations ||
+        !EditableBoundsLocal.IsValid())
+        return false;
+
+    const FVector RadiusVector(RadiusCm);
+    const FVector Min = LocalCenter - RadiusVector;
+    const FVector Max = LocalCenter + RadiusVector;
+    const float ExtentCm = CellsPerAxis * VoxelSizeCm;
+    const FBox ChunkBounds(FVector::ZeroVector, FVector(ExtentCm));
+    if (!EditableBoundsLocal.IsInsideOrOn(Min) || !EditableBoundsLocal.IsInsideOrOn(Max) ||
+        !ChunkBounds.IsInsideOrOn(Min) || !ChunkBounds.IsInsideOrOn(Max))
+        return false;
+
+    // Keep only the bounded samples needed for a rollback if the edit makes no
+    // material-volume change. This avoids copying the entire density grid.
+    const int32 N = PointsPerAxis();
+    const int32 MinX = FMath::Max(0, FMath::FloorToInt(Min.X / VoxelSizeCm) - 1);
+    const int32 MaxX = FMath::Min(N - 1, FMath::CeilToInt(Max.X / VoxelSizeCm) + 1);
+    const int32 MinY = FMath::Max(0, FMath::FloorToInt(Min.Y / VoxelSizeCm) - 1);
+    const int32 MaxY = FMath::Min(N - 1, FMath::CeilToInt(Max.Y / VoxelSizeCm) + 1);
+    const int32 MinZ = FMath::Max(0, FMath::FloorToInt(Min.Z / VoxelSizeCm) - 1);
+    const int32 MaxZ = FMath::Min(N - 1, FMath::CeilToInt(Max.Z / VoxelSizeCm) + 1);
+    TArray<int32> AffectedIndices;
+    TArray<float> PreviousValues;
+    AffectedIndices.Reserve((MaxX - MinX + 1) * (MaxY - MinY + 1) * (MaxZ - MinZ + 1));
+    PreviousValues.Reserve(AffectedIndices.Max());
+    for (int32 Z = MinZ; Z <= MaxZ; ++Z)
+        for (int32 Y = MinY; Y <= MaxY; ++Y)
+            for (int32 X = MinX; X <= MaxX; ++X)
+            {
+                const int32 Index = PointIndex(X, Y, Z);
+                AffectedIndices.Add(Index);
+                PreviousValues.Add(Density[Index]);
+            }
+
+    const int64 PreviousRevision = DensityRevision;
+    const float SignedVolumeChange = ApplySphereEdit(LocalCenter, RadiusCm, false);
+    if (SignedVolumeChange >= -KINDA_SMALL_NUMBER || DensityRevision == PreviousRevision)
+    {
+        for (int32 Index = 0; Index < AffectedIndices.Num(); ++Index)
+            Density[AffectedIndices[Index]] = PreviousValues[Index];
+        DensityRevision = PreviousRevision;
+        return false;
+    }
+
+    FVoxelTerrainDigReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.LocalCenter = LocalCenter;
+    Receipt.RadiusCm = RadiusCm;
+    Receipt.ToolStrength = ToolStrength;
+    Receipt.ExpectedRevision = ExpectedRevision;
+    Receipt.ResultingRevision = DensityRevision;
+    Receipt.RemovedVolumeCubicMetres = -SignedVolumeChange;
+    DigReceipts.Add(OperationId, Receipt);
+    OutRemovedVolumeCubicMetres = Receipt.RemovedVolumeCubicMetres;
+    OutResultingRevision = DensityRevision;
+    return true;
+}
+
+bool UVoxelTerrainChunkComponent::ExportDensitySnapshot(
+    TArray<float>& OutDensity, int64& OutRevision, TArray<FVoxelTerrainDigReceipt>& OutReceipts) const
+{
+    OutDensity.Reset();
+    OutReceipts.Reset();
+    OutRevision = 0;
+    if (!HasInitializedDensity())
+        return false;
+    for (const float Value : Density)
+        if (!FMath::IsFinite(Value))
+            return false;
+
+    OutDensity = Density;
+    OutRevision = DensityRevision;
+    DigReceipts.GenerateValueArray(OutReceipts);
+    OutReceipts.Sort([](const FVoxelTerrainDigReceipt& A, const FVoxelTerrainDigReceipt& B)
+    {
+        return A.OperationId.ToString() < B.OperationId.ToString();
+    });
+    return true;
+}
+
+bool UVoxelTerrainChunkComponent::ValidateDensitySnapshot(
+    int32 InCellsPerAxis, float InVoxelSizeCm, int64 InRevision,
+    const TArray<float>& InDensity, const TArray<FVoxelTerrainDigReceipt>& InReceipts) const
+{
+    if (InCellsPerAxis < 4 || InCellsPerAxis > 128 ||
+        !FMath::IsFinite(InVoxelSizeCm) || InVoxelSizeCm < 5.0f ||
+        InRevision <= 0 || MaxRememberedDigOperations <= 0 ||
+        InReceipts.Num() > MaxRememberedDigOperations)
+        return false;
+
+    const int64 N = static_cast<int64>(InCellsPerAxis) + 1;
+    if (InDensity.Num() != N * N * N)
+        return false;
+    for (const float Value : InDensity)
+        if (!FMath::IsFinite(Value))
+            return false;
+
+    TSet<FGuid> SeenOperationIds;
+    for (const FVoxelTerrainDigReceipt& Receipt : InReceipts)
+    {
+        if (!Receipt.OperationId.IsValid() || SeenOperationIds.Contains(Receipt.OperationId) ||
+            Receipt.LocalCenter.ContainsNaN() || !FMath::IsFinite(Receipt.RadiusCm) ||
+            Receipt.RadiusCm <= 0.0f || Receipt.RadiusCm > MaxDigRadiusCm ||
+            !FMath::IsFinite(Receipt.ToolStrength) || Receipt.ToolStrength <= 0.0f ||
+            Receipt.ExpectedRevision <= 0 || Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+            Receipt.ResultingRevision > InRevision ||
+            !FMath::IsFinite(Receipt.RemovedVolumeCubicMetres) ||
+            Receipt.RemovedVolumeCubicMetres <= 0.0f)
+            return false;
+
+        const FVector R(Receipt.RadiusCm);
+        const FVector Min = Receipt.LocalCenter - R;
+        const FVector Max = Receipt.LocalCenter + R;
+        const FBox ChunkBounds(FVector::ZeroVector, FVector(InCellsPerAxis * InVoxelSizeCm));
+        if (!EditableBoundsLocal.IsValid() ||
+            !EditableBoundsLocal.IsInsideOrOn(Min) || !EditableBoundsLocal.IsInsideOrOn(Max) ||
+            !ChunkBounds.IsInsideOrOn(Min) || !ChunkBounds.IsInsideOrOn(Max))
+            return false;
+        SeenOperationIds.Add(Receipt.OperationId);
+    }
+    return true;
+}
+
+bool UVoxelTerrainChunkComponent::RestoreDensitySnapshot(
+    int32 InCellsPerAxis, float InVoxelSizeCm, int64 InRevision,
+    const TArray<float>& InDensity, const TArray<FVoxelTerrainDigReceipt>& InReceipts)
+{
+    if (!ValidateDensitySnapshot(InCellsPerAxis, InVoxelSizeCm, InRevision, InDensity, InReceipts))
+        return false;
+
+    CellsPerAxis = InCellsPerAxis;
+    VoxelSizeCm = InVoxelSizeCm;
+    Density = InDensity;
+    DensityRevision = InRevision;
+    DigReceipts.Reset();
+    for (const FVoxelTerrainDigReceipt& Receipt : InReceipts)
+        DigReceipts.Add(Receipt.OperationId, Receipt);
+
+    RebuildMesh();
+    return true;
 }
 
 float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
@@ -104,7 +325,7 @@ float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
 int32 UVoxelTerrainChunkComponent::RebuildMesh()
 {
     ClearAllMeshSections();
-    if (Density.IsEmpty())
+    if (!HasInitializedDensity())
         return 0;
 
     UE::Geometry::FMarchingCubes Extractor;
