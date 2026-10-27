@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.myproject3.invalid/process-transition.schema.json",
+  "title": "MyProject3 Physical Process Transition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "domain",
+    "inputDefinitionId",
+    "allowedInputStateIds",
+    "requiredToolDefinitionIds",
+    "outputs",
+    "commitPolicy"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$",
+      "description": "Stable definition/event ID. Never use an M001-M119 mechanic ID or a display name here."
+    },
+    "domain": {
+      "enum": [
+        "Wood",
+        "Stone",
+        "Stick",
+        "Soil",
+        "Clay",
+        "Plant",
+        "Equipment",
+        "Technology",
+        "Other"
+      ]
+    },
+    "inputDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "allowedInputStateIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiredToolDefinitionIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiredToolTags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "requiresGroundContact": {
+      "type": "boolean",
+      "default": false
+    },
+    "requiresLooseObject": {
+      "type": "boolean",
+      "default": true
+    },
+    "rejectIfHasAttachedChildren": {
+      "type": "boolean",
+      "default": true
+    },
+    "requiresSplitHalf": {
+      "type": "boolean",
+      "default": false
+    },
+    "requiresStationDefinitionId": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+    },
+    "progressMode": {
+      "enum": [
+        "Instant",
+        "HitProgress",
+        "HoldProgress",
+        "TimedProcess"
+      ]
+    },
+    "durationSeconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "definitionId",
+          "quantity",
+          "resultStateId"
+        ],
+        "properties": {
+          "definitionId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "resultStateId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "meshVariantSetId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "physicalOutput": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "byproducts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "definitionId",
+          "quantity"
+        ],
+        "properties": {
+          "definitionId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "commitPolicy": {
+      "const": "AtomicAtCommit"
+    },
+    "interruptionPolicy": {
+      "enum": [
+        "KeepProgress",
+        "ResetProgress",
+        "CancelAndRefund"
+      ]
+    },
+    "feedbackEventIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "failureReasonIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      },
+      "uniqueItems": true
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}
