@@ -3064,15 +3064,34 @@ void ULogCarryComponent::UpdateStackPlacement()
     if (!IsValid(HeldPiece) ||
         (PlacementMode != ELogPlacementMode::Horizontal && PlacementMode != ELogPlacementMode::Vertical))
         return;
+
     FHitResult Hit;
     if (!TraceFromView(PlacementTraceDistance, Hit))
         return;
-    ALogBuildPiece* Target = Cast<ALogBuildPiece>(Hit.GetActor());
+
+    TArray<AActor*> ContextCandidates;
+    ALogBuildPiece* Target = nullptr;
+    GatherContextualSnapCandidates(Hit.ImpactPoint, Hit.GetActor(), ContextCandidates, Target);
     if (!IsValid(Target) || Target == HeldPiece || !Target->IsPlaced())
         return;
+
+    // Stack intent is inferred from the surface being aimed at. Aiming beside a
+    // horizontal log should continue to the ordinary snap resolver, not silently
+    // move the held piece onto the log's top. Vertical remains an optional pose
+    // override; it is not required for ordinary horizontal stacking.
+    FPlacementBody TargetBody;
+    if (!FPlacementProviderRegistry::GetBody(Target, TargetBody) || !TargetBody.IsLying())
+        return;
+    const FVector AxisPoint = FMath::ClosestPointOnSegment(Hit.ImpactPoint, TargetBody.EndA(), TargetBody.EndB());
+    const float MinimumTopHeight = AxisPoint.Z + FMath::Max(2.0f, TargetBody.Radius * 0.35f);
+    if (Hit.ImpactPoint.Z < MinimumTopHeight)
+        return;
+
     FVector ViewLocation;
     FRotator ViewRotation;
-    GetViewPoint(ViewLocation, ViewRotation);
+    if (!GetViewPoint(ViewLocation, ViewRotation))
+        return;
+
     const FPlacementSolution Solution = SolveStackOn(HeldPiece, Target, Hit.ImpactPoint, ViewRotation.Yaw + HeldYawOffset);
     if (!Solution.bValid)
     {
@@ -3080,6 +3099,7 @@ void ULogCarryComponent::UpdateStackPlacement()
             PlacementStatus = Solution.Reason;
         return;
     }
+
     bHasStackPlacement = true;
     StackTarget = Target;
     StackSolution = Solution;
