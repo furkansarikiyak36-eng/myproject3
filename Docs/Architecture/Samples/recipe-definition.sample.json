@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "REC_ROPE_FROM_FIBER",
+  "displayNameKey": "recipe.rope_from_fiber",
+  "inputs": [
+    {
+      "definitionId": "ITEM_PLANT_FIBER",
+      "quantity": 4,
+      "consumeOnSuccess": true
+    }
+  ],
+  "outputs": [
+    {
+      "definitionId": "ITEM_ROPE",
+      "quantity": 1,
+      "ownershipKind": "Inventory"
+    }
+  ],
+  "preconditions": {
+    "requiredToolDefinitionIds": [],
+    "requiredStationDefinitionIds": [],
+    "requiredRegionTags": [],
+    "allowedSeasonIds": [],
+    "requiredWorldStateTags": []
+  },
+  "operation": {
+    "mode": "ProgressAction",
+    "durationSeconds": 2,
+    "interruptionPolicy": "KeepProgress",
+    "noiseLevel": 0.1,
+    "lightLevel": 0,
+    "toolWear": 0
+  },
+  "transactionPolicy": "AtomicAtCommit",
+  "feedbackEventIds": [
+    "SFX_ROPE_TWIST"
+  ],
+  "tags": [
+    "CRAFTING"
+  ],
+  "notes": "Illustrative catalog fixture, not an in-game active recipe."
+}
