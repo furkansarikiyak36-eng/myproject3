@@ -1,7 +1,22 @@
-# State (updated 2026-10-27)
+# State (updated 2026-10-28)
 
 UE 5.8 C++ survival / log-building game in the style of Sons of the Forest. Solo
 developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalSlice_C`.
+
+## Current integration pass (2026-10-28)
+
+| Item | State |
+|---|---|
+| Active work branch | `integration/phase-02-14-closure` |
+| Branch base | `feature/voxel-terrain-policy-spike`; do not confuse with `main` |
+| Terrain decision | First playable slice uses macro Landscape + bounded smooth voxel pockets; engine Marching Cubes / ProceduralMeshComponent |
+| Voxel source delta | Bounded soil-aware dig API, expected-revision check, idempotent receipts, grounded-support spatial guard, density snapshot API |
+| Persistence delta | SaveGame schema v14 contains identity-bound voxel density snapshots; restore rebuilds mesh/collision for chunks already present in the level |
+| Added source tests | Bounded-dig policy, grounded-structure guard, density-snapshot round trip |
+| Engine acceptance | NOT RUN for this branch: UE 5.8 UHT/build, Automation tests, Editor/PIE, full save/load and performance |
+| Open integration blockers | Logical terrain state vs physical density is not one atomic transaction; no live player/tool caller; no neighboring chunk seams, async mesh/collision, navmesh update, or missing-chunk recreation |
+
+The phase map and remaining source/runtime gates are recorded in `Docs/Architecture/PHASE_02_14_INTEGRATION_CLOSEOUT.md` and the detailed terrain gate in `Docs/Architecture/PHASE_02_VOXEL_VALIDATION_AND_EXIT_GATE.md`. Do not mark any M-ID accepted merely because its source file exists.
 
 ## Branches
 
