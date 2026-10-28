@@ -19,7 +19,7 @@
 
 | Faz | Kaynak tabanı | Kalan ana iş / kabul şartı |
 |---|---|---|
-| 02 — Voxel teknolojisi ve ortak sınırlar | Ölçülmüş tek chunk prototipi; bu dalda sınırlı kazı ve snapshot kaynağı eklendi | UE build/UHT, gerçek testler, mantıksal-fiziksel atomik işlem, gerçek envanter aleti entegrasyonu, chunk dikişleri, async mesh ve navmesh |
+| 02 — Voxel teknolojisi ve ortak sınırlar | Ölçülmüş tek chunk prototipi; bu dalda sınırlı kazı ve snapshot kaynağı eklendi | UE build/UHT, gerçek testler, mantıksal-fiziksel birleşik transaction'ın motor doğrulaması, gerçek envanter aleti entegrasyonu, chunk dikişleri, async mesh ve navmesh |
 | 03 — Kütük ve ahşap işleme | `LogBuildPiece`, `LogCarryComponent`, işleme/mesh varyantı ve snap çekirdeği mevcut | Tüm kesim/yarma/oluk/kalas negatif durumları, transaction rollback, mesh envanteri ve PIE kabulü |
 | 04 — Taş ve duvarcılık | `StoneBuildingPiece` ve materyaller arası bağlantı katmanı mevcut | Tam kullanıcı döngüsü, ölçek/pivot/çarpışma, taş destekleri ve PIE kabulü |
 | 05 — Çubuklar ve ilkel araçlar | `StickPrimitivePiece` ve ilişkili tip/anchor katmanları mevcut | Bütün tuzak/çubuk/alet girdilerinin ortak sahiplik ve kaynak tüketimine bağlanması; negatif senaryolar |
@@ -36,7 +36,7 @@
 ## Entegrasyon uyarıları
 
 1. `main` bu çalışma dalıyla aynı değildir; bu dal `main` üzerine yazılmadı ve birleştirme yapılmadı.
-2. `WorldTerrainStateSubsystem` mantıksal hücre editleri ile `UVoxelTerrainChunkComponent` fiziksel yoğunluğu henüz tek atomik commit değildir. Ayrı ayrı başarılı olmaları birlikte doğru olduklarını kanıtlamaz.
+2. `WorldTerrainStateSubsystem::TryApplyVoxelExcavation` kaynak seviyesinde mantıksal hücre ve fiziksel yoğunluğu tek çağrıda koordine eder; mantıksal ret durumunda voxel snapshot'ını geri alır ve aynı işlem kimliğinin retry'sinde makbuzları doğrular. Bu, UE'de derlenmiş/çalıştırılmış bir atomiklik kanıtı değildir; rollback mesh/collision ve Save/Load senaryoları hâlâ motor kabulü bekler.
 3. Voxel kayıt yüklemesi, etkin chunk aktörlerinin mevcut level'de ve doğru benzersiz kimliklerle bulunmasını bekler; eksik chunk spawn etmez.
 4. Yapı desteği koruması bir mesafe marjıdır; toprak gerilmesi veya destek yükünün fiziksel simülasyonu değildir.
 5. `feature/voxel-terrain-policy-spike` dalındaki önceki ölçümler önceki koşuya aittir; bu daldaki son değişikliklerden sonra yeniden ölçülmemiştir.
