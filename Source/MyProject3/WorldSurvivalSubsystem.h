@@ -6,6 +6,14 @@
 
 class UHeatSourceComponent;
 
+/** Runtime-only state needed to undo heat fuel changes after a rejected fixed step. */
+struct FWorldHeatSourceRuntimeSnapshot
+{
+    TWeakObjectPtr<UHeatSourceComponent> Source;
+    float FuelSeconds = 0.0f;
+    bool bLit = false;
+};
+
 UENUM(BlueprintType)
 enum class EWorldWeatherState : uint8 { Clear, Rain, Wind, Snow, Storm, Heatwave };
 
@@ -108,6 +116,8 @@ public:
 
     void RegisterHeatSource(UHeatSourceComponent* Source);
     void UnregisterHeatSource(UHeatSourceComponent* Source);
+    void ExportHeatSourceRuntimeSnapshot(TArray<FWorldHeatSourceRuntimeSnapshot>& OutSnapshot) const;
+    bool RestoreHeatSourceRuntimeSnapshot(const TArray<FWorldHeatSourceRuntimeSnapshot>& Snapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Survival") TMap<FGuid, FWorldSurvivalProfile> Profiles;
