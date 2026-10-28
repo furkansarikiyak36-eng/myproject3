@@ -128,6 +128,7 @@ public:
     int64 GetDensityRevision() const { return DensityRevision; }
 
     /** Explicit payload API used by the world save coordinator; validates before replacing live data. */
+    bool TryGetDigReceipt(const FGuid& OperationId, FVoxelTerrainDigReceipt& OutReceipt) const;
     bool ExportDensitySnapshot(TArray<float>& OutDensity, int64& OutRevision,
         TArray<FVoxelTerrainDigReceipt>& OutReceipts) const;
     bool ValidateDensitySnapshot(int32 InCellsPerAxis, float InVoxelSizeCm, int64 InRevision,
