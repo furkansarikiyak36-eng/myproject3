@@ -59,8 +59,11 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
     const UWorldSimulationClockSubsystem* Clock =
         World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     const UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
-    if (!World || !Threat || !Clock || !Threat->IsDirectorInitialized() ||
-        !Clock->IsClockInitialized() || !FMath::IsFinite(TargetTimeSeconds) ||
+    const UWorldOperationLedgerSubsystem* OperationLedger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
+    if (!World || !Threat || !Clock || !OperationLedger ||
+        !Threat->IsDirectorInitialized() || !Clock->IsClockInitialized() ||
+        !FMath::IsFinite(TargetTimeSeconds) ||
         TargetTimeSeconds < Clock->GetSimulationTimeSeconds() ||
         !FMath::IsFinite(SpawnHeightOffset) || SpawnHeightOffset < 0.0f ||
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
@@ -134,8 +137,68 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
         {
             return false;
         }
-        if (static_cast<int64>(PulseIndexAsDouble) > CurrentRaid.LastCommittedAttackPulseIndex)
+
+        const int64 PulseIndex = static_cast<int64>(PulseIndexAsDouble);
+        const double NextPulseTime = CurrentRaid.ActiveStartTime +
+            (static_cast<double>(PulseIndex) + 1.0) * EffectiveIntervalSeconds;
+        if (!FMath::IsFinite(NextPulseTime))
+            return false;
+
+        if (PulseIndex > CurrentRaid.LastCommittedAttackPulseIndex)
+        {
             ++RequiredRevisionIncrements;
+            const FGuid PulseOperationId = MakeRaidPulseOperationId(CurrentRaid.RaidId, PulseIndex);
+            FWorldOperationResult PreviousResult;
+            const bool bHasCompletedReceipt =
+                OperationLedger->TryGetCompletedResult(PulseOperationId, PreviousResult);
+            if (bHasCompletedReceipt)
+            {
+                if (!PreviousResult.IsSuccess())
+                    return false;
+            }
+            else
+            {
+                if (!OperationLedger->CanBeginOperation(PulseOperationId))
+                    return false;
+
+                TArray<FGuid> DamageTargets;
+                if (!BuildDamageTargetList(CurrentRaid, DamageTargets))
+                    return false;
+
+                TSet<FGuid> UniqueTargets;
+                for (const FGuid& NodeId : DamageTargets)
+                {
+                    if (!NodeId.IsValid() || UniqueTargets.Contains(NodeId))
+                        return false;
+                    UniqueTargets.Add(NodeId);
+
+                    FStructuralNodeRecord Node;
+                    if (!Graph->GetNode(NodeId, Node) || !Node.Actor.IsValid() ||
+                        Node.Revision == MAX_int64 || !FMath::IsFinite(Node.Damage) ||
+                        !FMath::IsFinite(Node.DamageThreshold) ||
+                        !FMath::IsFinite(Node.Damage + DamagePerPulse))
+                    {
+                        return false;
+                    }
+
+                    if (Node.Damage + DamagePerPulse >= Node.DamageThreshold)
+                    {
+                        TArray<FGuid> RemovalOrder;
+                        if (!Graph->BuildDependentRemovalOrder(NodeId, RemovalOrder))
+                            return false;
+                        for (const FGuid& RemovalId : RemovalOrder)
+                        {
+                            FStructuralNodeRecord RemovalNode;
+                            if (!Graph->GetNode(RemovalId, RemovalNode) ||
+                                !RemovalNode.Actor.IsValid())
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // State transition, first interval freeze and attack-pulse commit can each
