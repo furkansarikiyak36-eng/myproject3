@@ -229,9 +229,7 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
     if (!OperationId.IsValid() || !SourceItemId.IsValid() || ExpectedRevision <= 0 ||
         ExpectedOwner != EWorldItemOwnerKind::World ||
         OutputDefinitionIds.Num() < 2 ||
-        OutputDefinitionIds.Num() != OutputWorldLocations.Num() ||
-        MaxTrackedItems <= 0 ||
-        OutputDefinitionIds.Num() - 1 > MaxTrackedItems - Items.Num())
+        OutputDefinitionIds.Num() != OutputWorldLocations.Num())
     {
         return false;
     }
@@ -275,6 +273,12 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
 
     // Operation IDs are globally unique across ownership mutation receipt kinds.
     if (Receipts.Contains(OperationId))
+        return false;
+
+    // Capacity applies only to a new split. An exact retry above must return its
+    // immutable prior result even when the item ledger is now at capacity.
+    if (MaxTrackedItems <= 0 || Items.Num() > MaxTrackedItems ||
+        OutputDefinitionIds.Num() - 1 > MaxTrackedItems - Items.Num())
         return false;
 
     const FWorldOwnedItemRecord* Source = Items.Find(SourceItemId);
