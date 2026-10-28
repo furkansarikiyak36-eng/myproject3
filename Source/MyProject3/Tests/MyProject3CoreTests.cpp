@@ -31,6 +31,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldTerrainStateSubsystem.h"
 
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -936,6 +937,52 @@ bool FVoxelStructureSupportGuardTest::RunTest(const FString& Parameters)
             1.0f, BeforeRevision, Removed, ResultRevision));
     TestEqual(TEXT("Support-protected terrain remains unchanged"),
         Chunk->GetDensityRevision(), BeforeRevision);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelLogicalPhysicalTransactionTest,
+    "MyProject3.Terrain.Voxel.LogicalPhysicalExcavationIsAtomic", TestFlags)
+bool FVoxelLogicalPhysicalTransactionTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Chunk = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    UWorldTerrainStateSubsystem* Terrain = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Voxel chunk"), Chunk) ||
+        !TestNotNull(TEXT("Terrain state subsystem"), Terrain))
+        return false;
+
+    Chunk->EditableBoundsLocal = FBox(FVector(300.0f), FVector(1300.0f));
+    Chunk->InitializeFlatGround(800.0f);
+    TestTrue(TEXT("Initial mesh builds"), Chunk->RebuildMesh() > 0);
+    const float InitialVolume = Chunk->GetSolidVolumeCubicMetres();
+    const int64 InitialDensityRevision = Chunk->GetDensityRevision();
+
+    FWorldTerrainCellState CellState;
+    TestFalse(TEXT("Invalid depth layer rejects the combined edit"),
+        Terrain->TryApplyVoxelExcavation(FGuid::NewGuid(), Chunk, FVector(800.0f), 100.0f,
+            3.0f, InitialDensityRevision, FIntVector(0, 0, 0), Terrain->MaxEditableDepthLayers,
+            0, NAME_None, CellState));
+    TestEqual(TEXT("Rejected logical edit rolls back voxel revision"),
+        Chunk->GetDensityRevision(), InitialDensityRevision);
+    TestTrue(TEXT("Rejected logical edit restores voxel volume"),
+        FMath::IsNearlyEqual(Chunk->GetSolidVolumeCubicMetres(), InitialVolume, 0.01f));
+    TestFalse(TEXT("Rejected logical edit leaves no logical cell"),
+        Terrain->TryGetCell(FIntVector(0, 0, 0), CellState));
+
+    const FGuid AcceptedOperation = FGuid::NewGuid();
+    float VolumeRemoved = 0.0f;
+    int64 DensityRevisionAfter = 0;
+    TestTrue(TEXT("Combined edit commits voxel and logical state"),
+        Terrain->TryApplyVoxelExcavation(AcceptedOperation, Chunk, FVector(800.0f), 100.0f,
+            3.0f, InitialDensityRevision, FIntVector(0, 0, 0), 0, 0,
+            NAME_None, CellState));
+    TestTrue(TEXT("Logical cell records excavation"), Terrain->TryGetCell(FIntVector(0, 0, 0), CellState) && CellState.bExcavated);
+    TestEqual(TEXT("Logical cell revision advances"), CellState.Revision, static_cast<int64>(1));
+    TestTrue(TEXT("Voxel density revision advances with logical commit"),
+        Chunk->GetDensityRevision() > InitialDensityRevision);
+    TestTrue(TEXT("Physical volume decreases with logical commit"),
+        Chunk->GetSolidVolumeCubicMetres() < InitialVolume);
     return true;
 }
 
