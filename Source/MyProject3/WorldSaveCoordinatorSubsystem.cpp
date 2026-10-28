@@ -461,6 +461,26 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
         PhysicalActorIds.Add(Actor.IdentityId);
     }
 
+    for (const TPair<FGuid, FWorldStorageContainerRecord>& Pair : StoragesById)
+    {
+        bool bHasStoredItems = false;
+        for (const TPair<FGuid, FWorldOwnedItemRecord>& ItemPair : ItemsById)
+        {
+            const FWorldOwnedItemRecord& Item = ItemPair.Value;
+            if (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == Pair.Key)
+            {
+                bHasStoredItems = true;
+                break;
+            }
+        }
+
+        // Physical storage actors are identity-bound to StorageId. An available
+        // storage, or one that owns items, must have a physical actor in the
+        // snapshot so its runtime Stored pointer list can be rebuilt after load.
+        if ((Pair.Value.bAvailable || bHasStoredItems) && !PhysicalActorIds.Contains(Pair.Key))
+            return false;
+    }
+
     TSet<FGuid> InventoryOwnerIds;
     TSet<FGuid> ReferencedInventoryWorldItems;
     for (const FWorldInventorySnapshot& Inventory : Snapshot.Inventories)
