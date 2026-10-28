@@ -21,7 +21,7 @@
 ## Bu dalda kaynak seviyesinde yapılanlar
 
 - `UVoxelTerrainChunkComponent` için sınırlandırılmış kazı API'si eklendi: izinli yerel kutu, chunk sınırı, maksimum yarıçap ve beklenen yoğunluk revizyonu kontrolü.
-- Zemin sınıfı ve alet gücü kontrolü eklendi. Kaynak API'ye verilen güç değeri oyuncu girdisinden doğrudan kabul edilmemeli; sonraki oyuncu entegrasyonu bunu güvenilir araç/item tanımından çıkarmalı.
+- Zemin sınıfı ve alet gücü kontrolü eklendi. Kaynak API'ye verilen güç değeri oyuncu girdisinden doğrudan kabul edilmemeli; envanterin hızlı erişim yuvasındaki doğrulanmış araç tanımından çıkarılmalı.
 - Kazı kimliği makbuzu eklendi. Aynı kimlik + aynı parametreler tekrarlandığında önceki sonuç döner; kimliğin farklı istek için yeniden kullanımı reddedilir.
 - Zemine bağlı yapı grafiği köklerinin belirlenmiş 3B güvenlik marjına yakın kazı reddedilir. Bu kaba bir koruma kuralıdır; fiziksel zemin gerilmesi veya destek kaybı simülasyonu değildir.
 - Yoğunluk örnekleri, chunk boyutları, revizyon ve kazı makbuzları SaveGame v14 içine kimlik bazında eklenmiştir. Yükleme hedef level'de zaten bulunan chunk'ları doğrular ve mesh/çarpışmayı yeniden kurar.
