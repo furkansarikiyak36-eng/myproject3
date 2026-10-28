@@ -59,6 +59,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Gameplay|Operation")
     bool CancelUncommittedOperation(const FGuid& OperationId);
 
+    /**
+     * Removes a completed row only after the caller has committed an equivalent
+     * durable domain-owned idempotency receipt. Never use to forget unreceipted work.
+     */
+    bool ForgetCompletedOperationWithExternalReceipt(const FGuid& OperationId);
+
     UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
     int32 GetEntryCount() const { return Entries.Num(); }
 
