@@ -45,6 +45,7 @@ FString ULogBuildToolsComponent::GetHelpText()
         "  modes: Horizontal, Vertical, Diagonal (45), Floor (floors, roofs, bridges, ramps), Stairs\n"
         "C choose cut (length cut: look along the log for 1/2, 3/4 or 1/4)   F mark the cut, F again to cut\n"
         "V push/roll   B drag\n"
+        "N bounded voxel dig (prototype; target chunk sets soil resistance)\n"
         "  red dashes: where it will be cut   white dashes: where the carried log will lie, arrow: the joint\n"
         "LMB on a log with the axe: mark a cut, LMB again to cut; on the top of a standing log: sharpen; on a damaged piece: repair\n"
         "X sharpen standing log   K door / gate opening   P window opening\n"
