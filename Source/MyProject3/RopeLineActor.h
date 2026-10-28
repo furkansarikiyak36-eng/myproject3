@@ -63,6 +63,7 @@ private:
         TWeakObjectPtr<AActor> Piece;
         float Distance = 0.0f;
         float Speed = 0.0f;
+        double AccumulatorSeconds = 0.0;
     };
     TArray<FRider> Riders;
 
