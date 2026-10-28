@@ -913,6 +913,56 @@ bool UWorldStructuralGraphSubsystem::ApplyDamage(
     return true;
 }
 
+bool UWorldStructuralGraphSubsystem::ApplyDamageBatch(
+    const TArray<FGuid>& NodeIds, float DamageAmount,
+    TArray<FGuid>& OutAffectedNodeIds, TArray<FGuid>& OutThresholdExceededNodeIds)
+{
+    OutAffectedNodeIds.Reset();
+    OutThresholdExceededNodeIds.Reset();
+    if (!FMath::IsFinite(DamageAmount) || DamageAmount <= 0.0f)
+        return false;
+
+    TArray<FGuid> OrderedIds = NodeIds;
+    OrderedIds.Sort([](const FGuid& A, const FGuid& B)
+    {
+        return A.ToString() < B.ToString();
+    });
+
+    TSet<FGuid> Seen;
+    TMap<FGuid, FStructuralNodeRecord> ProposedNodes = Nodes;
+    TArray<FGuid> ProposedAffected;
+    TArray<FGuid> ProposedThresholdExceeded;
+    for (const FGuid& NodeId : OrderedIds)
+    {
+        if (!NodeId.IsValid() || Seen.Contains(NodeId))
+            return false;
+        Seen.Add(NodeId);
+
+        FStructuralNodeRecord* Node = ProposedNodes.Find(NodeId);
+        if (!Node || !Node->Actor.IsValid() || Node->Revision == MAX_int64 ||
+            !FMath::IsFinite(Node->Damage) || Node->Damage < 0.0f ||
+            !FMath::IsFinite(Node->DamageThreshold) || Node->DamageThreshold <= 0.0f ||
+            Node->Damage > Node->DamageThreshold ||
+            !FMath::IsFinite(Node->Damage + DamageAmount))
+        {
+            return false;
+        }
+
+        Node->Damage = FMath::Min(Node->DamageThreshold, Node->Damage + DamageAmount);
+        ++Node->Revision;
+        ProposedAffected.Add(NodeId);
+        if (Node->Damage >= Node->DamageThreshold)
+            ProposedThresholdExceeded.Add(NodeId);
+    }
+
+    // A single map swap means validation failure never leaves half a pulse's
+    // structural damage applied to an arbitrary prefix of the target list.
+    Nodes = MoveTemp(ProposedNodes);
+    OutAffectedNodeIds = MoveTemp(ProposedAffected);
+    OutThresholdExceededNodeIds = MoveTemp(ProposedThresholdExceeded);
+    return true;
+}
+
 bool UWorldStructuralGraphSubsystem::GetNode(
     FGuid NodeId, FStructuralNodeRecord& OutNode) const
 {
