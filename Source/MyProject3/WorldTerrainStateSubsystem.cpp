@@ -40,10 +40,8 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     {
         return false;
     }
-    if (Edit == ETerrainCellEdit::Excavate && Existing && Existing->bExcavated)
-    {
-        return false;
-    }
+    // Excavation may be repeated in an already-open logical cell: each new
+    // operation still passes revision/receipt checks and advances the cell revision.
     if (Edit == ETerrainCellEdit::Fill && (!Existing || !Existing->bExcavated))
     {
         return false;
