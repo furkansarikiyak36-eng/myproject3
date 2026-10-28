@@ -64,6 +64,7 @@ struct FAnimalRuntimeState
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") float FeedReserve = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") int32 GrowthTicks = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") int32 ProductUnitsReady = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") float ProductProgress = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") int32 ReproductionProgress = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") int64 Revision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Farming|Animals") bool bAlive = true;
