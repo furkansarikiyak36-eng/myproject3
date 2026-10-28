@@ -61,6 +61,15 @@ FRotator ALogBuildPiece::MakeOutwardRotation(const FVector& Direction) const
     return FRotationMatrix::MakeFromX(Direction.GetSafeNormal()).Rotator();
 }
 
+bool ALogBuildPiece::HasOccupiedSnapPoints() const
+{
+    return SnapPoints.ContainsByPredicate(
+        [](const FLogSnapPoint& Point)
+        {
+            return Point.bOccupied;
+        });
+}
+
 void ALogBuildPiece::RegenerateAutomaticSnapPoints()
 {
     SnapPoints.RemoveAll([](const FLogSnapPoint& Point)
@@ -254,7 +263,10 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
 
 bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
 {
-    if (bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0)
+    // A stale or externally-authored occupied anchor is still a structural
+    // dependency even if the attached-actor bookkeeping is incomplete.
+    if (bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0 ||
+        HasOccupiedSnapPoints())
     {
         return false;
     }
@@ -291,9 +303,9 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
     {
         return TEXT("Drop the log before processing it.");
     }
-    if (GetAttachedPieceCount() > 0)
+    if (GetAttachedPieceCount() > 0 || HasOccupiedSnapPoints())
     {
-        return TEXT("Remove attached pieces before processing the support log.");
+        return TEXT("Release occupied snap anchors and remove attached pieces before processing this log.");
     }
 
     switch (Action)
@@ -350,7 +362,8 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         EWorldOperationResultCode FailureCode =
             EWorldOperationResultCode::InvalidState;
 
-        if (!bIsPlaced && !bIsHeld && GetAttachedPieceCount() == 0)
+        if (!bIsPlaced && !bIsHeld && GetAttachedPieceCount() == 0 &&
+            !HasOccupiedSnapPoints())
         {
             bool bPrerequisiteMet = false;
             bool bActionSupported = true;
