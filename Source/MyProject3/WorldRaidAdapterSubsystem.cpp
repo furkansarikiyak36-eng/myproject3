@@ -313,8 +313,11 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             return false;
         // Compatibility guard for a receipt produced by an earlier adapter
         // revision: upgrade the durable watermark before skipping the pulse.
-        if (!Threat->CommitRaidAttackPulse(Raid.RaidId, PulseIndex))
+        if (!Threat->CommitRaidAttackPulse(Raid.RaidId, PulseIndex) ||
+            !OperationLedger->ForgetCompletedOperationWithExternalReceipt(PulseOperationId))
+        {
             return false;
+        }
         NextDamageTimeSeconds = Raid.ActiveStartTime +
             (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
         return FMath::IsFinite(NextDamageTimeSeconds);
@@ -409,10 +412,14 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     if (!Threat->CommitRaidAttackPulse(Raid.RaidId, PulseIndex))
         return false;
 
-    // The operation ledger entry was a temporary in-flight guard, not a
-    // permanent per-pulse history. The durable watermark supplies replay safety
-    // without eventually exhausting the bounded world operation ledger.
-    if (!OperationLedger->CancelUncommittedOperation(PulseOperationId))
+    const FWorldOperationResult PulseResult = FWorldOperationResult::Success(
+        PulseOperationId, FText::FromString(TEXT("Raid attack pulse committed")), AffectedNodeIds);
+    if (!OperationLedger->CompleteOperation(PulseResult))
+        return false;
+
+    // The just-committed watermark now durably represents this pulse. Drop the
+    // temporary completed row only after that authoritative receipt has changed.
+    if (!OperationLedger->ForgetCompletedOperationWithExternalReceipt(PulseOperationId))
         return false;
 
     NextDamageTimeSeconds = Raid.ActiveStartTime +
