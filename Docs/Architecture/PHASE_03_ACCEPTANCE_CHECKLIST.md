@@ -4,6 +4,7 @@
 - [x] Add `TryApplyCutAction` returning `FWorldOperationResult`.
 - [x] Keep the existing `ApplyCutAction(ELogCutAction) -> bool` signature.
 - [x] Use shared operation result codes instead of UI text as the sole failure identifier.
+- [x] Distinguish duplicate source-mesh mapping conflicts from missing mappings and unmet processing prerequisites.
 - [x] Preserve `ALogBuildPiece` as the authoritative processing owner.
 
 ## Processing invariants
