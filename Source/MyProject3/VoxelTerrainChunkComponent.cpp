@@ -91,14 +91,47 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
         !FMath::IsFinite(LocalCenter.Z))
         return 0.0f;
 
-    const float VolumeBefore = GetSolidVolumeCubicMetres();
     const int32 N = PointsPerAxis();
-    const int32 MinX = FMath::Max(0, FMath::FloorToInt((LocalCenter.X - RadiusCm) / VoxelSizeCm) - 1);
-    const int32 MaxX = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.X + RadiusCm) / VoxelSizeCm) + 1);
-    const int32 MinY = FMath::Max(0, FMath::FloorToInt((LocalCenter.Y - RadiusCm) / VoxelSizeCm) - 1);
-    const int32 MaxY = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.Y + RadiusCm) / VoxelSizeCm) + 1);
-    const int32 MinZ = FMath::Max(0, FMath::FloorToInt((LocalCenter.Z - RadiusCm) / VoxelSizeCm) - 1);
-    const int32 MaxZ = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.Z + RadiusCm) / VoxelSizeCm) + 1);
+    if (Density.Num() != N * N * N)
+        return 0.0f;
+
+    const double ChunkExtentCm = static_cast<double>(CellsPerAxis) * VoxelSizeCm;
+    const double CX = LocalCenter.X, CY = LocalCenter.Y, CZ = LocalCenter.Z;
+    const double Radius = RadiusCm;
+    // Reject edits whose sphere cannot intersect the chunk. This also prevents
+    // converting huge finite coordinates into overflowing integer grid indices.
+    if (CX + Radius < 0.0 || CY + Radius < 0.0 || CZ + Radius < 0.0 ||
+        CX - Radius > ChunkExtentCm || CY - Radius > ChunkExtentCm ||
+        CZ - Radius > ChunkExtentCm)
+        return 0.0f;
+
+    auto MinGridIndex = [N, this](double Coordinate, double RadiusValue)
+    {
+        const double Grid = FMath::Clamp(
+            (Coordinate - RadiusValue) / static_cast<double>(VoxelSizeCm),
+            -1.0, static_cast<double>(N - 1));
+        return FMath::Clamp(FMath::FloorToInt(static_cast<float>(Grid)) - 1, 0, N - 1);
+    };
+    auto MaxGridIndex = [N, this](double Coordinate, double RadiusValue)
+    {
+        const double Grid = FMath::Clamp(
+            (Coordinate + RadiusValue) / static_cast<double>(VoxelSizeCm),
+            -1.0, static_cast<double>(N - 1));
+        return FMath::Clamp(FMath::CeilToInt(static_cast<float>(Grid)) + 1, 0, N - 1);
+    };
+    const int32 MinX = MinGridIndex(CX, Radius), MaxX = MaxGridIndex(CX, Radius);
+    const int32 MinY = MinGridIndex(CY, Radius), MaxY = MaxGridIndex(CY, Radius);
+    const int32 MinZ = MinGridIndex(CZ, Radius), MaxZ = MaxGridIndex(CZ, Radius);
+
+    // Validate the full affected sample set before mutating anything. A corrupt
+    // density entry must not leave a partially edited chunk.
+    for (int32 Z = MinZ; Z <= MaxZ; ++Z)
+        for (int32 Y = MinY; Y <= MaxY; ++Y)
+            for (int32 X = MinX; X <= MaxX; ++X)
+                if (!FMath::IsFinite(Density[PointIndex(X, Y, Z)]))
+                    return 0.0f;
+
+    const float VolumeBefore = GetSolidVolumeCubicMetres();
     for (int32 Z = MinZ; Z <= MaxZ; ++Z)
         for (int32 Y = MinY; Y <= MaxY; ++Y)
             for (int32 X = MinX; X <= MaxX; ++X)
@@ -127,6 +160,10 @@ float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
     // corners). The total weight of a fully solid grid then equals CellsPerAxis^3,
     // while avoiding the old systematic overcount from treating every point as a cell.
     double SolidSampleWeight = 0.0;
+    for (const float Value : Density)
+        if (!FMath::IsFinite(Value))
+            return 0.0f;
+
     for (int32 Z = 0; Z < N; ++Z)
     {
         const double WZ = (Z == 0 || Z == N - 1) ? 0.5 : 1.0;
@@ -152,8 +189,13 @@ float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
 int32 UVoxelTerrainChunkComponent::RebuildMesh()
 {
     ClearAllMeshSections();
-    if (Density.IsEmpty())
+    if (CellsPerAxis < 4 || CellsPerAxis > 128 ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f ||
+        Density.Num() != PointsPerAxis() * PointsPerAxis() * PointsPerAxis())
         return 0;
+    for (const float Value : Density)
+        if (!FMath::IsFinite(Value))
+            return 0;
 
     UE::Geometry::FMarchingCubes Extractor;
     const double Extent = CellsPerAxis * VoxelSizeCm;
