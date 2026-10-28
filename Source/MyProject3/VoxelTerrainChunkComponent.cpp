@@ -98,6 +98,10 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
     const double ChunkExtentCm = static_cast<double>(CellsPerAxis) * VoxelSizeCm;
     const double CX = LocalCenter.X, CY = LocalCenter.Y, CZ = LocalCenter.Z;
     const double Radius = RadiusCm;
+    // The component represents a single bounded chunk. Larger sphere edits are
+    // unnecessary for this chunk and can overflow float distance calculations.
+    if (Radius > ChunkExtentCm * 2.0)
+        return 0.0f;
     // Reject edits whose sphere cannot intersect the chunk. This also prevents
     // converting huge finite coordinates into overflowing integer grid indices.
     if (CX + Radius < 0.0 || CY + Radius < 0.0 || CZ + Radius < 0.0 ||
