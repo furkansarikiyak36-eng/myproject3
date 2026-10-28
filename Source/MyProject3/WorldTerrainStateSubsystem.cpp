@@ -5,28 +5,27 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     ETerrainCellEdit Edit, FName MaterialId, int64 ExpectedRevision,
     FWorldTerrainCellState& OutState)
 {
-    if (!OperationId.IsValid() || DepthLayer < 0 ||
-        static_cast<uint8>(Edit) > static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial) ||
-        DepthLayer >= MaxEditableDepthLayers || DepthLayer >= MaxDepthPerCell ||
-        MaxEditedCells <= 0 || MaxDepthPerCell <= 0 ||
-        (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(DepthLayer)))
-    {
+    if (!OperationId.IsValid() ||
+        static_cast<uint8>(Edit) > static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial))
         return false;
-    }
 
+    // An exact retry returns the immutable committed result before consulting
+    // mutable current limits/permissions. Tightening configuration must not turn
+    // an already-committed operation into a second, divergent request.
     if (const FWorldTerrainOperationReceipt* Receipt = Receipts.Find(OperationId))
     {
         if (Receipt->Cell != Cell || Receipt->RequestedDepthLayer != DepthLayer ||
             Receipt->RequestedEdit != Edit || Receipt->RequestedMaterialId != MaterialId ||
             Receipt->ExpectedRevision != ExpectedRevision)
-        {
             return false;
-        }
         OutState = Receipt->ResultState;
         return true;
     }
 
-    if (MaxOperationReceipts <= 0 || Receipts.Num() >= MaxOperationReceipts)
+    if (DepthLayer < 0 || DepthLayer >= MaxEditableDepthLayers ||
+        DepthLayer >= MaxDepthPerCell || MaxEditedCells <= 0 || MaxDepthPerCell <= 0 ||
+        (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(DepthLayer)) ||
+        MaxOperationReceipts <= 0 || Receipts.Num() >= MaxOperationReceipts)
         return false;
 
     FWorldTerrainCellState* Existing = Cells.Find(Cell);
