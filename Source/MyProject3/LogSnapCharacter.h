@@ -12,6 +12,7 @@ class UCarryLoadComponent;
 class ULogBuildToolsComponent;
 class UPhysicalHealthComponent;
 class UShelterSensorComponent;
+class UTerrainDigToolComponent;
 class UInputComponent;
 
 UCLASS(Blueprintable)
@@ -79,6 +80,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
     TObjectPtr<UShelterSensorComponent> ShelterSensor;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain")
+    TObjectPtr<UTerrainDigToolComponent> TerrainDigTool;
 
 protected:
     /** Camera offset that eases out height jumps from steps, logs and rocks. */
