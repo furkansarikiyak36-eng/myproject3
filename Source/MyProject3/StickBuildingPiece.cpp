@@ -211,14 +211,13 @@ FWorldOperationResult AStickBuildingPiece::TryCommitGroundedStakePlacement(
             FText::FromString(TEXT("This stick type is not a placeable stake.")));
     }
     if (!bGroundContactConfirmed || !SurfaceLocation.IsFinite() ||
-        !SurfaceRotation.IsFinite())
+        SurfaceRotation.ContainsNaN())
     {
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::UnsupportedSurface, OperationId,
             FText::FromString(TEXT("Stake placement requires a validated ground contact and finite transform.")));
     }
 
-    const FTransform PreviousTransform = GetActorTransform();
     if (!SetActorLocationAndRotation(SurfaceLocation, SurfaceRotation, false, nullptr,
         ETeleportType::TeleportPhysics))
     {
