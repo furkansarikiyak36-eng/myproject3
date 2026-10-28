@@ -30,6 +30,7 @@ bool UWorldThreatDirectorSubsystem::RestoreSnapshot(const FWorldThreatDirectorSn
             return false;
         if (Raid.State == EThreatRaidState::None && bMayBeEmpty) return true;
         return Raid.RaidId.IsValid() && Raid.Serial >= 0 && Raid.Revision >= 0 &&
+            FMath::IsFinite(Raid.AttackIntervalSeconds) && Raid.AttackIntervalSeconds > 0.0 &&
             FMath::IsFinite(Raid.WarningStartTime) && Raid.WarningStartTime >= 0.0 &&
             FMath::IsFinite(Raid.ActiveStartTime) && Raid.ActiveStartTime >= Raid.WarningStartTime &&
             FMath::IsFinite(Raid.PlannedEndTime) && Raid.PlannedEndTime >= Raid.ActiveStartTime &&
