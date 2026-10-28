@@ -271,7 +271,8 @@ bool UWorldRaidAdapterSubsystem::BuildDamageTargetList(
     {
         FGuid TargetNodeId;
         FVector TargetLocation;
-        if (MaterializedTargetNodeId.IsValid())
+        if (MaterializedRaidId == Raid.RaidId && ActiveRaidPawn.IsValid() &&
+            MaterializedTargetNodeId.IsValid())
         {
             FStructuralNodeRecord ExistingTarget;
             if (Graph->GetNode(MaterializedTargetNodeId, ExistingTarget) &&
