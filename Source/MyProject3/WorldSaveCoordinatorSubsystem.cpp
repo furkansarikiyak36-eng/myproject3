@@ -428,8 +428,24 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
                 ReservedQuantity += Reservation.Quantity;
             }
         }
-        if (StoredQuantity + ReservedQuantity > Pair.Value.CapacityUnits)
+        int64 EffectiveCapacity = Pair.Value.CapacityUnits;
+        if (StorageSubsystem->IsStorageAvailable(Pair.Key))
+        {
+            FWorldStorageContainerRecord LiveStorage;
+            if (!StorageSubsystem->GetStorage(Pair.Key, LiveStorage) ||
+                LiveStorage.CapacityUnits <= 0)
+            {
+                return false;
+            }
+            // The live authored container configuration wins over an old save's
+            // stale capacity, matching UWorldStorageSubsystem::RestoreSnapshot.
+            EffectiveCapacity = LiveStorage.CapacityUnits;
+        }
+        if (StoredQuantity > EffectiveCapacity ||
+            ReservedQuantity > EffectiveCapacity - StoredQuantity)
+        {
             return false;
+        }
     }
 
     TSet<FGuid> PhysicalActorIds;
