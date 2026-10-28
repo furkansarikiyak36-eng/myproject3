@@ -983,6 +983,19 @@ bool FVoxelLogicalPhysicalTransactionTest::RunTest(const FString& Parameters)
         Chunk->GetDensityRevision() > InitialDensityRevision);
     TestTrue(TEXT("Physical volume decreases with logical commit"),
         Chunk->GetSolidVolumeCubicMetres() < InitialVolume);
+
+    // A logical cell represents a region, not a one-shot hole. Further digging
+    // in that same region must remain possible under the latest revisions.
+    const int64 BeforeSecondDensityRevision = Chunk->GetDensityRevision();
+    FWorldTerrainCellState SecondCellState;
+    TestTrue(TEXT("A second dig in the same logical cell is accepted"),
+        Terrain->TryApplyVoxelExcavation(FGuid::NewGuid(), Chunk, FVector(850.0f, 800.0f, 800.0f),
+            75.0f, 3.0f, BeforeSecondDensityRevision, FIntVector(0, 0, 0), 0,
+            CellState.Revision, NAME_None, SecondCellState));
+    TestEqual(TEXT("Repeated cell excavation advances the logical revision"),
+        SecondCellState.Revision, static_cast<int64>(2));
+    TestTrue(TEXT("Repeated cell excavation advances the physical revision"),
+        Chunk->GetDensityRevision() > BeforeSecondDensityRevision);
     return true;
 }
 
