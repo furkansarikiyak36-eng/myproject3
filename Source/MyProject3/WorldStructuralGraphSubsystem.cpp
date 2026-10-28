@@ -372,6 +372,11 @@ bool UWorldStructuralGraphSubsystem::UnregisterNode(
         CurrentId = Current->ParentNodeId;
     }
 
+    // Work on a reversible graph copy. Reparenting children changes aggregate loads
+    // on the promoted support chain; reject and restore the entire graph if the
+    // resulting structure would overload or lose a required support path.
+    const TMap<FGuid, FStructuralNodeRecord> PreviousNodes = Nodes;
+
     // If a caller explicitly permits removal with dependents, a child with
     // another contact keeps standing on it; otherwise its edge is detached and
     // it becomes unsupported rather than keeping a dangling ID.
@@ -416,6 +421,29 @@ bool UWorldStructuralGraphSubsystem::UnregisterNode(
     }
 
     Nodes.Remove(NodeId);
+
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        const FStructuralNodeRecord& Candidate = Pair.Value;
+        if (Candidate.ParentNodeId.IsValid())
+        {
+            TSet<FGuid> SupportVisiting;
+            if (!HasValidSupportPathInternal(Pair.Key, FGuid(), SupportVisiting))
+            {
+                Nodes = PreviousNodes;
+                return false;
+            }
+        }
+
+        TSet<FGuid> LoadVisiting;
+        bool bLoadValid = true;
+        const float Aggregate = ComputeAggregateLoad(Pair.Key, LoadVisiting, bLoadValid);
+        if (!bLoadValid || Aggregate > Candidate.MaxSupportedLoad)
+        {
+            Nodes = PreviousNodes;
+            return false;
+        }
+    }
     return true;
 }
 
