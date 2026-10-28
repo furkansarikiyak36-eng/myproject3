@@ -1,4 +1,5 @@
 #include "WorldSaveCoordinatorSubsystem.h"
+#include "LogContainerActor.h"
 #include "Misc/GuardValue.h"
 
 #include "Engine/World.h"
@@ -1350,6 +1351,19 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
     if (!Production->RestoreSnapshot(Snapshot->ProductionStations, Snapshot->ProductionRecipes)) return false;
     if (!Storage->RestoreSnapshot(Snapshot->StorageContainers, Snapshot->StorageReservations)) return false;
+
+    // Container actor Stored arrays are runtime-only pointers, not durable
+    // ownership. Rebuild them from the restored item ledger and storage manifest.
+    for (TActorIterator<ALogContainerActor> It(World); It; ++It)
+    {
+        if (!It->RebuildStoredContentsFromOwnership())
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("World load failed while rebuilding physical storage contents from ownership."));
+            return false;
+        }
+    }
+
     if (!Cargo->RestoreSnapshot(Snapshot->Cargo)) return false;
     if (!Threat->RestoreSnapshot(Snapshot->Threat)) return false;
     return true;
