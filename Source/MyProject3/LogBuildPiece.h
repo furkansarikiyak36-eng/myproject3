@@ -175,6 +175,7 @@ private:
     UPROPERTY(Transient)
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
 
+    bool HasOccupiedSnapPoints() const;
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
     void GenerateDefaultSideSnapPoints();
