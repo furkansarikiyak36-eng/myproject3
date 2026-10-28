@@ -21,7 +21,7 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 
 ### P0 — Source-level correctness
 
-- [ ] Complete repository-wide and local Blueprint caller audit. The tracked `ULogCarryComponent` interaction path now calls `TryApplyCutAction` and displays its structured failure message; a repository search did not provide a complete call-site index, so other callers and local/untracked Blueprints remain unverified.
+- [x] Audit all tracked `Source/MyProject3/*.{h,cpp}` files for processing call sites: the compatibility wrapper delegates to `TryApplyCutAction`, and the only tracked gameplay input caller (`ULogCarryComponent::ProcessAimedPiece`) consumes the result and displays its message. [ ] Local/untracked Blueprint assets still require the user's actual checkout/editor; they are not present in this repository tree.
 - [x] Source-reviewed the action-to-result-code mapping for all seven declared actions: invalid state, unmet prerequisite, missing configuration, and unsupported action are distinguished. Engine/runtime behavior remains unverified.
 - [x] Document operation-ID semantics in `LogBuildPiece.h`: the ID is correlation/diagnostic metadata only, not an idempotency key. A repeated request is revalidated against the new piece state and may return a different result; callers must not assume deduplication.
 - [ ] Review whether bottom-height preservation is valid for all configured output meshes and actor rotations; current logic preserves world AABB bottom, but actual pivot/orientation/collision fit needs real asset inspection.
@@ -29,10 +29,10 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 
 ### P1 — Domain completeness (not silently included in this phase)
 
-- [ ] Inventory/tool requirement and tool durability.
-- [ ] Resource yield/consumption for each processing action.
+- [ ] Inventory/tool requirement and tool durability. The tracked C++ source tree currently contains no inventory/tool durability owner to integrate with; do not add a duplicate inventory authority inside `ALogBuildPiece`.
+- [ ] Resource yield/consumption for each processing action. A shared unit/resource amount type exists, but no wood-processing yield/consumption owner is present in the tracked source tree.
 - [ ] Physical cutting progress and intermediate geometry rather than a single mesh swap.
-- [ ] Length/section-specific output contracts and validation of real mesh bounds/pivots/collision.
+- [ ] Length/section-specific output contracts and validation of real mesh bounds/pivots/collision. `AssetPackages/UnrealExport` has named families for 150/300/600 plus 75/short/long variants, but `ALogBuildPiece` currently exposes only one output mesh slot per action; do not claim automatic length-matched selection.
 - [ ] Persistence of processed piece type and stable identity.
 - [ ] Structural graph integration for pieces that become attached or support other pieces.
 
@@ -43,6 +43,7 @@ These are separate integration tasks; do not mark them implemented merely becaus
 - [ ] Run Unreal Engine 5.8 UHT/build.
 - [ ] Exercise every processing action, each invalid prerequisite, missing output meshes, held/placed/supporting-piece rejection, and repeated operation IDs in Editor/PIE.
 - [ ] Audit local/untracked Blueprint consumers in the actual project checkout.
+- [ ] Inspect imported FBX dimensions, local axes, pivots, collision and per-action same-length variants inside Unreal Editor; repository filenames alone are not sufficient evidence.
 - [ ] Attach reproducible evidence before marking any runtime gate passed.
 
 ## Phase boundary
