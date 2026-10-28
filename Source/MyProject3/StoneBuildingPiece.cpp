@@ -8,6 +8,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSaveCoordinatorSubsystem.h"
 
 AStoneBuildingPiece::AStoneBuildingPiece()
 {
@@ -146,29 +147,43 @@ bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
 
 void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-    RemoveConnection(true);
-    if (UMaterialConnectionSubsystem* Connections =
-        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
-    {
-        Connections->ReleaseCrossMaterialChildren(this);
-    }
+    const UWorld* CurrentWorld = GetWorld();
+    const UWorldSaveCoordinatorSubsystem* SaveCoordinator =
+        CurrentWorld ? CurrentWorld->GetSubsystem<UWorldSaveCoordinatorSubsystem>() : nullptr;
+    const bool bApplyingSnapshot = SaveCoordinator && SaveCoordinator->IsApplyingSnapshot();
 
-    // Children remove themselves from AttachedPieces, so walk a copy.
-    const TArray<TWeakObjectPtr<AStoneBuildingPiece>> AttachedCopy = AttachedPieces;
-    for (const TWeakObjectPtr<AStoneBuildingPiece>& Child : AttachedCopy)
+    // During snapshot reconciliation, the canonical graph and actor-local links
+    // are replaced from the incoming manifest. Do not run ordinary disconnect,
+    // child-release or graph-unregister side effects on the pre-load world.
+    if (!bApplyingSnapshot)
     {
-        if (Child.IsValid())
+        RemoveConnection(true);
+        if (UMaterialConnectionSubsystem* Connections =
+            GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
         {
-            Child->RemoveConnection(true);
+            Connections->ReleaseCrossMaterialChildren(this);
         }
-    }
-    AttachedPieces.Reset();
-    if (StructuralIdentity)
-    {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+    
+        // Children remove themselves from AttachedPieces, so walk a copy.
+        const TArray<TWeakObjectPtr<AStoneBuildingPiece>> AttachedCopy = AttachedPieces;
+        for (const TWeakObjectPtr<AStoneBuildingPiece>& Child : AttachedCopy)
         {
-            Graph->UnregisterNode(StructuralIdentity->GetInstanceId(), false);
+            if (Child.IsValid())
+            {
+                Child->RemoveConnection(true);
+            }
         }
+        AttachedPieces.Reset();
+        if (StructuralIdentity)
+        {
+            if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+            {
+                Graph->UnregisterNode(StructuralIdentity->GetInstanceId(), false);
+            }
+        }
+    
+        Super::EndPlay(EndPlayReason);
+    
     }
 
     Super::EndPlay(EndPlayReason);
