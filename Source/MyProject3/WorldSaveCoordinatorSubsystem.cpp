@@ -229,10 +229,15 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
     ItemsById.Reserve(Snapshot.Items.Num());
     for (const FWorldOwnedItemRecord& Item : Snapshot.Items)
     {
+        const bool bNeedsOwnerId = Item.OwnerKind == EWorldItemOwnerKind::Held ||
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory ||
+            Item.OwnerKind == EWorldItemOwnerKind::Storage ||
+            Item.OwnerKind == EWorldItemOwnerKind::InTransit;
         if (!Item.ItemId.IsValid() || ItemsById.Contains(Item.ItemId) ||
             Item.DefinitionId.IsNone() || Item.Quantity < 1 || Item.Revision < 1 ||
             static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-            Item.OwnerKind == EWorldItemOwnerKind::Held || Item.WorldLocation.ContainsNaN())
+            Item.OwnerKind == EWorldItemOwnerKind::Held ||
+            (bNeedsOwnerId && !Item.OwnerId.IsValid()) || Item.WorldLocation.ContainsNaN())
         {
             return false;
         }
@@ -244,10 +249,18 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
     {
         if (!Entry.OperationId.IsValid() ||
             Entry.State != EWorldOperationLedgerEntryState::Completed ||
-            OperationIds.Contains(Entry.OperationId))
+            OperationIds.Contains(Entry.OperationId) ||
+            Entry.Result.OperationId != Entry.OperationId ||
+            static_cast<uint8>(Entry.Result.Code) >
+                static_cast<uint8>(EWorldOperationResultCode::InternalError) ||
+            Entry.Result.bSucceeded !=
+                (Entry.Result.Code == EWorldOperationResultCode::Success))
         {
             return false;
         }
+        for (const FGuid& AffectedId : Entry.Result.AffectedObjectIds)
+            if (!AffectedId.IsValid())
+                return false;
         OperationIds.Add(Entry.OperationId);
     }
 
@@ -268,11 +281,16 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
         if (!Cargo.CargoId.IsValid() || CargoById.Contains(Cargo.CargoId) ||
             !Cargo.ItemId.IsValid() || !Cargo.DestinationStorageId.IsValid() ||
             !StoragesById.Contains(Cargo.DestinationStorageId) ||
+            Cargo.OriginNode.IsNone() || Cargo.DestinationNode.IsNone() ||
+            Cargo.Route.Num() < 2 || Cargo.Route[0] != Cargo.OriginNode ||
+            Cargo.Route.Last() != Cargo.DestinationNode ||
             static_cast<uint8>(Cargo.State) > static_cast<uint8>(ECargoTransportState::Cancelled) ||
             !FMath::IsFinite(Cargo.RouteCost) || Cargo.RouteCost < 0.0f ||
             !FMath::IsFinite(Cargo.Progress) || Cargo.Progress < 0.0f ||
+            Cargo.Progress > Cargo.RouteCost ||
             !FMath::IsFinite(Cargo.CostPerSecond) || Cargo.CostPerSecond <= 0.0f ||
-            Cargo.ItemRevision < 0 || Cargo.Revision < 1)
+            Cargo.ItemRevision <= 0 || Cargo.Revision < 1 ||
+            !Cargo.DeliveryOperationId.IsValid())
         {
             return false;
         }
@@ -291,12 +309,78 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
             return false;
         }
         const FWorldCargoTransportRecord& Cargo = CargoById.FindChecked(Reservation.CargoId);
+        const FWorldOwnedItemRecord* Item = ItemsById.Find(Reservation.ItemId);
         if (Cargo.ItemId != Reservation.ItemId ||
-            Cargo.DestinationStorageId != Reservation.DestinationStorageId)
+            Cargo.DestinationStorageId != Reservation.DestinationStorageId ||
+            (Cargo.State != ECargoTransportState::InTransit &&
+             Cargo.State != ECargoTransportState::Blocked) ||
+            !Item || Item->OwnerKind != EWorldItemOwnerKind::InTransit ||
+            Item->OwnerId != Reservation.CargoId ||
+            Item->Quantity != Reservation.Quantity ||
+            Item->Revision != Cargo.ItemRevision)
         {
             return false;
         }
         ReservedCargoIds.Add(Reservation.CargoId);
+    }
+
+    for (const TPair<FGuid, FWorldCargoTransportRecord>& Pair : CargoById)
+    {
+        const FWorldCargoTransportRecord& Cargo = Pair.Value;
+        const FWorldOwnedItemRecord* Item = ItemsById.Find(Cargo.ItemId);
+        if (!Item)
+            return false;
+
+        if (Cargo.State == ECargoTransportState::InTransit ||
+            Cargo.State == ECargoTransportState::Blocked)
+        {
+            if (!ReservedCargoIds.Contains(Cargo.CargoId) ||
+                Item->OwnerKind != EWorldItemOwnerKind::InTransit ||
+                Item->OwnerId != Cargo.CargoId ||
+                Item->Revision != Cargo.ItemRevision)
+                return false;
+        }
+        else if (Cargo.State == ECargoTransportState::Delivered)
+        {
+            if (Cargo.Progress < Cargo.RouteCost || Item->Revision < Cargo.ItemRevision ||
+                ReservedCargoIds.Contains(Cargo.CargoId))
+                return false;
+        }
+        else if (Cargo.State == ECargoTransportState::Cancelled)
+        {
+            if ((Item->OwnerKind == EWorldItemOwnerKind::InTransit && Item->OwnerId == Cargo.CargoId) ||
+                ReservedCargoIds.Contains(Cargo.CargoId))
+                return false;
+        }
+    }
+
+    // Catch over-capacity storage snapshots before the live ownership/storage
+    // subsystems are touched by ApplySnapshot.
+    for (const TPair<FGuid, FWorldStorageContainerRecord>& Pair : StoragesById)
+    {
+        int64 StoredQuantity = 0;
+        for (const TPair<FGuid, FWorldOwnedItemRecord>& ItemPair : ItemsById)
+        {
+            const FWorldOwnedItemRecord& Item = ItemPair.Value;
+            if (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == Pair.Key)
+            {
+                if (StoredQuantity > MAX_int64 - Item.Quantity)
+                    return false;
+                StoredQuantity += Item.Quantity;
+            }
+        }
+        int64 ReservedQuantity = 0;
+        for (const FWorldStorageIncomingReservation& Reservation : Snapshot.StorageReservations)
+        {
+            if (Reservation.DestinationStorageId == Pair.Key)
+            {
+                if (ReservedQuantity > MAX_int64 - Reservation.Quantity)
+                    return false;
+                ReservedQuantity += Reservation.Quantity;
+            }
+        }
+        if (StoredQuantity + ReservedQuantity > Pair.Value.CapacityUnits)
+            return false;
     }
 
     TSet<FGuid> PhysicalActorIds;
@@ -331,12 +415,22 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
             {
                 const FWorldOwnedItemRecord* Item = ItemsById.Find(Stack.OwnedWorldItemId);
                 if (!Item || Item->OwnerKind != EWorldItemOwnerKind::Inventory ||
-                    Item->OwnerId != Inventory.InventoryOwnerId || Item->Quantity != 1)
+                    Item->OwnerId != Inventory.InventoryOwnerId || Item->Quantity != 1 ||
+                    Item->DefinitionId != Stack.ItemId || Stack.MaxStack != 1)
                 {
                     return false;
                 }
             }
         }
+    }
+
+    for (const TPair<FGuid, FWorldOwnedItemRecord>& Pair : ItemsById)
+    {
+        const FWorldOwnedItemRecord& Item = Pair.Value;
+        if (Item.OwnerKind == EWorldItemOwnerKind::Storage && !StoragesById.Contains(Item.OwnerId))
+            return false;
+        if (Item.OwnerKind == EWorldItemOwnerKind::Inventory && !InventoryOwnerIds.Contains(Item.OwnerId))
+            return false;
     }
 
     TSet<FGuid> CropIds;
