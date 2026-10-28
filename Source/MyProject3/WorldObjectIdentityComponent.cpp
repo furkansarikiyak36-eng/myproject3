@@ -1,6 +1,7 @@
 #include "WorldObjectIdentityComponent.h"
 
 #include "Engine/World.h"
+#include "Components/PrimitiveComponent.h"
 #include "WorldObjectIdentitySubsystem.h"
 
 UWorldObjectIdentityComponent::UWorldObjectIdentityComponent()
@@ -26,9 +27,29 @@ void UWorldObjectIdentityComponent::BeginPlay()
 
     if (!IdentitySubsystem || !IdentitySubsystem->RegisterIdentity(this))
     {
+        AActor* Owner = GetOwner();
         UE_LOG(LogTemp, Error,
-            TEXT("WorldObjectIdentityComponent on '%s' could not register its instance ID."),
-            *GetNameSafe(GetOwner()));
+            TEXT("WorldObjectIdentityComponent on '%s' could not register its instance ID; actor quarantined."),
+            *GetNameSafe(Owner));
+
+        // An active physical actor without canonical identity would bypass item,
+        // structure and persistence ownership checks. Fail closed rather than let
+        // it continue as an untracked world object.
+        if (IsValid(Owner))
+        {
+            Owner->SetActorHiddenInGame(true);
+            Owner->SetActorEnableCollision(false);
+            Owner->SetActorTickEnabled(false);
+            TArray<UPrimitiveComponent*> Primitives;
+            Owner->GetComponents<UPrimitiveComponent>(Primitives);
+            for (UPrimitiveComponent* Primitive : Primitives)
+            {
+                if (!IsValid(Primitive))
+                    continue;
+                Primitive->SetSimulatePhysics(false);
+                Primitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            }
+        }
     }
 }
 
