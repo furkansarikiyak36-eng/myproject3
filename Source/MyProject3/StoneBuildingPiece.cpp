@@ -275,6 +275,21 @@ FWorldOperationResult AStoneBuildingPiece::TryShapeStone(
             FText::FromString(TEXT("Only raw stone can be shaped by this operation.")));
     }
 
+    EStonePieceType NewType = EStonePieceType::Other;
+    switch (Action)
+    {
+    case EStoneShapeAction::Block: NewType = EStonePieceType::Block; break;
+    case EStoneShapeAction::Slab: NewType = EStonePieceType::Slab; break;
+    case EStoneShapeAction::Column: NewType = EStonePieceType::Column; break;
+    case EStoneShapeAction::Lintel: NewType = EStonePieceType::Lintel; break;
+    case EStoneShapeAction::Corner: NewType = EStonePieceType::Corner; break;
+    default:
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Unsupported,
+            OperationId,
+            FText::FromString(TEXT("Unsupported stone shaping action.")));
+    }
+
     bool bAmbiguousMapping = false;
     UStaticMesh* NewMesh = ResolveShapeOutputMesh(Action, bAmbiguousMapping);
     if (bAmbiguousMapping)
@@ -293,33 +308,27 @@ FWorldOperationResult AStoneBuildingPiece::TryShapeStone(
             FText::FromString(TEXT("No output mesh is configured for this stone source and shape action.")));
     }
 
-    EStonePieceType NewType = EStonePieceType::Other;
-    switch (Action)
-    {
-    case EStoneShapeAction::Block: NewType = EStonePieceType::Block; break;
-    case EStoneShapeAction::Slab: NewType = EStonePieceType::Slab; break;
-    case EStoneShapeAction::Column: NewType = EStonePieceType::Column; break;
-    case EStoneShapeAction::Lintel: NewType = EStonePieceType::Lintel; break;
-    case EStoneShapeAction::Corner: NewType = EStonePieceType::Corner; break;
-    default:
-        return FWorldOperationResult::Failure(
-            EWorldOperationResultCode::Unsupported,
-            OperationId,
-            FText::FromString(TEXT("Unsupported stone shaping action.")));
-    }
-
+    UStaticMesh* PreviousMesh = Mesh->GetStaticMesh();
     const FBox OldBounds = Mesh->Bounds.GetBox();
     const double OldBottomZ = OldBounds.Min.Z;
     Mesh->SetStaticMesh(NewMesh);
-    PieceType = NewType;
     Mesh->UpdateBounds();
     const FBox NewBounds = Mesh->Bounds.GetBox();
     if (OldBounds.IsValid && NewBounds.IsValid)
     {
         FVector NewLocation = GetActorLocation();
         NewLocation.Z += OldBottomZ - NewBounds.Min.Z;
-        SetActorLocation(NewLocation, false, nullptr, ETeleportType::TeleportPhysics);
+        if (!SetActorLocation(NewLocation, false, nullptr, ETeleportType::TeleportPhysics))
+        {
+            Mesh->SetStaticMesh(PreviousMesh);
+            Mesh->UpdateBounds();
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::InternalError,
+                OperationId,
+                FText::FromString(TEXT("Stone shaping was rolled back because bottom alignment failed.")));
+        }
     }
+    PieceType = NewType;
 
     return FWorldOperationResult::Success(
         OperationId,
