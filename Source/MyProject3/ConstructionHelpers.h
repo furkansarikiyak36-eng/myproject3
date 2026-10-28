@@ -60,6 +60,9 @@ namespace MyProject3Construction
      */
     MYPROJECT3_API ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVector& DropLocation);
 
+    /** Shared bounds-volume mass model; density is kg/m^3 and fill factor corrects hollow/rounded bounds. */
+    MYPROJECT3_API float EstimateMassKg(const AActor* Piece, float BoundsFillFactor, float DensityKgPerCubicMetre);
+    /** Canonical default density by structural kind, using the shared bounds-volume model. */
     MYPROJECT3_API float EstimateMassKg(const AActor* Piece);
     /** A quarter-length or shorter piece: firewood or a board offcut. */
     MYPROJECT3_API bool IsSmallWoodPiece(const ALogBuildPiece* Log);
