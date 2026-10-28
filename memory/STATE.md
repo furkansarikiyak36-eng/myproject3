@@ -10,7 +10,7 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 | Active work branch | `integration/phase-02-14-closure` |
 | Branch base | `feature/voxel-terrain-policy-spike`; do not confuse with `main` |
 | Terrain decision | First playable slice uses macro Landscape + bounded smooth voxel pockets; engine Marching Cubes / ProceduralMeshComponent |
-| Voxel source delta | Bounded soil-aware dig API, expected-revision check, idempotent receipts, grounded-support spatial guard, density snapshot API, and `TryApplyVoxelExcavation` coordinator with logical-edit rejection rollback; repeated excavation in the same logical cell advances revisions |
+| Voxel source delta | Bounded soil-aware dig API, expected-revision check, idempotent receipts, grounded-support spatial guard, density snapshot API, `TryApplyVoxelExcavation` coordinator with logical-edit rejection rollback, idempotent combined-operation retry, and revision-checked repeated excavation in the same logical cell |
 | Persistence delta | SaveGame schema v14 contains identity-bound voxel density snapshots; restore rebuilds mesh/collision for chunks already present in the level |
 | Player terrain tool | `UTerrainDigToolComponent` attached to `ALogSnapCharacter`; `N` traces the crosshair and routes a dig through the combined subsystem API; configured strength is still a prototype value, not inventory-authoritative |
 | Engine acceptance | NOT RUN for this branch: UE 5.8 UHT/build, Automation tests, Editor/PIE, full save/load and performance |
