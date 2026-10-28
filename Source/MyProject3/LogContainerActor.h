@@ -68,7 +68,9 @@ private:
     UPROPERTY()
     TArray<TObjectPtr<AActor>> Stored;
 
+    /** Runtime storage ledger registration; StorageId is the authoritative owner ID for stored items. */
     FGuid StorageId;
+    bool bStorageRegistered = false;
     float TimeToCollect = 0.0f;
     TWeakObjectPtr<APawn> TowedBy;
     float PullerBaseSpeed = 0.0f;
