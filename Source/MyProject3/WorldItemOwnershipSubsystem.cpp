@@ -509,7 +509,11 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
     const TArray<FWorldItemTransferReceipt>& ReceiptSnapshot,
     const TArray<FWorldItemSplitReceipt>& SplitReceiptSnapshot)
 {
-    if (Snapshot.Num() > MaxTrackedItems || MaxTrackedItems <= 0)
+    if (Snapshot.Num() > MaxTrackedItems || MaxTrackedItems <= 0 ||
+        MaxTransferReceipts <= 0 || MaxTransferReceipts > 1000000 ||
+        MaxSplitReceipts <= 0 || MaxSplitReceipts > 250000 ||
+        ReceiptSnapshot.Num() > MaxTransferReceipts ||
+        SplitReceiptSnapshot.Num() > MaxSplitReceipts)
         return false;
 
     const auto IsValidItem = [](const FWorldOwnedItemRecord& Item) -> bool
