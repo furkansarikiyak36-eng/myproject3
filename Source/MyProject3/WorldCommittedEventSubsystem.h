@@ -42,4 +42,11 @@ private:
 
     UPROPERTY(Transient)
     TMap<FString, FGuid> PublishedOperationKeys;
+
+    /** Monotonic insertion order makes cache eviction deterministic. */
+    UPROPERTY(Transient)
+    TMap<FGuid, int64> PublishedEventOrder;
+
+    UPROPERTY(Transient)
+    int64 NextPublishedEventOrder = 1;
 };
