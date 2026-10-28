@@ -194,6 +194,8 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     {
         return false;
     }
+    if (!EnsureReceiptCapacity(false))
+        return false;
 
     // All validation is complete before the record is changed.
     Item->OwnerKind = NewOwner;
@@ -202,6 +204,7 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     ++Item->Revision;
 
     FWorldItemTransferReceipt Receipt;
+    Receipt.Sequence = NextReceiptSequence++;
     Receipt.OperationId = OperationId;
     Receipt.ItemId = ItemId;
     Receipt.ResultingRevision = Item->Revision;
@@ -252,6 +255,8 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     {
         return false;
     }
+    if (!EnsureReceiptCapacity(false))
+        return false;
 
     if (Item->BaseDefinitionId.IsNone())
         Item->BaseDefinitionId = Item->DefinitionId;
@@ -390,12 +395,6 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
     if (Receipts.Contains(OperationId))
         return false;
 
-    // Capacity applies only to a new split. An exact retry above must return its
-    // immutable prior result even when the item ledger is now at capacity.
-    if (MaxTrackedItems <= 0 || Items.Num() > MaxTrackedItems ||
-        OutputDefinitionIds.Num() - 1 > MaxTrackedItems - Items.Num())
-        return false;
-
     const FWorldOwnedItemRecord* Source = Items.Find(SourceItemId);
     if (!Source || Source->Revision != ExpectedRevision ||
         Source->OwnerKind != ExpectedOwner || Source->Quantity != 1 ||
@@ -404,6 +403,18 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
     {
         return false;
     }
+
+    // Exact retries were returned above. Compact retired tombstones only for a new
+    // split, then reacquire the source pointer because TMap removals can invalidate it.
+    if (!EnsureItemCapacity(OutputDefinitionIds.Num() - 1) ||
+        !EnsureReceiptCapacity(true))
+        return false;
+    Source = Items.Find(SourceItemId);
+    if (!Source || Source->Revision != ExpectedRevision ||
+        Source->OwnerKind != ExpectedOwner || Source->Quantity != 1 ||
+        Source->Revision == MAX_int64 ||
+        Source->DefinitionId == OutputDefinitionIds[0])
+        return false;
 
     TArray<FWorldOwnedItemRecord> ProposedOutputs;
     ProposedOutputs.Reserve(OutputDefinitionIds.Num());
@@ -445,6 +456,7 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
     }
 
     FWorldItemSplitReceipt Receipt;
+    Receipt.Sequence = NextReceiptSequence++;
     Receipt.OperationId = OperationId;
     Receipt.SourceItemId = SourceItemId;
     Receipt.ExpectedRevision = ExpectedRevision;
