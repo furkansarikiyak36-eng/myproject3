@@ -331,3 +331,11 @@ Operation ledger 8192 girişle sınırlı; TryBeginOperation bu sınıra ulaşı
 Önemli düzeltme: Save coordinator, ownership ledger içinde OwnerKind=Held olan herhangi bir item bulursa kaydı açıkça reddediyor. Dolayısıyla mevcut kodun “Held item kaydedip sahipsiz bırakması” diye bir iddia doğru olmaz; şu an kaydetme işlemi fail-closed davranıyor. Ancak bu, oyuncu elinde kütük/taş/çubuk varken kayıt almanın henüz desteklenmediği anlamına geliyor.
 
 **Gerekli ilke:** Prototip aşamasında “önce nesneyi bırak veya depola” kuralı kabul edilebilir ve güvenlidir. Daha sonra taşıyarak kaydetme desteklenecekse, carrier ID + held item ID + taşıma modu/transform ilişkisi Save/Restore kapsamına eklenmeli.
+
+
+### A39 — Save/load yapısal grafiği taş ve çubukların yerel placed state'iyle tam uzlaştırmıyor
+**Dosyalar:** Source/MyProject3/WorldStructuralGraphSubsystem.cpp — RestoreSnapshot/RebuildLogActorAttachmentsFromSnapshot; Source/MyProject3/StoneBuildingPiece.h/.cpp; Source/MyProject3/StickPrimitivePiece.h/.cpp; Source/MyProject3/MaterialConnectionSubsystem.cpp — RestoreLinkFromGraph.
+
+Stone ve Stick aktörlerindeki `bIsPlaced`/`bIsHeld` alanları `Transient`. Graph snapshot ise `bGroundSupported`, parent/secondary support ve anchor ilişkilerini geri yükleyebiliyor. RebuildLogActorAttachmentsFromSnapshot, mixed-material bağlantılarda RestoreLinkFromGraph çağırıyor; bu çağrı `ApplyCrossMaterialAttachment` üzerinden child stone/stick için `bIsPlaced=true` yapar. Ancak graph'ta root olup `bGroundSupported=true` olarak restore edilen taş/çubuk için benzer bir yerel-state senkronizasyonu yapılmıyor: fonksiyonun son root-state geçişi yalnızca `ALogBuildPiece` aktörlerini ele alıyor. Aynı aktör kümesi içinde bir kaydı başka zaman noktasından yüklerken kanonik graf “ground-supported/placed” derken taş/çubuk aktöründeki `IsStructurallyPlaced()` eski transient değeri koruyabilir.
+
+**Gerekli ilke:** restore sonrasında her malzeme adaptörü graph'taki parent edge ve `bGroundSupported` bilgisinden kendi placed/held/physics/anchor durumunu deterministik biçimde kurmalı; root taş/çubuk için de loglarda olduğu gibi açık bir uzlaştırma adımı olmalı.
