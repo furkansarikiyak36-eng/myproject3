@@ -39,6 +39,10 @@ Connect the existing log-processing owner to the Phase 2 operation-result and co
 - [ ] Run Unreal Engine 5.8 UHT/build and Editor/PIE checks at the agreed final gate.
 - [ ] Add integrated all-119 mechanic evidence and final demo at the end of the phase sequence.
 
+## Follow-on review
+
+Track remaining source-level correctness questions, explicitly deferred domain work, and engine verification in [`PHASE_03_REVIEW_BACKLOG.md`](PHASE_03_REVIEW_BACKLOG.md). Phase 3 remains a source draft until those review items and the final Unreal validation gate are resolved.
+
 ## Validation boundary
 
 This is a source-level implementation pass only. No Unreal Engine build, UHT, editor, PIE, or gameplay test was run. Registry verification remains `unreviewed` / `not_run` until implementation and evidence are reviewed.
