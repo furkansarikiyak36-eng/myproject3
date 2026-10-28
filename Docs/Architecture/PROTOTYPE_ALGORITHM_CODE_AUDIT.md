@@ -273,3 +273,11 @@ Hayvan hedefleri FMath::RandPointInCircle ve FMath::FRandRange ile global RNG'de
 Üç fiziksel parça ailesi de graph kaydını `LocalLoad=1.0`, `MaxSupportedLoad=100000.0`, `DamageThreshold=100.0` ile başlatıyor. `ComputeAggregateLoad` bu girdileri matematiksel olarak toplasa da girdiler uzunluk, kesit profili, gerçek kütle veya malzeme dayanımından türetilmiyor. Taş sütun ve ince çubuk aynı yerel yük ve kapasite parametrelerini alıyor; bu yüzden grafın yük hesabı sayısal olarak çalışabilir ama fiziksel anlamı tasarım kurallarıyla ilişkilendirilmiş değil. Hasar eşiği de malzeme/şekil bazında farklılaşmıyor.
 
 **Gerekli ilke:** bir ortak fiziksel profil tanımla: `MassKg`/`LocalLoad`, izin verilen basma/eğilme/ankraj kapasitesi, dayanıklılık ve hasar eşiği. Bu değerler mesh AABB'sinden gelişigüzel türetilmek yerine, canonical dimensions + profile + material data üzerinden hesaplanmalı; prototip sabitleri açıkça “placeholder tuning” olarak etiketlenmeli.
+
+
+### A32 — Hayvan ürün ilerlemesi için üst sınır ve sabit-zamanlı hesap yok
+**Dosya:** Source/MyProject3/WorldAgricultureSubsystem.cpp — RegisterAnimal, CanAdvanceAgricultureStep, AdvanceAgricultureStep, RestoreSnapshot.
+
+ProductProgressSeconds yalnızca sonlu ve negatif olmayan değer olarak doğrulanıyor; üst sınırı yok. AdvanceAgricultureStep, her 3600 saniyelik ürün birimi için bir `while` iterasyonu çalıştırıp ProductUnits değerini artırıyor ve ancak MAX_int32 değerine ulaştığında duruyor. Kayıt veya snapshot büyük fakat sonlu bir ilerleme değeri içerirse tek bir simülasyon adımı aşırı sayıda iterasyon yapabilir. CanAdvanceAgricultureStep bu durumu mevcut kontrolleriyle engellemiyor.
+
+**Gerekli ilke:** ürün artışını quotient/remainder aritmetiğiyle hesapla; üretim adedini MAX_int32 - ProductUnits ile sınırla; kayıt/yüklemede ürün ilerlemesi için canonical bir üst sınır uygula.
