@@ -6,6 +6,7 @@
 
 class APawn;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 
 UENUM(BlueprintType)
 enum class ELogContainerKind : uint8
@@ -31,6 +32,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Container")
     TObjectPtr<UStaticMeshComponent> Base;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Container|Identity")
+    TObjectPtr<UWorldObjectIdentityComponent> Identity;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Container")
     ELogContainerKind Kind = ELogContainerKind::SmallLogStorage;
