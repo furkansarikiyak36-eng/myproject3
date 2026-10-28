@@ -265,6 +265,7 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     ++Item->Revision;
 
     FWorldItemTransferReceipt Receipt;
+    Receipt.Sequence = NextReceiptSequence++;
     Receipt.OperationId = OperationId;
     Receipt.ItemId = ItemId;
     Receipt.ResultingRevision = Item->Revision;
