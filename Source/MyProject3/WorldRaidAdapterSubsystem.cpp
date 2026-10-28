@@ -84,7 +84,8 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
         (bHasRaid && (CurrentRaid.State == EThreatRaidState::Warning ||
                       CurrentRaid.State == EThreatRaidState::Active) && !bRaidWillFinish) ||
         bRaidWillStart;
-    if (bRaidNeedsPawn && !RaidPawnClass)
+    if (bRaidNeedsPawn && (!RaidPawnClass || RaidPawnClass->HasAnyClassFlags(
+        CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists)))
         return false;
 
     if (!bHasRaid || CurrentRaid.State == EThreatRaidState::None ||
