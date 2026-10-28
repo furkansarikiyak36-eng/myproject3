@@ -1,14 +1,15 @@
 #include "WorldOperationLedgerSubsystem.h"
 
+bool UWorldOperationLedgerSubsystem::CanBeginOperation(const FGuid& OperationId) const
+{
+    return OperationId.IsValid() && !Entries.Contains(OperationId) &&
+        MaxEntries > 0 && Entries.Num() < MaxEntries;
+}
+
 bool UWorldOperationLedgerSubsystem::TryBeginOperation(const FGuid& OperationId)
 {
-    if (!OperationId.IsValid() ||
-        Entries.Contains(OperationId) ||
-        MaxEntries <= 0 ||
-        Entries.Num() >= MaxEntries)
-    {
+    if (!CanBeginOperation(OperationId))
         return false;
-    }
 
     FWorldOperationLedgerEntry Entry;
     Entry.OperationId = OperationId;
