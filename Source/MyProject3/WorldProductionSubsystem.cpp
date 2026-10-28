@@ -735,8 +735,13 @@ bool UWorldProductionSubsystem::CanAdvanceProductionStep(double DeltaSeconds) co
         {
             if (Job.State == EProductionJobState::Completed)
                 continue;
-            if (Job.State == EProductionJobState::Blocked)
-                break; // A blocked job stalls this sequential station queue.
+
+            // Output-capacity blocking is retryable without redoing work. Other
+            // blocked states remain explicit queue barriers requiring user/domain action.
+            if (Job.State == EProductionJobState::Blocked &&
+                Job.BlockedReason != FName(TEXT("OutputCapacity")))
+                break;
+
             bHasWork = true;
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
             if (!Recipes.IsValidIndex(RecipeIndex) ||
@@ -744,7 +749,9 @@ bool UWorldProductionSubsystem::CanAdvanceProductionStep(double DeltaSeconds) co
                 Recipes[RecipeIndex].DurationSeconds <= 0.0 ||
                 !FMath::IsFinite(Job.ProgressSeconds) || Job.ProgressSeconds < 0.0 ||
                 Job.ProgressSeconds > Recipes[RecipeIndex].DurationSeconds ||
-                !FMath::IsFinite(Job.ProgressSeconds + DeltaSeconds))
+                !FMath::IsFinite(Job.ProgressSeconds + DeltaSeconds) ||
+                (Job.State == EProductionJobState::Blocked &&
+                 Job.ProgressSeconds < Recipes[RecipeIndex].DurationSeconds))
                 return false;
         }
         if (bHasWork && Station.Revision == MAX_int64) return false;
@@ -769,23 +776,35 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
         {
             if (Job.State == EProductionJobState::Completed)
                 continue;
-            if (Job.State == EProductionJobState::Blocked)
-                break; // Later jobs cannot overtake a blocked job on this station.
+            if (Job.State == EProductionJobState::Blocked &&
+                Job.BlockedReason != FName(TEXT("OutputCapacity")))
+                break; // Unknown blocked state remains an explicit queue barrier.
 
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
             if (!Recipes.IsValidIndex(RecipeIndex))
                 return false; // Preflight should make this unreachable; fail before dereferencing.
             const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
-            if (RemainingSeconds <= 0.0)
-                break;
 
-            if (Job.State == EProductionJobState::Queued)
-                Job.State = EProductionJobState::Running;
+            const bool bRetryOutputCommit = Job.State == EProductionJobState::Blocked &&
+                Job.BlockedReason == FName(TEXT("OutputCapacity"));
+            if (bRetryOutputCommit)
+            {
+                if (Job.ProgressSeconds < Recipe.DurationSeconds)
+                    return false;
+                // Keep the completed work; do not charge simulation time a second time.
+            }
+            else
+            {
+                if (RemainingSeconds <= 0.0)
+                    break;
+                if (Job.State == EProductionJobState::Queued)
+                    Job.State = EProductionJobState::Running;
 
-            const double NeededSeconds = FMath::Max(0.0, Recipe.DurationSeconds - Job.ProgressSeconds);
-            const double AppliedSeconds = FMath::Min(RemainingSeconds, NeededSeconds);
-            Job.ProgressSeconds = FMath::Min(Recipe.DurationSeconds, Job.ProgressSeconds + AppliedSeconds);
-            RemainingSeconds = FMath::Max(0.0, RemainingSeconds - AppliedSeconds);
+                const double NeededSeconds = FMath::Max(0.0, Recipe.DurationSeconds - Job.ProgressSeconds);
+                const double AppliedSeconds = FMath::Min(RemainingSeconds, NeededSeconds);
+                Job.ProgressSeconds = FMath::Min(Recipe.DurationSeconds, Job.ProgressSeconds + AppliedSeconds);
+                RemainingSeconds = FMath::Max(0.0, RemainingSeconds - AppliedSeconds);
+            }
             bStationChanged = true;
             if (Job.ProgressSeconds < Recipe.DurationSeconds)
                 break;
