@@ -317,6 +317,7 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
     }
 
     TMap<FGuid, FWorldCargoTransportRecord> CargoById;
+    TMap<FGuid, FGuid> ActiveCargoByItemId;
     for (const FWorldCargoTransportRecord& Cargo : Snapshot.Cargo)
     {
         if (!Cargo.CargoId.IsValid() || CargoById.Contains(Cargo.CargoId) ||
@@ -336,6 +337,13 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
             return false;
         }
         CargoById.Add(Cargo.CargoId, Cargo);
+        if (Cargo.State == ECargoTransportState::InTransit ||
+            Cargo.State == ECargoTransportState::Blocked)
+        {
+            if (ActiveCargoByItemId.Contains(Cargo.ItemId))
+                return false;
+            ActiveCargoByItemId.Add(Cargo.ItemId, Cargo.CargoId);
+        }
     }
 
     TSet<FGuid> ReservedCargoIds;
@@ -433,6 +441,7 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
     }
 
     TSet<FGuid> InventoryOwnerIds;
+    TSet<FGuid> ReferencedInventoryWorldItems;
     for (const FWorldInventorySnapshot& Inventory : Snapshot.Inventories)
     {
         if (!Inventory.InventoryOwnerId.IsValid() ||
@@ -455,12 +464,14 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
             if (Stack.OwnedWorldItemId.IsValid())
             {
                 const FWorldOwnedItemRecord* Item = ItemsById.Find(Stack.OwnedWorldItemId);
-                if (!Item || Item->OwnerKind != EWorldItemOwnerKind::Inventory ||
+                if (!Item || ReferencedInventoryWorldItems.Contains(Stack.OwnedWorldItemId) ||
+                    Item->OwnerKind != EWorldItemOwnerKind::Inventory ||
                     Item->OwnerId != Inventory.InventoryOwnerId || Item->Quantity != 1 ||
                     Item->DefinitionId != Stack.ItemId || Stack.MaxStack != 1)
                 {
                     return false;
                 }
+                ReferencedInventoryWorldItems.Add(Stack.OwnedWorldItemId);
             }
         }
     }
@@ -470,7 +481,12 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
         const FWorldOwnedItemRecord& Item = Pair.Value;
         if (Item.OwnerKind == EWorldItemOwnerKind::Storage && !StoragesById.Contains(Item.OwnerId))
             return false;
-        if (Item.OwnerKind == EWorldItemOwnerKind::Inventory && !InventoryOwnerIds.Contains(Item.OwnerId))
+        if (Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            (!InventoryOwnerIds.Contains(Item.OwnerId) ||
+             !ReferencedInventoryWorldItems.Contains(Item.ItemId)))
+            return false;
+        if (Item.OwnerKind == EWorldItemOwnerKind::InTransit &&
+            ActiveCargoByItemId.FindRef(Item.ItemId) != Item.OwnerId)
             return false;
     }
 
