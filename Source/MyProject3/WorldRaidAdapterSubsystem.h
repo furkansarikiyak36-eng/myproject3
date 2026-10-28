@@ -14,6 +14,11 @@ class MYPROJECT3_API UWorldRaidAdapterSubsystem : public UWorldSubsystem
 {
     GENERATED_BODY()
 public:
+    UWorldRaidAdapterSubsystem();
+
+    UFUNCTION(BlueprintPure, Category="Threat|Adapter")
+    bool CanAdvanceRaidWorldAdapterAtTime(double TargetTimeSeconds) const;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter")
     TSubclassOf<APawn> RaidPawnClass;
 
@@ -46,9 +51,14 @@ private:
     FGuid MaterializedRaidId;
 
     UPROPERTY(Transient)
+    FGuid MaterializedTargetNodeId;
+
+    /** Cached boundary only; pulse identity is derived from raid ID + pulse index and stored in the operation ledger. */
+    UPROPERTY(Transient)
     double NextDamageTimeSeconds = 0.0;
 
     UWorldThreatDirectorSubsystem* GetThreatDirector() const;
     UWorldStructuralGraphSubsystem* GetStructuralGraph() const;
+    bool ResolvePrimaryTargetNode(const FThreatRaidRecord& Raid, FGuid& OutNodeId, FVector& OutLocation) const;
     bool ResolveCollapsedSubtree(FGuid RootNodeId);
 };
