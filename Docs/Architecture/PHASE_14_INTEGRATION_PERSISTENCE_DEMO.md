@@ -58,7 +58,8 @@ The demo should test mechanics in useful, intentional locations; avoid clutter a
 - [x] Legacy schema 13 advances to 14 without synthesizing density; it fails closed if the current level has initialized voxel chunks but the old save lacks their snapshots.
 - [ ] Missing physical actors/chunks are not reconstructed; authored level identity must match the save.
 - [ ] Save/load round-trip and rollback have not been run through Unreal 5.8 / PIE in this session.
-- [ ] Logical terrain cells and physical voxel density are not yet transactionally reconciled.
+- [x] A coordinated source API now stages a physical voxel dig and commits the logical terrain cell, restoring the density snapshot when the logical edit rejects.
+- [ ] Validate the coordinated transaction and rollback in UE 5.8; this source change does not prove runtime atomicity.
 - [ ] The M001–M119 demo map and evidence coverage are not complete or accepted.
 
 ## Acceptance gates
