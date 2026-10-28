@@ -48,6 +48,10 @@ struct FThreatRaidRecord
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
     int64 Revision = 0;
+
+    /** Highest successfully committed deterministic raid attack pulse; -1 means none. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
+    int64 LastCommittedAttackPulseIndex = -1;
 };
 
 /**
@@ -59,7 +63,7 @@ USTRUCT(BlueprintType)
 struct FWorldThreatDirectorSnapshot
 {
     GENERATED_BODY()
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int32 SchemaVersion = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int32 SchemaVersion = 2;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") FThreatRaidRecord CurrentRaid;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") TArray<FThreatRaidRecord> RaidHistory;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") double NextRaidTimeSeconds = 0.0;
@@ -120,6 +124,9 @@ public:
 
     UFUNCTION(BlueprintPure, Category="Threat")
     double GetNextRaidTimeSeconds() const { return NextRaidTimeSeconds; }
+
+    /** Persistently advances the idempotency watermark after a structural damage pulse commits. */
+    bool CommitRaidAttackPulse(const FGuid& RaidId, int64 PulseIndex);
 
     FWorldThreatDirectorSnapshot ExportSnapshot() const;
     bool RestoreSnapshot(const FWorldThreatDirectorSnapshot& Snapshot);
