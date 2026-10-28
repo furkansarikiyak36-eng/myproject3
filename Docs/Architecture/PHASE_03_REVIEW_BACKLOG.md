@@ -21,7 +21,7 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 
 ### P0 — Source-level correctness
 
-- [ ] Audit all tracked C++ call sites of `ApplyCutAction` and `TryApplyCutAction`; verify callers do not discard useful failure codes where user feedback is needed.
+- [ ] Complete repository-wide and local Blueprint caller audit. The tracked `ULogCarryComponent` interaction path now calls `TryApplyCutAction` and displays its structured failure message; a repository search did not provide a complete call-site index, so other callers and local/untracked Blueprints remain unverified.
 - [x] Source-reviewed the action-to-result-code mapping for all seven declared actions: invalid state, unmet prerequisite, missing configuration, and unsupported action are distinguished. Engine/runtime behavior remains unverified.
 - [x] Document operation-ID semantics in `LogBuildPiece.h`: the ID is correlation/diagnostic metadata only, not an idempotency key. A repeated request is revalidated against the new piece state and may return a different result; callers must not assume deduplication.
 - [ ] Review whether bottom-height preservation is valid for all configured output meshes and actor rotations; current logic uses world-axis bounds and should be checked with real assets.
