@@ -123,8 +123,12 @@ bool UWorldLogisticsRouteSubsystem::FindRoute(
         for (const FName Candidate : Unvisited)
         {
             const float* Distance = Distances.Find(Candidate);
-            if (Distance && *Distance < BestDistance)
+            if (Distance && (*Distance < BestDistance ||
+                (*Distance == BestDistance &&
+                    (Current.IsNone() || Candidate.ToString() < Current.ToString()))))
             {
+                // Stable node-name tie-break makes equal-cost route selection independent
+                // of TSet iteration order.
                 BestDistance = *Distance;
                 Current = Candidate;
             }
@@ -157,9 +161,13 @@ bool UWorldLogisticsRouteSubsystem::FindRoute(
             {
                 continue;
             }
-            if (static_cast<float>(CandidateCost) < *NeighborDistance)
+            const float CandidateCostFloat = static_cast<float>(CandidateCost);
+            const FName* PreviousNode = Previous.Find(Edge.ToNode);
+            const bool bBetterEqualCostPredecessor = CandidateCostFloat == *NeighborDistance &&
+                (!PreviousNode || Current.ToString() < PreviousNode->ToString());
+            if (CandidateCostFloat < *NeighborDistance || bBetterEqualCostPredecessor)
             {
-                Distances[Edge.ToNode] = static_cast<float>(CandidateCost);
+                Distances[Edge.ToNode] = CandidateCostFloat;
                 Previous.Add(Edge.ToNode, Current);
             }
         }
