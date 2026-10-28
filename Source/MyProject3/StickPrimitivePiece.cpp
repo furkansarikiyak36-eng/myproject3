@@ -232,6 +232,101 @@ bool AStickPrimitivePiece::SetHeldState(bool bNewHeld)
     return true;
 }
 
+void AStickPrimitivePiece::ResetLocalConnectionStateForGraphRestore()
+{
+    if (ParentPiece.IsValid() || CrossMaterialParent.IsValid() ||
+        Cast<IStructuralPieceInterface>(GetAttachParentActor()))
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+    ParentPiece.Reset();
+    ParentAnchorId = NAME_None;
+    OwnAnchorIdUsed = NAME_None;
+    CrossMaterialParent.Reset();
+    AttachedPieces.Reset();
+    for (FPrimitiveAnchor& Anchor : Anchors)
+        Anchor.bOccupied = false;
+    bIsHeld = false;
+    bIsPlaced = false;
+}
+
+bool AStickPrimitivePiece::RestoreConnectionFromGraph(
+    AStickPrimitivePiece* Parent, FName InParentAnchorId, FName InOwnAnchorId)
+{
+    if (!IsValid(Parent) || Parent == this || !StructuralIdentity ||
+        !Parent->StructuralIdentity || InParentAnchorId.IsNone() || InOwnAnchorId.IsNone() ||
+        ParentPiece.IsValid() || CrossMaterialParent.IsValid())
+        return false;
+
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    FStructuralNodeRecord ChildNode;
+    FStructuralNodeRecord ParentNode;
+    if (!Graph || !Graph->GetNode(StructuralIdentity->GetInstanceId(), ChildNode) ||
+        !Graph->GetNode(Parent->StructuralIdentity->GetInstanceId(), ParentNode) ||
+        ChildNode.ParentNodeId != ParentNode.NodeId ||
+        ChildNode.ParentAnchorId != InParentAnchorId || ChildNode.OwnAnchorId != InOwnAnchorId)
+        return false;
+
+    int32 ParentIndex = INDEX_NONE;
+    int32 OwnIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Parent->Anchors.Num(); ++Index)
+    {
+        if (Parent->Anchors[Index].AnchorId == InParentAnchorId)
+        {
+            if (ParentIndex != INDEX_NONE) return false;
+            ParentIndex = Index;
+        }
+    }
+    for (int32 Index = 0; Index < Anchors.Num(); ++Index)
+    {
+        if (Anchors[Index].AnchorId == InOwnAnchorId)
+        {
+            if (OwnIndex != INDEX_NONE) return false;
+            OwnIndex = Index;
+        }
+    }
+    if (!Parent->Anchors.IsValidIndex(ParentIndex) || !Anchors.IsValidIndex(OwnIndex) ||
+        Parent->Anchors[ParentIndex].bOccupied || Anchors[OwnIndex].bOccupied ||
+        Parent->Anchors[ParentIndex].CompatibilityTag != Anchors[OwnIndex].CompatibilityTag)
+        return false;
+
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+        return false;
+    Parent->Anchors[ParentIndex].bOccupied = true;
+    Anchors[OwnIndex].bOccupied = true;
+    ParentPiece = Parent;
+    ParentAnchorId = InParentAnchorId;
+    OwnAnchorIdUsed = InOwnAnchorId;
+    Parent->AttachedPieces.AddUnique(this);
+    bIsHeld = false;
+    bIsPlaced = true;
+    bStartsPlaced = true;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+    SetActorEnableCollision(true);
+    return true;
+}
+
+void AStickPrimitivePiece::RestoreRootStateFromGraph(bool bGroundSupported, bool bStorageOwned)
+{
+    bIsHeld = false;
+    bIsPlaced = bGroundSupported;
+    bStartsPlaced = bGroundSupported;
+    if (PieceState == EStickPrimitiveState::TrapComponent)
+        TrapState = bGroundSupported ? EPrimitiveTrapState::Grounded : EPrimitiveTrapState::Unplaced;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(!bGroundSupported && !bStorageOwned);
+        Mesh->SetCollisionProfileName(bGroundSupported ? TEXT("BlockAll") : TEXT("PhysicsActor"));
+        Mesh->SetCollisionEnabled(bStorageOwned ? ECollisionEnabled::QueryOnly : ECollisionEnabled::QueryAndPhysics);
+    }
+    SetActorEnableCollision(true);
+}
+
 bool AStickPrimitivePiece::TryCommitGroundPlacement(
     const FVector& SurfaceLocation, const FRotator& SurfaceRotation)
 {
