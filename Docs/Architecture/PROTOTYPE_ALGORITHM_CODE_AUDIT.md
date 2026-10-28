@@ -210,3 +210,34 @@ Ek olarak StorageId BeginPlay'de boşsa yeni FGuid ile üretiliyor, Stored dizis
 
 **Gerekli ilke:** fiziksel container, ownership ledger ve WorldStorageSubsystem arasında tek bir storage kimliği/üyelik kaydı olmalı; store/withdraw sırasında anchor ve structural graph geçişleri ya birlikte commit edilmeli ya da hiçbiri gerçekleşmemeli.
 
+
+
+## Ek bulgular: kompozit işlemler ve ortak durum
+
+### A24 — Kapı/pencere kesimi tek bir atomik işlem değil
+**Dosyalar:** Source/MyProject3/LogBuildToolsComponent.cpp (CutOpening); Source/MyProject3/ConstructionHelpers.cpp (TrimLogToRange).
+
+CutOpening birden fazla kütük üzerinde parça üretme, kaynak mesh'i ölçekleme ve parçayı kaldırma adımlarını arka arkaya yapıyor. Bazı alt işlemlerin sonuçları kontrol edilmiyor. Bir parçanın oluşturulması veya kaldırılması başarısız olursa önceki değişiklikleri geri alan ortak transaction bulunmuyor. Bu nedenle hata yolunda malzeme kaybı veya fazladan parça kalması mümkün.
+
+**Gerekli ilke:** işlem öncesi tüm adımları doğrula; sonra hepsini birlikte commit et; başarısızlıkta tüm önceki transform/mesh/durum ve yeni aktörleri geri al.
+
+### A25 — Stack çakışma denetimi tüm kütük hacmini temsil etmiyor
+**Dosya:** Source/MyProject3/LogCarryComponent.cpp (ComputeStackPlacement).
+
+Yerleşim adayı yalnızca üst parçanın merkezinde, Upper.Radius değerinin yarısı büyüklüğündeki bir sphere ile sorgulanıyor. Bu şekil uzun ve yönelmiş bir kütüğün tamamını temsil etmediğinden bazı kesişmeleri kaçırabilir. Ayrıca CommitHeldLogAt, birincil desteğe grafik bağlantısı kurulamazsa bile yerleştirmeyi tamamlayabilir; fiziksel yerleştirme ile yapısal bağlantı sonucu ayrışabilir.
+
+**Gerekli ilke:** tam collision şekli veya yönelmiş eksen/yarıçap geometrisiyle çakışma kontrolü; destekli yerleştirmede grafik bağlantısını başarı koşulu yapmak.
+
+### A26 — Fixed-step rollback ısı kaynağı bileşen durumunu kapsamıyor
+**Dosyalar:** Source/MyProject3/WorldSimulationCoordinatorSubsystem.cpp; Source/MyProject3/WorldSurvivalSubsystem.cpp; Source/MyProject3/HeatSourceComponent.cpp.
+
+Survival adımı heat source yakıtını ilerletiyor. Coordinator geri alma sırasında profil ve alt sistem snapshot'larını geri alıyor ancak HeatSourceComponent yakıt/yanma alanları aynı transaction snapshot'ına dahil değil. Bir adım sonradan başarısız olursa profil ve saat geri alınırken yakıt ilerlemiş kalabilir.
+
+**Gerekli ilke:** fixed-step sırasında değişen her durum sahibi rollback snapshot'ına dahil edilmeli veya durum step commit edilene kadar geçici tutulmalı.
+
+### A27 — Identity registry kayıt hatasında aktör aktif kalabiliyor
+**Dosyalar:** Source/MyProject3/WorldObjectIdentityComponent.cpp (BeginPlay); Source/MyProject3/WorldObjectIdentitySubsystem.cpp (RegisterIdentity).
+
+Identity kaydı başarısız olursa component hata loglayıp dönüyor ama aktörün çarpışma ve etkileşimini kapatmıyor. Registry dışında kalan veya duplicate kimlik taşıyan bir fiziksel aktör dünya nesne kayıtlarıyla ayrışabilir.
+
+**Gerekli ilke:** kimlik kaydı başarısızsa aktörü devre dışı bırak veya spawn işlemini geri al; identity registry dışında etkin fiziksel nesne bırakma.
