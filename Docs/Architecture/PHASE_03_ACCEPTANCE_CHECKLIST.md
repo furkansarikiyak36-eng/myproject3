@@ -24,7 +24,8 @@
 - [ ] Audit local/untracked Blueprint consumers in the actual project checkout.
 - [ ] Compile/UHT with Unreal Engine 5.8.
 - [ ] Verify processing, invalid prerequisites, missing meshes, and geometry placement in Editor/PIE.
-- [ ] Inspect FBX axes, pivots, bounds, collision and confirm same-length output mesh mapping in Unreal Editor.
+- [x] Add source-level exact-source-mesh output mapping with fail-closed duplicate/unmapped handling.
+- [ ] Populate each actor/Blueprint's mapping sets and inspect FBX axes, pivots, bounds, collision and same-length output pairing in Unreal Editor.
 - [ ] Integrate tool/inventory requirements and resource yields only after the canonical inventory/tool owner is identified.
 - [ ] Integrated test evidence remains deferred to the final all-119 gate.
 
