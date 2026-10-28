@@ -194,60 +194,106 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
         CurrentActors.Add(Identity->InstanceId, Actor);
     }
 
-    if (CurrentActors.Num() != Snapshot.Num())
-        return false;
-
-    TSet<FGuid> Seen;
+    TSet<FGuid> SeenIdentityIds;
     for (const FWorldPhysicalActorSnapshot& State : Snapshot)
     {
-        AActor* const* Found = CurrentActors.Find(State.IdentityId);
-        if (!State.IdentityId.IsValid() || Seen.Contains(State.IdentityId) || !Found ||
-            !IsValid(*Found) || State.ActorClass.IsNull() ||
-            FSoftClassPath((*Found)->GetClass()) != State.ActorClass ||
-            !State.ActorTransform.IsValid() ||
+        if (!State.IdentityId.IsValid() || SeenIdentityIds.Contains(State.IdentityId) ||
+            State.ActorClass.IsNull() || !State.ActorTransform.IsValid() ||
             static_cast<uint8>(State.LifecycleState) >
                 static_cast<uint8>(EWorldObjectLifecycleState::Destroyed) ||
             State.StateRevision < 0)
         {
             return false;
         }
-        Seen.Add(State.IdentityId);
+        SeenIdentityIds.Add(State.IdentityId);
 
-        TSet<FName> ComponentNames;
+        UClass* ActorClass = State.ActorClass.TryLoadClass<AActor>();
+        if (!ActorClass || ActorClass->HasAnyClassFlags(
+            CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("World load refused: actor class '%s' cannot be restored."),
+                *State.ActorClass.ToString());
+            return false;
+        }
+
+        AActor* ClassDefault = Cast<AActor>(ActorClass->GetDefaultObject());
+        if (!IsValid(ClassDefault) ||
+            !ClassDefault->FindComponentByClass<UWorldObjectIdentityComponent>())
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("World load refused: actor class '%s' has no stable identity component."),
+                *State.ActorClass.ToString());
+            return false;
+        }
+
+        TArray<UPrimitiveComponent*> DefaultPrimitives;
+        ClassDefault->GetComponents<UPrimitiveComponent>(DefaultPrimitives);
+        if (DefaultPrimitives.Num() != State.Components.Num())
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("World load refused: primitive component layout changed for actor class '%s'."),
+                *State.ActorClass.ToString());
+            return false;
+        }
+
+        TSet<FName> SeenComponentNames;
         for (const FWorldPhysicalComponentSnapshot& Component : State.Components)
         {
-            if (Component.ComponentName.IsNone() || ComponentNames.Contains(Component.ComponentName) ||
+            if (Component.ComponentName.IsNone() ||
+                SeenComponentNames.Contains(Component.ComponentName) ||
                 !Component.bIsPrimitive || Component.ComponentClass.IsNull() ||
                 static_cast<uint8>(Component.CollisionEnabled.GetValue()) >
                     static_cast<uint8>(ECollisionEnabled::QueryAndPhysics) ||
-                Component.LinearVelocity.ContainsNaN() || Component.AngularVelocityRadians.ContainsNaN())
+                Component.LinearVelocity.ContainsNaN() ||
+                Component.AngularVelocityRadians.ContainsNaN())
             {
                 return false;
             }
-            bool bFoundNamedComponent = false;
-            TArray<UPrimitiveComponent*> Primitives;
-            (*Found)->GetComponents<UPrimitiveComponent>(Primitives);
-            for (UPrimitiveComponent* Primitive : Primitives)
+
+            UPrimitiveComponent* DefaultPrimitive = nullptr;
+            for (UPrimitiveComponent* Candidate : DefaultPrimitives)
             {
-                if (IsValid(Primitive) && Primitive->GetFName() == Component.ComponentName)
+                if (IsValid(Candidate) && Candidate->GetFName() == Component.ComponentName)
                 {
-                    bFoundNamedComponent = true;
-                    if (FSoftClassPath(Primitive->GetClass()) != Component.ComponentClass)
-                        return false;
-                    if (!Component.StaticMeshAsset.IsNull())
-                    {
-                        if (!Cast<UStaticMeshComponent>(Primitive) ||
-                            (!Component.StaticMeshAsset.IsValid() && !Component.StaticMeshAsset.TryLoad()))
-                            return false;
-                    }
+                    DefaultPrimitive = Candidate;
                     break;
                 }
             }
-            if (!bFoundNamedComponent)
+            if (!DefaultPrimitive ||
+                FSoftClassPath(DefaultPrimitive->GetClass()) != Component.ComponentClass)
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("World load refused: primitive '%s' is not part of the saved actor class layout."),
+                    *Component.ComponentName.ToString());
                 return false;
-            ComponentNames.Add(Component.ComponentName);
+            }
+
+            if (!Component.StaticMeshAsset.IsNull())
+            {
+                if (!Cast<UStaticMeshComponent>(DefaultPrimitive) ||
+                    !Cast<UStaticMesh>(Component.StaticMeshAsset.TryLoad()))
+                {
+                    UE_LOG(LogTemp, Warning,
+                        TEXT("World load refused: static mesh reference for component '%s' is unavailable."),
+                        *Component.ComponentName.ToString());
+                    return false;
+                }
+            }
+            SeenComponentNames.Add(Component.ComponentName);
+        }
+
+        if (AActor* const* Existing = CurrentActors.Find(State.IdentityId))
+        {
+            if (!IsValid(*Existing) ||
+                FSoftClassPath((*Existing)->GetClass()) != State.ActorClass)
+            {
+                return false;
+            }
         }
     }
+
+    // A differing actor population is valid: missing identities will be spawned
+    // from their recorded class, and identities absent from the snapshot removed.
     return true;
 }
 
@@ -266,13 +312,88 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
             CurrentActors.Add(Identity->InstanceId, Actor);
     }
 
-    // Apply transforms first so the following component physics state is applied
-    // at the saved location. Actor spawning is intentionally not guessed here.
+    TSet<FGuid> DesiredIds;
+    DesiredIds.Reserve(Snapshot.Num());
+
+    // Spawn missing actors deferred so their canonical identity is installed
+    // before BeginPlay registers it with the world identity subsystem.
+    for (const FWorldPhysicalActorSnapshot& State : Snapshot)
+    {
+        DesiredIds.Add(State.IdentityId);
+        if (CurrentActors.Contains(State.IdentityId))
+            continue;
+
+        UClass* ActorClass = State.ActorClass.TryLoadClass<AActor>();
+        if (!ActorClass)
+            return false;
+
+        AActor* Spawned = World->SpawnActorDeferred<AActor>(
+            ActorClass, State.ActorTransform, nullptr, nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (!Spawned)
+            return false;
+
+        UWorldObjectIdentityComponent* Identity =
+            Spawned->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (!Identity)
+        {
+            Spawned->Destroy();
+            return false;
+        }
+        Identity->InstanceId = State.IdentityId;
+        Identity->DefinitionId = State.DefinitionId;
+        Identity->LifecycleState = State.LifecycleState;
+        Identity->StateRevision = State.StateRevision;
+
+        Spawned->FinishSpawning(State.ActorTransform);
+        if (!IsValid(Spawned) ||
+            !Spawned->GetClass()->IsChildOf(ActorClass))
+        {
+            if (IsValid(Spawned))
+                Spawned->Destroy();
+            return false;
+        }
+        Identity = Spawned->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (!IsValid(Identity) || Identity->InstanceId != State.IdentityId)
+        {
+            Spawned->Destroy();
+            return false;
+        }
+        CurrentActors.Add(State.IdentityId, Spawned);
+    }
+
+    // Remove tracked actors that did not exist in the target snapshot. This
+    // makes restore independent of the live world's dynamic actor population.
+    TArray<FGuid> ExtraIds;
+    for (const TPair<FGuid, AActor*>& Pair : CurrentActors)
+    {
+        if (!DesiredIds.Contains(Pair.Key))
+            ExtraIds.Add(Pair.Key);
+    }
+    for (const FGuid& ExtraId : ExtraIds)
+    {
+        AActor* Actor = CurrentActors.FindRef(ExtraId);
+        if (IsValid(Actor) && !Actor->Destroy())
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("World load could not remove extra physical actor %s."),
+                *ExtraId.ToString());
+            return false;
+        }
+        CurrentActors.Remove(ExtraId);
+    }
+
+    // Restore actor transforms first, then actor-level SaveGame payload and
+    // component/physics state. Cross-actor attachments are rebuilt by the
+    // authoritative structural-graph restore immediately afterward.
     for (const FWorldPhysicalActorSnapshot& State : Snapshot)
     {
         AActor* Actor = CurrentActors.FindRef(State.IdentityId);
-        if (!Actor || !Actor->SetActorTransform(State.ActorTransform, false, nullptr, ETeleportType::TeleportPhysics))
+        if (!IsValid(Actor) ||
+            !Actor->SetActorTransform(State.ActorTransform, false, nullptr, ETeleportType::TeleportPhysics))
+        {
             return false;
+        }
         Actor->SetActorHiddenInGame(State.bActorHiddenInGame);
         Actor->SetActorEnableCollision(State.bActorCollisionEnabled);
         Actor->SetActorTickEnabled(State.bActorTickEnabled);
@@ -282,8 +403,8 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
     {
         AActor* Actor = CurrentActors.FindRef(State.IdentityId);
         UWorldObjectIdentityComponent* Identity =
-            Actor ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
-        if (!Actor || !Identity)
+            IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!IsValid(Identity))
             return false;
 
         {
@@ -294,6 +415,7 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
             if (Reader.IsError())
                 return false;
         }
+        Identity->InstanceId = State.IdentityId;
         Identity->DefinitionId = State.DefinitionId;
         Identity->LifecycleState = State.LifecycleState;
         Identity->StateRevision = State.StateRevision;
@@ -311,18 +433,21 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
                     break;
                 }
             }
-            if (!Primitive)
+            if (!Primitive || FSoftClassPath(Primitive->GetClass()) != ComponentState.ComponentClass)
                 return false;
 
             if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Primitive))
             {
-                if (!ComponentState.StaticMeshAsset.IsNull())
-                {
-                    UStaticMesh* MeshAsset = Cast<UStaticMesh>(ComponentState.StaticMeshAsset.TryLoad());
-                    if (!MeshAsset)
-                        return false;
-                    StaticMesh->SetStaticMesh(MeshAsset);
-                }
+                UStaticMesh* MeshAsset = ComponentState.StaticMeshAsset.IsNull()
+                    ? nullptr
+                    : Cast<UStaticMesh>(ComponentState.StaticMeshAsset.TryLoad());
+                if (!ComponentState.StaticMeshAsset.IsNull() && !MeshAsset)
+                    return false;
+                StaticMesh->SetStaticMesh(MeshAsset);
+            }
+            else if (!ComponentState.StaticMeshAsset.IsNull())
+            {
+                return false;
             }
 
             Primitive->SetCollisionEnabled(ComponentState.CollisionEnabled.GetValue());
@@ -335,7 +460,6 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
         }
     }
     return true;
-}
 }
 
 bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGame* OutSave) const
