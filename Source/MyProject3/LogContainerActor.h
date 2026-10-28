@@ -45,7 +45,7 @@ public:
     void ConfigureKind(ELogContainerKind NewKind);
 
     int32 GetCapacity() const;
-    int32 GetStoredCount() const { return Stored.Num(); }
+    int32 GetStoredCount() const { return GetValidStoredCount(); }
     bool IsSled() const { return Kind == ELogContainerKind::BasicSled || Kind == ELogContainerKind::AdvancedSled; }
     bool IsTowed() const { return TowedBy.IsValid(); }
     FGuid GetStorageId() const { return StorageId; }
@@ -77,6 +77,8 @@ private:
     float PullerBaseSpeed = 0.0f;
 
     FTransform GetSlotTransform(int32 Index, const AActor* Piece) const;
+    int32 GetValidStoredCount() const;
+    void CompactStoredItems();
     void ApplyTowSpeed() const;
     void CollectNearbyLogs();
 };
