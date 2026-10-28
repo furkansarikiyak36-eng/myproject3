@@ -5,6 +5,7 @@
 #include "WorldRaidAdapterSubsystem.generated.h"
 
 class APawn;
+struct FThreatRaidRecord;
 class UWorldThreatDirectorSubsystem;
 class UWorldStructuralGraphSubsystem;
 
