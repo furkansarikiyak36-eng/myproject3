@@ -492,7 +492,7 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
         CurrentWorld ? CurrentWorld->GetSubsystem<UWorldSaveCoordinatorSubsystem>() : nullptr;
     const bool bApplyingSnapshot = SaveCoordinator && SaveCoordinator->IsApplyingSnapshot();
 
-    if (!bApplyingSnapshot && TowedBy.IsValid())
+    if (TowedBy.IsValid())
         ToggleTow(TowedBy.Get());
 
     // Explicit destruction must not strand physically stored items under an owner
@@ -575,10 +575,15 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
         }
         bStorageRegistered = false;
     }
-    else if (bApplyingSnapshot)
+    else if (bApplyingSnapshot && bStorageRegistered)
     {
-        // The restore will replace the shared storage snapshot directly; do not
-        // mutate its availability or transfer pieces using the old live arrays.
+        // Remove only this actor's live registration; the storage record and its
+        // ownership data are replaced from the target snapshot later in ApplySnapshot.
+        if (UWorldStorageSubsystem* Storage =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldStorageSubsystem>() : nullptr)
+        {
+            Storage->RemoveLiveStorageRegistrationForSnapshotRestore(StorageId);
+        }
         bStorageRegistered = false;
     }
     Super::EndPlay(Reason);
