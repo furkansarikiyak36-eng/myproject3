@@ -610,6 +610,30 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->TerrainReceipts.Reset();
         Candidate->SchemaVersion = 14;
     }
+    if (Candidate->SchemaVersion == 14)
+    {
+        // Schema v15 adds a monotonic sequence to ownership transfer/split receipts.
+        // Older receipts are deterministically ordered by operation ID so that the
+        // bounded receipt window can be restored without inventing a chronology.
+        Candidate->ItemTransferReceipts.Sort([](const FWorldItemTransferReceipt& A,
+            const FWorldItemTransferReceipt& B)
+        {
+            return A.OperationId.ToString() < B.OperationId.ToString();
+        });
+        int64 ReceiptSequence = 1;
+        for (FWorldItemTransferReceipt& Receipt : Candidate->ItemTransferReceipts)
+            Receipt.Sequence = ReceiptSequence++;
+
+        Candidate->ItemSplitReceipts.Sort([](const FWorldItemSplitReceipt& A,
+            const FWorldItemSplitReceipt& B)
+        {
+            return A.OperationId.ToString() < B.OperationId.ToString();
+        });
+        for (FWorldItemSplitReceipt& Receipt : Candidate->ItemSplitReceipts)
+            Receipt.Sequence = ReceiptSequence++;
+
+        Candidate->SchemaVersion = 15;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
