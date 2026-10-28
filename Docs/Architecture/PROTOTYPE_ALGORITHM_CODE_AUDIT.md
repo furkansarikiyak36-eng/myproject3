@@ -289,3 +289,11 @@ ProductProgressSeconds yalnızca sonlu ve negatif olmayan değer olarak doğrula
 TryFillPlanSlot, parça hedef boydan %10'dan fazla uzunsa önce CutOffRemainder çağırıyor; fakat bu çağrı sonuç üretmezse de yerleştirmeye devam ediyor. Böylece hedef boy koşulu garanti edilmiyor. Kısaltma başarılı olduktan sonra CommitHeldLogAt başarısız olursa, önceki kesim ve artan parça üretimi geri alınmıyor. CutOffRemainder içindeki trim dönüş değerleri de kontrol edilmiyor.
 
 **Gerekli ilke:** trim/spawn sonuçları zorunlu kontrol edilmeli; kesim ve yuvaya yerleştirme tek bir işlem olarak ele alınmalı; yerleştirme commit'i başarısızsa önceki geometri ve çıktı aktörleri geri alınmalı.
+
+
+### A33 — Arazi düzenleme receipt'leri save/load geri yüklemesinde kayboluyor
+**Dosya:** Source/MyProject3/WorldTerrainStateSubsystem.cpp — ExportSnapshot, RestoreSnapshot, TryApplyCellEdit.
+
+Terrain snapshot yalnızca hücre durumlarını dışa aktarıyor. RestoreSnapshot hücreleri geri yükledikten sonra `Receipts.Reset()` çağırıyor; operation receipt'leri snapshot'a dahil değil. Bu nedenle kayıt geri yüklendiğinde geçmişte tamamlanmış bir edit operation ID'si için idempotent sonuç kaydı kalmıyor. Aynı operation ID tekrar geldiğinde davranış artık önceki commit receipt'ine göre değil, yalnızca yeni beklenen revision değerine göre belirleniyor.
+
+**Gerekli ilke:** terrain cell ve edit receipt'lerini aynı sürümlü snapshot'a dahil et; load sonrası aynı operation ID aynı sonuç kaydına bağlanmalı veya açıkça reddedilmeli.
