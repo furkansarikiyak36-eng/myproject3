@@ -20,7 +20,8 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
         InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) &&
         InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) &&
         InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) &&
-        !Profile.Location.ContainsNaN();
+        FMath::IsFinite(Profile.Location.X) && FMath::IsFinite(Profile.Location.Y) &&
+        FMath::IsFinite(Profile.Location.Z) && FMath::IsFinite(Profile.FeltTemperatureCelsius);
 }
 
 bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profile)
@@ -48,7 +49,8 @@ bool UWorldSurvivalSubsystem::UpdateProtection(
 
 bool UWorldSurvivalSubsystem::SetWeather(EWorldWeatherState NewWeather, float Severity)
 {
-    if (!InRange(Severity, 0.0f, 1.0f)) return false;
+    if (static_cast<uint8>(NewWeather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
+        !InRange(Severity, 0.0f, 1.0f)) return false;
     Weather = NewWeather;
     WeatherSeverity = Severity;
     return true;
@@ -57,9 +59,14 @@ bool UWorldSurvivalSubsystem::SetWeather(EWorldWeatherState NewWeather, float Se
 bool UWorldSurvivalSubsystem::UpdateLocation(const FGuid& EntityId, FVector NewLocation)
 {
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
-    if (!Profile || NewLocation.ContainsNaN())
+    if (!Profile || Profile->Revision == MAX_int64 ||
+        !FMath::IsFinite(NewLocation.X) || !FMath::IsFinite(NewLocation.Y) ||
+        !FMath::IsFinite(NewLocation.Z))
         return false;
+    if (Profile->Location.Equals(NewLocation))
+        return true;
     Profile->Location = NewLocation;
+    ++Profile->Revision;
     return true;
 }
 
@@ -186,6 +193,7 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
         !FMath::IsFinite(LogicalTimeSeconds) || LogicalTimeSeconds < 0.0 ||
+        static_cast<uint8>(Weather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
         !InRange(WeatherSeverity, 0.0f, 1.0f) ||
         !FMath::IsFinite(HungerPerHour) || HungerPerHour < 0.0f ||
         !FMath::IsFinite(ThirstPerHour) || ThirstPerHour < 0.0f ||
@@ -193,10 +201,19 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
         !FMath::IsFinite(ColdDamagePerHour) || ColdDamagePerHour < 0.0f ||
         !FMath::IsFinite(MaxCaloriesKcal) || MaxCaloriesKcal <= 0.0f ||
         !FMath::IsFinite(BasalKcalPerHour) || BasalKcalPerHour < 0.0f ||
-        !FMath::IsFinite(AmbientTemperatureCelsius))
+        !FMath::IsFinite(CarryKcalPerKgHour) || CarryKcalPerKgHour < 0.0f ||
+        !FMath::IsFinite(ShiverKcalPerDegreeHour) || ShiverKcalPerDegreeHour < 0.0f ||
+        !FMath::IsFinite(AmbientTemperatureCelsius) ||
+        !FMath::IsFinite(ClothingWarmthCelsius) ||
+        !FMath::IsFinite(ShelterWarmthCelsius) ||
+        !FMath::IsFinite(WetnessPenaltyCelsius) || WetnessPenaltyCelsius < 0.0f ||
+        !FMath::IsFinite(ComfortTemperatureCelsius) ||
+        !FMath::IsFinite(HypothermiaThresholdCelsius) ||
+        !FMath::IsFinite(CoreCoolingPerDegreeHour) || CoreCoolingPerDegreeHour < 0.0f ||
+        !FMath::IsFinite(CoreRecoveryPerHour) || CoreRecoveryPerHour < 0.0f)
         return false;
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
-        if (Pair.Value.Revision == MAX_int64) return false;
+        if (Pair.Value.Revision == MAX_int64 || !IsValidProfile(Pair.Value)) return false;
     return true;
 }
 
