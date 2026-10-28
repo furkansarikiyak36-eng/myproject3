@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "StoneBuildingTypes.h"
+#include "GameplayCoreTypes.h"
 #include "StoneBuildingPiece.generated.h"
 
 class UStaticMesh;
@@ -41,6 +42,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone|Anchors")
     TArray<FStoneSnapAnchor> Anchors;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stone|Processing")
+    TArray<FStoneProcessingMeshSet> ProcessingMeshSets;
+
     UFUNCTION(BlueprintPure, Category = "Stone")
     bool IsPlaced() const { return bIsPlaced; }
 
@@ -52,6 +56,15 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Stone")
     bool SetHeldState(bool bNewHeld);
+
+    UFUNCTION(BlueprintCallable, Category = "Stone")
+    FWorldOperationResult TryThrowStone(const FVector& ThrowImpulse, FGuid OperationId);
+
+    UFUNCTION(BlueprintPure, Category = "Stone|Processing")
+    bool CanShapeStone(EStoneShapeAction Action) const;
+
+    UFUNCTION(BlueprintCallable, Category = "Stone|Processing")
+    FWorldOperationResult TryShapeStone(EStoneShapeAction Action, FGuid OperationId);
 
     UFUNCTION(BlueprintCallable, Category = "Stone")
     bool TryCommitGroundPlacement(const FVector& SurfaceLocation, const FRotator& SurfaceRotation);
@@ -94,6 +107,8 @@ private:
     TArray<TWeakObjectPtr<AStoneBuildingPiece>> AttachedPieces;
 
     int32 FindAnchorIndex(FName AnchorId) const;
+    UStaticMesh* ResolveShapeOutputMesh(EStoneShapeAction Action,
+        bool& bOutAmbiguousMapping) const;
     bool HasOccupiedAnchors() const;
     bool HasWellFormedAnchors() const;
     bool HasValidSupportChain() const;
