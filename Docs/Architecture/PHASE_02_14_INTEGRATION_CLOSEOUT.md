@@ -10,14 +10,16 @@
 - `VoxelTerrainChunkComponent.h/.cpp`: bounded dig, zemin sınıfı/alet gücü eşikleri, izinli alan/yarıçap, revizyon koruması, tekrar işlem makbuzu, yapı kökü yakınında korumacı red, başarılı işlemde mesh/çarpışmayı otomatik yenileme ve yoğunluk snapshot API'si.
 - `WorldSimulationSaveGame.h`: şema 14 ve `FWorldVoxelChunkSnapshot` verisi.
 - `WorldSaveCoordinatorSubsystem.cpp`: voxel chunk'larının kararlı actor kimliğiyle kaydedilmesi, kayıt seti doğrulaması, yüklemede yoğunluk geri yüklenmesi ve mesh/çarpışmanın yeniden kurulması; v13'ten v14'e fail-closed geçiş.
-- `MyProject3CoreTests.cpp`: sınırlı kazı/alet gücü/revizyon, yapı kökü koruması ve yoğunluk snapshot round-trip için üç otomasyon testi kaynağı.
+- `MyProject3CoreTests.cpp`: sınırlı kazı/alet gücü/revizyon, yapı kökü koruması, yoğunluk snapshot round-trip ve mantıksal-fiziksel kazı transaction'ı (aynı hücrede tekrarlı kazı dâhil) için otomasyon testi kaynakları.
+- `TerrainDigToolComponent.h/.cpp`: oyuncunun `N` tuşuyla nişangâh altındaki voxel cebi hedeflemesi, yerel koordinata dönüşüm, dünya tabanlı mantıksal hücre seçimi ve `TryApplyVoxelExcavation` çağrısı eklendi; karaktere bağlandı.
+- `RestoreDensitySnapshot` geçersiz karışık-yoğunluk mesh geri kurulumunda eski canlı veriyi koruyacak şekilde güçlendirildi.
 - Faz 2 ve Faz 8/14 belgeleri güncellendi; mimari karar hibrit Landscape + yerel smooth voxel cepleri olarak kayda alındı.
 
 ## Fazlara göre gerçek durum
 
 | Faz | Kaynak tabanı | Kalan ana iş / kabul şartı |
 |---|---|---|
-| 02 — Voxel teknolojisi ve ortak sınırlar | Ölçülmüş tek chunk prototipi; bu dalda sınırlı kazı ve snapshot kaynağı eklendi | UE build/UHT, gerçek testler, mantıksal-fiziksel atomik işlem, oyuncu/a let entegrasyonu, chunk dikişleri, async mesh ve navmesh |
+| 02 — Voxel teknolojisi ve ortak sınırlar | Ölçülmüş tek chunk prototipi; bu dalda sınırlı kazı ve snapshot kaynağı eklendi | UE build/UHT, gerçek testler, mantıksal-fiziksel atomik işlem, gerçek envanter aleti entegrasyonu, chunk dikişleri, async mesh ve navmesh |
 | 03 — Kütük ve ahşap işleme | `LogBuildPiece`, `LogCarryComponent`, işleme/mesh varyantı ve snap çekirdeği mevcut | Tüm kesim/yarma/oluk/kalas negatif durumları, transaction rollback, mesh envanteri ve PIE kabulü |
 | 04 — Taş ve duvarcılık | `StoneBuildingPiece` ve materyaller arası bağlantı katmanı mevcut | Tam kullanıcı döngüsü, ölçek/pivot/çarpışma, taş destekleri ve PIE kabulü |
 | 05 — Çubuklar ve ilkel araçlar | `StickPrimitivePiece` ve ilişkili tip/anchor katmanları mevcut | Bütün tuzak/çubuk/alet girdilerinin ortak sahiplik ve kaynak tüketimine bağlanması; negatif senaryolar |
@@ -44,7 +46,7 @@
 
 1. Yeni dalı yerel kopyada al; UE 5.8 UHT + Development Editor derlemesini çalıştır ve tüm hataları düzelt.
 2. `MyProject3.Terrain.Voxel.*` testlerini ve var olan placement / ownership / structural graph / save coordinator testlerini çalıştır.
-3. Gerçek PIE'de kütük taşıma-kesme-snap-yapı, sınırlı kazı, sert/yumuşak zemin, destek altı kazı reddi ve fiziksel çarpışmayı kontrol et.
+3. Gerçek PIE'de kütük taşıma-kesme-snap-yapı, `N` ile sınırlı kazı, sert/yumuşak zemin, destek altı kazı reddi ve fiziksel çarpışmayı kontrol et.
 4. Save → dig/build/farm/raid → save → world mutate → load → identity/count/graph/collision doğrulaması; rollback ve eski şema testleri.
 5. Profiling ile 16,7 ms kare bütçesi, collision cook, chunk sınırı, bellekteki yoğunluk ve uzun oturum sızıntılarını ölç.
 6. Her M001–M119 için test istasyonu, pozitif/negatif senaryo, başlangıç/temizlik adımı ve kanıt kaydını tamamla; ancak sonra fazları kabul edilmiş olarak işaretle.
