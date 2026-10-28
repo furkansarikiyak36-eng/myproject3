@@ -45,6 +45,9 @@ public:
         meta = (ClampMin = "1"))
     int32 MaxEntries = 8192;
 
+    UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
+    bool CanBeginOperation(const FGuid& OperationId) const;
+
     UFUNCTION(BlueprintCallable, Category = "Gameplay|Operation")
     bool TryBeginOperation(const FGuid& OperationId);
 
