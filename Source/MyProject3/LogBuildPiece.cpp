@@ -941,12 +941,46 @@ bool ALogBuildPiece::IsValidLengthCutLayout(const FLogLengthCutVariant& Variant)
     if (Separation.SizeSquared() <= 1.0f)
         return false;
 
-    // The two output centers must follow the original log axis, not be guessed
-    // side-by-side like two cross-section pieces.
+    // Centers must follow the source axis, and their spacing must conserve the
+    // declared output lengths. Merely pointing along the right axis is not enough:
+    // an authored recipe could still leave a gap or overlap the two pieces.
     const FVector LongAxis = GetLocalLongitudinalAxis(LongitudinalAxis);
     const float LongitudinalAlignment =
         FMath::Abs(FVector::DotProduct(Separation.GetSafeNormal(), LongAxis));
-    return LongitudinalAlignment >= 0.95f;
+    if (LongitudinalAlignment < 0.95f)
+        return false;
+
+    auto LengthRatio = [](ELogLengthFraction Fraction, float& OutRatio) -> bool
+    {
+        switch (Fraction)
+        {
+        case ELogLengthFraction::FullLength: OutRatio = 1.0f; return true;
+        case ELogLengthFraction::ThreeQuarterLength: OutRatio = 0.75f; return true;
+        case ELogLengthFraction::HalfLength: OutRatio = 0.5f; return true;
+        case ELogLengthFraction::QuarterLength: OutRatio = 0.25f; return true;
+        case ELogLengthFraction::EighthLength: OutRatio = 0.125f; return true;
+        default: OutRatio = 0.0f; return false;
+        }
+    };
+
+    float SourceRatio = 0.0f;
+    float FirstRatio = 0.0f;
+    float SecondRatio = 0.0f;
+    FLogGeometry SourceGeometry;
+    if (!LengthRatio(Variant.SourceLengthFraction, SourceRatio) ||
+        !LengthRatio(Variant.FirstOutputLengthFraction, FirstRatio) ||
+        !LengthRatio(Variant.SecondOutputLengthFraction, SecondRatio) ||
+        !GetLogGeometry(this, SourceGeometry))
+        return false;
+
+    const FVector WorldSeparation = GetActorTransform().TransformVector(Separation);
+    const float ActualCenterSpacing = FMath::Abs(
+        FVector::DotProduct(WorldSeparation, SourceGeometry.Axis));
+    const float ExpectedCenterSpacing = 0.5f * SourceGeometry.Length() *
+        (FirstRatio + SecondRatio) / SourceRatio;
+    const float ToleranceCm = FMath::Max(2.0f, SourceGeometry.Length() * 0.02f);
+    return FMath::IsFinite(ActualCenterSpacing) && FMath::IsFinite(ExpectedCenterSpacing) &&
+        FMath::Abs(ActualCenterSpacing - ExpectedCenterSpacing) <= ToleranceCm;
 }
 
 bool ALogBuildPiece::TryResolveLengthCutVariant(
