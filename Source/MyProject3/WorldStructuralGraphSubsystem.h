@@ -184,6 +184,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool ApplyDamage(FGuid NodeId, float DamageAmount, bool& bOutThresholdExceeded);
 
+    /** Validates and applies one damage pulse to multiple nodes as a single graph-state swap. */
+    bool ApplyDamageBatch(const TArray<FGuid>& NodeIds, float DamageAmount,
+        TArray<FGuid>& OutAffectedNodeIds, TArray<FGuid>& OutThresholdExceededNodeIds);
+
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool GetNode(FGuid NodeId, FStructuralNodeRecord& OutNode) const;
 
