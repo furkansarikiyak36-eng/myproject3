@@ -196,7 +196,13 @@ void UFarmingSimulationSubsystem::AdvanceOneTick()
             ++Animal.GrowthTicks;
             if (!Definition->ProductResourceId.IsNone() && Definition->ProductPerTick > 0.0f &&
                 Animal.GrowthTicks >= Definition->TicksToMature)
-                Animal.ProductUnitsReady += FMath::FloorToInt(Definition->ProductPerTick);
+                Animal.ProductProgress += Definition->ProductPerTick;
+                const int32 WholeProducts = FMath::FloorToInt(Animal.ProductProgress);
+                if (WholeProducts > 0)
+                {
+                    Animal.ProductUnitsReady += WholeProducts;
+                    Animal.ProductProgress -= WholeProducts;
+                }
             if (Animal.GrowthTicks >= Definition->TicksToMature)
                 ++Animal.ReproductionProgress;
             AccumulatedManureNutrients += Definition->ManureNutrientsPerTick;
