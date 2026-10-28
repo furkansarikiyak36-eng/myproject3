@@ -178,6 +178,9 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
 
 bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveGame& Snapshot)
 {
+    if (!World)
+        return false;
+
     UWorldItemOwnershipSubsystem* OwnershipSubsystem =
         World->GetSubsystem<UWorldItemOwnershipSubsystem>();
     UWorldOperationLedgerSubsystem* OperationSubsystem =
