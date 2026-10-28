@@ -145,12 +145,11 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     if (bWorldBuilt)
         return true;
 
-    // Do not mark the world as built until all required setup succeeds.
-    // Otherwise a missing mesh or failed terrain build permanently blocks retry.
-    if (!GetWorld() || !BuildTerrain())
+    // Validate required assets before spawning terrain or any world actors.
+    // A failed asset preflight must not leave partial geometry behind on retry.
+    if (!GetWorld())
     {
-        LastActionMessage = TEXT("SETUP BLOCKED: terrain could not be created. Retry BuildWorld after fixing the setup.");
-        UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B could not create its terrain mesh."));
+        LastActionMessage = TEXT("SETUP BLOCKED: world is unavailable.");
         return false;
     }
 
@@ -158,7 +157,14 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     if (!Family.BaseRoundMesh)
     {
         LastActionMessage = TEXT("SETUP BLOCKED: required 600 cm round log mesh is missing. Check /Game/DemoAssets/Logs and run BuildLogAssetManifest.py.");
-        UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B: no base log mesh found under %s; world setup aborted before spawning the settlement."), DemoLogAssetRoot);
+        UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B: no base log mesh found under %s; world setup aborted before spawning terrain or the settlement."), DemoLogAssetRoot);
+        return false;
+    }
+
+    if (!BuildTerrain())
+    {
+        LastActionMessage = TEXT("SETUP BLOCKED: terrain could not be created. Retry BuildWorld after fixing the setup.");
+        UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B could not create its terrain mesh."));
         return false;
     }
 
