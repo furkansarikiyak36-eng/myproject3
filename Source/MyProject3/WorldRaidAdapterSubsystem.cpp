@@ -243,7 +243,20 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     if ((Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active) &&
         (!bSameRaid || !ActiveRaidPawn.IsValid()))
     {
-        if (!RaidPawnClass)
+        // The pawn is a transient visual adapter and is recreated from the
+        // authoritative raid record after load. Do not orphan a pawn belonging
+        // to the raid that was active before a successful snapshot restore.
+        if (!bSameRaid && ActiveRaidPawn.IsValid())
+        {
+            if (!ActiveRaidPawn->Destroy())
+                return false;
+            ActiveRaidPawn.Reset();
+            MaterializedRaidId.Invalidate();
+            MaterializedTargetNodeId.Invalidate();
+        }
+
+        if (!RaidPawnClass || RaidPawnClass->HasAnyClassFlags(
+            CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
             return false;
 
         FVector BaseLocation = Raid.TargetLocation;
