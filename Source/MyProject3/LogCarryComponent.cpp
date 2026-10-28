@@ -2115,43 +2115,123 @@ void ULogCarryComponent::CommitHeldLifts(AActor* NewSupport)
 bool ULogCarryComponent::CommitHeldLogAt(const FTransform& WorldTransform, AActor* PrimarySupport, AActor* SecondarySupport)
 {
     ALogBuildPiece* Piece = HeldPiece;
-    if (!IsValid(Piece) || WorldTransform.ContainsNaN() || !GetWorld())
+    UWorld* World = GetWorld();
+    UWorldObjectIdentityComponent* Identity =
+        IsValid(Piece) ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!IsValid(Piece) || !World || WorldTransform.ContainsNaN() || !Identity ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        Identity->StateRevision == MAX_int64)
         return false;
-    const FTransform Previous = Piece->GetActorTransform();
-    Piece->SetActorTransform(WorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
 
-    UWorldObjectIdentityComponent* Identity = Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
-    if (Identity && !Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    const FTransform PreviousTransform = Piece->GetActorTransform();
+    const FGuid NodeId = Piece->GetStructuralNodeId();
+    IStructuralPieceInterface* Primary = Cast<IStructuralPieceInterface>(PrimarySupport);
+    IStructuralPieceInterface* Secondary = Cast<IStructuralPieceInterface>(SecondarySupport);
+    const bool bGraphPrimaryRequested = PrimarySupport && Primary != nullptr;
+
+    // A requested structural support is mandatory. Non-structural contacts (for
+    // example a standing tree trunk) are handled by the end-contact adapter.
+    if (bGraphPrimaryRequested)
     {
-        Piece->SetActorTransform(Previous);
+        if (!Graph || !Primary->IsStructurallyPlaced() ||
+            !Graph->HasValidSupportPath(Primary->GetStructuralNodeId()) ||
+            Primary->GetStructuralNodeId() == NodeId)
+            return false;
+        if (SecondarySupport && (!Secondary || Secondary == Primary ||
+            !Secondary->IsStructurallyPlaced() ||
+            !Graph->HasValidSupportPath(Secondary->GetStructuralNodeId())))
+            return false;
+    }
+    else if (SecondarySupport)
+    {
+        return false; // A secondary contact cannot exist without a primary support.
+    }
+
+    Piece->SetActorTransform(WorldTransform, false, nullptr, ETeleportType::TeleportPhysics);
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    {
+        Piece->SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
         return false;
     }
+
     FWorldOwnedItemRecord WorldRecord;
-    if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
-        Piece->GetActorLocation(), WorldRecord))
+    if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World,
+        FGuid(), Piece->GetActorLocation(), WorldRecord))
     {
-        if (Identity)
-            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
-        Piece->SetActorTransform(Previous);
+        Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+        Piece->SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
         return false;
     }
+
     Piece->SetHeldState(false);
     Piece->SetPlacedState(true);
 
-    // Rest on the supports in the structural graph; without them it stands on the ground.
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    const FGuid NodeId = Piece->GetStructuralNodeId();
-    const IStructuralPieceInterface* Primary = Cast<IStructuralPieceInterface>(PrimarySupport);
-    if (Graph && Primary && Primary->IsStructurallyPlaced() &&
-        Graph->TryConnect(Primary->GetStructuralNodeId(), FName(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString())),
-            NodeId, TEXT("DeckA")))
+    bool bGraphConnected = false;
+    bool bAttachedToPrimary = false;
+    auto RollbackPlacement = [&]() -> bool
     {
-        Piece->AttachToActor(PrimarySupport, FAttachmentTransformRules::KeepWorldTransform);
-        const IStructuralPieceInterface* Secondary = Cast<IStructuralPieceInterface>(SecondarySupport);
-        if (Secondary && Secondary->IsStructurallyPlaced())
+        if (bAttachedToPrimary)
+            Piece->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        if (bGraphConnected && (!Graph || !Graph->TryDisconnect(NodeId)))
         {
-            Graph->TryAddSecondarySupport(NodeId, Secondary->GetStructuralNodeId(),
-                FName(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString())), TEXT("DeckB"));
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            if (UStaticMeshComponent* Mesh = Piece->GetLogMesh())
+                Mesh->SetSimulatePhysics(false);
+            UE_LOG(LogTemp, Error, TEXT("Placement rollback could not disconnect structural node %s."),
+                *NodeId.ToString());
+            return false;
+        }
+
+        Piece->SetPlacedState(false);
+        const bool bLifecycleRestored = Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+        FWorldOwnedItemRecord HeldRecord;
+        const bool bOwnershipRestored = Piece->TryTransferOwnership(
+            EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, CarryOwnerId,
+            PreviousTransform.GetLocation(), HeldRecord);
+        Piece->SetHeldState(true);
+        Piece->SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        if (!bLifecycleRestored || !bOwnershipRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            if (UStaticMeshComponent* Mesh = Piece->GetLogMesh())
+                Mesh->SetSimulatePhysics(false);
+            UE_LOG(LogTemp, Error, TEXT("Placement rollback could not restore held ownership for %s."),
+                *GetNameSafe(Piece));
+            return false;
+        }
+        return true;
+    };
+
+    if (bGraphPrimaryRequested)
+    {
+        const FName PrimaryAnchor(*FString::Printf(TEXT("Deck_%s"), *NodeId.ToString()));
+        if (!Graph->TryConnect(Primary->GetStructuralNodeId(), PrimaryAnchor, NodeId, TEXT("DeckA")))
+        {
+            RollbackPlacement();
+            return false;
+        }
+        bGraphConnected = true;
+        if (!Piece->AttachToActor(PrimarySupport, FAttachmentTransformRules::KeepWorldTransform))
+        {
+            RollbackPlacement();
+            return false;
+        }
+        bAttachedToPrimary = true;
+
+        if (Secondary)
+        {
+            if (!Graph->TryAddSecondarySupport(NodeId, Secondary->GetStructuralNodeId(),
+                PrimaryAnchor, TEXT("DeckB")))
+            {
+                RollbackPlacement();
+                return false;
+            }
         }
     }
 
