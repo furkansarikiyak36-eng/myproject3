@@ -251,8 +251,15 @@ bool ABuildPlanActor::Complete()
         ALogBuildPiece* Piece = Slots[Index].Piece.Get();
         if (!IsValid(Piece) || !Piece->IsPlaced() || UniquePieces.Contains(Piece))
         {
-            // Re-open vanished slots instead of destroying a fully marked plan
-            // that no longer has all of its physical resources.
+            // Re-open the invalid slot explicitly; a duplicated actor cannot
+            // satisfy two physical requirements and an unplaced actor is not a commit.
+            Slots[Index].bFilled = false;
+            Slots[Index].Piece.Reset();
+            if (Ghosts.IsValidIndex(Index) && Ghosts[Index])
+            {
+                Ghosts[Index]->SetVisibility(true);
+                Ghosts[Index]->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+            }
             for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
             {
                 if (!Slots[SlotIndex].Piece.IsValid())
@@ -403,6 +410,7 @@ bool ABuildPlanActor::Complete()
                     if (!Slots[SlotIndex].Piece.IsValid())
                     {
                         Slots[SlotIndex].bFilled = false;
+                        Slots[SlotIndex].Piece.Reset();
                         if (Ghosts.IsValidIndex(SlotIndex) && Ghosts[SlotIndex])
                         {
                             Ghosts[SlotIndex]->SetVisibility(true);
