@@ -210,15 +210,47 @@ ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVe
     return Rest;
 }
 
+float EstimateMassKg(const AActor* Piece, float BoundsFillFactor, float DensityKgPerCubicMetre)
+{
+    if (!IsValid(Piece) || !FMath::IsFinite(BoundsFillFactor) ||
+        BoundsFillFactor <= 0.0f || BoundsFillFactor > 1.0f ||
+        !FMath::IsFinite(DensityKgPerCubicMetre) || DensityKgPerCubicMetre <= 0.0f)
+        return 0.0f;
+
+    const UStaticMeshComponent* Mesh = Piece->FindComponentByClass<UStaticMeshComponent>();
+    if (!Mesh || !Mesh->GetStaticMesh())
+        return 0.0f;
+    const FVector Extent = Mesh->GetStaticMesh()->GetBounds().BoxExtent *
+        Mesh->GetComponentScale().GetAbs();
+    const double VolumeCubicMetres =
+        (8.0 * static_cast<double>(Extent.X) * Extent.Y * Extent.Z) / 1.0e6;
+    const double Mass = VolumeCubicMetres * BoundsFillFactor * DensityKgPerCubicMetre;
+    return FMath::IsFinite(Mass) && Mass > 0.0 && Mass <= TNumericLimits<float>::Max()
+        ? static_cast<float>(Mass) : 0.0f;
+}
+
 float EstimateMassKg(const AActor* Piece)
 {
-    if (!Piece)
-        return 0.0f;
-    FVector Origin, Extent;
-    Piece->GetActorBounds(false, Origin, Extent);
-    const float VolumeCm3 = 8.0f * Extent.X * Extent.Y * Extent.Z * 0.6f;
-    const bool bWood = Cast<const ALogBuildPiece>(Piece) != nullptr;
-    return FMath::Max(0.5f, VolumeCm3 * (bWood ? 0.6f : 2.4f) / 1000.0f);
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    if (!Structural)
+        return EstimateMassKg(Piece, 0.7f, 1000.0f);
+
+    float DensityKgPerCubicMetre = 600.0f;
+    switch (Structural->GetStructuralKind())
+    {
+    case EStructuralNodeKind::Wood:
+    case EStructuralNodeKind::Stick:
+        DensityKgPerCubicMetre = 600.0f;
+        break;
+    case EStructuralNodeKind::Stone:
+        DensityKgPerCubicMetre = 2500.0f;
+        break;
+    default:
+        DensityKgPerCubicMetre = 1000.0f;
+        break;
+    }
+    // Keep the approximate material density shared with carry-load defaults.
+    return EstimateMassKg(Piece, 0.7f, DensityKgPerCubicMetre);
 }
 
 bool IsSmallWoodPiece(const ALogBuildPiece* Log)
