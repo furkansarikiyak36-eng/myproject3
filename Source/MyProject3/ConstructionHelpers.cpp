@@ -108,20 +108,90 @@ bool TransferPiece(AActor* Piece, EWorldItemOwnerKind To, const FGuid& OwnerId, 
 
 bool ConsumePiece(AActor* Piece)
 {
-    if (!IsValid(Piece))
+    if (!IsValid(Piece) || !Piece->GetWorld())
         return false;
-    if (!TransferPiece(Piece, EWorldItemOwnerKind::Consumed, FGuid(), Piece->GetActorLocation()))
+
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
+    UWorldItemOwnershipSubsystem* Ownership = GetOwnership(Piece);
+    FWorldOwnedItemRecord BeforeItem;
+    if (!Identity || !Identity->HasValidIdentity() || !Structural || !Ownership ||
+        !Ownership->TryGetItem(Structural->GetStructuralNodeId(), BeforeItem) ||
+        (BeforeItem.OwnerKind != EWorldItemOwnerKind::World &&
+         BeforeItem.OwnerKind != EWorldItemOwnerKind::Held) ||
+        BeforeItem.Quantity != 1 || BeforeItem.Revision == MAX_int64)
         return false;
-    if (UWorldObjectIdentityComponent* Identity = Piece->FindComponentByClass<UWorldObjectIdentityComponent>())
+
+    const EWorldObjectLifecycleState BeforeLifecycle = Identity->GetLifecycleState();
+    const int64 BeforeLifecycleRevision = Identity->StateRevision;
+    const FVector BeforeLocation = Piece->GetActorLocation();
+    const bool bLifecycleConsumable =
+        BeforeLifecycle == EWorldObjectLifecycleState::World ||
+        BeforeLifecycle == EWorldObjectLifecycleState::Held ||
+        BeforeLifecycle == EWorldObjectLifecycleState::Placed;
+    const int64 RequiredTransitions =
+        BeforeLifecycle == EWorldObjectLifecycleState::Placed ? 2 : 1;
+    if (!bLifecycleConsumable ||
+        BeforeLifecycleRevision < 0 ||
+        BeforeLifecycleRevision > MAX_int64 - RequiredTransitions)
+        return false;
+
+    if (!TransferPiece(Piece, EWorldItemOwnerKind::Consumed, FGuid(), BeforeLocation))
+        return false;
+
+    bool bLifecycleCommitted = true;
+    if (BeforeLifecycle == EWorldObjectLifecycleState::Placed)
+        bLifecycleCommitted = Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
+    if (bLifecycleCommitted)
+        bLifecycleCommitted = Identity->TryTransitionLifecycle(
+            BeforeLifecycle == EWorldObjectLifecycleState::Placed
+                ? EWorldObjectLifecycleState::World : BeforeLifecycle,
+            EWorldObjectLifecycleState::Consumed);
+
+    auto Rollback = [&]()
     {
-        const EWorldObjectLifecycleState State = Identity->GetLifecycleState();
-        if (State == EWorldObjectLifecycleState::Placed)
-            Identity->TryTransitionLifecycle(State, EWorldObjectLifecycleState::World);
-        Identity->TryTransitionLifecycle(Identity->GetLifecycleState(), EWorldObjectLifecycleState::Consumed);
+        Identity->LifecycleState = BeforeLifecycle;
+        Identity->StateRevision = BeforeLifecycleRevision;
+        FWorldOwnedItemRecord Restored;
+        FWorldOwnedItemRecord Current;
+        if (!Ownership->TryGetItem(BeforeItem.ItemId, Current) ||
+            Current.OwnerKind != EWorldItemOwnerKind::Consumed)
+            return false;
+        return Ownership->TryTransferItem(FGuid::NewGuid(), Current.ItemId, Current.Revision,
+            EWorldItemOwnerKind::Consumed, BeforeItem.OwnerKind, BeforeItem.OwnerId,
+            BeforeItem.WorldLocation, Restored);
+    };
+
+    if (!bLifecycleCommitted)
+    {
+        if (!Rollback())
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error, TEXT("Consumption rollback failed for '%s'; item ownership needs recovery."),
+                *GetNameSafe(Piece));
+        }
+        return false;
     }
+
     Piece->SetActorHiddenInGame(true);
     Piece->SetActorEnableCollision(false);
-    Piece->Destroy();
+    if (!Piece->Destroy())
+    {
+        if (!Rollback())
+        {
+            UE_LOG(LogTemp, Error, TEXT("Failed actor destroy and consumption rollback for '%s'."),
+                *GetNameSafe(Piece));
+        }
+        else
+        {
+            Piece->SetActorHiddenInGame(false);
+            Piece->SetActorEnableCollision(true);
+        }
+        return false;
+    }
     return true;
 }
 
