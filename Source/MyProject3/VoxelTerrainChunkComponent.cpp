@@ -294,6 +294,16 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
     return true;
 }
 
+bool UVoxelTerrainChunkComponent::TryGetDigReceipt(
+    const FGuid& OperationId, FVoxelTerrainDigReceipt& OutReceipt) const
+{
+    const FVoxelTerrainDigReceipt* Receipt = DigReceipts.Find(OperationId);
+    if (!Receipt)
+        return false;
+    OutReceipt = *Receipt;
+    return true;
+}
+
 bool UVoxelTerrainChunkComponent::ExportDensitySnapshot(
     TArray<float>& OutDensity, int64& OutRevision, TArray<FVoxelTerrainDigReceipt>& OutReceipts) const
 {
