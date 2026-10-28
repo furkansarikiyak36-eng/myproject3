@@ -190,3 +190,23 @@ Hız sin(slope) ile türetilen yerçekimi bileşeniyle artıyor; Rider.Distance 
 ## 8. Hariç tutulan doğrulamalar
 
 Bu rapor hiçbir Unreal build, PIE veya otomatik test sonucu iddia etmez. M001–M119 mekaniklerini tamamlandı saymaz. Yaklaşık survival/load/mass formüllerinin hepsinin kaldırılması gerektiğini de iddia etmez; bazıları prototip için uygundur. Eksik olan, formül ve varsayımların ortak, açık ve tek bir sözleşme hâline getirilmesidir.
+
+
+## 6. İkinci geçişte bulunan durum/sahiplik sözleşmesi eksikleri
+
+### A22 — Taş ve çubukta fiziksel Held/Placed durumu, kimlik lifecycle state'inden ayrışabiliyor
+**Dosyalar:** Source/MyProject3/LogCarryComponent.cpp — TryPickupMaterialPiece; Source/MyProject3/StoneBuildingPiece.cpp — SetHeldState/TryCommitGroundPlacement/TryConnectToAnchor; Source/MyProject3/StickPrimitivePiece.cpp — SetHeldState/TryCommitGroundPlacement/TryConnectToAnchor.
+
+Taş/çubuk pickup, ledger OwnerKind değerini World → Held değiştiriyor; fakat bu kod yollarında UWorldObjectIdentityComponent::TryTransitionLifecycle çağrısı yok. SetHeldState sadece actor içindeki bIsHeld/bIsPlaced ve physics profilini değiştiriyor. Ground placement ve anchor bağlantıları da local bIsPlaced durumunu güncelliyor fakat identity lifecycle state'ini World → Placed yapmıyor. Kütük taşıma yolunda ise lifecycle geçişleri açıkça yapılıyor. Böylece aynı kavram, malzemeye göre iki farklı otorite ve sözleşmeyle temsil ediliyor.
+
+**Gerekli ilke:** her fiziksel parça türü aynı lifecycle geçiş politikasını uygulamalı; ledger OwnerKind ile actor lifecycle birbirinden farklı kavramlar olarak tutulacaksa hangi kombinasyonların geçerli olduğu merkezi olarak doğrulanmalı.
+
+### A23 — Sled/rack deposu kapasite ve yapısal uygunluğu tüm malzemelerde aynı kontrol etmiyor
+**Dosyalar:** Source/MyProject3/LogContainerActor.cpp — CanAccept; TryStore; BeginPlay; Source/MyProject3/LogContainerActor.h.
+
+CanAccept, yapıya bağlı/yerleştirilmiş kütükleri reddediyor; ancak AdvancedSled için stone/stick parçasını kabul ederken aynı placed/attached kontrolünü uygulamıyor. TryStore sonrasında Stone/Stick::SetHeldState(false) çağrısı, parça zaten held değilse true dönebiliyor; yerleştirilmiş parçayı destek grafiğinden ayırmak yerine fiziksel olarak sled'e attach edip graph bağlantılarını bırakma riski var. Depolama önkoşulu bütün IStructuralPieceInterface türlerinde ortak olmalı ve parent/child/support bağları olan parça depoya alınmamalı.
+
+Ek olarak StorageId BeginPlay'de boşsa yeni FGuid ile üretiliyor, Stored dizisi SaveGame değil ve ALogContainerActor bu StorageId'yi UWorldStorageSubsystem'e kaydeden bir çağrı yapmıyor. Bu fiziksel rack/sled modeli ile genel storage/cargo modeli arasında iki ayrı depo otoritesi yaratıyor; dinamik saklanan parçaların kayıt sonrası aynı depo listesine ve aynı stabil StorageId'ye geri bağlanma sözleşmesi yok.
+
+**Gerekli ilke:** fiziksel container, ownership ledger ve WorldStorageSubsystem arasında tek bir storage kimliği/üyelik kaydı olmalı; store/withdraw sırasında anchor ve structural graph geçişleri ya birlikte commit edilmeli ya da hiçbiri gerçekleşmemeli.
+
