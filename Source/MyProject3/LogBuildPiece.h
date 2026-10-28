@@ -113,7 +113,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     bool ApplyCutAction(ELogCutAction Action);
 
-    /** Result-bearing processing entry point; legacy bool API remains compatible. */
+    /**
+     * Result-bearing processing entry point; legacy bool API remains compatible.
+     * OperationId is diagnostic/correlation metadata in this phase, not an
+     * idempotency key: repeating a successful request is revalidated against
+     * the new piece state and is not guaranteed to return the original result.
+     * Callers must not blindly retry this operation expecting deduplication.
+     */
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     FWorldOperationResult TryApplyCutAction(ELogCutAction Action, FGuid OperationId);
 
