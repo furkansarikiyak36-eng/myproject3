@@ -67,6 +67,9 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Storage")
     bool SetStorageAvailable(const FGuid& StorageId, bool bAvailable);
 
+    /** Removes only the live-actor registration while a snapshot replaces storage state. */
+    void RemoveLiveStorageRegistrationForSnapshotRestore(const FGuid& StorageId);
+
     UFUNCTION(BlueprintPure, Category="World|Storage")
     bool CanAcceptItem(const FGuid& StorageId, const FGuid& ItemId) const;
 
