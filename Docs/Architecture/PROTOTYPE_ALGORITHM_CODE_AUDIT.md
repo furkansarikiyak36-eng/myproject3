@@ -30,12 +30,12 @@ Aşağıdaki A01–A39 bulguları ilk statik inceleme sırasında kaydedilen ris
 | A26 fixed-step rollback | **Kodda düzeltildi:** ateş yakıt/yanma durumu coordinator'ın rollback snapshot'ına eklendi ve adım öncesi bütün heat kaynakları doğrulanıyor. |
 | A27 identity duplicate/fail-open | **Yanlış pozitif düzeltildi:** mevcut registry duplicate identity'yi yeni GUID ile yeniden anahtarlıyor; Identity component'in kendi kayıt başarısızlığı da aktörü devre dışı bırakıyor. |
 | A28 build-plan tamamlaması | **Kısmen kapatıldı:** eksik/tekrar kullanılan slot aktörleri reddediliyor; kızak malzemeleri için owner/lifecycle ve support bağımlılıkları ön doğrulanıyor; önce leaf parçalar tüketiliyor; çıktı container'ı üretilemezse plan silinmiyor ve spawn yeniden deneniyor. Çoklu kaynağın tek bir toplu ledger transaction'ı hâlâ yok. |
-| A29 committed event | **Kısmen kapatıldı:** aynı operation/type/object set için tekrarlanan event yeniden yayınlanmıyor; retained event sayısı sınırlandırılıyor. Event geçmişi yalnız geçici bellektedir ve şu an kalıcı/idempotent save log'u değildir. |
+| A29 committed event | **Kodda güçlendirildi:** aynı event/operation/type/object set retry'ları retention penceresi içinde yeniden yayınlanmıyor; bounded cache dolunca en eski kayıt atılıyor. Event geçmişi kalıcı save log'u değildir; eviction sonrası eski retry yeniden yayınlanabilir. |
 | A30 wildlife RNG | **Yanlış pozitif düzeltildi:** mevcut wildlife hareketi instance'a özel seeded `FRandomStream` ve sabit 0.1 sn adım kullanıyor; global `FMath::RandRange` çağrısı yok. |
 | A32 hayvan ürünü | **Kodda düzeltildi:** üretim ilerlemesi [0, 3600) aralığına sınırlandı; tek sabit adımda büyüyebilen ürün adedi sınırlandırıldı. |
 | A33 terrain receipts | **Kodda düzeltildi:** terrain operasyon receipt'leri save schema v14'e eklendi, bounded ve restore sırasında doğrulanıyor. |
 | A34–A35 plan kesimi/custom length | **Kodda güçlendirildi:** gerekli kesim üretilemezse plan slotu yerleştirmesi reddediliyor ve başarısız yerleştirmede kesim/transform geri alınıyor; custom ölçekli uzunluklar inventory tarafından canonical bir uzunluk gibi yeniden yaratılmıyor. |
-| A37 ledger retention | **Açık:** yeni event de-dup ledger'ı bounded; bunun dışında kalıcı operation/ownership receipt geçmişi için genel bir kompaksiyon/retention politikası tanımlanmış değil. |
+| A37 ledger retention | **Kısmen kapatıldı:** ownership item ledger terminal tombstone'ları kapasite gerektiğinde ayıklıyor; transfer/split receipt'leri ayrı bounded limitlerde sekansla tutuluyor; event dedupe cache de bounded. Genel WorldOperationLedger tamamlanmış kayıtları dolunca hâlâ yeni işlem açmayı reddediyor; güvenli eviction için operation-ID reuse/retention sözleşmesi gerekiyor. |
 | A38 taşıyarak save | **Bilinçli fail-closed sınırlama:** save coordinator, owner ledger'da `Held` item varken kaydı reddediyor. Taşınan item/carry-holder ilişkisini save/load etmek henüz desteklenmiyor. Bu bir “held item sessizce orphan oluyor” hatası değil, açıkça reddedilen işlevsellik. |
 | A39 graph root placed state | **Yanlış pozitif düzeltildi:** graph restore kodu root Stone ve Stick aktörleri için `RestoreRootStateFromGraph` çağrısını zaten içeriyor. |
 
@@ -45,7 +45,7 @@ Aşağıdaki A01–A39 bulguları ilk statik inceleme sırasında kaydedilen ris
 - A04: farklı aktör nüfusuna sahip dünyayı kayıt üzerinden spawn/destroy edip yeniden kuran tam dinamik actor manifesti yok.
 - A06: raid adapter'ın coordinator fixed-step zincirine güvenli, geri alınabilir entegrasyonu tamamlanmadı.
 - A17/A18/A19/A20/A21/A31: eşit yük paylaşımı, survival katsayıları, çevresel tarım etkileri, kapasite birimleri, halat fiziği ve yapısal yük kapasitesi hâlâ prototip sözleşmeleri/heuristics.
-- A09/A16/A24/A28/A29 için yukarıdaki kısmi düzeltmeler, gerçek mesh kesimi, paylaşılan batch transaction, tam durable event log veya kanıtlanmış atomiklik anlamına gelmez.
+- A09/A16/A24/A28/A29 için yukarıdaki kısmi düzeltmeler, gerçek mesh kesimi, paylaşılan batch transaction, kalıcı durable event log veya kanıtlanmış atomiklik anlamına gelmez. A37'de genel operation ledger retention'ı da açık kalır.
 
 
 ## 2. Özet: en önemli bulgular
@@ -291,12 +291,13 @@ LogSled planı tamamlanırken her bileşen için ConsumePiece sonucu kontrol edi
 
 **Gerekli ilke:** tüm slot girdilerini, destek bağlarını ve container spawn olanağını preflight et; girdi tüketimi ve çıktı oluşturmayı tek transaction'a al; hata halinde tüm girdiler/durumlar geri gelsin. MarkFilled da geçerli parça ve başarılı bağlantı sonucuna bağlı olmalı.
 
-### A29 — Committed event yayıncısı duplicate event/operation koruması göstermiyor
+### A29 — Committed event publisher: bounded deduplication window
+
 **Dosya:** Source/MyProject3/WorldCommittedEventSubsystem.cpp — PublishCommittedEvent.
 
-Fonksiyon EventId yoksa yeni GUID atıyor, simülasyon zamanını yazıyor ve her çağrıda OnCommittedEvent.Broadcast yapıyor. Önceki EventId veya OperationId kayıtlarını tutup aynı işlemin tekrar yayınlanmasını engelleyen bir de-duplication kontrolü görünmüyor. İşlem retry edildiğinde abone sistemler aynı etkiyi iki kez uygulayabilir.
+İşlem ID'si/type/affected-object set'i normalize edilip retention penceresi içinde tekrar yayınlanmaz; aynı EventId farklı bir fact için kullanılırsa reddedilir. En eski event kayıtları `MaxRetainedEvents` sınırında deterministik olarak atılır, böylece event yayıncısı sonsuza kadar durmaz.
 
-**Gerekli ilke:** event ID ve operation ID için commit/replay politikası tanımla; aynı operation'a ait event tekrar yayınlanıyorsa ya aynı receipt sonucu dönsün ya da kontrollü biçimde reddedilsin.
+**Sınır:** Bu kalıcı event log'u değildir. Cache'ten düşmüş çok eski retry'lar yeniden yayınlanabilir. Uzun vadeli tüketiciler tam exactly-once gerektiriyorsa persistent event store/outbox veya tüketici tarafında kalıcı dedup gerekir.
 
 ### A30 — Wildlife hareketi global RNG ve ayrı actor tick'i kullanıyor
 **Dosya:** Source/MyProject3/WildlifeActor.cpp — Tick.
@@ -354,12 +355,15 @@ CanAdvanceSurvivalStep bazı ayarları (DeltaSeconds, hava şiddeti, açlık/sus
 **Gerekli ilke:** her state-changing step'te kullanılan tüm global parametreler için tam finite/range sözleşmesi oluştur; doğrulanmayan konfigürasyonla hiçbir profil mutasyonu başlatma.
 
 
-### A37 — Ledger kapasitesi ve kayıt saklama politikası
-**Dosyalar:** Source/MyProject3/WorldOperationLedgerSubsystem.h/.cpp; Source/MyProject3/WorldItemOwnershipSubsystem.h/.cpp.
+### A37 — Ledger kapasitesi ve retention: item ownership bounded, operation ledger remains fail-closed
 
-Operation ledger 8192 girişle sınırlı; TryBeginOperation bu sınıra ulaşıldığında yeni giriş açmıyor. Mevcut API'de tamamlanmış kayıtları arşivleme veya güvenli biçimde temizleme yolu görünmüyor. Item ownership ledger da varsayılan 16384 item ile sınırlı; tüketilmiş öğeler OwnerKind=Consumed durumuyla kayıtlı kalıyor. Transfer/split receipt'leri için retention/compaction politikası da açık değil. Bu, kısa prototipte görünmeyip uzun süreli sandbox ilerleyişinde kapasite sınırına ulaşma riski oluşturur.
+**Dosyalar:** Source/MyProject3/WorldOperationLedgerSubsystem.h/.cpp; Source/MyProject3/WorldItemOwnershipSubsystem.h/.cpp; Source/MyProject3/WorldCommittedEventSubsystem.h/.cpp.
 
-**Gerekli ilke:** aktif item kayıtlarını, tekrar denemeler için korunması gereken receipt'leri ve terminal/arşivlenebilir kayıtları ayır; checkpoint ve belirlenmiş retention penceresi üzerinden güvenli compaction tasarla.
+Ownership ledger artık terminal `Consumed/Transformed` tombstone'larını yalnız yeni item alanı gerektiğinde deterministik biçimde temizleyebiliyor. Transfer/split retry receipt'leri ayrı limitlerde saklanıyor; sequence en eskiden başlayarak eviction sağlıyor. Save schema v15, eski receipt'lere deterministik sequence veriyor ve restore hem receipt count limitlerini hem de sequence benzersizliğini doğruluyor. Committed-event publisher da bounded in-memory dedup penceresi kullanıyor.
+
+**Kalan kasıtlı sınırlama:** `UWorldOperationLedgerSubsystem` 8192 tamamlanmış/pending giriş sınırında yeni operation'ı reddediyor. Tamamlanmış operation girişini güvenle atmak, aynı ID'li eski retry'ın yeni bir mutation gibi yeniden başlamasını mümkün kılabilir. Bunu çözmek için üretici tarafında operation ID expiry/epoch sözleşmesi veya kalıcı arşiv/checkpoint katmanı gerekir; bu sözleşme şu anda yok.
+
+**Gerekli ilke:** item/event retention için bounded windows kullan; mutation sonucunu idempotent tutması gereken operation ledger'ı ise açık retry-lifetime policy olmadan otomatik atma.
 
 
 ### A38 — Held item kaydı bilerek reddediliyor; taşıyarak kaydetme henüz desteklenmiyor
