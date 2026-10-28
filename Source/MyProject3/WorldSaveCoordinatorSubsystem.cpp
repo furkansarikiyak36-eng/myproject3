@@ -183,7 +183,7 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
         !FMath::IsFinite(Snapshot.Clock.SimulationTimeSeconds) ||
         Snapshot.Clock.SimulationTimeSeconds < 0.0 ||
         Snapshot.Clock.TickIndex < 0 || Snapshot.Clock.StateRevision < 0 ||
-        Snapshot.Threat.SchemaVersion != 1 || !Snapshot.Threat.bInitialized ||
+        Snapshot.Threat.SchemaVersion != 2 || !Snapshot.Threat.bInitialized ||
         !FMath::IsFinite(Snapshot.Threat.NextRaidTimeSeconds) ||
         Snapshot.Threat.NextRaidTimeSeconds < 0.0 || Snapshot.Threat.RaidSerial < 0 ||
         !FMath::IsFinite(Snapshot.WeatherSeverity) ||
@@ -205,7 +205,8 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
             FMath::IsFinite(Raid.Pressure) && Raid.Pressure >= 0.0f &&
             FMath::IsFinite(Raid.TargetLocation.X) &&
             FMath::IsFinite(Raid.TargetLocation.Y) &&
-            FMath::IsFinite(Raid.TargetLocation.Z);
+            FMath::IsFinite(Raid.TargetLocation.Z) &&
+            Raid.LastCommittedAttackPulseIndex >= -1;
     };
     if (!IsValidRaidRecord(Snapshot.Threat.CurrentRaid, true))
         return false;
@@ -1006,6 +1007,19 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
 
         Candidate->SchemaVersion = 15;
     }
+    if (Candidate->SchemaVersion == 15)
+    {
+        // Schema v16 adds the persisted raid attack-pulse watermark. Before the
+        // adapter was wired into the fixed-step coordinator, these saves could
+        // not contain committed adapter pulses; initialize the explicit
+        // "nothing committed" sentinel rather than infer history from time.
+        Candidate->Threat.SchemaVersion = 2;
+        Candidate->Threat.CurrentRaid.LastCommittedAttackPulseIndex = -1;
+        for (FThreatRaidRecord& Raid : Candidate->Threat.RaidHistory)
+            Raid.LastCommittedAttackPulseIndex = -1;
+        Candidate->SchemaVersion = 16;
+    }
+
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
