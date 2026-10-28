@@ -131,7 +131,6 @@ void ARopeLineActor::Tick(float DeltaSeconds)
     // overcome friction; no artificial minimum speed forces it downhill.
     constexpr float StepSeconds = 0.05f;
     constexpr int32 MaxStepsPerFrame = 20;
-    const float FrameDelta = FMath::Min(DeltaSeconds, StepSeconds * MaxStepsPerFrame);
 
     for (int32 Index = Riders.Num() - 1; Index >= 0; --Index)
     {
@@ -150,7 +149,7 @@ void ARopeLineActor::Tick(float DeltaSeconds)
             continue;
         }
 
-        Rider.AccumulatorSeconds += static_cast<double>(FrameDelta);
+        Rider.AccumulatorSeconds += static_cast<double>(DeltaSeconds);
         if (!FMath::IsFinite(Rider.AccumulatorSeconds))
         {
             Rider.AccumulatorSeconds = 0.0;
