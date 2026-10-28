@@ -26,6 +26,9 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
         return true;
     }
 
+    if (MaxOperationReceipts <= 0 || Receipts.Num() >= MaxOperationReceipts)
+        return false;
+
     FWorldTerrainCellState* Existing = Cells.Find(Cell);
     const int64 CurrentRevision = Existing ? Existing->Revision : 0;
     if (ExpectedRevision != CurrentRevision || (Existing && Existing->Revision == MAX_int64))
@@ -105,20 +108,76 @@ void UWorldTerrainStateSubsystem::ExportSnapshot(TArray<FWorldTerrainCellState>&
     });
 }
 
-bool UWorldTerrainStateSubsystem::RestoreSnapshot(const TArray<FWorldTerrainCellState>& Snapshot)
+void UWorldTerrainStateSubsystem::ExportSnapshot(
+    TArray<FWorldTerrainCellState>& OutCells,
+    TArray<FWorldTerrainOperationReceipt>& OutReceipts) const
 {
-    if (Snapshot.Num() > MaxEditedCells || MaxEditedCells <= 0) return false;
-    TMap<FIntVector, FWorldTerrainCellState> Proposed;
-    for (const FWorldTerrainCellState& Cell : Snapshot)
+    ExportSnapshot(OutCells);
+    OutReceipts.Reset();
+    Receipts.GenerateValueArray(OutReceipts);
+    OutReceipts.Sort([](const FWorldTerrainOperationReceipt& A, const FWorldTerrainOperationReceipt& B)
+    {
+        return A.OperationId.ToString() < B.OperationId.ToString();
+    });
+}
+
+bool UWorldTerrainStateSubsystem::RestoreSnapshot(
+    const TArray<FWorldTerrainCellState>& Snapshot)
+{
+    return RestoreSnapshot(Snapshot, TArray<FWorldTerrainOperationReceipt>());
+}
+
+bool UWorldTerrainStateSubsystem::RestoreSnapshot(
+    const TArray<FWorldTerrainCellState>& CellSnapshot,
+    const TArray<FWorldTerrainOperationReceipt>& ReceiptSnapshot)
+{
+    if (CellSnapshot.Num() > MaxEditedCells || MaxEditedCells <= 0 ||
+        ReceiptSnapshot.Num() > MaxOperationReceipts || MaxOperationReceipts <= 0)
+        return false;
+
+    TMap<FIntVector, FWorldTerrainCellState> ProposedCells;
+    for (const FWorldTerrainCellState& Cell : CellSnapshot)
     {
         if (Cell.DepthLayer < 0 || Cell.DepthLayer >= MaxEditableDepthLayers ||
             Cell.DepthLayer >= MaxDepthPerCell || Cell.Revision <= 0 ||
-            Proposed.Contains(Cell.Cell) ||
-            (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)))
+            ProposedCells.Contains(Cell.Cell) ||
+            (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)) ||
+            ((Cell.bExcavated || !Cell.MaterialId.IsNone()) && Cell.DepthLayer < 0))
             return false;
-        Proposed.Add(Cell.Cell, Cell);
+        ProposedCells.Add(Cell.Cell, Cell);
     }
-    Cells = MoveTemp(Proposed);
-    Receipts.Reset();
+
+    TMap<FGuid, FWorldTerrainOperationReceipt> ProposedReceipts;
+    for (const FWorldTerrainOperationReceipt& Receipt : ReceiptSnapshot)
+    {
+        const FWorldTerrainCellState* CurrentCell = ProposedCells.Find(Receipt.Cell);
+        if (!Receipt.OperationId.IsValid() || ProposedReceipts.Contains(Receipt.OperationId) ||
+            !CurrentCell || Receipt.ExpectedRevision < 0 || Receipt.ExpectedRevision >= MAX_int64 ||
+            Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+            Receipt.ResultState.Cell != Receipt.Cell ||
+            Receipt.ResultState.Revision != Receipt.ResultingRevision ||
+            Receipt.RequestedDepthLayer != Receipt.ResultState.DepthLayer ||
+            Receipt.RequestedDepthLayer < 0 ||
+            Receipt.RequestedDepthLayer >= MaxEditableDepthLayers ||
+            Receipt.RequestedDepthLayer >= MaxDepthPerCell ||
+            static_cast<uint8>(Receipt.RequestedEdit) > static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial) ||
+            CurrentCell->Revision < Receipt.ResultingRevision ||
+            (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Receipt.RequestedDepthLayer)) ||
+            ((Receipt.RequestedEdit == ETerrainCellEdit::Fill ||
+              Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial) &&
+              Receipt.RequestedMaterialId.IsNone()) ||
+            (Receipt.RequestedEdit == ETerrainCellEdit::Excavate && !Receipt.ResultState.bExcavated) ||
+            (Receipt.RequestedEdit == ETerrainCellEdit::Fill &&
+              (Receipt.ResultState.bExcavated ||
+               Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId)) ||
+            (Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial &&
+              Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId))
+            return false;
+
+        ProposedReceipts.Add(Receipt.OperationId, Receipt);
+    }
+
+    Cells = MoveTemp(ProposedCells);
+    Receipts = MoveTemp(ProposedReceipts);
     return true;
 }
