@@ -17,7 +17,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Save")
     bool LoadWorldState(const FString& SlotName, int32 UserIndex = 0);
 
+    /** True while the snapshot coordinator is reconciling the live actor population. */
+    bool IsApplyingSnapshot() const { return bApplyingSnapshot; }
+
 private:
+    bool bApplyingSnapshot = false;
     bool CaptureCurrentState(UWorldSimulationSaveGame* OutSave) const;
     bool ApplySnapshot(const UWorldSimulationSaveGame* Snapshot);
 };
