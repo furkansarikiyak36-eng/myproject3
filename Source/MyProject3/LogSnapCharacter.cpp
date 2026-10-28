@@ -3,6 +3,7 @@
 #include "LogBuildToolsComponent.h"
 #include "PhysicalHealthComponent.h"
 #include "ShelterSensorComponent.h"
+#include "TerrainDigToolComponent.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
@@ -142,6 +143,7 @@ ALogSnapCharacter::ALogSnapCharacter()
     BuildTools = CreateDefaultSubobject<ULogBuildToolsComponent>(TEXT("BuildTools"));
     PhysicalHealth = CreateDefaultSubobject<UPhysicalHealthComponent>(TEXT("PhysicalHealth"));
     ShelterSensor = CreateDefaultSubobject<UShelterSensorComponent>(TEXT("ShelterSensor"));
+    TerrainDigTool = CreateDefaultSubobject<UTerrainDigToolComponent>(TEXT("TerrainDigTool"));
 }
 
 void ALogSnapCharacter::ApplyBlockoutMaterials()
@@ -189,7 +191,7 @@ void ALogSnapCharacter::BeginPlay()
     ApplyBlockoutMaterials();
 
     const FString Controls =
-        TEXT("WASD move | Mouse look | E pick/place/use | Q throw | RMB placement mode | F1 all building keys");
+        TEXT("WASD move | Mouse look | E pick/place/use | N dig bounded voxel terrain | Q throw | RMB placement mode | F1 all building keys");
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(
@@ -222,6 +224,10 @@ void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
     if (BuildTools)
     {
         BuildTools->BindDefaultInput(PlayerInputComponent);
+    }
+    if (TerrainDigTool)
+    {
+        TerrainDigTool->BindDefaultInput(PlayerInputComponent);
     }
 }
 
