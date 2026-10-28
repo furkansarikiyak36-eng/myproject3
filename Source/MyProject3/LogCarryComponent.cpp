@@ -18,6 +18,7 @@
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -2183,6 +2184,11 @@ bool ULogCarryComponent::CommitHeldLogAt(const FTransform& WorldTransform, AActo
                 Mesh->SetSimulatePhysics(false);
             UE_LOG(LogTemp, Error, TEXT("Placement rollback could not disconnect structural node %s."),
                 *NodeId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(TEXT("Log placement rollback failed to disconnect a structural graph edge; stop simulation and recover/reset the world."));
+            }
             return false;
         }
 
@@ -2203,6 +2209,11 @@ bool ULogCarryComponent::CommitHeldLogAt(const FTransform& WorldTransform, AActo
                 Mesh->SetSimulatePhysics(false);
             UE_LOG(LogTemp, Error, TEXT("Placement rollback could not restore held ownership for %s."),
                 *GetNameSafe(Piece));
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(TEXT("Log placement rollback failed to restore lifecycle/ownership; stop simulation and recover/reset the world."));
+            }
             return false;
         }
         return true;
