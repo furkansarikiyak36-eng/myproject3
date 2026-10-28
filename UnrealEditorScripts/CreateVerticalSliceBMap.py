@@ -6,7 +6,7 @@ The script refuses to overwrite an existing VerticalSlice_B.umap.
 import os
 import unreal
 
-MAP_PATH = "/Game/Maps/VerticalSlice_B"
+MAP_PATH = "/Game/DemoAssets/Maps/VerticalSlice_B"
 PREFIX = "VSliceB_"
 
 
@@ -15,8 +15,8 @@ def log(message):
 
 
 def main():
-    if not unreal.EditorAssetLibrary.does_directory_exist("/Game/Maps"):
-        unreal.EditorAssetLibrary.make_directory("/Game/Maps")
+    if not unreal.EditorAssetLibrary.does_directory_exist("/Game/DemoAssets/Maps"):
+        unreal.EditorAssetLibrary.make_directory("/Game/DemoAssets/Maps")
 
     if unreal.EditorAssetLibrary.does_asset_exist(MAP_PATH):
         raise RuntimeError(
