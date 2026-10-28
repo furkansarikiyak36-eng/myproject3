@@ -1102,27 +1102,32 @@ void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
         }
     }
 
-    DetachFromSnapParent(true);
-    if (UMaterialConnectionSubsystem* Connections =
-        GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
+    if (!bApplyingSnapshot)
     {
-        Connections->ReleaseCrossMaterialChildren(this);
-    }
-    for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
-    {
-        if (Child.IsValid())
+        DetachFromSnapParent(true);
+        if (UMaterialConnectionSubsystem* Connections =
+            GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
         {
-            Child->DetachFromSnapParent(true);
+            Connections->ReleaseCrossMaterialChildren(this);
         }
-    }
-    AttachedPieces.Reset();
-    if (StructuralIdentity)
-    {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+        for (const TWeakObjectPtr<ALogBuildPiece>& Child : AttachedPieces)
         {
-            Graph->UnregisterNode(StructuralIdentity->GetInstanceId(), false);
+            if (Child.IsValid())
+            {
+                Child->DetachFromSnapParent(true);
+            }
         }
+        AttachedPieces.Reset();
+        if (StructuralIdentity)
+        {
+            if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
+            {
+                Graph->UnregisterNode(StructuralIdentity->GetInstanceId(), false);
+            }
+        }
+
     }
+
     Super::EndPlay(EndPlayReason);
 }
 
