@@ -297,3 +297,11 @@ TryFillPlanSlot, parça hedef boydan %10'dan fazla uzunsa önce CutOffRemainder 
 Terrain snapshot yalnızca hücre durumlarını dışa aktarıyor. RestoreSnapshot hücreleri geri yükledikten sonra `Receipts.Reset()` çağırıyor; operation receipt'leri snapshot'a dahil değil. Bu nedenle kayıt geri yüklendiğinde geçmişte tamamlanmış bir edit operation ID'si için idempotent sonuç kaydı kalmıyor. Aynı operation ID tekrar geldiğinde davranış artık önceki commit receipt'ine göre değil, yalnızca yeni beklenen revision değerine göre belirleniyor.
 
 **Gerekli ilke:** terrain cell ve edit receipt'lerini aynı sürümlü snapshot'a dahil et; load sonrası aynı operation ID aynı sonuç kaydına bağlanmalı veya açıkça reddedilmeli.
+
+
+### A35 — Ölçekle kısaltılan kütüğün canonical item definition kaydı değişmiyor
+**Dosyalar:** Source/MyProject3/ConstructionHelpers.cpp — TrimLogToRange/CutOffRemainder; Source/MyProject3/WorldItemOwnershipSubsystem.cpp; Source/MyProject3/InventoryCraftingComponent.cpp — physical-item drop/variant restore.
+
+TrimLogToRange kütük uzunluğunu actor scale'i üzerinden değiştiriyor; fakat bu işlem ilgili item'ın canonical DefinitionId/BaseDefinitionId/LengthFraction bilgisini ve ownership kaydının mesh metadata'sını aynı geometriyle eşleştirmiyor. Sonradan envantere girip world actor olarak yeniden üretildiğinde InventoryCraftingComponent, kayıtlı definition/mesh variant'tan hazırlanmış mesh'i tekrar seçiyor; kesilerek ölçeklenmiş gerçek uzunluk kaybolabilir veya bir daha farklı boyda ortaya çıkabilir.
+
+**Gerekli ilke:** ya kesilmiş uzunluğu canonical tanımlı bir geometri varyantına dönüştür ve ledger'ı atomik güncelle, ya da “custom dimension” alanını kalıcı veri olarak saklayıp yeniden üretimde actor scale/geometriyi aynen geri kur. Sadece transform ölçeği fiziksel parçanın kalıcı kimliği olamaz.
