@@ -418,15 +418,35 @@ void ALogContainerActor::BeginPlay()
     Super::BeginPlay();
     if (!Base->GetStaticMesh())
         ConfigureKind(Kind);
-    if (!StorageId.IsValid())
-        StorageId = FGuid::NewGuid();
+
+    UWorld* World = GetWorld();
+    UWorldObjectIdentitySubsystem* IdentityRegistry =
+        World ? World->GetSubsystem<UWorldObjectIdentitySubsystem>() : nullptr;
+    if (!Identity || !Identity->EnsureIdentity() || !IdentityRegistry ||
+        !IdentityRegistry->RegisterIdentity(Identity))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Container '%s' has no valid canonical identity."),
+            *GetNameSafe(this));
+        SetActorHiddenInGame(true);
+        SetActorEnableCollision(false);
+        SetActorTickEnabled(false);
+        return;
+    }
+    if (Identity->DefinitionId.IsNone())
+        Identity->SetDefinitionId(FName(TEXT("Container.Storage")));
+    StorageId = Identity->GetInstanceId();
 
     UWorldStorageSubsystem* Storage =
-        GetWorld() ? GetWorld()->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+        World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
     bStorageRegistered = Storage && Storage->RegisterStorage(StorageId, GetCapacity());
     if (!bStorageRegistered)
+    {
         UE_LOG(LogTemp, Error, TEXT("Container '%s' could not register storage ID %s."),
             *GetNameSafe(this), *StorageId.ToString());
+        SetActorHiddenInGame(true);
+        SetActorEnableCollision(false);
+        SetActorTickEnabled(false);
+    }
 }
 
 void ALogContainerActor::Tick(float DeltaSeconds)
