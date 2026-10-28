@@ -21,7 +21,8 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 
 ### P0 — Source-level correctness
 
-- [x] Audit all tracked `Source/MyProject3/*.{h,cpp}` files for processing call sites: the compatibility wrapper delegates to `TryApplyCutAction`, and the only tracked gameplay input caller (`ULogCarryComponent::ProcessAimedPiece`) consumes the result and displays its message. [ ] Local/untracked Blueprint assets still require the user's actual checkout/editor; they are not present in this repository tree.
+- [x] Audit all tracked `Source/MyProject3/*.{h,cpp}` files for processing call sites: the compatibility wrapper delegates to `TryApplyCutAction`, and the only tracked gameplay input caller (`ULogCarryComponent::ProcessAimedPiece`) consumes the result and displays its message.
+- [ ] Audit local/untracked Blueprint assets in the actual project checkout/editor; they are not present in this repository tree.
 - [x] Source-reviewed the action-to-result-code mapping for all seven declared actions: invalid state, unmet prerequisite, missing configuration, and unsupported action are distinguished. Engine/runtime behavior remains unverified.
 - [x] Document operation-ID semantics in `LogBuildPiece.h`: the ID is correlation/diagnostic metadata only, not an idempotency key. A repeated request is revalidated against the new piece state and may return a different result; callers must not assume deduplication.
 - [ ] Review whether bottom-height preservation is valid for all configured output meshes and actor rotations; current logic preserves world AABB bottom, but actual pivot/orientation/collision fit needs real asset inspection.
