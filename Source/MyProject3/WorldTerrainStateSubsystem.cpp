@@ -94,6 +94,29 @@ bool UWorldTerrainStateSubsystem::TryApplyVoxelExcavation(
     if (!IsValid(VoxelChunk) || !OperationId.IsValid())
         return false;
 
+    // A retry after a successful two-domain commit must return the committed
+    // result before comparing against the now-advanced physical revision.
+    if (const FWorldTerrainOperationReceipt* ExistingReceipt = Receipts.Find(OperationId))
+    {
+        if (ExistingReceipt->Cell != LogicalCell ||
+            ExistingReceipt->RequestedDepthLayer != DepthLayer ||
+            ExistingReceipt->RequestedEdit != ETerrainCellEdit::Excavate ||
+            ExistingReceipt->RequestedMaterialId != MaterialId ||
+            ExistingReceipt->ExpectedRevision != ExpectedCellRevision)
+            return false;
+
+        FVoxelTerrainDigReceipt PhysicalReceipt;
+        if (!VoxelChunk->TryGetDigReceipt(OperationId, PhysicalReceipt) ||
+            !PhysicalReceipt.LocalCenter.Equals(LocalCenter, 0.01f) ||
+            !FMath::IsNearlyEqual(PhysicalReceipt.RadiusCm, RadiusCm, 0.01f) ||
+            !FMath::IsNearlyEqual(PhysicalReceipt.ToolStrength, ToolStrength, 0.01f) ||
+            PhysicalReceipt.ExpectedRevision != ExpectedDensityRevision)
+            return false;
+
+        OutState = ExistingReceipt->ResultState;
+        return true;
+    }
+
     // Capture a rollback point before touching either authority. The voxel
     // component validates its own revision, bounds, material and structure guard.
     TArray<float> BeforeDensity;
