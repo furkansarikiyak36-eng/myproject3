@@ -58,14 +58,15 @@ int32 ALogContainerActor::GetCapacity() const
 
 bool ALogContainerActor::CanAccept(const AActor* Piece, FString& OutReason) const
 {
+    const int32 LiveStoredCount = GetValidStoredCount();
     if (!IsValid(Piece) || OwnsPiece(Piece))
     {
         OutReason = TEXT("Nothing to store.");
         return false;
     }
-    if (Stored.Num() >= GetCapacity())
+    if (LiveStoredCount >= GetCapacity())
     {
-        OutReason = FString::Printf(TEXT("Full (%d/%d)."), Stored.Num(), GetCapacity());
+        OutReason = FString::Printf(TEXT("Full (%d/%d)."), LiveStoredCount, GetCapacity());
         return false;
     }
 
@@ -163,6 +164,7 @@ FTransform ALogContainerActor::GetSlotTransform(int32 Index, const AActor* Piece
 
 bool ALogContainerActor::TryStore(AActor* Piece)
 {
+    CompactStoredItems();
     FString Reason;
     if (!CanAccept(Piece, Reason))
         return false;
@@ -188,7 +190,7 @@ bool ALogContainerActor::TryStore(AActor* Piece)
     const FName BeforeCollisionProfile = BeforeRoot
         ? BeforeRoot->GetCollisionProfileName() : NAME_None;
     const bool bBeforeActorCollision = Piece->GetActorEnableCollision();
-    const FTransform SlotTransform = GetSlotTransform(Stored.Num(), Piece);
+    const FTransform SlotTransform = GetSlotTransform(GetValidStoredCount(), Piece);
     const EWorldItemOwnerKind PreviousOwner = BeforeItem.OwnerKind;
     const FGuid PreviousOwnerId = BeforeItem.OwnerId;
     const bool bWasHeld = PreviousOwner == EWorldItemOwnerKind::Held;
@@ -336,12 +338,29 @@ bool ALogContainerActor::OwnsPiece(const AActor* Piece) const
     return Piece && Stored.ContainsByPredicate([Piece](const TObjectPtr<AActor>& Item) { return Item.Get() == Piece; });
 }
 
+int32 ALogContainerActor::GetValidStoredCount() const
+{
+    int32 Count = 0;
+    for (const TObjectPtr<AActor>& Piece : Stored)
+        if (IsValid(Piece.Get()))
+            ++Count;
+    return Count;
+}
+
+void ALogContainerActor::CompactStoredItems()
+{
+    Stored.RemoveAll([](const TObjectPtr<AActor>& Piece)
+    {
+        return !IsValid(Piece.Get());
+    });
+}
+
 void ALogContainerActor::ApplyTowSpeed() const
 {
     ACharacter* Character = Cast<ACharacter>(TowedBy.Get());
     if (Character && Character->GetCharacterMovement() && PullerBaseSpeed > 0.0f)
     {
-        const float Penalty = FMath::Clamp(0.25f + 0.025f * Stored.Num(), 0.0f, 0.55f);
+        const float Penalty = FMath::Clamp(0.25f + 0.025f * GetValidStoredCount(), 0.0f, 0.55f);
         Character->GetCharacterMovement()->MaxWalkSpeed = PullerBaseSpeed * (1.0f - Penalty);
     }
 }
@@ -380,7 +399,7 @@ void ALogContainerActor::CollectNearbyLogs()
         if (Log->GetLogMesh() && Log->GetLogMesh()->GetPhysicsLinearVelocity().Size() > 30.0f)
             continue; // Still rolling or flying.
         TryStore(Log);
-        if (Stored.Num() >= GetCapacity())
+        if (GetStoredCount() >= GetCapacity())
             return;
     }
 }
