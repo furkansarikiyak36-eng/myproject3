@@ -1037,57 +1037,9 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         return false;
     }
 
-    // Schema v5 adds the optional ownership-transfer receipt snapshot. A v4
-    // save has the complete item ledger but no receipt array; migrate it with
-    // an empty receipt list so state restore remains safe and old revisions
-    // are still rejected by the ownership revision guard.
-    if (Candidate->SchemaVersion == 4)
-    {
-        Candidate->ItemTransferReceipts.Reset();
-        Candidate->SchemaVersion = 5;
-    }
-    if (Candidate->SchemaVersion == 5)
-    {
-        Candidate->OperationLedgerEntries.Reset();
-        Candidate->SchemaVersion = 6;
-    }
-    if (Candidate->SchemaVersion == 6)
-    {
-        Candidate->ItemSplitReceipts.Reset();
-        Candidate->SchemaVersion = 7;
-    }
-    if (Candidate->SchemaVersion == 7)
-    {
-        // Schema v8 adds MeshVariantSetId to authoritative item records. Older
-        // saves deserialize that optional FName as NAME_None; no filename-based
-        // or unverified nominal-size inference is performed during migration.
-        Candidate->SchemaVersion = 8;
-    }
-    if (Candidate->SchemaVersion == 8)
-    {
-        // Schema v9 adds durable physical-item → production-stock intake receipts
-        // inside station snapshots. Older station records start with an empty array.
-        Candidate->SchemaVersion = 9;
-    }
-    if (Candidate->SchemaVersion == 9)
-    {
-        // Schema v10 adds durable enqueue/collect receipts to production station snapshots.
-        // Older snapshots migrate with empty operation receipt arrays.
-        Candidate->SchemaVersion = 10;
-    }
-    if (Candidate->SchemaVersion == 10)
-    {
-        // Schema v11 adds durable materialization receipts mapping station stock
-        // units to their generated physical world item IDs.
-        Candidate->SchemaVersion = 11;
-    }
-    if (Candidate->SchemaVersion == 11)
-    {
-        // Schema v12 adds identity-bound actor transform/component physics snapshots.
-        // Historical physical state cannot be inferred from the currently loaded level.
-        // ApplySnapshot therefore fails closed when an older save lacks required actors.
-        Candidate->SchemaVersion = 12;
-    }
+    // Only schema v12+ can be restored: older saves cannot reconstruct the
+    // historical identity-bound physical actor population. Remaining migrations
+    // normalize schemas that already contain that required manifest.
     if (Candidate->SchemaVersion == 12)
     {
         // Schema v13 persists structural graph edges, anchors, loads, damage and revisions.
@@ -1127,10 +1079,10 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     }
     if (Candidate->SchemaVersion == 15)
     {
-        // Schema v16 adds the persisted raid attack-pulse watermark. Before the
-        // adapter was wired into the fixed-step coordinator, these saves could
-        // not contain committed adapter pulses; initialize the explicit
-        // "nothing committed" sentinel rather than infer history from time.
+        // Schema v16 adds the persisted raid attack-pulse watermark and freezes the
+        // interval used to map simulation time to pulse indices. Before the adapter
+        // was wired into the fixed-step coordinator, these saves could not contain
+        // committed adapter pulses; initialize the sentinel and default interval.
         Candidate->Threat.SchemaVersion = 2;
         Candidate->Threat.CurrentRaid.LastCommittedAttackPulseIndex = -1;
         if (Candidate->Threat.CurrentRaid.State != EThreatRaidState::None)
@@ -1151,9 +1103,10 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     if (!Before || !CaptureCurrentState(Before)) return false;
     if (ApplySnapshot(Candidate)) return true;
 
-    // Every subsystem validates its replacement in local temporaries before
-    // swapping state. If a later domain rejects a payload, restore the captured
-    // pre-load manifest so callers do not continue with a mixed-world snapshot.
+    // Domain RestoreSnapshot methods validate their own replacement before
+    // swapping that domain, but the world has no single cross-domain atomic commit.
+    // If a later domain rejects a payload, attempt to restore the pre-load manifest;
+    // if that compensation also fails, the simulation is faulted below.
     if (!ApplySnapshot(Before))
     {
         const FString FaultReason = TEXT(
