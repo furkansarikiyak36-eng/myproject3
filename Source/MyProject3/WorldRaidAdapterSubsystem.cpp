@@ -237,13 +237,6 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return FMath::IsFinite(NextDamageTimeSeconds);
     }
 
-    if (!OperationLedger->TryBeginOperation(PulseOperationId))
-    {
-        // An existing pending pulse means a previous mutation did not reach a
-        // committed receipt. Stop instead of replaying possibly partial damage.
-        return false;
-    }
-
     TArray<FGuid> DamageTargets;
     if (DefenseTargetNodeIds.IsEmpty())
     {
@@ -297,6 +290,12 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             }
         }
     }
+
+    // Reserve the durable operation only after all predictable graph work has
+    // passed preflight. From this point a failure leaves a Pending receipt and
+    // must stop the simulation rather than replay potentially partial damage.
+    if (!OperationLedger->TryBeginOperation(PulseOperationId))
+        return false;
 
     TArray<FGuid> AffectedNodeIds;
     for (const FGuid& NodeId : DamageTargets)
