@@ -25,6 +25,7 @@ Connect the existing log-processing owner to the Phase 2 operation-result and co
 - The event subsystem is notification-only. A notification failure does not roll back an already committed processing operation.
 - Source code now supports explicit per-source-mesh output mappings while retaining the legacy single-slot path when no mapping sets exist. No Blueprint defaults have been populated/verified yet.
 - No inventory consumption, tool durability, physical cutting simulation, new meshes, or persistence implementation is claimed by this phase.
+- Exact-source-mesh output-set support exists in C++; authored Unreal defaults still need to be populated and inspected.
 - A tracked-source caller scan found no inventory/tool durability owner to integrate with. The shared resource-amount type is a data contract, not an inventory implementation.
 - The FBX inbox contains length-named variants, but the current actor has one mesh slot per action and does not select a matching output by source length; the mesh family contract remains open.
 - Existing boolean callers remain source-compatible; the new result-bearing function is an additional API.
