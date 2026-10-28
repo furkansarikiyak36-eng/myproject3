@@ -989,7 +989,7 @@ bool FVoxelLogicalPhysicalTransactionTest::RunTest(const FString& Parameters)
     const int64 BeforeSecondDensityRevision = Chunk->GetDensityRevision();
     FWorldTerrainCellState SecondCellState;
     TestTrue(TEXT("A second dig in the same logical cell is accepted"),
-        Terrain->TryApplyVoxelExcavation(FGuid::NewGuid(), Chunk, FVector(850.0f, 800.0f, 800.0f),
+        Terrain->TryApplyVoxelExcavation(FGuid::NewGuid(), Chunk, FVector(950.0f, 800.0f, 800.0f),
             75.0f, 3.0f, BeforeSecondDensityRevision, FIntVector(0, 0, 0), 0,
             CellState.Revision, NAME_None, SecondCellState));
     TestEqual(TEXT("Repeated cell excavation advances the logical revision"),
