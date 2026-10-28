@@ -131,6 +131,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     EWorldWeatherState BeforeWeather = EWorldWeatherState::Clear;
     float BeforeWeatherSeverity = 0.0f;
     Survival->ExportSnapshot(BeforeProfiles, BeforeDiscoveries, BeforeWeather, BeforeWeatherSeverity);
+    TArray<FWorldHeatSourceRuntimeSnapshot> BeforeHeatSources;
+    Survival->ExportHeatSourceRuntimeSnapshot(BeforeHeatSources);
     TArray<FWorldProductionStation> BeforeStations;
     TArray<FWorldProductionRecipe> BeforeRecipes;
     Production->ExportSnapshot(BeforeStations, BeforeRecipes);
@@ -161,6 +163,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         bRollbackSucceeded = Production->RestoreSnapshot(BeforeStations, BeforeRecipes) && bRollbackSucceeded;
         bRollbackSucceeded = Survival->RestoreSnapshot(BeforeProfiles, BeforeDiscoveries,
             BeforeWeather, BeforeWeatherSeverity) && bRollbackSucceeded;
+        bRollbackSucceeded = Survival->RestoreHeatSourceRuntimeSnapshot(BeforeHeatSources) && bRollbackSucceeded;
         bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
         bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
