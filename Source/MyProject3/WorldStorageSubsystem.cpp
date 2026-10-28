@@ -88,6 +88,12 @@ bool UWorldStorageSubsystem::SetStorageAvailable(const FGuid& StorageId, bool bA
     return true;
 }
 
+void UWorldStorageSubsystem::RemoveLiveStorageRegistrationForSnapshotRestore(const FGuid& StorageId)
+{
+    if (StorageId.IsValid())
+        LiveStorageIds.Remove(StorageId);
+}
+
 bool UWorldStorageSubsystem::CanAcceptItem(const FGuid& StorageId, const FGuid& ItemId) const
 {
     const FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
