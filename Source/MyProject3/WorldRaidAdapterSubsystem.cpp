@@ -227,10 +227,24 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     // the same structural damage pulse twice.
     const int64 PulseIndex = static_cast<int64>(PulseIndexAsDouble);
     const FGuid PulseOperationId = MakeRaidPulseOperationId(Raid.RaidId, PulseIndex);
+
+    // The watermark is authoritative and persisted with the raid record. If a
+    // save/load or retry reaches an already committed pulse, never re-apply it.
+    if (PulseIndex <= Raid.LastCommittedAttackPulseIndex)
+    {
+        NextDamageTimeSeconds = Raid.ActiveStartTime +
+            (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
+        return FMath::IsFinite(NextDamageTimeSeconds);
+    }
+
     FWorldOperationResult PreviousResult;
     if (OperationLedger->TryGetCompletedResult(PulseOperationId, PreviousResult))
     {
         if (!PreviousResult.IsSuccess())
+            return false;
+        // Compatibility guard for a receipt produced by an earlier adapter
+        // revision: upgrade the durable watermark before skipping the pulse.
+        if (!Threat->CommitRaidAttackPulse(Raid.RaidId, PulseIndex))
             return false;
         NextDamageTimeSeconds = Raid.ActiveStartTime +
             (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
@@ -320,9 +334,16 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             return false;
     }
 
-    const FWorldOperationResult PulseResult = FWorldOperationResult::Success(
-        PulseOperationId, FText::FromString(TEXT("Raid attack pulse committed")), AffectedNodeIds);
-    if (!OperationLedger->CompleteOperation(PulseResult))
+    // Commit the persistent watermark only after the structural damage work
+    // has succeeded. If this commit fails, leave the pending operation marker;
+    // the coordinator will fault closed and save/load will reject the partial tick.
+    if (!Threat->CommitRaidAttackPulse(Raid.RaidId, PulseIndex))
+        return false;
+
+    // The operation ledger entry was a temporary in-flight guard, not a
+    // permanent per-pulse history. The durable watermark supplies replay safety
+    // without eventually exhausting the bounded world operation ledger.
+    if (!OperationLedger->CancelUncommittedOperation(PulseOperationId))
         return false;
 
     NextDamageTimeSeconds = Raid.ActiveStartTime +
