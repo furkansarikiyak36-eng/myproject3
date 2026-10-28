@@ -146,6 +146,187 @@ bool AStoneBuildingPiece::SetHeldState(bool bNewHeld)
     return true;
 }
 
+FWorldOperationResult AStoneBuildingPiece::TryThrowStone(
+    const FVector& ThrowImpulse,
+    FGuid OperationId)
+{
+    if (!OperationId.IsValid())
+    {
+        OperationId = FGuid::NewGuid();
+    }
+
+    if (!bIsHeld || bIsPlaced || ParentPiece.IsValid() || !Mesh)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InvalidState,
+            OperationId,
+            FText::FromString(TEXT("Only a held, loose stone can be thrown.")));
+    }
+
+    if (!ThrowImpulse.IsFinite() || ThrowImpulse.IsNearlyZero())
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InvalidTarget,
+            OperationId,
+            FText::FromString(TEXT("Throw impulse must be finite and non-zero.")));
+    }
+
+    bIsHeld = false;
+    Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    Mesh->SetSimulatePhysics(true);
+    Mesh->AddImpulse(ThrowImpulse, NAME_None, true);
+
+    return FWorldOperationResult::Success(
+        OperationId,
+        FText::FromString(TEXT("Stone thrown.")),
+        TArray<FGuid>());
+}
+
+UStaticMesh* AStoneBuildingPiece::ResolveShapeOutputMesh(
+    EStoneShapeAction Action,
+    bool& bOutAmbiguousMapping) const
+{
+    bOutAmbiguousMapping = false;
+    UStaticMesh* SourceMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+
+    if (ProcessingMeshSets.Num() == 0 || !IsValid(SourceMesh))
+    {
+        return nullptr;
+    }
+
+    const FStoneProcessingMeshSet* MatchedSet = nullptr;
+    for (const FStoneProcessingMeshSet& Set : ProcessingMeshSets)
+    {
+        if (!IsValid(Set.SourceMesh) || Set.SourceMesh != SourceMesh)
+        {
+            continue;
+        }
+
+        if (MatchedSet)
+        {
+            bOutAmbiguousMapping = true;
+            return nullptr;
+        }
+        MatchedSet = &Set;
+    }
+
+    if (!MatchedSet)
+    {
+        return nullptr;
+    }
+
+    switch (Action)
+    {
+    case EStoneShapeAction::Block: return MatchedSet->BlockMesh;
+    case EStoneShapeAction::Slab: return MatchedSet->SlabMesh;
+    case EStoneShapeAction::Column: return MatchedSet->ColumnMesh;
+    case EStoneShapeAction::Lintel: return MatchedSet->LintelMesh;
+    case EStoneShapeAction::Corner: return MatchedSet->CornerMesh;
+    default: return nullptr;
+    }
+}
+
+bool AStoneBuildingPiece::CanShapeStone(EStoneShapeAction Action) const
+{
+    if (!Mesh || bIsHeld || bIsPlaced || ParentPiece.IsValid() ||
+        AttachedPieces.Num() > 0 || HasOccupiedAnchors() ||
+        PieceType != EStonePieceType::RawStone)
+    {
+        return false;
+    }
+
+    bool bAmbiguousMapping = false;
+    return IsValid(ResolveShapeOutputMesh(Action, bAmbiguousMapping)) &&
+        !bAmbiguousMapping;
+}
+
+FWorldOperationResult AStoneBuildingPiece::TryShapeStone(
+    EStoneShapeAction Action,
+    FGuid OperationId)
+{
+    if (!OperationId.IsValid())
+    {
+        OperationId = FGuid::NewGuid();
+    }
+
+    if (!Mesh || !IsValid(Mesh->GetStaticMesh()))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("A source stone mesh must be configured before shaping.")));
+    }
+
+    if (bIsHeld || bIsPlaced || ParentPiece.IsValid() ||
+        AttachedPieces.Num() > 0 || HasOccupiedAnchors())
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::InvalidState,
+            OperationId,
+            FText::FromString(TEXT("Release, unplace and disconnect the stone before shaping it.")));
+    }
+
+    if (PieceType != EStonePieceType::RawStone)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::PrerequisiteNotMet,
+            OperationId,
+            FText::FromString(TEXT("Only raw stone can be shaped by this operation.")));
+    }
+
+    bool bAmbiguousMapping = false;
+    UStaticMesh* NewMesh = ResolveShapeOutputMesh(Action, bAmbiguousMapping);
+    if (bAmbiguousMapping)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Conflict,
+            OperationId,
+            FText::FromString(TEXT("Multiple stone processing sets match this source mesh.")));
+    }
+
+    if (!IsValid(NewMesh))
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::MissingConfiguration,
+            OperationId,
+            FText::FromString(TEXT("No output mesh is configured for this stone source and shape action.")));
+    }
+
+    EStonePieceType NewType = EStonePieceType::Other;
+    switch (Action)
+    {
+    case EStoneShapeAction::Block: NewType = EStonePieceType::Block; break;
+    case EStoneShapeAction::Slab: NewType = EStonePieceType::Slab; break;
+    case EStoneShapeAction::Column: NewType = EStonePieceType::Column; break;
+    case EStoneShapeAction::Lintel: NewType = EStonePieceType::Lintel; break;
+    case EStoneShapeAction::Corner: NewType = EStonePieceType::Corner; break;
+    default:
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Unsupported,
+            OperationId,
+            FText::FromString(TEXT("Unsupported stone shaping action.")));
+    }
+
+    const FBox OldBounds = Mesh->Bounds.GetBox();
+    const double OldBottomZ = OldBounds.Min.Z;
+    Mesh->SetStaticMesh(NewMesh);
+    PieceType = NewType;
+    Mesh->UpdateBounds();
+    const FBox NewBounds = Mesh->Bounds.GetBox();
+    if (OldBounds.IsValid && NewBounds.IsValid)
+    {
+        FVector NewLocation = GetActorLocation();
+        NewLocation.Z += OldBottomZ - NewBounds.Min.Z;
+        SetActorLocation(NewLocation, false, nullptr, ETeleportType::TeleportPhysics);
+    }
+
+    return FWorldOperationResult::Success(
+        OperationId,
+        FText::FromString(TEXT("Stone shaping completed.")),
+        TArray<FGuid>());
+}
+
 bool AStoneBuildingPiece::TryCommitGroundPlacement(
     const FVector& SurfaceLocation,
     const FRotator& SurfaceRotation)
