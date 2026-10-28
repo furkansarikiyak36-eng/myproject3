@@ -14,6 +14,9 @@ This phase establishes the stone-piece and explicit-anchor foundation. It does *
 ## Source delivered
 
 - `EStonePieceType` defines typed raw stone, block, slab, column, lintel, corner and other piece states.
+- `TryThrowStone` provides a result-bearing loose-stone throw operation with finite, non-zero impulse validation.
+- `EStoneShapeAction` and `FStoneProcessingMeshSet` provide explicit source-mesh-to-output mappings for block, slab, column, lintel and corner shaping; duplicate/unmapped source meshes and missing outputs fail closed.
+- `TryShapeStone` requires loose, unheld raw stone without structural links or occupied anchors, validates the output before mutation, updates type and mesh together, and preserves the world-axis bounds bottom as a provisional source-level behavior.
 - `FStoneSnapAnchor` defines authored anchor ID, compatibility tag, local transform, source/receiver permissions and occupancy.
 - `AStoneBuildingPiece` owns a stone mesh, held/placed state, authored anchors and explicit parent-child connections.
 - Authored anchor data is checked for missing IDs/tags, invalid transforms and duplicate IDs before a connection is accepted. Runtime anchor creation also rejects duplicates.
@@ -26,7 +29,7 @@ This phase establishes the stone-piece and explicit-anchor foundation. It does *
 
 ## Deliberately deferred
 
-- Mesh-specific shaping recipes and resource costs.
+- Tool requirements, resource costs/yield and physical shaping progress; shaping currently performs a validated mesh/state transition.
 - Automatic anchor generation, stone-wall layout helpers, corner/column/opening builders.
 - Shared structural graph, load-bearing calculations, collapse simulation, damage/repair/salvage.
 - Inventory/bulk hauling, tool requirements and mixed-material structural adapters.
