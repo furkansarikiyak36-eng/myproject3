@@ -181,6 +181,13 @@ bool ALogContainerActor::TryStore(AActor* Piece)
         return false;
 
     const FTransform BeforeTransform = Piece->GetActorTransform();
+    UPrimitiveComponent* BeforeRoot = Cast<UPrimitiveComponent>(Piece->GetRootComponent());
+    const bool bBeforeSimulatesPhysics = BeforeRoot && BeforeRoot->IsSimulatingPhysics();
+    const ECollisionEnabled::Type BeforeCollision = BeforeRoot
+        ? BeforeRoot->GetCollisionEnabled() : ECollisionEnabled::NoCollision;
+    const FName BeforeCollisionProfile = BeforeRoot
+        ? BeforeRoot->GetCollisionProfileName() : NAME_None;
+    const bool bBeforeActorCollision = Piece->GetActorEnableCollision();
     const FTransform SlotTransform = GetSlotTransform(Stored.Num(), Piece);
     const EWorldItemOwnerKind PreviousOwner = BeforeItem.OwnerKind;
     const FGuid PreviousOwnerId = BeforeItem.OwnerId;
@@ -266,7 +273,13 @@ bool ALogContainerActor::TryStore(AActor* Piece)
         }
         else
         {
-            Piece->SetActorEnableCollision(true);
+            Piece->SetActorEnableCollision(bBeforeActorCollision);
+        }
+        if (BeforeRoot)
+        {
+            BeforeRoot->SetCollisionProfileName(BeforeCollisionProfile);
+            BeforeRoot->SetCollisionEnabled(BeforeCollision);
+            BeforeRoot->SetSimulatePhysics(bBeforeSimulatesPhysics);
         }
         if (!RollbackOwnership())
         {
