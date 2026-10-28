@@ -75,7 +75,7 @@ FWorldOperationResult URaidDirectorSubsystem::RecordSpawnedEnemies(FGuid Id,int3
 FWorldOperationResult URaidDirectorSubsystem::ResolveEnemies(FGuid Id,int32 Count,FGuid Op){
  auto V=ValidateNewOperation(Op);if(!V.IsSuccess())return V;FRaidRuntimeState* R=Raids.Find(Id);TArray<FRaidWavePlan>* P=WavePlans.Find(Id);
  if(!R||!P||R->Phase!=ERaidPhase::Active||!P->IsValidIndex(R->CurrentWaveIndex)||Count<=0||Count>R->AliveEnemyCount)return Failure(EWorldOperationResultCode::InvalidState,Op,TEXT("Resolved enemy count is invalid."));
- R->AliveEnemyCount-=Count;AliveThreatCount=FMath::Max(0,AliveThreatCount-Count);(*P)[R->CurrentWaveIndex].ResolvedEnemies+=Count;if(R->AliveEnemyCount==0)R->Phase=ERaidPhase::Recovering;++R->Revision;RememberOperation(Op);return FWorldOperationResult::Success(Op,FText::FromString(TEXT("Enemy resolutions recorded.")),{Id});
+ R->AliveEnemyCount-=Count;R->QueuedEnemyCount=FMath::Max(0,R->QueuedEnemyCount-Count);AliveThreatCount=FMath::Max(0,AliveThreatCount-Count);(*P)[R->CurrentWaveIndex].ResolvedEnemies+=Count;if(R->AliveEnemyCount==0)R->Phase=ERaidPhase::Recovering;++R->Revision;RememberOperation(Op);return FWorldOperationResult::Success(Op,FText::FromString(TEXT("Enemy resolutions recorded.")),{Id});
 }
 FWorldOperationResult URaidDirectorSubsystem::CancelRaid(FGuid Id,FGuid Op){
  auto V=ValidateNewOperation(Op);if(!V.IsSuccess())return V;FRaidRuntimeState* R=Raids.Find(Id);
