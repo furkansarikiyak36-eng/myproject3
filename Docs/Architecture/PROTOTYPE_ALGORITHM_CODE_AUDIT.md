@@ -265,3 +265,11 @@ Fonksiyon EventId yoksa yeni GUID atıyor, simülasyon zamanını yazıyor ve he
 Hayvan hedefleri FMath::RandPointInCircle ve FMath::FRandRange ile global RNG'den seçiliyor; M006'da planlanan dünya seed/operation stream'ine bağlı değil. Actor ayrıca kendi DeltaSeconds tick'iyle hareket ediyor; bu hareket state'i ortak fixed-step snapshot/restore sisteminde görünmüyor. Aynı world seed ve yükleme durumundan aynı hayvan davranışını yeniden üretmek mümkün değil.
 
 **Gerekli ilke:** world-seed tabanlı per-entity random stream, açık simülasyon adımı ve hareket durumunun snapshot/restore sahibi tanımlanmalı. Eğer vahşi yaşam deterministik olmayacaksa bu ayrı, belgelenmiş bir istisna olmalı.
+
+
+### A31 — Yapısal yük/hasar girdileri tüm malzeme türlerinde aynı sabitlerle başlıyor
+**Dosyalar:** Source/MyProject3/LogBuildPiece.cpp; Source/MyProject3/StoneBuildingPiece.cpp; Source/MyProject3/StickPrimitivePiece.cpp; Source/MyProject3/WorldStructuralGraphSubsystem.h.
+
+Üç fiziksel parça ailesi de graph kaydını `LocalLoad=1.0`, `MaxSupportedLoad=100000.0`, `DamageThreshold=100.0` ile başlatıyor. `ComputeAggregateLoad` bu girdileri matematiksel olarak toplasa da girdiler uzunluk, kesit profili, gerçek kütle veya malzeme dayanımından türetilmiyor. Taş sütun ve ince çubuk aynı yerel yük ve kapasite parametrelerini alıyor; bu yüzden grafın yük hesabı sayısal olarak çalışabilir ama fiziksel anlamı tasarım kurallarıyla ilişkilendirilmiş değil. Hasar eşiği de malzeme/şekil bazında farklılaşmıyor.
+
+**Gerekli ilke:** bir ortak fiziksel profil tanımla: `MassKg`/`LocalLoad`, izin verilen basma/eğilme/ankraj kapasitesi, dayanıklılık ve hasar eşiği. Bu değerler mesh AABB'sinden gelişigüzel türetilmek yerine, canonical dimensions + profile + material data üzerinden hesaplanmalı; prototip sabitleri açıkça “placeholder tuning” olarak etiketlenmeli.
