@@ -66,6 +66,41 @@ bool UWorldCommittedEventSubsystem::PublishCommittedEvent(
     }
     if (PublishedOperationKeys.Contains(OperationKey))
         return true;
+    if (NextPublishedEventOrder <= 0 || NextPublishedEventOrder == MAX_int64)
+        return false;
+
+    // Keep a bounded deduplication window rather than stopping all gameplay
+    // notifications forever after MaxRetainedEvents unique facts. Retries within
+    // the window are suppressed; retries after eviction are outside this guarantee.
+    if (PublishedEvents.Num() >= MaxRetainedEvents)
+    {
+        FGuid OldestEventId;
+        int64 OldestOrder = MAX_int64;
+        bool bFoundOldest = false;
+        for (const TPair<FGuid, int64>& Pair : PublishedEventOrder)
+        {
+            if (!PublishedEvents.Contains(Pair.Key))
+                continue;
+            if (!bFoundOldest || Pair.Value < OldestOrder ||
+                (Pair.Value == OldestOrder && Pair.Key.ToString() < OldestEventId.ToString()))
+            {
+                OldestEventId = Pair.Key;
+                OldestOrder = Pair.Value;
+                bFoundOldest = true;
+            }
+        }
+
+        if (!bFoundOldest)
+            return false;
+
+        PublishedEvents.Remove(OldestEventId);
+        PublishedEventOrder.Remove(OldestEventId);
+        for (auto It = PublishedOperationKeys.CreateIterator(); It; ++It)
+        {
+            if (It.Value() == OldestEventId)
+                It.RemoveCurrent();
+        }
+    }
     if (PublishedEvents.Num() >= MaxRetainedEvents)
         return false;
 
@@ -75,6 +110,7 @@ bool UWorldCommittedEventSubsystem::PublishCommittedEvent(
 
     PublishedOperationKeys.Add(OperationKey, Event.EventId);
     PublishedEvents.Add(Event.EventId, Event);
+    PublishedEventOrder.Add(Event.EventId, NextPublishedEventOrder++);
     OnCommittedEvent.Broadcast(Event);
     return true;
 }
