@@ -1455,7 +1455,11 @@ void ULogCarryComponent::UpdateHeldMaterialPreview()
 
 void ULogCarryComponent::FinishMaterialPlacement(AActor* Piece)
 {
-    TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
+    // Ownership must already be committed by the placement caller. Never silently
+    // discard the held reference when the ownership ledger rejects a transfer.
+    if (!IsValid(Piece) || HeldMaterialPiece != Piece)
+        return;
+
     Piece->SetActorEnableCollision(true);
     if (UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
         Load->UnregisterCarried(Piece);
@@ -1469,8 +1473,19 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
     AActor* Piece = HeldMaterialPiece;
     const IStructuralPieceInterface* TargetPiece = Cast<IStructuralPieceInterface>(Target);
     const IStructuralPieceInterface* HeldStructural = Cast<IStructuralPieceInterface>(Piece);
-    if (!Piece || !TargetPiece || !HeldStructural || Target == Piece)
+    if (!IsValid(Piece) || !TargetPiece || !HeldStructural || Target == Piece)
         return false;
+
+    // Commit the ownership transition before connecting anchors. A rejected
+    // connection restores the held owner below; no successful connection may
+    // be left attached while the ledger still says the player owns it.
+    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
+        EWorldItemOwnerKind::World, Piece->GetActorLocation()))
+    {
+        PlacementStatus = TEXT("Placement blocked: ownership ledger rejected the transfer.");
+        return false;
+    }
+
     EnsureMaterialAnchors(Target);
 
     bool bConnected = false;
@@ -1517,6 +1532,15 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
 
     if (!bConnected)
     {
+        // A failed graph/anchor operation must not consume the held item.
+        if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::Held, Piece->GetActorLocation()))
+        {
+            UE_LOG(LogTemp, Error, TEXT("Material placement rollback failed for %s; ownership ledger may require recovery."),
+                *GetNameSafe(Piece));
+            PlacementStatus = TEXT("Placement failed and ownership rollback failed; item needs recovery.");
+            return false;
+        }
         PlacementStatus = FString::Printf(TEXT("Cannot place here: %s"), *Reason);
         return false;
     }
@@ -1529,19 +1553,33 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
 bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
 {
     AActor* Piece = HeldMaterialPiece;
-    if (!Piece || GroundPoint.ContainsNaN())
+    if (!IsValid(Piece) || GroundPoint.ContainsNaN())
         return false;
+
+    // Reserve the world-owned ledger state before mutating placement/graph state.
+    // If physical placement fails, restore the held owner so inventory and actor agree.
+    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
+        EWorldItemOwnerKind::World, Piece->GetActorLocation()))
+    {
+        PlacementStatus = TEXT("Placement blocked: ownership ledger rejected the transfer.");
+        return false;
+    }
+
     const FTransform Upright = MakeUprightTransform(Piece, GroundPoint);
     bool bPlaced = false;
     if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
         bPlaced = Stone->TryCommitGroundPlacement(Upright.GetLocation(), Upright.Rotator());
     else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
         bPlaced = Stick->TryCommitGroundPlacement(Upright.GetLocation(), Upright.Rotator());
+
     if (!bPlaced)
     {
+        TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::Held, Piece->GetActorLocation());
         PlacementStatus = TEXT("Cannot place on the ground here.");
         return false;
     }
+
     FinishMaterialPlacement(Piece);
     PlacementStatus = TEXT("Placed on the ground.");
     LiftDroopingEndsOnto(Piece);
