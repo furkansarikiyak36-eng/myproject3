@@ -26,7 +26,9 @@
 - Zemine bağlı yapı grafiği köklerinin belirlenmiş 3B güvenlik marjına yakın kazı reddedilir. Bu kaba bir koruma kuralıdır; fiziksel zemin gerilmesi veya destek kaybı simülasyonu değildir.
 - Yoğunluk örnekleri, chunk boyutları, revizyon ve kazı makbuzları SaveGame v14 içine kimlik bazında eklenmiştir. Yükleme hedef level'de zaten bulunan chunk'ları doğrular ve mesh/çarpışmayı yeniden kurar.
 - `MyProject3.Terrain.Voxel.BoundedDigChecksMaterialToolAndRevision`, `MyProject3.Terrain.Voxel.DigRejectsNearGroundedStructure`, `MyProject3.Terrain.Voxel.DensitySnapshotRoundTrip` ve `MyProject3.Terrain.Voxel.LogicalPhysicalExcavationIsAtomic` otomasyon test kaynakları eklendi; bu turda UE derlemesi veya bu testlerin çalıştırılması yapılmadı.
-- `UWorldTerrainStateSubsystem::TryApplyVoxelExcavation` yeni koordinasyon girişidir: önce voxel snapshot alır, fiziksel kazıyı uygular, mantıksal hücre commit'i reddederse fiziksel snapshot'ı geri yükler.
+- `UWorldTerrainStateSubsystem::TryApplyVoxelExcavation` koordinasyon girişidir: önce voxel snapshot alır, fiziksel kazıyı uygular, mantıksal hücre commit'i reddederse fiziksel snapshot'ı geri yükler.
+- `UTerrainDigToolComponent` oyuncu hattına bağlandı: `ALogSnapCharacter` üzerinden `N` tuşu, görüş çizgisi, voxel component hit doğrulaması, dünya hücresine mantıksal ledger eşlemesi ve birleşik kazı API'si. Alet gücü prototip varsayılanıdır; envanterdeki gerçek alet tanımına bağlanması hâlâ gereklidir.
+- `RestoreDensitySnapshot` geri yükleme sırasında mevcut yoğunluk/revizyon/makbuzları saklar; karışık (katı + hava) grid mesh yüzeyi çıkaramazsa eski duruma döner. Bu koruma kaynak seviyesindedir, UE collision cook başarısını tek başına ispatlamaz.
 
 ## Kabul tablosu
 
@@ -43,7 +45,7 @@
 | Asenkron mesh + collision commit | Eksik | Bekliyor |
 | Navmesh güncellemesi ve yapı grafiğiyle atomik destek işlemi | Eksik | Bekliyor |
 | Kazıdan fiziksel kaynak öğesi çıkarımı | Eksik | Bekliyor |
-| Oyuncunun gerçek alet/etkileşim hattı | Eksik | Bekliyor |
+| Oyuncunun voxel hedefleme ve kazı tuşu hattı | Kaynak bağlantısı eklendi (`N`) | Bekliyor; PIE ve gerçek envanter aleti bağı eksik |
 
 ## Faz çıkış ölçütü
 
@@ -53,7 +55,7 @@ Faz 2 **tamamlandı** olarak işaretlenmiyor. Mimari tercih belirlenmiş, güven
 
 1. Kaynak/derleme sorunlarını UE 5.8'de doğrula.
 2. Mantıksal `WorldTerrainStateSubsystem` ve fiziksel voxel yoğunluğunu tek hazırlık/commit/rollback sınırına bağla.
-3. Player/tool girdisini güvenilir araç verisiyle `TryApplyBoundedDig` çağrısına bağla.
+3. Player/tool girdisini güvenilir araç verisiyle `TryApplyVoxelExcavation` çağrısına bağla (ilk `N` tuşu prototip hattı eklendi; gerçek envanter aleti bağı hâlâ açık).
 4. Chunk sınırları, async mesh/collision ve yerel navigation güncellemesini ekle.
 5. Yapı kökleri, köprü ayakları ve hendek altındaki destek senaryolarını PIE'de doğrula.
 6. Ancak bundan sonra voxel altyapısını daha geniş fazlara yay.
