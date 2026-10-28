@@ -57,8 +57,11 @@ bool UWorldCommittedEventSubsystem::PublishCommittedEvent(
             if (ExistingIds[Index] == ExistingIds[Index - 1])
                 ExistingIds.RemoveAt(Index);
         if (Existing->OperationId != Event.OperationId || Existing->Type != Event.Type ||
-            ExistingIds != CanonicalIds)
+            ExistingIds.Num() != CanonicalIds.Num())
             return false;
+        for (int32 Index = 0; Index < ExistingIds.Num(); ++Index)
+            if (ExistingIds[Index] != CanonicalIds[Index])
+                return false;
         return true;
     }
     if (PublishedOperationKeys.Contains(OperationKey))
