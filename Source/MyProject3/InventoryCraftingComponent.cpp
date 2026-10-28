@@ -290,7 +290,14 @@ bool UInventoryCraftingComponent::CanCraftAgainstInventory(
 
     for (const TPair<FName, int64>& Requirement : RequiredAvailable)
     {
-        const int64 Have = GetItemCount(Requirement.Key);
+        int64 Have = 0;
+        for (const FInventoryStack& Stack : BaseItems)
+        {
+            if (Stack.ItemId == Requirement.Key)
+            {
+                Have += FMath::Max(0, Stack.Quantity);
+            }
+        }
         const int64 Missing = Requirement.Value - Have;
         if (Missing > 0)
         {
