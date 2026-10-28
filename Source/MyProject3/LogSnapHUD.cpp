@@ -107,4 +107,12 @@ void ALogSnapHUD::DrawHUD()
             Y += 16.0f;
         }
     }
+
+    // Keep the core interaction loop discoverable without requiring the player
+    // to guess controls or open the full help panel on their first session.
+    const float ControlsY = FMath::Max(0.0f, Canvas->ClipY - 42.0f);
+    DrawText(TEXT("Move WASD | Look Mouse | Jump Space | Interact/Pick up/Place E | Drop G | Rotate R"),
+        FLinearColor(0.92f, 0.92f, 0.92f), 16.0f, ControlsY, Font);
+    DrawText(TEXT("Mode RMB | Cut: C select, F apply | Push/Roll V | Drag B | Plan Z/Y | Dismantle Delete | Help F1"),
+        FLinearColor(0.82f, 0.86f, 0.90f), 16.0f, ControlsY + 16.0f, Font);
 }
