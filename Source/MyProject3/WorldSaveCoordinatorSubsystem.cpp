@@ -373,7 +373,7 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
             !FMath::IsFinite(Node.MaxSupportedLoad) || Node.MaxSupportedLoad <= 0.0f ||
             !FMath::IsFinite(Node.Damage) || Node.Damage < 0.0f ||
             !FMath::IsFinite(Node.DamageThreshold) || Node.DamageThreshold <= 0.0f ||
-            Node.Revision < 1)
+            Node.Revision < 0)
         {
             return false;
         }
