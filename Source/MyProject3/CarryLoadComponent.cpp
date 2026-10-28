@@ -66,7 +66,19 @@ void UCarryLoadComponent::BeginPlay()
 
 const FCarrySlotRule* UCarryLoadComponent::FindRule(EStructuralNodeKind Kind) const
 {
-    return SlotRules.FindByPredicate([Kind](const FCarrySlotRule& Rule) { return Rule.Kind == Kind; });
+    const FCarrySlotRule* Match = nullptr;
+    for (const FCarrySlotRule& Rule : SlotRules)
+    {
+        if (Rule.Kind != Kind)
+            continue;
+        if (Match)
+            return nullptr; // Duplicate material rules make carry limits/density ambiguous.
+        if (Rule.MaxCount <= 0 || !FMath::IsFinite(Rule.DensityKgPerCubicMetre) ||
+            Rule.DensityKgPerCubicMetre <= 0.0f)
+            return nullptr;
+        Match = &Rule;
+    }
+    return Match;
 }
 
 float UCarryLoadComponent::EstimateMassKg(const AActor* Piece) const
@@ -85,6 +97,15 @@ bool UCarryLoadComponent::CanCarryMore(AActor* Piece, FString& OutReason) const
     if (!IsValid(Piece) || !Structural)
     {
         OutReason = TEXT("Only physical building materials can be carried.");
+        return false;
+    }
+    if (!FMath::IsFinite(MaxCarryMassKg) || MaxCarryMassKg <= 0.0f ||
+        !FMath::IsFinite(MinSpeedMultiplier) || MinSpeedMultiplier < 0.0f ||
+        MinSpeedMultiplier > 1.0f ||
+        !FMath::IsFinite(BoundsFillFactor) || BoundsFillFactor <= 0.0f ||
+        BoundsFillFactor > 1.0f)
+    {
+        OutReason = TEXT("Carry configuration is invalid; no item can be taken safely.");
         return false;
     }
     if (CarriedPieces.Contains(Piece))
@@ -271,15 +292,31 @@ int32 UCarryLoadComponent::GetCarriedCount(EStructuralNodeKind Kind) const
 
 float UCarryLoadComponent::GetCarriedMassKg() const
 {
-    float Total = 0.0f;
+    double Total = 0.0;
     for (const TWeakObjectPtr<AActor>& Item : CarriedPieces)
-        Total += EstimateMassKg(Item.Get());
-    return Total;
+    {
+        if (!Item.IsValid())
+            continue;
+        const float Mass = EstimateMassKg(Item.Get());
+        if (!FMath::IsFinite(Mass) || Mass < 0.0f)
+            return TNumericLimits<float>::Max();
+        Total += static_cast<double>(Mass);
+        if (!FMath::IsFinite(Total) || Total >= TNumericLimits<float>::Max())
+            return TNumericLimits<float>::Max();
+    }
+    return static_cast<float>(Total);
 }
 
 float UCarryLoadComponent::GetSpeedMultiplier() const
 {
-    const float Ratio = FMath::Clamp(GetCarriedMassKg() / MaxCarryMassKg, 0.0f, 1.0f);
+    if (!FMath::IsFinite(MaxCarryMassKg) || MaxCarryMassKg <= 0.0f ||
+        !FMath::IsFinite(MinSpeedMultiplier) || MinSpeedMultiplier < 0.0f ||
+        MinSpeedMultiplier > 1.0f)
+        return 1.0f;
+
+    const float Mass = GetCarriedMassKg();
+    const float Ratio = FMath::IsFinite(Mass)
+        ? FMath::Clamp(Mass / MaxCarryMassKg, 0.0f, 1.0f) : 1.0f;
     return FMath::Lerp(1.0f, MinSpeedMultiplier, Ratio);
 }
 
