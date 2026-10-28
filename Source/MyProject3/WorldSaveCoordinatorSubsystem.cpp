@@ -135,7 +135,8 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
 
 bool ReconcilePhysicalActorSnapshotsWithItems(
     const TArray<FWorldPhysicalActorSnapshot>& PhysicalActors,
-    TArray<FWorldOwnedItemRecord>& Items)
+    TArray<FWorldOwnedItemRecord>& Items,
+    const TArray<FWorldStorageContainerRecord>& Storages)
 {
     TMap<FGuid, int32> ItemIndices;
     for (int32 Index = 0; Index < Items.Num(); ++Index)
@@ -153,8 +154,14 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
             continue; // Non-item world actors, such as harvestable trees.
 
         FWorldOwnedItemRecord& Item = Items[*ItemIndex];
-        if (Item.OwnerKind != EWorldItemOwnerKind::World ||
-            Item.Quantity != 1 ||
+        const bool bWorldOwned = Item.OwnerKind == EWorldItemOwnerKind::World;
+        const bool bStorageOwned = Item.OwnerKind == EWorldItemOwnerKind::Storage &&
+            Item.OwnerId.IsValid() &&
+            Storages.ContainsByPredicate([&Item](const FWorldStorageContainerRecord& Storage)
+            {
+                return Storage.StorageId == Item.OwnerId;
+            });
+        if ((!bWorldOwned && !bStorageOwned) || Item.Quantity != 1 ||
             Item.DefinitionId != ActorState.DefinitionId)
         {
             UE_LOG(LogTemp, Warning,
@@ -369,8 +376,10 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             return false;
         }
     }
+    Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors) ||
-        !ReconcilePhysicalActorSnapshotsWithItems(OutSave->PhysicalActors, OutSave->Items))
+        !ReconcilePhysicalActorSnapshotsWithItems(
+            OutSave->PhysicalActors, OutSave->Items, OutSave->StorageContainers))
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor state could not be reconciled with item ownership."));
         return false;
@@ -399,7 +408,6 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
     Cargo->ExportSnapshot(OutSave->Cargo);
-    Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!ValidateProductionReceiptItemReferences(OutSave->Items, OutSave->ProductionStations))
     {
         UE_LOG(LogTemp, Warning,
@@ -445,7 +453,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         return false;
     }
     TArray<FWorldOwnedItemRecord> ValidatedPhysicalItems = Snapshot->Items;
-    if (!ReconcilePhysicalActorSnapshotsWithItems(Snapshot->PhysicalActors, ValidatedPhysicalItems))
+    if (!ReconcilePhysicalActorSnapshotsWithItems(
+        Snapshot->PhysicalActors, ValidatedPhysicalItems, Snapshot->StorageContainers))
         return false;
 
     // Durable saves must never restore a half-finished operation. Runtime rollback
