@@ -1,7 +1,7 @@
 """Rebuild VerticalSlice_B as a clean, lit ground-plane scene.
 
 Unreal Engine 5.8: run this script once through Tools > Execute Python Script.
-Only /Game/Maps/VerticalSlice_B is changed. If that map still exists, its actors
+Only /Game/DemoAssets/Maps/VerticalSlice_B is changed. If that map still exists, its actors
 are cleared before rebuilding; other maps and assets are never touched.
 """
 import unreal
