@@ -757,17 +757,33 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
     {
         FWorldProductionStation& Station = Pair.Value;
         bool bStationChanged = false;
+        double RemainingSeconds = DeltaSeconds;
+
+        // A station is sequential, but any unused part of this fixed step carries
+        // into the next queued job. Otherwise throughput depends on the configured
+        // step size rather than the recipe durations.
         for (FWorldProductionJob& Job : Station.Jobs)
         {
             if (Job.State == EProductionJobState::Completed || Job.State == EProductionJobState::Blocked)
                 continue;
+
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
+            if (!Recipes.IsValidIndex(RecipeIndex))
+                return false; // Preflight should make this unreachable; fail before dereferencing.
             const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
+            if (RemainingSeconds <= 0.0)
+                break;
+
             if (Job.State == EProductionJobState::Queued)
                 Job.State = EProductionJobState::Running;
-            Job.ProgressSeconds = FMath::Min(Recipe.DurationSeconds, Job.ProgressSeconds + DeltaSeconds);
+
+            const double NeededSeconds = FMath::Max(0.0, Recipe.DurationSeconds - Job.ProgressSeconds);
+            const double AppliedSeconds = FMath::Min(RemainingSeconds, NeededSeconds);
+            Job.ProgressSeconds = FMath::Min(Recipe.DurationSeconds, Job.ProgressSeconds + AppliedSeconds);
+            RemainingSeconds = FMath::Max(0.0, RemainingSeconds - AppliedSeconds);
             bStationChanged = true;
-            if (Job.ProgressSeconds < Recipe.DurationSeconds) break;
+            if (Job.ProgressSeconds < Recipe.DurationSeconds)
+                break;
 
             TMap<FName, int32> ProposedStock = Station.Stock;
             bool bCanCommitOutputs = true;
@@ -786,9 +802,16 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
             Station.Stock = MoveTemp(ProposedStock);
             Job.State = EProductionJobState::Completed;
             Job.BlockedReason = NAME_None;
-            break; // one physical production line processes one job at a time
+            // Continue to a later queued/running job only when this step had
+            // time remaining. Completed outputs are materialized before the next
+            // recipe consumes any of the remaining logical time.
         }
-        if (bStationChanged) ++Station.Revision;
+        if (bStationChanged)
+        {
+            if (Station.Revision == MAX_int64)
+                return false; // CanAdvanceProductionStep preflights this condition.
+            ++Station.Revision;
+        }
     }
     return true;
 }
