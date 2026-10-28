@@ -393,7 +393,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
                 return false;
         }
     }
-    Terrain->ExportSnapshot(OutSave->TerrainCells);
+    Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
     Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
         OutSave->Weather, OutSave->WeatherSeverity);
@@ -509,7 +509,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     }
     if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
 
-    if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells)) return false;
+    if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells, Snapshot->TerrainReceipts)) return false;
     if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
@@ -593,6 +593,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Schema v13 persists structural graph edges, anchors, loads, damage and revisions.
         // Missing historical graph data is not synthesized from the currently loaded world.
         Candidate->SchemaVersion = 13;
+    }
+    if (Candidate->SchemaVersion == 13)
+    {
+        // Schema v14 persists terrain edit idempotency receipts. Earlier saves have no
+        // receipt history, so migrate them with an empty receipt list.
+        Candidate->TerrainReceipts.Reset();
+        Candidate->SchemaVersion = 14;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
