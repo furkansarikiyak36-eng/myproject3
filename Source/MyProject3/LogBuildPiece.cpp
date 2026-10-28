@@ -7,6 +7,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSaveCoordinatorSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -1069,10 +1070,15 @@ bool ALogBuildPiece::TryResolveLengthCutVariant(
 
 void ALogBuildPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    const UWorld* CurrentWorld = GetWorld();
+    const UWorldSaveCoordinatorSubsystem* SaveCoordinator =
+        CurrentWorld ? CurrentWorld->GetSubsystem<UWorldSaveCoordinatorSubsystem>() : nullptr;
+    const bool bApplyingSnapshot = SaveCoordinator && SaveCoordinator->IsApplyingSnapshot();
+
     // A gameplay-destroyed physical piece must not remain as a world-owned
     // ledger item. Inventory handoff is excluded because its owner has already
     // changed before Destroy() is requested.
-    if (EndPlayReason == EEndPlayReason::Destroyed && StructuralIdentity &&
+    if (!bApplyingSnapshot && EndPlayReason == EEndPlayReason::Destroyed && StructuralIdentity &&
         StructuralIdentity->HasValidIdentity() && GetWorld())
     {
         if (UWorldItemOwnershipSubsystem* Ownership =
