@@ -72,7 +72,7 @@ bool UWorldCommittedEventSubsystem::PublishCommittedEvent(
     // Keep a bounded deduplication window rather than stopping all gameplay
     // notifications forever after MaxRetainedEvents unique facts. Retries within
     // the window are suppressed; retries after eviction are outside this guarantee.
-    if (PublishedEvents.Num() >= MaxRetainedEvents)
+    while (PublishedEvents.Num() >= MaxRetainedEvents)
     {
         FGuid OldestEventId;
         int64 OldestOrder = MAX_int64;
