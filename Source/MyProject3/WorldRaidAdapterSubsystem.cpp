@@ -452,32 +452,10 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     }
 
     TArray<FGuid> DamageTargets;
-    if (DefenseTargetNodeIds.IsEmpty())
-    {
-        FGuid NearestNodeId;
-        FVector NearestLocation;
-        if (MaterializedTargetNodeId.IsValid())
-        {
-            FStructuralNodeRecord Node;
-            if (Graph->GetNode(MaterializedTargetNodeId, Node) && Node.Actor.IsValid())
-                NearestNodeId = MaterializedTargetNodeId;
-        }
-        if (!NearestNodeId.IsValid() &&
-            ResolvePrimaryTargetNode(Raid, NearestNodeId, NearestLocation))
-        {
-            MaterializedTargetNodeId = NearestNodeId;
-        }
-        if (NearestNodeId.IsValid())
-            DamageTargets.Add(NearestNodeId);
-    }
-    else
-    {
-        DamageTargets = DefenseTargetNodeIds;
-        DamageTargets.Sort([](const FGuid& A, const FGuid& B)
-        {
-            return A.ToString() < B.ToString();
-        });
-    }
+    if (!BuildDamageTargetList(Raid, DamageTargets))
+        return false;
+    if (DefenseTargetNodeIds.IsEmpty() && !DamageTargets.IsEmpty())
+        MaterializedTargetNodeId = DamageTargets[0];
 
     // Preflight every threshold-crossing collapse before the first damage
     // mutation. ResolveCollapsedSubtree repeats this guard at commit time.
@@ -551,7 +529,7 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return false;
 
     NextDamageTimeSeconds = Raid.ActiveStartTime +
-        (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
+        (static_cast<double>(PulseIndex) + 1.0) * EffectiveIntervalSeconds;
     return FMath::IsFinite(NextDamageTimeSeconds);
 }
 
