@@ -72,6 +72,25 @@ bool UWorldOperationLedgerSubsystem::CancelUncommittedOperation(
 }
 
 
+bool UWorldOperationLedgerSubsystem::ForgetCompletedOperationWithExternalReceipt(
+    const FGuid& OperationId)
+{
+    if (!OperationId.IsValid())
+        return false;
+
+    const FWorldOperationLedgerEntry* Entry = Entries.Find(OperationId);
+    if (!Entry || Entry->State != EWorldOperationLedgerEntryState::Completed ||
+        Entry->Result.OperationId != OperationId ||
+        Entry->Result.bSucceeded != (Entry->Result.Code == EWorldOperationResultCode::Success))
+    {
+        return false;
+    }
+
+    // The caller is responsible for proving that a separately persisted,
+    // domain-owned idempotency watermark/receipt already represents this result.
+    return Entries.Remove(OperationId) == 1;
+}
+
 bool UWorldOperationLedgerSubsystem::HasPendingOperations() const
 {
     for (const TPair<FGuid, FWorldOperationLedgerEntry>& Pair : Entries)
