@@ -830,6 +830,7 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         int64 OriginalLifecycleRevision = 0;
         bool bOriginalPlaced = false;
         bool bOriginalHeld = false;
+        bool bOriginalCustomLengthScale = false;
     };
     TArray<FWallLog> WallLogs;
     float Base = TNumericLimits<float>::Max();
@@ -859,6 +860,7 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         }
         Entry.bOriginalPlaced = It->IsPlaced();
         Entry.bOriginalHeld = It->IsHeld();
+        Entry.bOriginalCustomLengthScale = It->bHasCustomLengthScale;
         Base = FMath::Min(Base, Shape.Centre.Z - Shape.Radius);
     }
     if (WallLogs.IsEmpty())
@@ -940,6 +942,7 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
                 Identity->LifecycleState = Entry.OriginalLifecycle;
                 Identity->StateRevision = Entry.OriginalLifecycleRevision;
             }
+            Entry.Log->bHasCustomLengthScale = Entry.bOriginalCustomLengthScale;
             Entry.Log->SetHeldState(Entry.bOriginalHeld);
             Entry.Log->SetPlacedState(Entry.bOriginalPlaced);
         }
