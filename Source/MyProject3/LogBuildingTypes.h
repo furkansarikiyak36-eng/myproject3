@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "LogBuildingTypes.generated.h"
 
+class UStaticMesh;
+
 UENUM(BlueprintType)
 enum class ELogPieceType : uint8
 {
@@ -48,6 +50,43 @@ enum class ELogCutAction : uint8
     Trough    UMETA(DisplayName = "Hollow Trough"),
     Kalas     UMETA(DisplayName = "Kalas / Squared Beam"),
     Plank     UMETA(DisplayName = "Plank")
+};
+
+/**
+ * Explicit output mapping for one exact source mesh. Prefer this over the
+ * legacy single-output properties when multiple log lengths are used.
+ * A configured mapping set is authoritative: unmatched source meshes and
+ * duplicate source entries fail closed instead of silently using wrong-length
+ * geometry.
+ */
+USTRUCT(BlueprintType)
+struct FLogProcessingMeshSet
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> SourceMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> SplitHalfMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> QuarterMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> HewnMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> GutterMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> TroughMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> KalasMesh = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Processing|Mesh Set")
+    TObjectPtr<UStaticMesh> PlankMesh = nullptr;
 };
 
 USTRUCT(BlueprintType)
