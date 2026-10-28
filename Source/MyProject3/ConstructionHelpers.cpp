@@ -174,14 +174,38 @@ bool TrimLogToRange(ALogBuildPiece* Log, float FromAlong, float ToAlong)
 ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVector& DropLocation)
 {
     FLogGeometry Geometry;
-    if (!GetLogGeometry(Log, Geometry) || KeepLength >= Geometry.Length() - 10.0f || KeepLength < 20.0f)
+    if (!GetLogGeometry(Log, Geometry) || !FMath::IsFinite(KeepLength) ||
+        !FMath::IsFinite(DropLocation.X) || !FMath::IsFinite(DropLocation.Y) ||
+        !FMath::IsFinite(DropLocation.Z) ||
+        KeepLength >= Geometry.Length() - 10.0f || KeepLength < 20.0f)
         return nullptr;
+
+    const FTransform SourceTransform = Log->GetActorTransform();
+    const float OriginalLength = Geometry.Length();
     const float Split = -Geometry.HalfLength + KeepLength;
-    ALogBuildPiece* Rest = SpawnLogCopy(Log, Log->GetActorTransform());
+    ALogBuildPiece* Rest = SpawnLogCopy(Log, SourceTransform);
     if (!Rest)
         return nullptr;
-    TrimLogToRange(Rest, Split, Geometry.HalfLength);
-    TrimLogToRange(Log, -Geometry.HalfLength, Split);
+
+    // A two-output cut is one logical operation. Never leave a full duplicate or
+    // a partially trimmed source when either geometry transformation fails.
+    const bool bRestTrimmed = TrimLogToRange(Rest, Split, Geometry.HalfLength);
+    const bool bSourceTrimmed = bRestTrimmed && TrimLogToRange(Log, -Geometry.HalfLength, Split);
+    FLogGeometry KeptGeometry;
+    FLogGeometry RestGeometry;
+    const bool bLengthsValid = bSourceTrimmed &&
+        GetLogGeometry(Log, KeptGeometry) && GetLogGeometry(Rest, RestGeometry) &&
+        FMath::Abs(KeptGeometry.Length() - KeepLength) <= FMath::Max(2.0f, KeepLength * 0.02f) &&
+        FMath::Abs((KeptGeometry.Length() + RestGeometry.Length()) - OriginalLength) <=
+            FMath::Max(3.0f, OriginalLength * 0.02f);
+
+    if (!bLengthsValid)
+    {
+        Log->SetActorTransform(SourceTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        Rest->Destroy();
+        return nullptr;
+    }
+
     Rest->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics);
     return Rest;
 }
