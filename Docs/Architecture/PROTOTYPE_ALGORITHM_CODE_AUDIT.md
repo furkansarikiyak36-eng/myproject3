@@ -322,3 +322,11 @@ CanAdvanceSurvivalStep bazı ayarları (DeltaSeconds, hava şiddeti, açlık/sus
 Operation ledger 8192 girişle sınırlı; TryBeginOperation bu sınıra ulaşıldığında yeni giriş açmıyor. Mevcut API'de tamamlanmış kayıtları arşivleme veya güvenli biçimde temizleme yolu görünmüyor. Item ownership ledger da varsayılan 16384 item ile sınırlı; tüketilmiş öğeler OwnerKind=Consumed durumuyla kayıtlı kalıyor. Transfer/split receipt'leri için retention/compaction politikası da açık değil. Bu, kısa prototipte görünmeyip uzun süreli sandbox ilerleyişinde kapasite sınırına ulaşma riski oluşturur.
 
 **Gerekli ilke:** aktif item kayıtlarını, tekrar denemeler için korunması gereken receipt'leri ve terminal/arşivlenebilir kayıtları ayır; checkpoint ve belirlenmiş retention penceresi üzerinden güvenli compaction tasarla.
+
+
+### A38 — Save/load taşıma ilişkisini yeniden kurmuyor
+**Dosyalar:** Source/MyProject3/LogCarryComponent.h/.cpp; Source/MyProject3/CarryLoadComponent.h/.cpp; Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp.
+
+HeldPiece/HeldMaterialPiece ve carry owner kimlikleri çalışma anına ait alanlar. Save coordinator item ledger ve fiziksel actor durumlarını kaydediyor ancak oyuncu ile eldeki item arasındaki carry referansını aynı snapshot içinde dışa aktarmıyor. Kayıt sırasında item OwnerKind=Held ise, yükleme sonrasında component referansı ve önceki carry owner kimliği kurulmadığından parça ledger'da Held kalabilir fakat oyuncu artık onu yönetemez.
+
+**Gerekli ilke:** save sırasında held item'ları tutarlı biçimde world'e bırakıp ownership/lifecycle durumunu güncelle veya carrier ID + held item ID + carry modu bilgisini birlikte kaydedip yüklemede yeniden bağla.
