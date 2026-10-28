@@ -544,10 +544,14 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
     }
 
     TMap<FGuid, FWorldItemTransferReceipt> ProposedReceipts;
+    TSet<int64> ReceiptSequences;
+    int64 MaxReceiptSequence = 0;
     for (const FWorldItemTransferReceipt& Receipt : ReceiptSnapshot)
     {
         if (!Receipt.OperationId.IsValid() || !Receipt.ItemId.IsValid() ||
             !ProposedItems.Contains(Receipt.ItemId) || ProposedReceipts.Contains(Receipt.OperationId) ||
+            Receipt.Sequence <= 0 || Receipt.Sequence >= MAX_int64 ||
+            ReceiptSequences.Contains(Receipt.Sequence) ||
             Receipt.ExpectedRevision <= 0 || Receipt.ExpectedRevision >= MAX_int64 ||
             Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
             static_cast<uint8>(Receipt.ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
@@ -589,6 +593,8 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
         if (NormalizedReceipt.ResultRecord.BaseDefinitionId.IsNone())
             NormalizedReceipt.ResultRecord.BaseDefinitionId = NormalizedReceipt.ResultRecord.DefinitionId;
         ProposedReceipts.Add(NormalizedReceipt.OperationId, NormalizedReceipt);
+        ReceiptSequences.Add(NormalizedReceipt.Sequence);
+        MaxReceiptSequence = FMath::Max(MaxReceiptSequence, NormalizedReceipt.Sequence);
     }
 
     TMap<FGuid, FWorldItemSplitReceipt> ProposedSplitReceipts;
@@ -596,6 +602,8 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
     {
         const int32 OutputCount = Receipt.ResultRecords.Num();
         if (!Receipt.OperationId.IsValid() || !Receipt.SourceItemId.IsValid() ||
+            Receipt.Sequence <= 0 || Receipt.Sequence >= MAX_int64 ||
+            ReceiptSequences.Contains(Receipt.Sequence) ||
             Receipt.ExpectedOwner != EWorldItemOwnerKind::World ||
             Receipt.ExpectedRevision <= 0 || Receipt.ExpectedRevision >= MAX_int64 ||
             OutputCount < 2 || Receipt.OutputDefinitionIds.Num() != OutputCount ||
@@ -632,10 +640,13 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
         }
 
         ProposedSplitReceipts.Add(Receipt.OperationId, Receipt);
+        ReceiptSequences.Add(Receipt.Sequence);
+        MaxReceiptSequence = FMath::Max(MaxReceiptSequence, Receipt.Sequence);
     }
 
     Items = MoveTemp(ProposedItems);
     Receipts = MoveTemp(ProposedReceipts);
     SplitReceipts = MoveTemp(ProposedSplitReceipts);
+    NextReceiptSequence = MaxReceiptSequence < MAX_int64 - 1 ? MaxReceiptSequence + 1 : MAX_int64;
     return true;
 }
