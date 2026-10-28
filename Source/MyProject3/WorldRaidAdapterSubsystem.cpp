@@ -3,9 +3,42 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
+#include "GameplayCoreTypes.h"
+#include "RaidPlaceholderPawn.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldOperationLedgerSubsystem.h"
+
+namespace
+{
+bool IsTerminalRaidState(EThreatRaidState State)
+{
+    return State == EThreatRaidState::Repelled ||
+        State == EThreatRaidState::Failed ||
+        State == EThreatRaidState::Cancelled;
+}
+
+FGuid MakeRaidPulseOperationId(const FGuid& RaidId, int64 PulseIndex)
+{
+    const uint64 Index = static_cast<uint64>(PulseIndex);
+    FGuid OperationId(
+        RaidId.A ^ 0xBADA551Du,
+        RaidId.B ^ 0x7A1DCAFEu,
+        RaidId.C ^ static_cast<uint32>(Index),
+        RaidId.D ^ static_cast<uint32>(Index >> 32));
+    if (!OperationId.IsValid())
+        OperationId.D = 1;
+    return OperationId;
+}
+}
+
+UWorldRaidAdapterSubsystem::UWorldRaidAdapterSubsystem()
+{
+    // A primitive-only pawn keeps the demo usable until a project-specific
+    // enemy pawn and AI behavior are authored.
+    RaidPawnClass = ARaidPlaceholderPawn::StaticClass();
+}
 
 UWorldThreatDirectorSubsystem* UWorldRaidAdapterSubsystem::GetThreatDirector() const
 {
@@ -19,64 +52,282 @@ UWorldStructuralGraphSubsystem* UWorldRaidAdapterSubsystem::GetStructuralGraph()
     return World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
 }
 
+bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetTimeSeconds) const
+{
+    UWorld* World = GetWorld();
+    const UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
+    const UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!World || !Threat || !Clock || !Threat->IsDirectorInitialized() ||
+        !Clock->IsClockInitialized() || !FMath::IsFinite(TargetTimeSeconds) ||
+        TargetTimeSeconds < Clock->GetSimulationTimeSeconds() ||
+        !FMath::IsFinite(SpawnHeightOffset) || SpawnHeightOffset < 0.0f ||
+        !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
+        !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
+        !GetStructuralGraph())
+    {
+        return false;
+    }
+
+    FThreatRaidRecord CurrentRaid;
+    const bool bHasRaid = Threat->GetCurrentRaid(CurrentRaid);
+    const bool bRaidWillFinish =
+        bHasRaid && !IsTerminalRaidState(CurrentRaid.State) &&
+        CurrentRaid.State != EThreatRaidState::None &&
+        TargetTimeSeconds >= CurrentRaid.PlannedEndTime;
+    const bool bCanScheduleNext =
+        !bHasRaid || IsTerminalRaidState(CurrentRaid.State) || bRaidWillFinish;
+    const bool bRaidWillStart =
+        bCanScheduleNext && TargetTimeSeconds >= Threat->GetNextRaidTimeSeconds();
+    const bool bRaidNeedsPawn =
+        (bHasRaid && (CurrentRaid.State == EThreatRaidState::Warning ||
+                      CurrentRaid.State == EThreatRaidState::Active) && !bRaidWillFinish) ||
+        bRaidWillStart;
+
+    return !bRaidNeedsPawn || RaidPawnClass != nullptr;
+}
+
+bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
+    const FThreatRaidRecord& Raid, FGuid& OutNodeId, FVector& OutLocation) const
+{
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    if (!Graph)
+        return false;
+
+    TArray<FGuid> Candidates = DefenseTargetNodeIds;
+    if (Candidates.IsEmpty())
+    {
+        TArray<FWorldStructuralNodeSnapshot> Nodes;
+        if (!Graph->ExportSnapshot(Nodes))
+            return false;
+        Candidates.Reserve(Nodes.Num());
+        for (const FWorldStructuralNodeSnapshot& Node : Nodes)
+            Candidates.Add(Node.NodeId);
+    }
+
+    bool bFound = false;
+    double BestDistanceSquared = TNumericLimits<double>::Max();
+    FString BestIdKey;
+    for (const FGuid& CandidateId : Candidates)
+    {
+        FStructuralNodeRecord Node;
+        if (!CandidateId.IsValid() || !Graph->GetNode(CandidateId, Node))
+            continue;
+
+        AActor* Actor = Node.Actor.Get();
+        if (!IsValid(Actor))
+            continue;
+
+        const FVector Location = Actor->GetActorLocation();
+        if (Location.ContainsNaN())
+            continue;
+        const double DistanceSquared = FVector::DistSquared(Location, Raid.TargetLocation);
+        if (!FMath::IsFinite(DistanceSquared))
+            continue;
+
+        const FString CandidateKey = CandidateId.ToString();
+        if (!bFound || DistanceSquared < BestDistanceSquared ||
+            (DistanceSquared == BestDistanceSquared && CandidateKey < BestIdKey))
+        {
+            bFound = true;
+            BestDistanceSquared = DistanceSquared;
+            BestIdKey = CandidateKey;
+            OutNodeId = CandidateId;
+            OutLocation = Location;
+        }
+    }
+    return bFound;
+}
+
 bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
 {
     UWorld* World = GetWorld();
     UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
-    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
-    if (!World || !Threat || !Clock || !Threat->IsDirectorInitialized() ||
-        !Clock->IsClockInitialized() || !FMath::IsFinite(SpawnHeightOffset) ||
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    UWorldOperationLedgerSubsystem* OperationLedger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
+    if (!World || !Threat || !Clock || !Graph || !OperationLedger ||
+        !Threat->IsDirectorInitialized() || !Clock->IsClockInitialized() ||
+        !FMath::IsFinite(SpawnHeightOffset) || SpawnHeightOffset < 0.0f ||
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
         !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0)
+    {
         return false;
+    }
 
     FThreatRaidRecord Raid;
-    if (!Threat->GetCurrentRaid(Raid) ||
-        Raid.State == EThreatRaidState::Repelled ||
-        Raid.State == EThreatRaidState::Failed ||
-        Raid.State == EThreatRaidState::Cancelled)
+    if (!Threat->GetCurrentRaid(Raid) || IsTerminalRaidState(Raid.State))
     {
-        if (ActiveRaidPawn.IsValid()) ActiveRaidPawn->Destroy();
+        if (ActiveRaidPawn.IsValid() && !ActiveRaidPawn->Destroy())
+            return false;
         ActiveRaidPawn.Reset();
         MaterializedRaidId.Invalidate();
+        MaterializedTargetNodeId.Invalidate();
         NextDamageTimeSeconds = 0.0;
         return true;
     }
 
-    if (Raid.State == EThreatRaidState::Warning &&
-        (!MaterializedRaidId.IsValid() || MaterializedRaidId != Raid.RaidId))
+    const bool bSameRaid = MaterializedRaidId.IsValid() &&
+        MaterializedRaidId == Raid.RaidId;
+    if ((Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active) &&
+        (!bSameRaid || !ActiveRaidPawn.IsValid()))
     {
-        if (!RaidPawnClass) return false;
-        const FVector SpawnLocation = Raid.TargetLocation + FVector(0.0f, 0.0f, SpawnHeightOffset);
+        if (!RaidPawnClass)
+            return false;
+
+        FVector BaseLocation = Raid.TargetLocation;
+        FGuid TargetNodeId;
+        FVector TargetLocation;
+        if (ResolvePrimaryTargetNode(Raid, TargetNodeId, TargetLocation))
+        {
+            BaseLocation = TargetLocation;
+            MaterializedTargetNodeId = TargetNodeId;
+        }
+        else
+        {
+            MaterializedTargetNodeId.Invalidate();
+        }
+
+        const FVector SpawnLocation = BaseLocation + FVector(0.0f, 0.0f, SpawnHeightOffset);
         FActorSpawnParameters Params;
-        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-        APawn* Spawned = World->SpawnActor<APawn>(RaidPawnClass, SpawnLocation, FRotator::ZeroRotator, Params);
-        if (!Spawned) return false;
+        Params.SpawnCollisionHandlingOverride =
+            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+        APawn* Spawned = World->SpawnActor<APawn>(
+            RaidPawnClass, SpawnLocation, FRotator::ZeroRotator, Params);
+        if (!Spawned)
+            return false;
+
         Spawned->SpawnDefaultController();
         ActiveRaidPawn = Spawned;
         MaterializedRaidId = Raid.RaidId;
-        NextDamageTimeSeconds = Raid.ActiveStartTime;
-    }
-
-    if (Raid.State != EThreatRaidState::Active || Clock->GetSimulationTimeSeconds() < NextDamageTimeSeconds)
-        return true;
-
-    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
-    if (!Graph) return false;
-    for (const FGuid& NodeId : DefenseTargetNodeIds)
-    {
-        FStructuralNodeRecord Node;
-        if (!Graph->GetNode(NodeId, Node)) continue;
-        bool bThresholdExceeded = false;
-        if (!Graph->ApplyDamage(NodeId, DamagePerPulse, bThresholdExceeded)) continue;
-        if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
+        if (!bSameRaid || !FMath::IsFinite(NextDamageTimeSeconds) ||
+            NextDamageTimeSeconds <= 0.0)
         {
-            // Damage remains authoritative; the structure stays in the graph if
-            // a safe leaf-first removal plan cannot be executed.
-            return false;
+            NextDamageTimeSeconds = Raid.ActiveStartTime;
         }
     }
-    NextDamageTimeSeconds = Clock->GetSimulationTimeSeconds() + AttackIntervalSeconds;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (Raid.State != EThreatRaidState::Active || Now < Raid.ActiveStartTime)
+        return true;
+
+    const double Elapsed = Now - Raid.ActiveStartTime;
+    const double PulseIndexAsDouble = FMath::FloorToDouble(Elapsed / AttackIntervalSeconds);
+    if (!FMath::IsFinite(Elapsed) || Elapsed < 0.0 ||
+        !FMath::IsFinite(PulseIndexAsDouble) || PulseIndexAsDouble < 0.0 ||
+        PulseIndexAsDouble >= static_cast<double>(MAX_int64 - 1))
+    {
+        return false;
+    }
+
+    // Pulse identity is a pure function of the raid and its scheduled pulse
+    // index. The persisted operation ledger prevents a save/load from applying
+    // the same structural damage pulse twice.
+    const int64 PulseIndex = static_cast<int64>(PulseIndexAsDouble);
+    const FGuid PulseOperationId = MakeRaidPulseOperationId(Raid.RaidId, PulseIndex);
+    FWorldOperationResult PreviousResult;
+    if (OperationLedger->TryGetCompletedResult(PulseOperationId, PreviousResult))
+    {
+        if (!PreviousResult.IsSuccess())
+            return false;
+        NextDamageTimeSeconds = Raid.ActiveStartTime +
+            (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
+        return FMath::IsFinite(NextDamageTimeSeconds);
+    }
+
+    if (!OperationLedger->TryBeginOperation(PulseOperationId))
+    {
+        // An existing pending pulse means a previous mutation did not reach a
+        // committed receipt. Stop instead of replaying possibly partial damage.
+        return false;
+    }
+
+    TArray<FGuid> DamageTargets;
+    if (DefenseTargetNodeIds.IsEmpty())
+    {
+        FGuid NearestNodeId;
+        FVector NearestLocation;
+        if (MaterializedTargetNodeId.IsValid())
+        {
+            FStructuralNodeRecord Node;
+            if (Graph->GetNode(MaterializedTargetNodeId, Node) && Node.Actor.IsValid())
+                NearestNodeId = MaterializedTargetNodeId;
+        }
+        if (!NearestNodeId.IsValid() &&
+            ResolvePrimaryTargetNode(Raid, NearestNodeId, NearestLocation))
+        {
+            MaterializedTargetNodeId = NearestNodeId;
+        }
+        if (NearestNodeId.IsValid())
+            DamageTargets.Add(NearestNodeId);
+    }
+    else
+    {
+        DamageTargets = DefenseTargetNodeIds;
+        DamageTargets.Sort([](const FGuid& A, const FGuid& B)
+        {
+            return A.ToString() < B.ToString();
+        });
+    }
+
+    // Preflight every threshold-crossing collapse before the first damage
+    // mutation. ResolveCollapsedSubtree repeats this guard at commit time.
+    TSet<FGuid> UniqueTargets;
+    for (const FGuid& NodeId : DamageTargets)
+    {
+        if (!NodeId.IsValid() || UniqueTargets.Contains(NodeId))
+            continue;
+        UniqueTargets.Add(NodeId);
+
+        FStructuralNodeRecord Node;
+        if (!Graph->GetNode(NodeId, Node))
+            continue;
+        if (Node.Damage + DamagePerPulse >= Node.DamageThreshold)
+        {
+            TArray<FGuid> RemovalOrder;
+            if (!Graph->BuildDependentRemovalOrder(NodeId, RemovalOrder))
+                return false;
+            for (const FGuid& RemovalId : RemovalOrder)
+            {
+                FStructuralNodeRecord RemovalNode;
+                if (!Graph->GetNode(RemovalId, RemovalNode) || !RemovalNode.Actor.IsValid())
+                    return false;
+            }
+        }
+    }
+
+    TArray<FGuid> AffectedNodeIds;
+    for (const FGuid& NodeId : DamageTargets)
+    {
+        if (!NodeId.IsValid() || AffectedNodeIds.Contains(NodeId))
+            continue;
+
+        FStructuralNodeRecord Node;
+        if (!Graph->GetNode(NodeId, Node))
+            continue;
+
+        bool bThresholdExceeded = false;
+        if (!Graph->ApplyDamage(NodeId, DamagePerPulse, bThresholdExceeded))
+        {
+            // The operation remains Pending. The coordinator will fail closed
+            // and durable save refuses to serialize this partial transaction.
+            return false;
+        }
+        AffectedNodeIds.Add(NodeId);
+
+        if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
+            return false;
+    }
+
+    const FWorldOperationResult PulseResult = FWorldOperationResult::Success(
+        PulseOperationId, FText::FromString(TEXT("Raid attack pulse committed")), AffectedNodeIds);
+    if (!OperationLedger->CompleteOperation(PulseResult))
+        return false;
+
+    NextDamageTimeSeconds = Raid.ActiveStartTime +
+        (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
     return FMath::IsFinite(NextDamageTimeSeconds);
 }
 
