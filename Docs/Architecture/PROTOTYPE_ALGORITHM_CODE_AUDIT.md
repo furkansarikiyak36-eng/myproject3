@@ -281,3 +281,11 @@ Hayvan hedefleri FMath::RandPointInCircle ve FMath::FRandRange ile global RNG'de
 ProductProgressSeconds yalnızca sonlu ve negatif olmayan değer olarak doğrulanıyor; üst sınırı yok. AdvanceAgricultureStep, her 3600 saniyelik ürün birimi için bir `while` iterasyonu çalıştırıp ProductUnits değerini artırıyor ve ancak MAX_int32 değerine ulaştığında duruyor. Kayıt veya snapshot büyük fakat sonlu bir ilerleme değeri içerirse tek bir simülasyon adımı aşırı sayıda iterasyon yapabilir. CanAdvanceAgricultureStep bu durumu mevcut kontrolleriyle engellemiyor.
 
 **Gerekli ilke:** ürün artışını quotient/remainder aritmetiğiyle hesapla; üretim adedini MAX_int32 - ProductUnits ile sınırla; kayıt/yüklemede ürün ilerlemesi için canonical bir üst sınır uygula.
+
+
+### A34 — Build-plan yuvası için kütük kısaltma sonucu zorunlu tutulmuyor
+**Dosyalar:** Source/MyProject3/LogBuildToolsComponent.cpp (TryFillPlanSlot); Source/MyProject3/ConstructionHelpers.cpp (CutOffRemainder, TrimLogToRange).
+
+TryFillPlanSlot, parça hedef boydan %10'dan fazla uzunsa önce CutOffRemainder çağırıyor; fakat bu çağrı sonuç üretmezse de yerleştirmeye devam ediyor. Böylece hedef boy koşulu garanti edilmiyor. Kısaltma başarılı olduktan sonra CommitHeldLogAt başarısız olursa, önceki kesim ve artan parça üretimi geri alınmıyor. CutOffRemainder içindeki trim dönüş değerleri de kontrol edilmiyor.
+
+**Gerekli ilke:** trim/spawn sonuçları zorunlu kontrol edilmeli; kesim ve yuvaya yerleştirme tek bir işlem olarak ele alınmalı; yerleştirme commit'i başarısızsa önceki geometri ve çıktı aktörleri geri alınmalı.
