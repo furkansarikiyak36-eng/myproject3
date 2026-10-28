@@ -67,6 +67,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="Primitive")
     bool SetHeldState(bool bNewHeld);
 
+    /** Rebuilds transient parent/anchor state from the canonical graph during save restore. */
+    void ResetLocalConnectionStateForGraphRestore();
+    bool RestoreConnectionFromGraph(AStickPrimitivePiece* Parent, FName InParentAnchorId, FName InOwnAnchorId);
+    void RestoreRootStateFromGraph(bool bGroundSupported, bool bStorageOwned);
+
     UFUNCTION(BlueprintCallable, Category="Primitive")
     bool TryCommitGroundPlacement(const FVector& SurfaceLocation, const FRotator& SurfaceRotation);
 
