@@ -324,9 +324,10 @@ Operation ledger 8192 girişle sınırlı; TryBeginOperation bu sınıra ulaşı
 **Gerekli ilke:** aktif item kayıtlarını, tekrar denemeler için korunması gereken receipt'leri ve terminal/arşivlenebilir kayıtları ayır; checkpoint ve belirlenmiş retention penceresi üzerinden güvenli compaction tasarla.
 
 
-### A38 — Save/load taşıma ilişkisini yeniden kurmuyor
-**Dosyalar:** Source/MyProject3/LogCarryComponent.h/.cpp; Source/MyProject3/CarryLoadComponent.h/.cpp; Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp.
+### A38 — Held item kaydı bilerek reddediliyor; taşıyarak kaydetme henüz desteklenmiyor
 
-HeldPiece/HeldMaterialPiece ve carry owner kimlikleri çalışma anına ait alanlar. Save coordinator item ledger ve fiziksel actor durumlarını kaydediyor ancak oyuncu ile eldeki item arasındaki carry referansını aynı snapshot içinde dışa aktarmıyor. Kayıt sırasında item OwnerKind=Held ise, yükleme sonrasında component referansı ve önceki carry owner kimliği kurulmadığından parça ledger'da Held kalabilir fakat oyuncu artık onu yönetemez.
+**Dosyalar:** Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp; Source/MyProject3/LogCarryComponent.h/.cpp; Source/MyProject3/CarryLoadComponent.h/.cpp.
 
-**Gerekli ilke:** save sırasında held item'ları tutarlı biçimde world'e bırakıp ownership/lifecycle durumunu güncelle veya carrier ID + held item ID + carry modu bilgisini birlikte kaydedip yüklemede yeniden bağla.
+Önemli düzeltme: Save coordinator, ownership ledger içinde OwnerKind=Held olan herhangi bir item bulursa kaydı açıkça reddediyor. Dolayısıyla mevcut kodun “Held item kaydedip sahipsiz bırakması” diye bir iddia doğru olmaz; şu an kaydetme işlemi fail-closed davranıyor. Ancak bu, oyuncu elinde kütük/taş/çubuk varken kayıt almanın henüz desteklenmediği anlamına geliyor.
+
+**Gerekli ilke:** Prototip aşamasında “önce nesneyi bırak veya depola” kuralı kabul edilebilir ve güvenlidir. Daha sonra taşıyarak kaydetme desteklenecekse, carrier ID + held item ID + taşıma modu/transform ilişkisi Save/Restore kapsamına eklenmeli.
