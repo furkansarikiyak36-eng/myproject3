@@ -695,7 +695,7 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
                 return false;
             StockUnits += Stock.Value;
         }
-        if (StockUnits > MAX_int32 || StockUnits > Station.StorageCapacityUnits)
+        if (StockUnits > Station.StorageCapacityUnits)
             return false;
 
         int64 ReservedOutputUnits = 0;
@@ -768,7 +768,7 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
                 Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
                 Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
                 ProductionReceiptOperationIds.Contains(Receipt.OperationId) ||
-                ProductionJobIds.Contains(Receipt.JobId))
+                StationJobIds.Contains(Receipt.JobId))
             {
                 return false;
             }
