@@ -9,6 +9,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldObjectIdentitySubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -25,6 +26,7 @@ ALogContainerActor::ALogContainerActor()
     Base = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Base"));
     SetRootComponent(Base);
     Base->SetCollisionProfileName(TEXT("BlockAll"));
+    Identity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
 }
 
 void ALogContainerActor::ConfigureKind(ELogContainerKind NewKind)
@@ -407,8 +409,8 @@ void ALogContainerActor::CollectNearbyLogs()
 void ALogContainerActor::OnConstruction(const FTransform& Transform)
 {
     Super::OnConstruction(Transform);
-    if (!StorageId.IsValid())
-        StorageId = FGuid::NewGuid();
+    if (Identity && Identity->EnsureIdentity())
+        StorageId = Identity->GetInstanceId();
 }
 
 void ALogContainerActor::BeginPlay()
