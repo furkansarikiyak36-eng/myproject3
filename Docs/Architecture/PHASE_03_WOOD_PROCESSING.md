@@ -24,6 +24,8 @@ Connect the existing log-processing owner to the Phase 2 operation-result and co
 - `ULogCarryComponent` remains the input/preview owner.
 - The event subsystem is notification-only. A notification failure does not roll back an already committed processing operation.
 - No inventory consumption, tool durability, physical cutting simulation, new meshes, or persistence implementation is claimed by this phase.
+- A tracked-source caller scan found no inventory/tool durability owner to integrate with. The shared resource-amount type is a data contract, not an inventory implementation.
+- The FBX inbox contains length-named variants, but the current actor has one mesh slot per action and does not select a matching output by source length; the mesh family contract remains open.
 - Existing boolean callers remain source-compatible; the new result-bearing function is an additional API.
 
 ## Acceptance checklist
