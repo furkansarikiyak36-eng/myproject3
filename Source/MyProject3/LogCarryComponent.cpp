@@ -1460,6 +1460,15 @@ void ULogCarryComponent::FinishMaterialPlacement(AActor* Piece)
     if (!IsValid(Piece) || HeldMaterialPiece != Piece)
         return;
 
+    // Anchor placement may move the actor after the pre-committed Held -> World
+    // transfer. Refresh the authoritative world location using a new revision.
+    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+        EWorldItemOwnerKind::World, Piece->GetActorLocation()))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Material placement committed but ledger location sync failed for %s."),
+            *GetNameSafe(Piece));
+    }
+
     Piece->SetActorEnableCollision(true);
     if (UCarryLoadComponent* Load = GetOwner() ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
         Load->UnregisterCarried(Piece);
