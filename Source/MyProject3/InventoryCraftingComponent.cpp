@@ -182,6 +182,12 @@ bool UInventoryCraftingComponent::TryStorePhysicalActor(AActor* WorldActor)
  if (ALogBuildPiece* LogPiece = Cast<ALogBuildPiece>(WorldActor))
  {
   if (!LogPiece->CanBePickedUp()) return false;
+  if (LogPiece->HasCustomLengthScale())
+  {
+   UE_LOG(LogTemp, Warning, TEXT("Inventory rejected scaled log %s because it has no canonical length definition."),
+    *GetNameSafe(LogPiece));
+   return false;
+  }
  }
 
  FWorldOwnedItemRecord Item;
