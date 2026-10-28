@@ -1,5 +1,7 @@
 #include "WorldTerrainStateSubsystem.h"
 
+#include "VoxelTerrainChunkComponent.h"
+
 bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     const FGuid& OperationId, const FIntVector& Cell, int32 DepthLayer,
     ETerrainCellEdit Edit, FName MaterialId, int64 ExpectedRevision,
@@ -82,6 +84,56 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     Receipts.Add(OperationId, Receipt);
     OutState = Updated;
     return true;
+}
+
+
+bool UWorldTerrainStateSubsystem::TryApplyVoxelExcavation(
+    const FGuid& OperationId, UVoxelTerrainChunkComponent* VoxelChunk,
+    FVector LocalCenter, float RadiusCm, float ToolStrength, int64 ExpectedDensityRevision,
+    const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
+    FName MaterialId, FWorldTerrainCellState& OutState)
+{
+    if (!IsValid(VoxelChunk) || !OperationId.IsValid())
+        return false;
+
+    // Capture a rollback point before touching either authority. The voxel
+    // component validates its own revision, bounds, material and structure guard.
+    TArray<float> BeforeDensity;
+    TArray<FVoxelTerrainDigReceipt> BeforeReceipts;
+    int64 BeforeDensityRevision = 0;
+    if (!VoxelChunk->ExportDensitySnapshot(BeforeDensity, BeforeDensityRevision, BeforeReceipts) ||
+        BeforeDensityRevision != ExpectedDensityRevision)
+        return false;
+
+    const int32 CellsPerAxis = VoxelChunk->CellsPerAxis;
+    const float VoxelSizeCm = VoxelChunk->VoxelSizeCm;
+    if (CellsPerAxis < 4 || !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm < 5.0f)
+        return false;
+
+    float RemovedVolume = 0.0f;
+    int64 ResultDensityRevision = 0;
+    if (!VoxelChunk->TryApplyBoundedDig(OperationId, LocalCenter, RadiusCm, ToolStrength,
+        ExpectedDensityRevision, RemovedVolume, ResultDensityRevision))
+        return false;
+
+    FWorldTerrainCellState UpdatedCell;
+    if (TryApplyCellEdit(OperationId, LogicalCell, DepthLayer, ETerrainCellEdit::Excavate,
+        MaterialId, ExpectedCellRevision, UpdatedCell))
+    {
+        OutState = UpdatedCell;
+        return true;
+    }
+
+    // Logical commit rejected (e.g. stale cell revision, duplicate-cell
+    // conflict, depth gate). Restore physical density and receipt state so the
+    // operation is all-or-nothing from the caller's perspective.
+    if (!VoxelChunk->RestoreDensitySnapshot(CellsPerAxis, VoxelSizeCm,
+        BeforeDensityRevision, BeforeDensity, BeforeReceipts))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Terrain transaction rollback failed for operation %s"),
+            *OperationId.ToString());
+    }
+    return false;
 }
 
 bool UWorldTerrainStateSubsystem::TryGetCell(
