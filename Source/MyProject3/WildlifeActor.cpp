@@ -2,6 +2,8 @@
 
 #include "ConstructionHelpers.h"
 #include "PhysicalHealthComponent.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldSimulationClockSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -15,6 +17,7 @@ AWildlifeActor::AWildlifeActor()
     Body->SetCollisionProfileName(TEXT("BlockAll"));
     Body->SetNotifyRigidBodyCollision(true);
     Health = CreateDefaultSubobject<UPhysicalHealthComponent>(TEXT("Health"));
+    Identity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
 }
 
 void AWildlifeActor::ConfigureKind(EWildlifeKind NewKind)
@@ -53,21 +56,71 @@ void AWildlifeActor::BeginPlay()
     Super::BeginPlay();
     if (!Body->GetStaticMesh())
         ConfigureKind(Kind);
-    Home = GetActorLocation();
-    WanderTarget = Home;
-    Health->OnDied.AddUniqueDynamic(this, &AWildlifeActor::HandleDied);
+    if (Identity)
+        Identity->EnsureIdentity();
+    if (!bWanderStateInitialized)
+    {
+        Home = GetActorLocation();
+        WanderTarget = Home;
+        TimeToNewTarget = 0.0f;
+        MovementAccumulatorSeconds = 0.0;
+        bWanderStateInitialized = true;
+    }
+    if (Health)
+        Health->OnDied.AddUniqueDynamic(this, &AWildlifeActor::HandleDied);
+}
+
+
+int32 AWildlifeActor::GetWanderSeed() const
+{
+    UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (Clock && Identity && Identity->HasValidIdentity())
+        return Clock->GetDeterministicSeedForOperation(Identity->GetInstanceId());
+
+    // Deterministic fallback for actors initialized before the world clock.
+    const FGuid Id = Identity ? Identity->GetInstanceId() : FGuid();
+    const uint32 Mixed = Id.A ^ (Id.B * 0x9e3779b9u) ^ (Id.C * 0x85ebca6bu) ^ Id.D;
+    return static_cast<int32>(Mixed);
 }
 
 void AWildlifeActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if (Health->IsDead() || Health->IsStaggered() || MoveSpeed <= 0.0f || !GetWorld())
+    if (!Health || Health->IsDead() || Health->IsStaggered() ||
+        !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0f ||
+        !FMath::IsFinite(MoveSpeed) || MoveSpeed <= 0.0f || !GetWorld())
+        return;
+
+    // Accumulate a fixed 0.1-second movement step instead of integrating different
+    // frame deltas directly. Backlog is preserved rather than silently discarded.
+    constexpr double FixedMovementStep = 0.1;
+    constexpr int32 MaxStepsPerFrame = 10;
+    MovementAccumulatorSeconds += static_cast<double>(DeltaSeconds);
+    if (!FMath::IsFinite(MovementAccumulatorSeconds))
+        return;
+
+    int32 Steps = 0;
+    while (MovementAccumulatorSeconds >= FixedMovementStep && Steps < MaxStepsPerFrame)
+    {
+        SimulateMovementStep(static_cast<float>(FixedMovementStep));
+        MovementAccumulatorSeconds -= FixedMovementStep;
+        ++Steps;
+    }
+}
+
+void AWildlifeActor::SimulateMovementStep(float StepSeconds)
+{
+    if (!GetWorld() || !Identity || !Identity->HasValidIdentity() ||
+        !FMath::IsFinite(StepSeconds) || StepSeconds <= 0.0f ||
+        !FMath::IsFinite(WanderRadius) || WanderRadius < 0.0f ||
+        !FMath::IsFinite(MoveSpeed) || MoveSpeed <= 0.0f)
         return;
 
     FVector Target = WanderTarget;
     if (Kind == EWildlifeKind::Enemy)
     {
-        // Enemies walk toward a nearby player and stop at arm's length.
+        // Enemy chase remains target-driven, but its motion advances in fixed steps.
         if (const APawn* Player = MyProject3Construction::FindPlayerPawn(GetWorld()))
         {
             if (FVector::Dist(Player->GetActorLocation(), GetActorLocation()) < 2500.0f)
@@ -76,20 +129,31 @@ void AWildlifeActor::Tick(float DeltaSeconds)
     }
     else
     {
-        TimeToNewTarget -= DeltaSeconds;
+        TimeToNewTarget -= StepSeconds;
         if (TimeToNewTarget <= 0.0f || FVector::Dist2D(GetActorLocation(), WanderTarget) < 40.0f)
         {
-            const FVector2D Offset = FMath::RandPointInCircle(WanderRadius);
-            WanderTarget = Home + FVector(Offset.X, Offset.Y, 0.0f);
-            TimeToNewTarget = FMath::FRandRange(2.0f, 5.0f);
+            if (WanderSequence == MAX_int64)
+                return;
+
+            // A per-instance stream avoids FMath's global RNG and call-order coupling.
+            const uint32 Sequence = static_cast<uint32>(WanderSequence);
+            FRandomStream Stream(GetWanderSeed() ^ static_cast<int32>(Sequence * 196613u));
+            const float Angle = Stream.FRandRange(0.0f, 2.0f * PI);
+            const float Radius = FMath::Sqrt(Stream.FRand()) * WanderRadius;
+            WanderTarget = Home + FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, 0.0f);
+            TimeToNewTarget = Stream.FRandRange(2.0f, 5.0f);
+            ++WanderSequence;
         }
+        Target = WanderTarget;
     }
 
     FVector ToTarget = Target - GetActorLocation();
     ToTarget.Z = 0.0f;
     if (ToTarget.Size() < 150.0f)
         return;
-    FVector Next = GetActorLocation() + ToTarget.GetSafeNormal() * MoveSpeed * DeltaSeconds;
+    FVector Next = GetActorLocation() + ToTarget.GetSafeNormal() * MoveSpeed * StepSeconds;
+    if (!FMath::IsFinite(Next.X) || !FMath::IsFinite(Next.Y) || !FMath::IsFinite(Next.Z))
+        return;
 
     // Follow the ground under the body.
     FVector Origin, Extent;
