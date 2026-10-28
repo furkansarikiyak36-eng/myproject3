@@ -42,12 +42,13 @@ Yeni harita betiği ışık, PlayerStart ve VerticalSliceBWorldActor oluşturuyo
 
 **Gerekli ilke:** tek ve açık simulation driver; world time, weather, survival, agriculture, production, cargo ve raid adımları aynı fixed-step sırasından çağrılmalı. Dikey kesit actor'ları kendi saatini oluşturmamalı.
 
-### A03 — Save/load kısmi hata durumunda canlı dünyayı geri almıyor
-**Dosya:** Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp — ApplySnapshot; ApplyPhysicalActorSnapshots.
+### A03 — Save/load sıralı mutasyon ve telafi yolu
 
-ApplySnapshot clock, item ledger, operation ledger, aktör transform/durumları, yapı grafiği, inventory, terrain, agriculture, survival, production, storage, cargo ve threat state'ini sırayla uygular. Daha sonraki bir RestoreSnapshot başarısız olursa önceki alt sistemlerdeki değişiklikleri geri almak için genel transaction yok. Fiziksel aktörler de sırayla değiştirildiği için ortada hata yarı yüklenmiş dünya bırakabilir.
+**Dosya:** Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp — ApplySnapshot; LoadWorldState; ApplyPhysicalActorSnapshots.
 
-**Gerekli ilke:** önce yan etkisiz tam doğrulama, sonra staged commit veya önceki durumun tam rollback'i. Başarısız load aktif dünyayı kısmen değiştirmemeli.
+ApplySnapshot alt sistemleri sırayla uygular; tek başına başarısızlıktan önce yapılan değişiklikleri geri almaz. Önemli ayrıntı: LoadWorldState, yüklemeden önce mevcut durumu yakalar ve aday yükleme başarısız olursa bu durumu ApplySnapshot ile yeniden uygulamayı dener. Yani bir telafi yolu var; ancak bu ikinci restore da başarısız olabilir ve böyle bir durumda coordinator simülasyonu faulted olarak işaretler. Fiziksel aktör değişiklikleri de sırayla uygulanır.
+
+**Gerekli ilke:** mümkün olan tüm domain doğrulamalarını mutasyon başlamadan önce yap; yüklemeyi aşamalı commit eden bir sözleşme tanımla. Mevcut telafi yolunu koru, fakat onu tek başına atomik işlem garantisi olarak değerlendirme.
 
 ### A04 — Dinamik fiziksel aktörler kayıt yüklemede yeniden oluşturulamıyor
 **Dosya:** Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp — ValidatePhysicalActorSnapshotSet; ApplyPhysicalActorSnapshots.
