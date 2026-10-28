@@ -1,12 +1,125 @@
 #include "WorldItemOwnershipSubsystem.h"
 
+bool UWorldItemOwnershipSubsystem::EnsureItemCapacity(int32 AdditionalItems)
+{
+    if (MaxTrackedItems <= 0 || AdditionalItems < 0 ||
+        AdditionalItems > MaxTrackedItems)
+        return false;
+    if (Items.Num() <= MaxTrackedItems - AdditionalItems)
+        return true;
+
+    // Consumed/transformed entries are tombstones, not active resources. Prune
+    // them deterministically only when new active ownership records need space.
+    TArray<FGuid> RetiredIds;
+    for (const TPair<FGuid, FWorldOwnedItemRecord>& Pair : Items)
+    {
+        if (Pair.Value.OwnerKind == EWorldItemOwnerKind::Consumed ||
+            Pair.Value.OwnerKind == EWorldItemOwnerKind::Transformed)
+            RetiredIds.Add(Pair.Key);
+    }
+    RetiredIds.Sort([](const FGuid& A, const FGuid& B)
+    {
+        return A.ToString() < B.ToString();
+    });
+
+    const int32 Needed = Items.Num() + AdditionalItems - MaxTrackedItems;
+    if (RetiredIds.Num() < Needed)
+        return false;
+
+    for (int32 Index = 0; Index < Needed; ++Index)
+    {
+        const FGuid RetiredId = RetiredIds[Index];
+        Items.Remove(RetiredId);
+
+        // A receipt referring to a retired item cannot return a live item result.
+        // Evict the whole split receipt if any one of its outputs was retired.
+        for (auto It = Receipts.CreateIterator(); It; ++It)
+            if (It.Value().ItemId == RetiredId)
+                It.RemoveCurrent();
+
+        for (auto It = SplitReceipts.CreateIterator(); It; ++It)
+        {
+            const FWorldItemSplitReceipt& Receipt = It.Value();
+            const bool bReferencesRetired =
+                Receipt.SourceItemId == RetiredId ||
+                Receipt.ResultRecords.ContainsByPredicate([&RetiredId](const FWorldOwnedItemRecord& Output)
+                {
+                    return Output.ItemId == RetiredId;
+                });
+            if (bReferencesRetired)
+                It.RemoveCurrent();
+        }
+    }
+
+    return Items.Num() <= MaxTrackedItems - AdditionalItems;
+}
+
+bool UWorldItemOwnershipSubsystem::EnsureReceiptCapacity(bool bForSplitReceipt)
+{
+    const int32 Limit = bForSplitReceipt ? MaxSplitReceipts : MaxTransferReceipts;
+    if (Limit <= 0 || Limit > (bForSplitReceipt ? 250000 : 1000000) ||
+        NextReceiptSequence <= 0 || NextReceiptSequence == MAX_int64)
+        return false;
+
+    auto RemoveOldestTransfer = [this]() -> bool
+    {
+        FGuid OldestId;
+        int64 OldestSequence = MAX_int64;
+        bool bFound = false;
+        for (const TPair<FGuid, FWorldItemTransferReceipt>& Pair : Receipts)
+        {
+            if (!bFound || Pair.Value.Sequence < OldestSequence ||
+                (Pair.Value.Sequence == OldestSequence &&
+                 Pair.Key.ToString() < OldestId.ToString()))
+            {
+                OldestId = Pair.Key;
+                OldestSequence = Pair.Value.Sequence;
+                bFound = true;
+            }
+        }
+        return bFound && Receipts.Remove(OldestId) > 0;
+    };
+
+    auto RemoveOldestSplit = [this]() -> bool
+    {
+        FGuid OldestId;
+        int64 OldestSequence = MAX_int64;
+        bool bFound = false;
+        for (const TPair<FGuid, FWorldItemSplitReceipt>& Pair : SplitReceipts)
+        {
+            if (!bFound || Pair.Value.Sequence < OldestSequence ||
+                (Pair.Value.Sequence == OldestSequence &&
+                 Pair.Key.ToString() < OldestId.ToString()))
+            {
+                OldestId = Pair.Key;
+                OldestSequence = Pair.Value.Sequence;
+                bFound = true;
+            }
+        }
+        return bFound && SplitReceipts.Remove(OldestId) > 0;
+    };
+
+    if (bForSplitReceipt)
+    {
+        while (SplitReceipts.Num() >= Limit)
+            if (!RemoveOldestSplit())
+                return false;
+    }
+    else
+    {
+        while (Receipts.Num() >= Limit)
+            if (!RemoveOldestTransfer())
+                return false;
+    }
+    return true;
+}
+
 bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Record)
 {
     if (!Record.ItemId.IsValid() || Record.DefinitionId.IsNone() ||
         Record.Quantity <= 0 || Record.Revision <= 0 ||
         static_cast<uint8>(Record.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-        Items.Contains(Record.ItemId) || MaxTrackedItems <= 0 ||
-        Items.Num() >= MaxTrackedItems ||
+        Items.Contains(Record.ItemId) ||
         !FMath::IsFinite(Record.WorldLocation.X) ||
         !FMath::IsFinite(Record.WorldLocation.Y) ||
         !FMath::IsFinite(Record.WorldLocation.Z))
@@ -22,6 +135,8 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
     {
         return false;
     }
+    if (!EnsureItemCapacity(1))
+        return false;
 
     FWorldOwnedItemRecord Normalized = Record;
     if (Normalized.BaseDefinitionId.IsNone())
