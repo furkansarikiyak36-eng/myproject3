@@ -802,7 +802,6 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
         bool bHeld = false;
     };
     TArray<FPostBefore> BeforePosts;
-    TSet<FGuid> RemovedIds;
     for (ALogBuildPiece* Candidate : Removed)
     {
         UWorldObjectIdentityComponent* Identity =
@@ -828,7 +827,6 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
         State.bCustomLength = Candidate->bHasCustomLengthScale;
         State.bPlaced = Candidate->IsPlaced();
         State.bHeld = Candidate->IsHeld();
-        RemovedIds.Add(Structural->GetStructuralNodeId());
     }
 
     // CanSafelyRemove() preflights every post. DismantlePiece() rechecks after
