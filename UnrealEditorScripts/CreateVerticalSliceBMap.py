@@ -1,4 +1,4 @@
-"""Create /Game/Maps/VerticalSlice_B without modifying any existing map.
+"""Create /Game/DemoAssets/Maps/VerticalSlice_B without modifying any existing map.
 
 Run from Unreal Editor's Python console after compiling MyProject3Editor.
 The script refuses to overwrite an existing VerticalSlice_B.umap.
