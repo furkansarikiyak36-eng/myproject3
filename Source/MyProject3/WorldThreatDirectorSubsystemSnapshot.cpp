@@ -5,7 +5,7 @@
 FWorldThreatDirectorSnapshot UWorldThreatDirectorSubsystem::ExportSnapshot() const
 {
     FWorldThreatDirectorSnapshot Snapshot;
-    Snapshot.SchemaVersion = 1;
+    Snapshot.SchemaVersion = 2;
     Snapshot.CurrentRaid = CurrentRaid;
     Snapshot.RaidHistory = RaidHistory;
     Snapshot.NextRaidTimeSeconds = NextRaidTimeSeconds;
@@ -17,7 +17,7 @@ FWorldThreatDirectorSnapshot UWorldThreatDirectorSubsystem::ExportSnapshot() con
 bool UWorldThreatDirectorSubsystem::RestoreSnapshot(const FWorldThreatDirectorSnapshot& Snapshot)
 {
     const UWorldSimulationClockSubsystem* Clock = GetClock();
-    if (!Clock || !Clock->IsClockInitialized() || Snapshot.SchemaVersion != 1 ||
+    if (!Clock || !Clock->IsClockInitialized() || Snapshot.SchemaVersion != 2 ||
         !FMath::IsFinite(Snapshot.NextRaidTimeSeconds) || Snapshot.NextRaidTimeSeconds < 0.0 ||
         Snapshot.RaidSerial < 0 || Snapshot.RaidHistory.Num() > MaxHistoryEntries ||
         Snapshot.RaidHistory.Num() < 0)
@@ -25,6 +25,9 @@ bool UWorldThreatDirectorSubsystem::RestoreSnapshot(const FWorldThreatDirectorSn
 
     auto IsValidRaid = [](const FThreatRaidRecord& Raid, bool bMayBeEmpty)
     {
+        if (static_cast<uint8>(Raid.State) > static_cast<uint8>(EThreatRaidState::Cancelled) ||
+            Raid.LastCommittedAttackPulseIndex < -1)
+            return false;
         if (Raid.State == EThreatRaidState::None && bMayBeEmpty) return true;
         return Raid.RaidId.IsValid() && Raid.Serial >= 0 && Raid.Revision >= 0 &&
             FMath::IsFinite(Raid.WarningStartTime) && Raid.WarningStartTime >= 0.0 &&
