@@ -305,3 +305,11 @@ Terrain snapshot yalnızca hücre durumlarını dışa aktarıyor. RestoreSnapsh
 TrimLogToRange kütük uzunluğunu actor scale'i üzerinden değiştiriyor; fakat bu işlem ilgili item'ın canonical DefinitionId/BaseDefinitionId/LengthFraction bilgisini ve ownership kaydının mesh metadata'sını aynı geometriyle eşleştirmiyor. Sonradan envantere girip world actor olarak yeniden üretildiğinde InventoryCraftingComponent, kayıtlı definition/mesh variant'tan hazırlanmış mesh'i tekrar seçiyor; kesilerek ölçeklenmiş gerçek uzunluk kaybolabilir veya bir daha farklı boyda ortaya çıkabilir.
 
 **Gerekli ilke:** ya kesilmiş uzunluğu canonical tanımlı bir geometri varyantına dönüştür ve ledger'ı atomik güncelle, ya da “custom dimension” alanını kalıcı veri olarak saklayıp yeniden üretimde actor scale/geometriyi aynen geri kur. Sadece transform ölçeği fiziksel parçanın kalıcı kimliği olamaz.
+
+
+### A36 — Hayatta kalma adımı kullandığı tüm global katsayıları doğrulamıyor
+**Dosya:** Source/MyProject3/WorldSurvivalSubsystem.cpp — CanAdvanceSurvivalStep; AdvanceSurvivalStep; ComputeFeltTemperature.
+
+CanAdvanceSurvivalStep bazı ayarları (DeltaSeconds, hava şiddeti, açlık/susuzluk/yorgunluk katsayıları, soğuk hasarı, kalori kapasitesi ve ambient sıcaklık) doğruluyor; fakat hesapta doğrudan kullanılan ClothingWarmthCelsius, ShelterWarmthCelsius, WetnessPenaltyCelsius, ComfortTemperatureCelsius, HypothermiaThresholdCelsius, CoreCoolingPerDegreeHour, CoreRecoveryPerHour, ShiverKcalPerDegreeHour ve CarryKcalPerKgHour gibi diğer ayarların tümünü doğrulamıyor. Bu değerlerden biri finite değilse preflight başarılı görünürken felt temperature/core temperature/kalori hesabına NaN veya infinity girebilir.
+
+**Gerekli ilke:** her state-changing step'te kullanılan tüm global parametreler için tam finite/range sözleşmesi oluştur; doğrulanmayan konfigürasyonla hiçbir profil mutasyonu başlatma.
