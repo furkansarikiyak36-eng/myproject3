@@ -116,6 +116,9 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
 
             FWorldPhysicalComponentSnapshot& ComponentState = ActorState.Components.AddDefaulted_GetRef();
             ComponentState.ComponentName = Primitive->GetFName();
+            ComponentState.ActorRelativeTransform = Primitive == Actor->GetRootComponent()
+                ? FTransform::Identity
+                : Primitive->GetRelativeTransform();
             ComponentState.ComponentClass = FSoftClassPath(Primitive->GetClass());
             ComponentState.bIsPrimitive = true;
             ComponentState.bSimulatePhysics = Primitive->IsSimulatingPhysics();
@@ -863,6 +866,7 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
             if (Component.ComponentName.IsNone() ||
                 SeenComponentNames.Contains(Component.ComponentName) ||
                 !Component.bIsPrimitive || Component.ComponentClass.IsNull() ||
+                !Component.ActorRelativeTransform.IsValid() ||
                 static_cast<uint8>(Component.CollisionEnabled.GetValue()) >
                     static_cast<uint8>(ECollisionEnabled::QueryAndPhysics) ||
                 Component.LinearVelocity.ContainsNaN() ||
@@ -1110,6 +1114,12 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
             }
             if (!Primitive || FSoftClassPath(Primitive->GetClass()) != ComponentState.ComponentClass)
                 return false;
+
+            if (Primitive != Actor->GetRootComponent())
+            {
+                Primitive->SetRelativeTransform(
+                    ComponentState.ActorRelativeTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            }
 
             if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Primitive))
             {
@@ -1426,6 +1436,50 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
             Raid.AttackIntervalSeconds = 30.0;
         }
         Candidate->SchemaVersion = 16;
+    }
+    if (Candidate->SchemaVersion == 16)
+    {
+        // Schema v17 persists component-local transforms. Older schemas never
+        // captured them, so migrate deterministically from the saved actor
+        // class default. Runtime-only custom child offsets/scales from a legacy
+        // save cannot be reconstructed because those values were not recorded.
+        for (FWorldPhysicalActorSnapshot& ActorState : Candidate->PhysicalActors)
+        {
+            UClass* ActorClass = ActorState.ActorClass.TryLoadClass<AActor>();
+            AActor* ClassDefault = ActorClass
+                ? Cast<AActor>(ActorClass->GetDefaultObject())
+                : nullptr;
+            if (!IsValid(ClassDefault))
+                return false;
+
+            TArray<UPrimitiveComponent*> DefaultPrimitives;
+            ClassDefault->GetComponents<UPrimitiveComponent>(DefaultPrimitives);
+            if (DefaultPrimitives.Num() != ActorState.Components.Num())
+                return false;
+
+            for (FWorldPhysicalComponentSnapshot& ComponentState : ActorState.Components)
+            {
+                UPrimitiveComponent* DefaultPrimitive = nullptr;
+                for (UPrimitiveComponent* CandidatePrimitive : DefaultPrimitives)
+                {
+                    if (IsValid(CandidatePrimitive) &&
+                        CandidatePrimitive->GetFName() == ComponentState.ComponentName)
+                    {
+                        DefaultPrimitive = CandidatePrimitive;
+                        break;
+                    }
+                }
+                if (!DefaultPrimitive ||
+                    FSoftClassPath(DefaultPrimitive->GetClass()) != ComponentState.ComponentClass)
+                    return false;
+
+                ComponentState.ActorRelativeTransform =
+                    DefaultPrimitive == ClassDefault->GetRootComponent()
+                    ? FTransform::Identity
+                    : DefaultPrimitive->GetRelativeTransform();
+            }
+        }
+        Candidate->SchemaVersion = 17;
     }
 
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
