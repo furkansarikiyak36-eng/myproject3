@@ -2463,19 +2463,31 @@ bool ULogCarryComponent::ComputeStackPlacement(ALogBuildPiece* Held, ALogBuildPi
     }
     OutTransform = MakeLogTransform(Held, Centre, Rotation);
 
-    // Do not stack into a log that is already there.
+    // Test the full oriented mesh bounds, not a small sphere at the centre:
+    // a long log can intersect an adjacent piece even when its centre is clear.
+    const UStaticMeshComponent* HeldMesh = Held->GetLogMesh();
+    if (!HeldMesh || !HeldMesh->GetStaticMesh())
+        return false;
+    const FVector BoxExtent =
+        HeldMesh->GetStaticMesh()->GetBounds().BoxExtent * HeldMesh->GetComponentScale().GetAbs();
+    if (!FMath::IsFinite(BoxExtent.X) || !FMath::IsFinite(BoxExtent.Y) ||
+        !FMath::IsFinite(BoxExtent.Z) || BoxExtent.X <= 0.0f ||
+        BoxExtent.Y <= 0.0f || BoxExtent.Z <= 0.0f)
+        return false;
+
     TArray<FOverlapResult> Overlaps;
     FCollisionQueryParams Params(SCENE_QUERY_STAT(LogStackSlot), false, Held);
     Params.AddIgnoredActor(Target);
     if (GetOwner())
         Params.AddIgnoredActor(GetOwner());
-    GetWorld()->OverlapMultiByObjectType(Overlaps, Centre, FQuat::Identity,
+    GetWorld()->OverlapMultiByObjectType(Overlaps, Centre, OutTransform.GetRotation(),
         FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects),
-        FCollisionShape::MakeSphere(Upper.Radius * 0.5f), Params);
+        FCollisionShape::MakeBox(BoxExtent), Params);
     for (const FOverlapResult& Overlap : Overlaps)
     {
-        const ALogBuildPiece* Other = Cast<ALogBuildPiece>(Overlap.GetActor());
-        if (Other && Other->IsPlaced())
+        const IStructuralPieceInterface* Other =
+            Cast<IStructuralPieceInterface>(Overlap.GetActor());
+        if (Other && Other->IsStructurallyPlaced())
             return false;
     }
     return true;
