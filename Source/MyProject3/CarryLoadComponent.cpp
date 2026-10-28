@@ -1,4 +1,5 @@
 #include "CarryLoadComponent.h"
+#include "ConstructionHelpers.h"
 
 #include "LogBuildPiece.h"
 #include "StickPrimitivePiece.h"
@@ -71,16 +72,11 @@ const FCarrySlotRule* UCarryLoadComponent::FindRule(EStructuralNodeKind Kind) co
 float UCarryLoadComponent::EstimateMassKg(const AActor* Piece) const
 {
     const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
-    const UStaticMeshComponent* Mesh = GetPieceMesh(Piece);
     const FCarrySlotRule* Rule = Structural ? FindRule(Structural->GetStructuralKind()) : nullptr;
-    if (!Rule || !Mesh || !Mesh->GetStaticMesh())
+    if (!Rule)
         return 0.0f;
-
-    // Unscaled mesh bounds times actor scale; centimetres to cubic metres.
-    const FVector Size = Mesh->GetStaticMesh()->GetBounds().BoxExtent * 2.0 *
-        Piece->GetActorScale3D().GetAbs();
-    const double VolumeCubicMetres = (Size.X * Size.Y * Size.Z) / 1.0e6;
-    return static_cast<float>(VolumeCubicMetres * BoundsFillFactor * Rule->DensityKgPerCubicMetre);
+    return MyProject3Construction::EstimateMassKg(
+        Piece, BoundsFillFactor, Rule->DensityKgPerCubicMetre);
 }
 
 bool UCarryLoadComponent::CanCarryMore(AActor* Piece, FString& OutReason) const
