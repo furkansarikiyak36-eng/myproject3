@@ -40,6 +40,14 @@ float UVoxelTerrainChunkComponent::GetPoint(int32 X, int32 Y, int32 Z) const
 
 void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
 {
+    if (CellsPerAxis < 4 || CellsPerAxis > 128 ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f ||
+        !FMath::IsFinite(GroundHeightCm))
+    {
+        Density.Reset();
+        ClearAllMeshSections();
+        return;
+    }
     const int32 N = PointsPerAxis();
     Density.SetNumUninitialized(N * N * N);
     for (int32 Z = 0; Z < N; ++Z)
@@ -54,6 +62,11 @@ void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
 
 float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) const
 {
+    // Invalid sample coordinates must not poison interpolation with NaN/Inf.
+    if (!FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f ||
+        !FMath::IsFinite(LocalPosition.X) || !FMath::IsFinite(LocalPosition.Y) ||
+        !FMath::IsFinite(LocalPosition.Z))
+        return 1.0f;
     // Trilinear interpolation keeps the extracted surface smooth between samples.
     const FVector Grid = LocalPosition / VoxelSizeCm;
     const int32 X0 = FMath::FloorToInt(Grid.X);
@@ -71,7 +84,11 @@ float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) c
 
 float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float RadiusCm, bool bAdd)
 {
-    if (Density.IsEmpty() || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f || LocalCenter.ContainsNaN())
+    if (Density.IsEmpty() || CellsPerAxis < 4 || CellsPerAxis > 128 ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f ||
+        !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f ||
+        !FMath::IsFinite(LocalCenter.X) || !FMath::IsFinite(LocalCenter.Y) ||
+        !FMath::IsFinite(LocalCenter.Z))
         return 0.0f;
 
     const float VolumeBefore = GetSolidVolumeCubicMetres();
@@ -97,11 +114,39 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
 
 float UVoxelTerrainChunkComponent::GetSolidVolumeCubicMetres() const
 {
-    int32 SolidPoints = 0;
-    for (const float Value : Density)
-        SolidPoints += Value < 0.0f ? 1 : 0;
-    const double CellVolume = FMath::Pow(static_cast<double>(VoxelSizeCm) / 100.0, 3.0);
-    return static_cast<float>(SolidPoints * CellVolume);
+    if (CellsPerAxis < 4 || CellsPerAxis > 128 ||
+        !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm <= 0.0f)
+        return 0.0f;
+
+    const int32 N = PointsPerAxis();
+    if (Density.Num() != N * N * N)
+        return 0.0f;
+
+    // The grid stores corner samples, not one sample per voxel cell. Give boundary
+    // samples half weight on each boundary axis (quarter on edges, one eighth at
+    // corners). The total weight of a fully solid grid then equals CellsPerAxis^3,
+    // while avoiding the old systematic overcount from treating every point as a cell.
+    double SolidSampleWeight = 0.0;
+    for (int32 Z = 0; Z < N; ++Z)
+    {
+        const double WZ = (Z == 0 || Z == N - 1) ? 0.5 : 1.0;
+        for (int32 Y = 0; Y < N; ++Y)
+        {
+            const double WY = (Y == 0 || Y == N - 1) ? 0.5 : 1.0;
+            for (int32 X = 0; X < N; ++X)
+            {
+                if (Density[PointIndex(X, Y, Z)] >= 0.0f)
+                    continue;
+                const double WX = (X == 0 || X == N - 1) ? 0.5 : 1.0;
+                SolidSampleWeight += WX * WY * WZ;
+            }
+        }
+    }
+
+    const double CellSizeMetres = static_cast<double>(VoxelSizeCm) / 100.0;
+    const double Volume = SolidSampleWeight * CellSizeMetres * CellSizeMetres * CellSizeMetres;
+    return FMath::IsFinite(Volume) && Volume <= TNumericLimits<float>::Max()
+        ? static_cast<float>(Volume) : 0.0f;
 }
 
 int32 UVoxelTerrainChunkComponent::RebuildMesh()
