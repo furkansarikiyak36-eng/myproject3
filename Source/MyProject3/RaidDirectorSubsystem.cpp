@@ -39,7 +39,7 @@ FWorldOperationResult URaidDirectorSubsystem::ScheduleRaid(const FRaidThreatCont
 FWorldOperationResult URaidDirectorSubsystem::BuildWavePlans(FGuid Id,int32 PerWave,FGuid Op){
  auto V=ValidateNewOperation(Op);if(!V.IsSuccess())return V; FRaidRuntimeState* R=Raids.Find(Id);
  if(!R||R->Phase!=ERaidPhase::Scheduled||PerWave<=0)return Failure(EWorldOperationResultCode::PrerequisiteNotMet,Op,TEXT("Raid must be scheduled and wave size positive."));
- TArray<FRaidWavePlan> Plans;for(int32 I=0;I<FMath::Clamp(Config.DefaultWaveCount,1,32);++I){FRaidWavePlan P;P.WaveIndex=I;P.Difficulty=R->Difficulty*(1.0f+0.15f*I);P.PlannedEnemies=FMath::Clamp(FMath::RoundToInt(PerWave*(1.0f+0.2f*I)),1,Config.MaxAliveThreats);Plans.Add(P);}
+ const TArray<FRaidWavePlan>* ExistingPlans=WavePlans.Find(Id); const int32 WaveCount=ExistingPlans?FMath::Clamp(ExistingPlans->Num(),1,32):FMath::Clamp(Config.DefaultWaveCount,1,32); TArray<FRaidWavePlan> Plans;for(int32 I=0;I<WaveCount;++I){FRaidWavePlan P;P.WaveIndex=I;P.Difficulty=R->Difficulty*(1.0f+0.15f*I);P.PlannedEnemies=FMath::Clamp(FMath::RoundToInt(PerWave*(1.0f+0.2f*I)),1,Config.MaxAliveThreats);Plans.Add(P);}
  WavePlans.Add(Id,Plans);R->Phase=ERaidPhase::Preparing;++R->Revision;RememberOperation(Op);return FWorldOperationResult::Success(Op,FText::FromString(TEXT("Wave plans built.")),{Id});
 }
 FWorldOperationResult URaidDirectorSubsystem::ChooseSpawnCandidate(FGuid Id,const TArray<FRaidSpawnCandidate>& C,FRaidSpawnCandidate& Out,FGuid Op){
