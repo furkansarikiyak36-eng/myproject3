@@ -503,6 +503,10 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
             {
                 return false;
             }
+            TArray<UPrimitiveComponent*> ExistingPrimitives;
+            (*Existing)->GetComponents<UPrimitiveComponent>(ExistingPrimitives);
+            if (ExistingPrimitives.Num() != State.Components.Num())
+                return false;
         }
     }
 
@@ -565,6 +569,13 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
         {
             if (IsValid(Spawned))
                 Spawned->Destroy();
+            return false;
+        }
+        TArray<UPrimitiveComponent*> SpawnedPrimitives;
+        Spawned->GetComponents<UPrimitiveComponent>(SpawnedPrimitives);
+        if (SpawnedPrimitives.Num() != State.Components.Num())
+        {
+            Spawned->Destroy();
             return false;
         }
         Identity = Spawned->FindComponentByClass<UWorldObjectIdentityComponent>();
