@@ -914,6 +914,29 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
             (*Existing)->GetComponents<UPrimitiveComponent>(ExistingPrimitives);
             if (ExistingPrimitives.Num() != State.Components.Num())
                 return false;
+
+            // Validate the live instance too; matching only the class default
+            // object would allow a dynamically replaced component to fail later,
+            // after ownership or the clock has already changed.
+            for (const FWorldPhysicalComponentSnapshot& Component : State.Components)
+            {
+                UPrimitiveComponent* ExistingPrimitive = nullptr;
+                for (UPrimitiveComponent* Candidate : ExistingPrimitives)
+                {
+                    if (IsValid(Candidate) && Candidate->GetFName() == Component.ComponentName)
+                    {
+                        ExistingPrimitive = Candidate;
+                        break;
+                    }
+                }
+                if (!ExistingPrimitive ||
+                    FSoftClassPath(ExistingPrimitive->GetClass()) != Component.ComponentClass ||
+                    (!Component.StaticMeshAsset.IsNull() &&
+                     !Cast<UStaticMeshComponent>(ExistingPrimitive)))
+                {
+                    return false;
+                }
+            }
         }
     }
 
