@@ -984,6 +984,17 @@ bool FVoxelLogicalPhysicalTransactionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Physical volume decreases with logical commit"),
         Chunk->GetSolidVolumeCubicMetres() < InitialVolume);
 
+    const int64 CommittedDensityRevision = Chunk->GetDensityRevision();
+    FWorldTerrainCellState RetriedCellState;
+    TestTrue(TEXT("Retry of the same combined operation returns its committed receipt"),
+        Terrain->TryApplyVoxelExcavation(AcceptedOperation, Chunk, FVector(800.0f), 100.0f,
+            3.0f, InitialDensityRevision, FIntVector(0, 0, 0), 0, 0,
+            NAME_None, RetriedCellState));
+    TestEqual(TEXT("Combined retry does not change physical revision"),
+        Chunk->GetDensityRevision(), CommittedDensityRevision);
+    TestEqual(TEXT("Combined retry returns the original logical revision"),
+        RetriedCellState.Revision, static_cast<int64>(1));
+
     // A logical cell represents a region, not a one-shot hole. Further digging
     // in that same region must remain possible under the latest revisions.
     const int64 BeforeSecondDensityRevision = Chunk->GetDensityRevision();
