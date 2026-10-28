@@ -314,3 +314,11 @@ TrimLogToRange kütük uzunluğunu actor scale'i üzerinden değiştiriyor; faka
 CanAdvanceSurvivalStep bazı ayarları (DeltaSeconds, hava şiddeti, açlık/susuzluk/yorgunluk katsayıları, soğuk hasarı, kalori kapasitesi ve ambient sıcaklık) doğruluyor; fakat hesapta doğrudan kullanılan ClothingWarmthCelsius, ShelterWarmthCelsius, WetnessPenaltyCelsius, ComfortTemperatureCelsius, HypothermiaThresholdCelsius, CoreCoolingPerDegreeHour, CoreRecoveryPerHour, ShiverKcalPerDegreeHour ve CarryKcalPerKgHour gibi diğer ayarların tümünü doğrulamıyor. Bu değerlerden biri finite değilse preflight başarılı görünürken felt temperature/core temperature/kalori hesabına NaN veya infinity girebilir.
 
 **Gerekli ilke:** her state-changing step'te kullanılan tüm global parametreler için tam finite/range sözleşmesi oluştur; doğrulanmayan konfigürasyonla hiçbir profil mutasyonu başlatma.
+
+
+### A37 — Ledger kapasitesi ve kayıt saklama politikası
+**Dosyalar:** Source/MyProject3/WorldOperationLedgerSubsystem.h/.cpp; Source/MyProject3/WorldItemOwnershipSubsystem.h/.cpp.
+
+Operation ledger 8192 girişle sınırlı; TryBeginOperation bu sınıra ulaşıldığında yeni giriş açmıyor. Mevcut API'de tamamlanmış kayıtları arşivleme veya güvenli biçimde temizleme yolu görünmüyor. Item ownership ledger da varsayılan 16384 item ile sınırlı; tüketilmiş öğeler OwnerKind=Consumed durumuyla kayıtlı kalıyor. Transfer/split receipt'leri için retention/compaction politikası da açık değil. Bu, kısa prototipte görünmeyip uzun süreli sandbox ilerleyişinde kapasite sınırına ulaşma riski oluşturur.
+
+**Gerekli ilke:** aktif item kayıtlarını, tekrar denemeler için korunması gereken receipt'leri ve terminal/arşivlenebilir kayıtları ayır; checkpoint ve belirlenmiş retention penceresi üzerinden güvenli compaction tasarla.
