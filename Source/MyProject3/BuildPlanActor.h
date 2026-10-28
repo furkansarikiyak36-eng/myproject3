@@ -54,6 +54,7 @@ class MYPROJECT3_API ABuildPlanActor : public AActor
 
 public:
     ABuildPlanActor();
+    virtual void Tick(float DeltaSeconds) override;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Plan")
     EBuildPlanKind Kind = EBuildPlanKind::LogWall;
@@ -82,5 +83,8 @@ private:
     TArray<TObjectPtr<UStaticMeshComponent>> Ghosts;
 
     void AddSlot(const FVector& Centre, const FRotator& Direction, float Length, int32 Support);
-    void Complete();
+    bool Complete();
+    bool bCompletionRetryPending = false;
+    bool bRetryAfterOutputSpawnFailure = false;
+    float CompletionRetryElapsedSeconds = 0.0f;
 };
