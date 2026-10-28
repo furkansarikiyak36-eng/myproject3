@@ -261,6 +261,64 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
     RegenerateAutomaticSnapPoints();
 }
 
+UStaticMesh* ALogBuildPiece::ResolveProcessingOutputMesh(
+    ELogCutAction Action,
+    bool& bOutAmbiguousMapping) const
+{
+    bOutAmbiguousMapping = false;
+
+    UStaticMesh* SourceMesh = Mesh ? Mesh->GetStaticMesh() : nullptr;
+    if (ProcessingMeshSets.Num() > 0)
+    {
+        const FLogProcessingMeshSet* MatchedSet = nullptr;
+        for (const FLogProcessingMeshSet& Set : ProcessingMeshSets)
+        {
+            if (!IsValid(Set.SourceMesh) || Set.SourceMesh != SourceMesh)
+            {
+                continue;
+            }
+
+            if (MatchedSet)
+            {
+                bOutAmbiguousMapping = true;
+                return nullptr;
+            }
+            MatchedSet = &Set;
+        }
+
+        if (!MatchedSet)
+        {
+            return nullptr;
+        }
+
+        switch (Action)
+        {
+        case ELogCutAction::SplitHalf: return MatchedSet->SplitHalfMesh;
+        case ELogCutAction::Quarter: return MatchedSet->QuarterMesh;
+        case ELogCutAction::Hewn: return MatchedSet->HewnMesh;
+        case ELogCutAction::Gutter: return MatchedSet->GutterMesh;
+        case ELogCutAction::Trough: return MatchedSet->TroughMesh;
+        case ELogCutAction::Kalas: return MatchedSet->KalasMesh;
+        case ELogCutAction::Plank: return MatchedSet->PlankMesh;
+        default: return nullptr;
+        }
+    }
+
+    // Compatibility path for existing Blueprint defaults. New multi-length
+    // setups should populate ProcessingMeshSets to avoid cross-length outputs.
+    switch (Action)
+    {
+    case ELogCutAction::SplitHalf: return SplitHalfVariantMesh;
+    case ELogCutAction::Quarter: return QuarterVariantMesh;
+    case ELogCutAction::Hewn: return HewnVariantMesh;
+    case ELogCutAction::Gutter: return GutterVariantMesh;
+    case ELogCutAction::Trough: return TroughVariantMesh;
+    case ELogCutAction::Kalas: return KalasVariantMesh;
+    case ELogCutAction::Plank: return PlankVariantMesh;
+    default: return nullptr;
+    }
+}
+
 bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
 {
     // A stale or externally-authored occupied anchor is still a structural
@@ -271,23 +329,26 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
         return false;
     }
 
+    bool bAmbiguousMapping = false;
+    const bool bHasOutput = IsValid(
+        ResolveProcessingOutputMesh(Action, bAmbiguousMapping));
+    if (bAmbiguousMapping || !bHasOutput)
+    {
+        return false;
+    }
+
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        return PieceType == ELogPieceType::WholeLog && IsValid(SplitHalfVariantMesh);
-    case ELogCutAction::Quarter:
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(QuarterVariantMesh);
     case ELogCutAction::Hewn:
-        return PieceType == ELogPieceType::WholeLog && IsValid(HewnVariantMesh);
-    case ELogCutAction::Gutter:
-        // A groove/gutter operation is valid only after the log has been split.
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(GutterVariantMesh);
-    case ELogCutAction::Trough:
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(TroughVariantMesh);
     case ELogCutAction::Kalas:
-        return PieceType == ELogPieceType::WholeLog && IsValid(KalasVariantMesh);
+        return PieceType == ELogPieceType::WholeLog;
+    case ELogCutAction::Quarter:
+    case ELogCutAction::Gutter:
+    case ELogCutAction::Trough:
     case ELogCutAction::Plank:
-        return PieceType == ELogPieceType::SplitHalfLog && IsValid(PlankVariantMesh);
+        // These operations require a split half-round first.
+        return PieceType == ELogPieceType::SplitHalfLog;
     default:
         return false;
     }
@@ -306,6 +367,23 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
     if (GetAttachedPieceCount() > 0 || HasOccupiedSnapPoints())
     {
         return TEXT("Release occupied snap anchors and remove attached pieces before processing this log.");
+    }
+
+    bool bAmbiguousMapping = false;
+    ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
+    if (bAmbiguousMapping)
+    {
+        return TEXT("More than one processing mesh set matches this source mesh; remove the duplicate mapping.");
+    }
+
+    if (ProcessingMeshSets.Num() > 0 &&
+        !ProcessingMeshSets.ContainsByPredicate(
+            [this](const FLogProcessingMeshSet& Set)
+            {
+                return IsValid(Mesh) && Set.SourceMesh == Mesh->GetStaticMesh();
+            }))
+    {
+        return TEXT("No processing mesh set is mapped to this source mesh.");
     }
 
     switch (Action)
@@ -388,11 +466,15 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
                 break;
             }
 
-            FailureCode = !bActionSupported
-                ? EWorldOperationResultCode::Unsupported
-                : (!bPrerequisiteMet
-                    ? EWorldOperationResultCode::PrerequisiteNotMet
-                    : EWorldOperationResultCode::MissingConfiguration);
+            bool bAmbiguousMapping = false;
+            ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
+            FailureCode = bAmbiguousMapping
+                ? EWorldOperationResultCode::Conflict
+                : (!bActionSupported
+                    ? EWorldOperationResultCode::Unsupported
+                    : (!bPrerequisiteMet
+                        ? EWorldOperationResultCode::PrerequisiteNotMet
+                        : EWorldOperationResultCode::MissingConfiguration));
         }
 
         return FWorldOperationResult::Failure(
@@ -407,31 +489,24 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     switch (Action)
     {
     case ELogCutAction::SplitHalf:
-        NewMesh = SplitHalfVariantMesh;
         NewType = ELogPieceType::SplitHalfLog;
         break;
     case ELogCutAction::Quarter:
-        NewMesh = QuarterVariantMesh;
         NewType = ELogPieceType::QuarterLog;
         break;
     case ELogCutAction::Hewn:
-        NewMesh = HewnVariantMesh;
         NewType = ELogPieceType::HewnLog;
         break;
     case ELogCutAction::Gutter:
-        NewMesh = GutterVariantMesh;
         NewType = ELogPieceType::GutterLog;
         break;
     case ELogCutAction::Trough:
-        NewMesh = TroughVariantMesh;
         NewType = ELogPieceType::TroughLog;
         break;
     case ELogCutAction::Kalas:
-        NewMesh = KalasVariantMesh;
         NewType = ELogPieceType::SquaredBeam;
         break;
     case ELogCutAction::Plank:
-        NewMesh = PlankVariantMesh;
         NewType = ELogPieceType::Plank;
         break;
     default:
@@ -439,6 +514,16 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
             EWorldOperationResultCode::Unsupported,
             OperationId,
             FText::FromString(TEXT("Unsupported processing action.")));
+    }
+
+    bool bAmbiguousMapping = false;
+    NewMesh = ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
+    if (bAmbiguousMapping)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::Conflict,
+            OperationId,
+            FText::FromString(TEXT("More than one processing mesh set matches this source mesh.")));
     }
 
     // Recheck the selected output before mutating any authoritative state.
