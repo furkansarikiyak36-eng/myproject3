@@ -10,7 +10,7 @@ class UStaticMeshComponent;
 class UWorldObjectIdentityComponent;
 class ALogBuildPiece;
 
-/** A size-banded yield contract. Height is measured from the tree mesh's world bounds. */
+/** A size-banded yield contract. Height is cached from the upright tree's local trunk axis before felling. */
 USTRUCT(BlueprintType)
 struct FHarvestTreeYieldRule
 {
@@ -96,6 +96,10 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Harvest")
     bool bLogsSpawned = false;
+
+    /** Cached upright height, independent of the tree's later fall rotation. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Tree|Yield")
+    float StandingWorldHeightCm = 0.0f;
 
     UFUNCTION(BlueprintCallable, Category="Tree|Harvest")
     bool ApplyChopDamage(float Damage, FVector ChopDirection);
