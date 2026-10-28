@@ -4,8 +4,11 @@
 #include "LogBuildPiece.h"
 #include "StickPrimitivePiece.h"
 #include "StoneBuildingPiece.h"
+#include "StructuralPieceInterface.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldStorageSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -65,13 +68,58 @@ bool ALogContainerActor::CanAccept(const AActor* Piece, FString& OutReason) cons
         OutReason = FString::Printf(TEXT("Full (%d/%d)."), Stored.Num(), GetCapacity());
         return false;
     }
+
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
     const ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece);
-    const bool bMaterial = Cast<AStoneBuildingPiece>(Piece) || Cast<AStickPrimitivePiece>(Piece);
-    if (Log && Log->IsPlaced())
+    const AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece);
+    const AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece);
+    if (!Structural || (!Log && !Stone && !Stick) ||
+        Structural->IsStructurallyPlaced() || Structural->GetCrossMaterialParent())
     {
-        OutReason = TEXT("That log is part of a structure.");
+        OutReason = TEXT("Only a loose, independent physical piece can be stored.");
         return false;
     }
+
+    const UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldStorageSubsystem* Storage =
+        World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    FWorldOwnedItemRecord Item;
+    FStructuralNodeRecord Node;
+    if (!bStorageRegistered || !Identity || !Identity->HasValidIdentity() ||
+        !Ownership || !Graph || !Storage ||
+        !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
+        !Graph->GetNode(Structural->GetStructuralNodeId(), Node) ||
+        Node.ParentNodeId.IsValid() || !Node.SecondarySupports.IsEmpty() ||
+        !Graph->GetAllDependents(Node.NodeId).IsEmpty())
+    {
+        OutReason = TEXT("The piece has active support links or the storage is unavailable.");
+        return false;
+    }
+
+    const bool bWorldOwned = Item.OwnerKind == EWorldItemOwnerKind::World &&
+        Identity->GetLifecycleState() == EWorldObjectLifecycleState::World;
+    const bool bHeldOwned = Item.OwnerKind == EWorldItemOwnerKind::Held &&
+        Item.OwnerId.IsValid() && Identity->GetLifecycleState() == EWorldObjectLifecycleState::Held;
+    if ((!bWorldOwned && !bHeldOwned) || Item.Quantity != 1)
+    {
+        OutReason = TEXT("The piece owner and lifecycle state disagree.");
+        return false;
+    }
+
+    // Shared capacity includes reservations made by logistics cargo. The local
+    // Stored count is only the visible slot limit, not the authoritative capacity.
+    if (!Storage->CanAcceptItem(StorageId, Item.ItemId))
+    {
+        OutReason = TEXT("The container storage is full or its space is reserved for incoming cargo.");
+        return false;
+    }
+
     switch (Kind)
     {
     case ELogContainerKind::FirewoodStorage:
@@ -82,11 +130,6 @@ bool ALogContainerActor::CanAccept(const AActor* Piece, FString& OutReason) cons
         }
         return true;
     case ELogContainerKind::AdvancedSled:
-        if (!Log && !bMaterial)
-        {
-            OutReason = TEXT("The sled takes logs, stones and sticks.");
-            return false;
-        }
         return true;
     default:
         if (!Log)
@@ -121,26 +164,109 @@ bool ALogContainerActor::TryStore(AActor* Piece)
     FString Reason;
     if (!CanAccept(Piece, Reason))
         return false;
-    if (!TransferPiece(Piece, EWorldItemOwnerKind::Storage, StorageId, GetActorLocation()))
+
+    UWorld* World = GetWorld();
+    UWorldStorageSubsystem* Storage =
+        World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldObjectIdentityComponent* Identity =
+        IsValid(Piece) ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    FWorldOwnedItemRecord BeforeItem;
+    if (!Storage || !Ownership || !Identity || !Structural ||
+        !Ownership->TryGetItem(Structural->GetStructuralNodeId(), BeforeItem))
         return false;
 
+    const FTransform BeforeTransform = Piece->GetActorTransform();
+    const FTransform SlotTransform = GetSlotTransform(Stored.Num(), Piece);
+    const EWorldItemOwnerKind PreviousOwner = BeforeItem.OwnerKind;
+    const FGuid PreviousOwnerId = BeforeItem.OwnerId;
+    const bool bWasHeld = PreviousOwner == EWorldItemOwnerKind::Held;
+
+    FWorldOwnedItemRecord StoredRecord;
+    if (!Ownership->TryTransferItem(FGuid::NewGuid(), BeforeItem.ItemId, BeforeItem.Revision,
+        PreviousOwner, EWorldItemOwnerKind::Storage, StorageId, GetActorLocation(), StoredRecord))
+        return false;
+
+    auto RollbackOwnership = [&]() -> bool
+    {
+        FWorldOwnedItemRecord Current;
+        if (!Ownership->TryGetItem(BeforeItem.ItemId, Current) ||
+            Current.OwnerKind != EWorldItemOwnerKind::Storage || Current.OwnerId != StorageId)
+            return false;
+        FWorldOwnedItemRecord Restored;
+        return Ownership->TryTransferItem(FGuid::NewGuid(), Current.ItemId, Current.Revision,
+            EWorldItemOwnerKind::Storage, PreviousOwner, PreviousOwnerId,
+            BeforeItem.WorldLocation, Restored);
+    };
+
+    if (bWasHeld && !Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World))
+    {
+        if (!RollbackOwnership())
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+        }
+        return false;
+    }
+
+    bool bLocalStateChanged = false;
     if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
     {
         if (Log->IsHeld())
             Log->SetHeldState(false);
-        if (UWorldObjectIdentityComponent* Identity = Log->FindComponentByClass<UWorldObjectIdentityComponent>())
-        {
-            if (Identity->GetLifecycleState() == EWorldObjectLifecycleState::Held)
-                Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World);
-        }
+        bLocalStateChanged = true;
     }
     else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
     {
-        Stone->SetHeldState(false);
+        bLocalStateChanged = Stone->SetHeldState(false);
     }
     else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
     {
-        Stick->SetHeldState(false);
+        bLocalStateChanged = Stick->SetHeldState(false);
+    }
+
+    if (!bLocalStateChanged)
+    {
+        if (bWasHeld)
+            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held);
+        if (!RollbackOwnership())
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+        }
+        return false;
+    }
+
+    Piece->SetActorTransform(SlotTransform, false, nullptr, ETeleportType::TeleportPhysics);
+    if (!Piece->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform))
+    {
+        Piece->SetActorTransform(BeforeTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
+        {
+            if (bWasHeld) Log->SetHeldState(true);
+        }
+        else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
+        {
+            if (bWasHeld) Stone->SetHeldState(true);
+        }
+        else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
+        {
+            if (bWasHeld) Stick->SetHeldState(true);
+        }
+
+        if (bWasHeld)
+            Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held);
+        if (!RollbackOwnership())
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error, TEXT("Container store rollback failed for item %s."),
+                *BeforeItem.ItemId.ToString());
+        }
+        return false;
     }
 
     if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent()))
@@ -149,8 +275,6 @@ bool ALogContainerActor::TryStore(AActor* Piece)
         Root->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     }
     Piece->SetActorEnableCollision(true);
-    Piece->SetActorTransform(GetSlotTransform(Stored.Num(), Piece), false, nullptr, ETeleportType::TeleportPhysics);
-    Piece->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
     Stored.Add(Piece);
     ApplyTowSpeed();
     return true;
@@ -236,6 +360,13 @@ void ALogContainerActor::CollectNearbyLogs()
     }
 }
 
+void ALogContainerActor::OnConstruction(const FTransform& Transform)
+{
+    Super::OnConstruction(Transform);
+    if (!StorageId.IsValid())
+        StorageId = FGuid::NewGuid();
+}
+
 void ALogContainerActor::BeginPlay()
 {
     Super::BeginPlay();
@@ -243,6 +374,13 @@ void ALogContainerActor::BeginPlay()
         ConfigureKind(Kind);
     if (!StorageId.IsValid())
         StorageId = FGuid::NewGuid();
+
+    UWorldStorageSubsystem* Storage =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    bStorageRegistered = Storage && Storage->RegisterStorage(StorageId, GetCapacity());
+    if (!bStorageRegistered)
+        UE_LOG(LogTemp, Error, TEXT("Container '%s' could not register storage ID %s."),
+            *GetNameSafe(this), *StorageId.ToString());
 }
 
 void ALogContainerActor::Tick(float DeltaSeconds)
@@ -283,5 +421,14 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
 {
     if (TowedBy.IsValid())
         ToggleTow(TowedBy.Get());
+    if (bStorageRegistered)
+    {
+        UWorldStorageSubsystem* Storage =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+        if (Storage && !Storage->SetStorageAvailable(StorageId, false))
+            UE_LOG(LogTemp, Error, TEXT("Container storage %s could not be marked unavailable."),
+                *StorageId.ToString());
+        bStorageRegistered = false;
+    }
     Super::EndPlay(Reason);
 }
