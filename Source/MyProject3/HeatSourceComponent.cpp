@@ -31,7 +31,10 @@ void UHeatSourceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 bool UHeatSourceComponent::AddFuel(float BurnSeconds)
 {
-    if (!FMath::IsFinite(BurnSeconds) || BurnSeconds <= 0.0f || FuelSeconds >= MaxFuelSeconds)
+    if (!FMath::IsFinite(BurnSeconds) || BurnSeconds <= 0.0f ||
+        !FMath::IsFinite(FuelSeconds) || FuelSeconds < 0.0f ||
+        !FMath::IsFinite(MaxFuelSeconds) || MaxFuelSeconds <= 0.0f ||
+        FuelSeconds >= MaxFuelSeconds || !FMath::IsFinite(FuelSeconds + BurnSeconds))
         return false;
     FuelSeconds = FMath::Min(MaxFuelSeconds, FuelSeconds + BurnSeconds);
     return true;
@@ -52,7 +55,10 @@ void UHeatSourceComponent::Extinguish()
 
 float UHeatSourceComponent::GetHeatAt(const FVector& WorldLocation) const
 {
-    if (!bLit || RadiusCm <= 0.0f || WorldLocation.ContainsNaN())
+    if (!bLit || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f ||
+        !FMath::IsFinite(HeatOutputCelsius) ||
+        !FMath::IsFinite(WorldLocation.X) || !FMath::IsFinite(WorldLocation.Y) ||
+        !FMath::IsFinite(WorldLocation.Z))
         return 0.0f;
     const float Distance = FVector::Dist(GetComponentLocation(), WorldLocation);
     if (Distance >= RadiusCm)
@@ -78,4 +84,16 @@ void UHeatSourceComponent::AdvanceFuel(double DeltaSeconds, EWorldWeatherState W
     FuelSeconds = FMath::Max(0.0f, FuelSeconds - static_cast<float>(DeltaSeconds));
     if (FuelSeconds <= 0.0f)
         bLit = false;
+}
+
+
+bool UHeatSourceComponent::RestoreRuntimeState(float InFuelSeconds, bool bInLit)
+{
+    if (!FMath::IsFinite(InFuelSeconds) || !FMath::IsFinite(MaxFuelSeconds) ||
+        MaxFuelSeconds <= 0.0f || InFuelSeconds < 0.0f || InFuelSeconds > MaxFuelSeconds ||
+        (bInLit && InFuelSeconds <= 0.0f))
+        return false;
+    FuelSeconds = InFuelSeconds;
+    bLit = bInLit;
+    return true;
 }
