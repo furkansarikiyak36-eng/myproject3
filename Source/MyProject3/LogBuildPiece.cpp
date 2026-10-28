@@ -459,7 +459,7 @@ bool ALogBuildPiece::TrySetInitialPieceType(ELogPieceType DesiredType, FGuid Ope
     UWorldItemOwnershipSubsystem* Ownership =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     FWorldOwnedItemRecord CurrentItem;
-    if (!ItemIdentity || !Ownership || !Mesh || bIsHeld || bIsPlaced ||
+    if (bHasCustomLengthScale || !ItemIdentity || !Ownership || !Mesh || bIsHeld || bIsPlaced ||
         !Ownership->TryGetItem(ItemIdentity->GetInstanceId(), CurrentItem) ||
         CurrentItem.OwnerKind != EWorldItemOwnerKind::World || CurrentItem.Quantity != 1)
         return false;
@@ -2500,6 +2500,8 @@ void ALogBuildPiece::SetPieceTypeByName(FName TypeName)
 
 bool ALogBuildPiece::ApplyDefinitionVariant(FName CurrentDefinitionId)
 {
+    if (bHasCustomLengthScale)
+        return false; // Actor scale is the only current record of this non-canonical length.
     SyncCanonicalGeometryFromLegacyPieceType();
     if (CurrentDefinitionId.IsNone() || BaseDefinitionId.IsNone() || !Mesh)
         return false;
