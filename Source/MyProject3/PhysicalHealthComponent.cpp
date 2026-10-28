@@ -16,9 +16,11 @@ bool UPhysicalHealthComponent::IsStaggered() const
 
 float UPhysicalHealthComponent::ApplyPhysicalDamage(float Amount, FVector Impulse, AActor* Causer)
 {
-    if (bDead || Amount <= 0.0f || !GetOwner())
+    if (bDead || !FMath::IsFinite(Amount) || Amount <= 0.0f || !GetOwner() ||
+        !FMath::IsFinite(Impulse.X) || !FMath::IsFinite(Impulse.Y) || !FMath::IsFinite(Impulse.Z) ||
+        !FMath::IsFinite(Health) || Health <= 0.0f || !FMath::IsFinite(StaggerSeconds) || StaggerSeconds < 0.0f)
         return 0.0f;
-    const float Dealt = FMath::Min(Amount, Health);
+    const float Dealt = FMath::Clamp(FMath::Min(Amount, Health), 0.0f, Health);
     Health -= Dealt;
     if (GetWorld())
         StaggeredUntil = GetWorld()->GetTimeSeconds() + StaggerSeconds;
