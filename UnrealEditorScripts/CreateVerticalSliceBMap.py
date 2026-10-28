@@ -24,9 +24,15 @@ def main():
         )
 
     actor_class = unreal.load_class(None, "/Script/MyProject3.VerticalSliceBWorldActor")
+    bootstrap_class = unreal.load_class(None, "/Script/MyProject3.WorldDemoBootstrapActor")
     if not actor_class:
         raise RuntimeError(
             "Could not load /Script/MyProject3.VerticalSliceBWorldActor. "
+            "Compile MyProject3Editor and restart the editor first."
+        )
+    if not bootstrap_class:
+        raise RuntimeError(
+            "Could not load /Script/MyProject3.WorldDemoBootstrapActor. "
             "Compile MyProject3Editor and restart the editor first."
         )
 
@@ -62,7 +68,16 @@ def main():
     if not demo:
         raise RuntimeError("Failed to spawn VerticalSliceBWorldActor.")
 
-    demo.set_actor_label(PREFIX + "WorldBootstrap")
+    demo.set_actor_label(PREFIX + "World")
+
+    # The coordinator intentionally does not tick itself. Place an explicit fixed-step
+    # driver in this level so the canonical simulation clock and domain systems advance.
+    simulation_driver = unreal.EditorLevelLibrary.spawn_actor_from_class(
+        bootstrap_class, unreal.Vector(0, 0, 0), unreal.Rotator(0, 0, 0)
+    )
+    if not simulation_driver:
+        raise RuntimeError("Failed to create WorldDemoBootstrapActor.")
+    simulation_driver.set_actor_label(PREFIX + "SimulationDriver")
     start.set_actor_label(PREFIX + "PlayerStart")
 
     # Save only the newly-created map.
