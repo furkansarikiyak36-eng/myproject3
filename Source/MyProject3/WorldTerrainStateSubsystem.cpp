@@ -132,6 +132,7 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
     const TArray<FWorldTerrainOperationReceipt>& ReceiptSnapshot)
 {
     if (CellSnapshot.Num() > MaxEditedCells || MaxEditedCells <= 0 ||
+        MaxEditableDepthLayers <= 0 || MaxDepthPerCell <= 0 ||
         ReceiptSnapshot.Num() > MaxOperationReceipts || MaxOperationReceipts <= 0)
         return false;
 
@@ -140,6 +141,7 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
     {
         if (Cell.DepthLayer < 0 || Cell.DepthLayer >= MaxEditableDepthLayers ||
             Cell.DepthLayer >= MaxDepthPerCell || Cell.Revision <= 0 ||
+            (!Cell.bExcavated && Cell.MaterialId.IsNone()) ||
             (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)))
             return false;
         ProposedCells.Add(Cell.Cell, Cell);
