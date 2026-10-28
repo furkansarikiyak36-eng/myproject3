@@ -8,6 +8,46 @@
 
 Bu rapor yalnızca kodun var olup olmadığını değil; algoritmaların matematiksel olarak tutarlı olup olmadığını, varsayımların açık olup olmadığını, farklı sistemlerin aynı kuralları kullanıp kullanmadığını ve bir prototipin henüz hangi anlamda yaklaşık kaldığını inceler. Bu statik inceleme runtime doğrulaması değildir. M001–M119 kayıtlarının durumları bu raporla değiştirilmez.
 
+## 1A. Güncel uygulama durumu — 29 Ekim 2026
+
+Aşağıdaki A01–A39 bulguları ilk statik inceleme sırasında kaydedilen risklerdir. PR #51'de sonraki kod değişiklikleriyle bazıları düzeltildi, bazıları kısmen kapatıldı ve iki bulgu kaynak kodu yeniden kontrol edildiğinde yanlış pozitif çıktı. Bu durum güncellemesi **kaynak kodundaki değişiklikleri** kaydeder; Unreal build/Editor/PIE veya test sonucu değildir.
+
+| Bulgu | Güncel durum |
+|---|---|
+| A01 voxel epsilon | **Kodda düzeltildi:** küçük negatif density artık `-epsilon`, pozitif/sıfır değer `+epsilon` alıyor; işaret sınıfı korunuyor. |
+| A02 VerticalSlice_B driver | **Kısmen düzeltildi:** `CreateVerticalSliceBMap.py` açık `WorldDemoBootstrapActor` ekliyor. `RebuildVerticalSliceBFromScratch.py` hâlâ yalnız sunum amaçlı ground+lighting sahnesi üretir; onu oyun dünyasının yerine kullanmamak gerekir. |
+| A05 destek/kaldırma | **Kodda güçlendirildi:** secondary-support kaldırımı son aggregate yükleri doğruluyor; node kaldırma/reparent sonrası grafiği geçici kopya üzerinde doğrulayıp başarısızsa geri alıyor. Eşit yük paylaşımı yine bir prototip sezgiselidir. |
+| A07–A08 kütük kesim reçeteleri | **Kodda güçlendirildi:** çıktı uzunluklarına göre beklenen merkez aralığı doğrulanıyor; aynı uzunluk/şekil anahtarına ait yinelenen mesh eşleşmeleri reddediliyor. |
+| A09 fiziksel kesim geometrisi | **Kısmen kapatıldı:** ölçeklemeyle oluşan uzunluk artık `bHasCustomLengthScale` ile işaretleniyor; bu parçaların canonical kesim/definition ve inventory akışı tarafından sessizce normalleştirilmesi reddediliyor. Mesh'i gerçek bir düzlemle kesen geometri üretimi hâlâ yok. |
+| A10 ağaç verimi | **Kodda düzeltildi:** verim bandı için dik duran yükseklik önceden saklanıyor; devrilme sonrası dünya Z sınırları verim sınıfını değiştirmiyor. |
+| A11–A13 rota/fiziksel hasar | **Kodda güçlendirildi:** eşit maliyetli rota seçimi deterministik; sonlu olmayan hasar/impulse engelleniyor; aynı darbede component ve generic damage API'si birlikte çağrılmıyor. |
+| A12 üretim zamanı | **Kodda düzeltildi:** sabit adım artığı sıradaki işe aktarılıyor; çıktı kapasitesi yüzünden bloke olan tamamlanmış işler yer açılınca süreyi tekrar harcamadan deneniyor. |
+| A14, A18, A36 hayatta kalma durumu | **Kısmen kapatıldı:** location değişimi revision artırıyor; profil, hava durumu ve survival katsayılarında finite/range ön kontrolleri genişletildi. Model katsayılarının tasarım dengelemesi ve runtime doğrulaması yapılmadı. |
+| A15–A16 hacim/kütle | **Kodda güçlendirildi:** voxel hacim kestirimi grid köşe ağırlıklarını hesaba katıyor; kütle kestirimi taşıma ve diğer kod yollarında ortak mesh-bounds hacim/density fonksiyonuna geçti. AABB ve doluluk oranı hâlâ yaklaşık modeldir. |
+| A22–A23 taşıma/depo | **Kodda güçlendirildi:** taş/çubuk taşıma ve ground placement owner/lifecycle/graph durumunu uzlaştırıyor; container kimliği kayıt sistemine bağlandı; fiziksel depo ortak storage kapasitesini denetliyor ve container açıkça yok edilince kayıtlı parçaları World owner'a döndürmeyi dener. Başarısız telafi coordinator'ı faulted yapar. |
+| A24 kapı/pencere/gate açma | **Kodda güçlendirildi:** kesimler ön kontroller, graph ve ownership snapshot'ları ile geri alma yolu kullanıyor. Bu compensating rollback'dir; motor düzeyinde ACID/atomiklik garantisi veya runtime kanıtı değildir. |
+| A25 yapı üstüne kütük koyma | **Kodda düzeltildi:** merkezdeki küçük küre yerine tam yönelimli mesh-bounds kutusu ile overlap kontrol ediliyor. |
+| A26 fixed-step rollback | **Kodda düzeltildi:** ateş yakıt/yanma durumu coordinator'ın rollback snapshot'ına eklendi ve adım öncesi bütün heat kaynakları doğrulanıyor. |
+| A27 identity duplicate/fail-open | **Yanlış pozitif düzeltildi:** mevcut registry duplicate identity'yi yeni GUID ile yeniden anahtarlıyor; Identity component'in kendi kayıt başarısızlığı da aktörü devre dışı bırakıyor. |
+| A28 build-plan tamamlaması | **Kısmen kapatıldı:** eksik/tekrar kullanılan slot aktörleri reddediliyor; kızak malzemeleri için owner/lifecycle ve support bağımlılıkları ön doğrulanıyor; önce leaf parçalar tüketiliyor; çıktı container'ı üretilemezse plan silinmiyor ve spawn yeniden deneniyor. Çoklu kaynağın tek bir toplu ledger transaction'ı hâlâ yok. |
+| A29 committed event | **Kısmen kapatıldı:** aynı operation/type/object set için tekrarlanan event yeniden yayınlanmıyor; retained event sayısı sınırlandırılıyor. Event geçmişi yalnız geçici bellektedir ve şu an kalıcı/idempotent save log'u değildir. |
+| A30 wildlife RNG | **Yanlış pozitif düzeltildi:** mevcut wildlife hareketi instance'a özel seeded `FRandomStream` ve sabit 0.1 sn adım kullanıyor; global `FMath::RandRange` çağrısı yok. |
+| A32 hayvan ürünü | **Kodda düzeltildi:** üretim ilerlemesi [0, 3600) aralığına sınırlandı; tek sabit adımda büyüyebilen ürün adedi sınırlandırıldı. |
+| A33 terrain receipts | **Kodda düzeltildi:** terrain operasyon receipt'leri save schema v14'e eklendi, bounded ve restore sırasında doğrulanıyor. |
+| A34–A35 plan kesimi/custom length | **Kodda güçlendirildi:** gerekli kesim üretilemezse plan slotu yerleştirmesi reddediliyor ve başarısız yerleştirmede kesim/transform geri alınıyor; custom ölçekli uzunluklar inventory tarafından canonical bir uzunluk gibi yeniden yaratılmıyor. |
+| A37 ledger retention | **Açık:** yeni event de-dup ledger'ı bounded; bunun dışında kalıcı operation/ownership receipt geçmişi için genel bir kompaksiyon/retention politikası tanımlanmış değil. |
+| A38 taşıyarak save | **Bilinçli fail-closed sınırlama:** save coordinator, owner ledger'da `Held` item varken kaydı reddediyor. Taşınan item/carry-holder ilişkisini save/load etmek henüz desteklenmiyor. Bu bir “held item sessizce orphan oluyor” hatası değil, açıkça reddedilen işlevsellik. |
+| A39 graph root placed state | **Yanlış pozitif düzeltildi:** graph restore kodu root Stone ve Stick aktörleri için `RestoreRootStateFromGraph` çağrısını zaten içeriyor. |
+
+### Hâlâ çözülmemiş büyük kapsamlar
+
+- A03: yükleme başarısızlığında önceki snapshot yeniden uygulanıyor ve başarısız telafide coordinator durduruluyor; bu, gerçek çok-domain atomic commit değildir.
+- A04: farklı aktör nüfusuna sahip dünyayı kayıt üzerinden spawn/destroy edip yeniden kuran tam dinamik actor manifesti yok.
+- A06: raid adapter'ın coordinator fixed-step zincirine güvenli, geri alınabilir entegrasyonu tamamlanmadı.
+- A17/A18/A19/A20/A21/A31: eşit yük paylaşımı, survival katsayıları, çevresel tarım etkileri, kapasite birimleri, halat fiziği ve yapısal yük kapasitesi hâlâ prototip sözleşmeleri/heuristics.
+- A09/A16/A24/A28/A29 için yukarıdaki kısmi düzeltmeler, gerçek mesh kesimi, paylaşılan batch transaction, tam durable event log veya kanıtlanmış atomiklik anlamına gelmez.
+
+
 ## 2. Özet: en önemli bulgular
 
 1. **P0 — Voxel density epsilon düzeltmesi işaret değiştirebiliyor.** Negatif ve sıfıra yakın değer +epsilon yapılabiliyor; bu, katı tarafındaki örnekleri hava tarafına çevirebilir.
@@ -236,12 +276,10 @@ Survival adımı heat source yakıtını ilerletiyor. Coordinator geri alma sır
 
 **Gerekli ilke:** fixed-step sırasında değişen her durum sahibi rollback snapshot'ına dahil edilmeli veya durum step commit edilene kadar geçici tutulmalı.
 
-### A27 — Identity registry kayıt hatasında aktör aktif kalabiliyor
+### A27 — Identity registry duplicate/failure davranışı: ilk bulgu düzeltilmiş olarak işaretlendi
 **Dosyalar:** Source/MyProject3/WorldObjectIdentityComponent.cpp (BeginPlay); Source/MyProject3/WorldObjectIdentitySubsystem.cpp (RegisterIdentity).
 
-Identity kaydı başarısız olursa component hata loglayıp dönüyor ama aktörün çarpışma ve etkileşimini kapatmıyor. Registry dışında kalan veya duplicate kimlik taşıyan bir fiziksel aktör dünya nesne kayıtlarıyla ayrışabilir.
-
-**Gerekli ilke:** kimlik kaydı başarısızsa aktörü devre dışı bırak veya spawn işlemini geri al; identity registry dışında etkin fiziksel nesne bırakma.
+İlk not duplicate ID'yi aktör etkin bırakma riski olarak kaydetmişti. Kaynak yeniden kontrol edildiğinde, registry çakışan instance ID'yi yeni GUID ile değiştiriyor; component kayıt gerçekten başarısız olduğunda da aktörü devre dışı bırakıyor. Bu nedenle ilk bulgu mevcut kod için yanlış pozitiftir. Herhangi bir runtime deneyi yapılmadı.
 
 
 ## Ek bulgular: build-plan, event ve deterministik dünya
@@ -333,9 +371,7 @@ Operation ledger 8192 girişle sınırlı; TryBeginOperation bu sınıra ulaşı
 **Gerekli ilke:** Prototip aşamasında “önce nesneyi bırak veya depola” kuralı kabul edilebilir ve güvenlidir. Daha sonra taşıyarak kaydetme desteklenecekse, carrier ID + held item ID + taşıma modu/transform ilişkisi Save/Restore kapsamına eklenmeli.
 
 
-### A39 — Save/load yapısal grafiği taş ve çubukların yerel placed state'iyle tam uzlaştırmıyor
-**Dosyalar:** Source/MyProject3/WorldStructuralGraphSubsystem.cpp — RestoreSnapshot/RebuildLogActorAttachmentsFromSnapshot; Source/MyProject3/StoneBuildingPiece.h/.cpp; Source/MyProject3/StickPrimitivePiece.h/.cpp; Source/MyProject3/MaterialConnectionSubsystem.cpp — RestoreLinkFromGraph.
+### A39 — Root Stone/Stick placed-state restore: ilk bulgu yanlış pozitif çıktı
+**Dosyalar:** Source/MyProject3/WorldStructuralGraphSubsystem.cpp — RebuildLogActorAttachmentsFromSnapshot; Source/MyProject3/StoneBuildingPiece.cpp; Source/MyProject3/StickPrimitivePiece.cpp.
 
-Stone ve Stick aktörlerindeki `bIsPlaced`/`bIsHeld` alanları `Transient`. Graph snapshot ise `bGroundSupported`, parent/secondary support ve anchor ilişkilerini geri yükleyebiliyor. RebuildLogActorAttachmentsFromSnapshot, mixed-material bağlantılarda RestoreLinkFromGraph çağırıyor; bu çağrı `ApplyCrossMaterialAttachment` üzerinden child stone/stick için `bIsPlaced=true` yapar. Ancak graph'ta root olup `bGroundSupported=true` olarak restore edilen taş/çubuk için benzer bir yerel-state senkronizasyonu yapılmıyor: fonksiyonun son root-state geçişi yalnızca `ALogBuildPiece` aktörlerini ele alıyor. Aynı aktör kümesi içinde bir kaydı başka zaman noktasından yüklerken kanonik graf “ground-supported/placed” derken taş/çubuk aktöründeki `IsStructurallyPlaced()` eski transient değeri koruyabilir.
-
-**Gerekli ilke:** restore sonrasında her malzeme adaptörü graph'taki parent edge ve `bGroundSupported` bilgisinden kendi placed/held/physics/anchor durumunu deterministik biçimde kurmalı; root taş/çubuk için de loglarda olduğu gibi açık bir uzlaştırma adımı olmalı.
+Kaynak tekrar kontrol edildiğinde `RebuildLogActorAttachmentsFromSnapshot`, parent edge'i olmayan root taş ve çubuklar için `RestoreRootStateFromGraph(bGroundSupported, bStorageOwned)` çağrısını zaten içeriyor. Bu nedenle ilk notta belirtilen eksik mevcut kodda görülmedi. Runtime doğrulaması yapılmadı; kalan save/load riskleri A03 ve A04 altında tutuluyor.
