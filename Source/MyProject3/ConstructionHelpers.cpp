@@ -136,6 +136,7 @@ ALogBuildPiece* SpawnLogCopy(ALogBuildPiece* Source, const FTransform& Transform
     if (!Copy)
         return nullptr;
     Copy->BaseDefinitionId = Source->BaseDefinitionId;
+    Copy->bHasCustomLengthScale = Source->bHasCustomLengthScale;
     Copy->ProcessingMeshSets = Source->ProcessingMeshSets;
     Copy->SelectedProcessingMeshSetId = Source->SelectedProcessingMeshSetId;
     Copy->LongitudinalAxis = Source->LongitudinalAxis;
@@ -163,6 +164,8 @@ bool TrimLogToRange(ALogBuildPiece* Log, float FromAlong, float ToAlong)
     const float Factor = NewLength / Geometry.Length();
     FVector Scale = Log->GetActorScale3D();
     Scale = Scale * (FVector::OneVector - AxisLocal) + Scale * AxisLocal * Factor;
+    if (!FMath::IsNearlyEqual(Factor, 1.0f, 0.001f))
+        Log->bHasCustomLengthScale = true;
     const FQuat Rotation = Log->GetActorQuat();
     const FVector Origin = Log->GetLogMesh()->GetStaticMesh()->GetBounds().Origin;
     Log->SetActorScale3D(Scale);
@@ -181,6 +184,7 @@ ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVe
         return nullptr;
 
     const FTransform SourceTransform = Log->GetActorTransform();
+    const bool bSourceHadCustomLengthScale = Log->bHasCustomLengthScale;
     const float OriginalLength = Geometry.Length();
     const float Split = -Geometry.HalfLength + KeepLength;
     ALogBuildPiece* Rest = SpawnLogCopy(Log, SourceTransform);
@@ -202,6 +206,7 @@ ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVe
     if (!bLengthsValid)
     {
         Log->SetActorTransform(SourceTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        Log->bHasCustomLengthScale = bSourceHadCustomLengthScale;
         Rest->Destroy();
         return nullptr;
     }
