@@ -1332,7 +1332,9 @@ void ALogBuildPiece::SetPieceStaticMesh(UStaticMesh* NewMesh)
 
 bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
 {
-    if (bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0)
+    // Geometry produced by TrimLogToRange is currently a prototype-only custom
+    // scale. Canonical cut recipes require nominal lengths to remain truthful.
+    if (bHasCustomLengthScale || bIsPlaced || bIsHeld || GetAttachedPieceCount() > 0)
         return false;
 
     if (IsLengthCutAction(Action))
