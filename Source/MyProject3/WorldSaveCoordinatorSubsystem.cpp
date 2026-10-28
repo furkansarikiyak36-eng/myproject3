@@ -471,11 +471,103 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
             return false;
     }
 
+    TMap<FIntVector, FWorldTerrainCellState> TerrainByCell;
+    for (const FWorldTerrainCellState& Cell : Snapshot.TerrainCells)
+    {
+        if (TerrainByCell.Contains(Cell.Cell) ||
+            Cell.DepthLayer < 0 || Cell.DepthLayer >= TerrainSubsystem->MaxEditableDepthLayers ||
+            Cell.DepthLayer >= TerrainSubsystem->MaxDepthPerCell || Cell.Revision <= 0 ||
+            (!Cell.bExcavated && Cell.MaterialId.IsNone()) ||
+            (TerrainSubsystem->PermittedDepthLayers.Num() > 0 &&
+             !TerrainSubsystem->PermittedDepthLayers.Contains(Cell.DepthLayer)))
+        {
+            return false;
+        }
+        TerrainByCell.Add(Cell.Cell, Cell);
+    }
+
+    TSet<FGuid> TerrainOperationIds;
+    for (const FWorldTerrainOperationReceipt& Receipt : Snapshot.TerrainReceipts)
+    {
+        const FWorldTerrainCellState* Cell = TerrainByCell.Find(Receipt.Cell);
+        if (!Receipt.OperationId.IsValid() || TerrainOperationIds.Contains(Receipt.OperationId) ||
+            !Cell || Receipt.ExpectedRevision < 0 || Receipt.ExpectedRevision >= MAX_int64 ||
+            (Receipt.ExpectedRevision == 0 && Receipt.RequestedEdit != ETerrainCellEdit::Excavate) ||
+            Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+            Receipt.ResultState.Cell != Receipt.Cell ||
+            Receipt.ResultState.Revision != Receipt.ResultingRevision ||
+            Receipt.RequestedDepthLayer != Receipt.ResultState.DepthLayer ||
+            Receipt.RequestedDepthLayer < 0 ||
+            Receipt.RequestedDepthLayer >= TerrainSubsystem->MaxEditableDepthLayers ||
+            Receipt.RequestedDepthLayer >= TerrainSubsystem->MaxDepthPerCell ||
+            static_cast<uint8>(Receipt.RequestedEdit) >
+                static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial) ||
+            Cell->Revision < Receipt.ResultingRevision ||
+            (TerrainSubsystem->PermittedDepthLayers.Num() > 0 &&
+             !TerrainSubsystem->PermittedDepthLayers.Contains(Receipt.RequestedDepthLayer)) ||
+            ((Receipt.RequestedEdit == ETerrainCellEdit::Fill ||
+              Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial) &&
+             Receipt.RequestedMaterialId.IsNone()) ||
+            (Receipt.RequestedEdit == ETerrainCellEdit::Excavate && !Receipt.ResultState.bExcavated) ||
+            (Receipt.RequestedEdit == ETerrainCellEdit::Fill &&
+             (Receipt.ResultState.bExcavated ||
+              Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId)) ||
+            (Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial &&
+             Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId))
+        {
+            return false;
+        }
+        TerrainOperationIds.Add(Receipt.OperationId);
+    }
+
+    TSet<FGuid> SurvivalProfileIds;
+    for (const FWorldSurvivalProfile& Profile : Snapshot.SurvivalProfiles)
+    {
+        if (!Profile.EntityId.IsValid() || SurvivalProfileIds.Contains(Profile.EntityId) ||
+            Profile.Revision <= 0 ||
+            !FMath::IsFinite(Profile.Health) || Profile.Health < 0.0f || Profile.Health > 100.0f ||
+            !FMath::IsFinite(Profile.Hunger) || Profile.Hunger < 0.0f || Profile.Hunger > 100.0f ||
+            !FMath::IsFinite(Profile.Thirst) || Profile.Thirst < 0.0f || Profile.Thirst > 100.0f ||
+            !FMath::IsFinite(Profile.Stamina) || Profile.Stamina < 0.0f || Profile.Stamina > 100.0f ||
+            !FMath::IsFinite(Profile.Fatigue) || Profile.Fatigue < 0.0f || Profile.Fatigue > 100.0f ||
+            !FMath::IsFinite(Profile.ClothingInsulation) || Profile.ClothingInsulation < 0.0f || Profile.ClothingInsulation > 1.0f ||
+            !FMath::IsFinite(Profile.ShelterProtection) || Profile.ShelterProtection < 0.0f || Profile.ShelterProtection > 1.0f ||
+            !FMath::IsFinite(Profile.Wetness) || Profile.Wetness < 0.0f || Profile.Wetness > 1.0f ||
+            !FMath::IsFinite(Profile.CaloriesKcal) || Profile.CaloriesKcal < 0.0f ||
+            Profile.CaloriesKcal > SurvivalSubsystem->MaxCaloriesKcal ||
+            !FMath::IsFinite(Profile.CoreTemperatureCelsius) ||
+            Profile.CoreTemperatureCelsius < 20.0f || Profile.CoreTemperatureCelsius > 45.0f ||
+            !FMath::IsFinite(Profile.PendingActivityKcal) ||
+            Profile.PendingActivityKcal < 0.0f || Profile.PendingActivityKcal > 100000.0f ||
+            !FMath::IsFinite(Profile.FeltTemperatureCelsius) ||
+            !FMath::IsFinite(Profile.Location.X) ||
+            !FMath::IsFinite(Profile.Location.Y) ||
+            !FMath::IsFinite(Profile.Location.Z))
+        {
+            return false;
+        }
+        SurvivalProfileIds.Add(Profile.EntityId);
+    }
+
+    TSet<FName> DiscoveryIds;
+    for (const FWorldDiscoveryRecord& Discovery : Snapshot.Discoveries)
+    {
+        if (Discovery.DiscoveryId.IsNone() || DiscoveryIds.Contains(Discovery.DiscoveryId) ||
+            Discovery.Location.ContainsNaN() ||
+            !FMath::IsFinite(Discovery.DiscoveredAtTime) || Discovery.DiscoveredAtTime < 0.0)
+        {
+            return false;
+        }
+        DiscoveryIds.Add(Discovery.DiscoveryId);
+    }
+
     TSet<FGuid> CropIds;
     for (const FWorldCropState& Crop : Snapshot.Crops)
     {
         if (!Crop.CropId.IsValid() || CropIds.Contains(Crop.CropId) ||
-            Crop.CropDefinitionId.IsNone() || Crop.Revision < 1 ||
+            Crop.CropDefinitionId.IsNone() ||
+            static_cast<uint8>(Crop.Stage) > static_cast<uint8>(ECropGrowthStage::Withered) ||
+            Crop.Revision < 1 ||
             !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
             !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0)
