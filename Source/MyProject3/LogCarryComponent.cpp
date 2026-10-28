@@ -1610,17 +1610,34 @@ bool ULogCarryComponent::PlaceHeldMaterialPiece()
 void ULogCarryComponent::DropHeldMaterialPiece()
 {
     AActor* Piece = HeldMaterialPiece;
-    if (!Piece)
+    if (!IsValid(Piece))
         return;
+
+    const FVector PreviousLocation = Piece->GetActorLocation();
     FVector ViewLocation;
     FRotator ViewRotation;
     const FVector DropLocation = GetViewPoint(ViewLocation, ViewRotation)
-        ? ViewLocation + ViewRotation.Vector() * 110.0f : Piece->GetActorLocation();
-    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, DropLocation))
+        ? ViewLocation + ViewRotation.Vector() * 110.0f : PreviousLocation;
+
+    if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
+        EWorldItemOwnerKind::World, DropLocation))
         return;
+
+    // Do not clear the held pointer or enable physics unless the material actor
+    // accepts the held-state transition; otherwise restore the authoritative owner.
+    if (!SetMaterialHeld(Piece, false))
+    {
+        if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::Held, PreviousLocation))
+        {
+            UE_LOG(LogTemp, Error, TEXT("Material drop rollback failed for %s."),
+                *GetNameSafe(Piece));
+        }
+        return;
+    }
+
     Piece->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics);
     Piece->SetActorEnableCollision(true);
-    SetMaterialHeld(Piece, false);
     if (UStaticMeshComponent* Mesh = Piece->FindComponentByClass<UStaticMeshComponent>())
     {
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
