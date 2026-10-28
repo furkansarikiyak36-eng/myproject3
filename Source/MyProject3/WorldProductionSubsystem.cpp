@@ -733,14 +733,17 @@ bool UWorldProductionSubsystem::CanAdvanceProductionStep(double DeltaSeconds) co
         bool bHasWork = false;
         for (const FWorldProductionJob& Job : Station.Jobs)
         {
-            if (Job.State != EProductionJobState::Queued && Job.State != EProductionJobState::Running)
+            if (Job.State == EProductionJobState::Completed)
                 continue;
+            if (Job.State == EProductionJobState::Blocked)
+                break; // A blocked job stalls this sequential station queue.
             bHasWork = true;
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
             if (!Recipes.IsValidIndex(RecipeIndex) ||
                 !FMath::IsFinite(Recipes[RecipeIndex].DurationSeconds) ||
                 Recipes[RecipeIndex].DurationSeconds <= 0.0 ||
-                !FMath::IsFinite(Job.ProgressSeconds) ||
+                !FMath::IsFinite(Job.ProgressSeconds) || Job.ProgressSeconds < 0.0 ||
+                Job.ProgressSeconds > Recipes[RecipeIndex].DurationSeconds ||
                 !FMath::IsFinite(Job.ProgressSeconds + DeltaSeconds))
                 return false;
         }
@@ -764,8 +767,10 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
         // step size rather than the recipe durations.
         for (FWorldProductionJob& Job : Station.Jobs)
         {
-            if (Job.State == EProductionJobState::Completed || Job.State == EProductionJobState::Blocked)
+            if (Job.State == EProductionJobState::Completed)
                 continue;
+            if (Job.State == EProductionJobState::Blocked)
+                break; // Later jobs cannot overtake a blocked job on this station.
 
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
             if (!Recipes.IsValidIndex(RecipeIndex))
