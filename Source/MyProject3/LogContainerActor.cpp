@@ -106,7 +106,9 @@ bool ALogContainerActor::CanAccept(const AActor* Piece, FString& OutReason) cons
         Identity->GetLifecycleState() == EWorldObjectLifecycleState::World;
     const bool bHeldOwned = Item.OwnerKind == EWorldItemOwnerKind::Held &&
         Item.OwnerId.IsValid() && Identity->GetLifecycleState() == EWorldObjectLifecycleState::Held;
-    if ((!bWorldOwned && !bHeldOwned) || Item.Quantity != 1)
+    const bool bLocalHeld = Log ? Log->IsHeld() :
+        (Stone ? Stone->IsHeld() : Stick->IsHeld());
+    if ((!bWorldOwned && !bHeldOwned) || bLocalHeld != bHeldOwned || Item.Quantity != 1)
     {
         OutReason = TEXT("The piece owner and lifecycle state disagree.");
         return false;
@@ -258,7 +260,14 @@ bool ALogContainerActor::TryStore(AActor* Piece)
         }
 
         if (bWasHeld)
+        {
             Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held);
+            Piece->SetActorEnableCollision(false);
+        }
+        else
+        {
+            Piece->SetActorEnableCollision(true);
+        }
         if (!RollbackOwnership())
         {
             Piece->SetActorHiddenInGame(true);
@@ -282,6 +291,9 @@ bool ALogContainerActor::TryStore(AActor* Piece)
 
 AActor* ALogContainerActor::TakeOne(const FVector& DropLocation)
 {
+    if (!FMath::IsFinite(DropLocation.X) || !FMath::IsFinite(DropLocation.Y) ||
+        !FMath::IsFinite(DropLocation.Z))
+        return nullptr;
     while (Stored.Num() > 0)
     {
         AActor* Piece = Stored.Pop();
