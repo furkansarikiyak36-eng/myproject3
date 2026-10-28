@@ -24,8 +24,8 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 - [ ] Complete repository-wide and local Blueprint caller audit. The tracked `ULogCarryComponent` interaction path now calls `TryApplyCutAction` and displays its structured failure message; a repository search did not provide a complete call-site index, so other callers and local/untracked Blueprints remain unverified.
 - [x] Source-reviewed the action-to-result-code mapping for all seven declared actions: invalid state, unmet prerequisite, missing configuration, and unsupported action are distinguished. Engine/runtime behavior remains unverified.
 - [x] Document operation-ID semantics in `LogBuildPiece.h`: the ID is correlation/diagnostic metadata only, not an idempotency key. A repeated request is revalidated against the new piece state and may return a different result; callers must not assume deduplication.
-- [ ] Review whether bottom-height preservation is valid for all configured output meshes and actor rotations; current logic uses world-axis bounds and should be checked with real assets.
-- [ ] Confirm snap-anchor regeneration after processing does not invalidate occupied/custom anchors in any allowed processing state.
+- [ ] Review whether bottom-height preservation is valid for all configured output meshes and actor rotations; current logic preserves world AABB bottom, but actual pivot/orientation/collision fit needs real asset inspection.
+- [x] Source guard: processing rejects any occupied snap anchor as well as attached children, so an occupied auto-anchor cannot be silently recreated as free during the mesh swap; custom anchors remain outside automatic regeneration. Runtime/editor confirmation remains open.
 
 ### P1 — Domain completeness (not silently included in this phase)
 
