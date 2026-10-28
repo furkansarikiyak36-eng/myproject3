@@ -804,8 +804,8 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
                 const double AppliedSeconds = FMath::Min(RemainingSeconds, NeededSeconds);
                 Job.ProgressSeconds = FMath::Min(Recipe.DurationSeconds, Job.ProgressSeconds + AppliedSeconds);
                 RemainingSeconds = FMath::Max(0.0, RemainingSeconds - AppliedSeconds);
+                bStationChanged = true;
             }
-            bStationChanged = true;
             if (Job.ProgressSeconds < Recipe.DurationSeconds)
                 break;
 
@@ -819,13 +819,20 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
             }
             if (!bCanCommitOutputs || CountStockUnits(ProposedStock) > Station.StorageCapacityUnits)
             {
-                Job.State = EProductionJobState::Blocked;
-                Job.BlockedReason = FName(TEXT("OutputCapacity"));
+                if (!bRetryOutputCommit)
+                {
+                    Job.State = EProductionJobState::Blocked;
+                    Job.BlockedReason = FName(TEXT("OutputCapacity"));
+                    bStationChanged = true;
+                }
+                // Already-blocked jobs remain unchanged until output space exists;
+                // do not increment the station revision every idle retry step.
                 break;
             }
             Station.Stock = MoveTemp(ProposedStock);
             Job.State = EProductionJobState::Completed;
             Job.BlockedReason = NAME_None;
+            bStationChanged = true;
             // Continue to a later queued/running job only when this step had
             // time remaining. Completed outputs are materialized before the next
             // recipe consumes any of the remaining logical time.
