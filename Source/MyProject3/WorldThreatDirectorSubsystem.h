@@ -40,6 +40,10 @@ struct FThreatRaidRecord
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
     double PlannedEndTime = 0.0;
 
+    /** Frozen per-raid interval so saves remain deterministic if tuning changes later. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
+    double AttackIntervalSeconds = 0.0;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
     float Pressure = 0.0f;
 
@@ -124,6 +128,9 @@ public:
 
     UFUNCTION(BlueprintPure, Category="Threat")
     double GetNextRaidTimeSeconds() const { return NextRaidTimeSeconds; }
+
+    /** Freezes the authored attack interval once for this raid; later tuning changes do not remap saved pulse indices. */
+    bool InitializeRaidAttackInterval(const FGuid& RaidId, double InAttackIntervalSeconds);
 
     /** Persistently advances the idempotency watermark after a structural damage pulse commits. */
     bool CommitRaidAttackPulse(const FGuid& RaidId, int64 PulseIndex);
