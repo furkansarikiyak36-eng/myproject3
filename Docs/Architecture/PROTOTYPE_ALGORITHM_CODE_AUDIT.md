@@ -16,6 +16,9 @@ Aşağıdaki A01–A39 bulguları ilk statik inceleme sırasında kaydedilen ris
 |---|---|
 | A01 voxel epsilon | **Kodda düzeltildi:** küçük negatif density artık `-epsilon`, pozitif/sıfır değer `+epsilon` alıyor; işaret sınıfı korunuyor. |
 | A02 VerticalSlice_B driver | **Kısmen düzeltildi:** `CreateVerticalSliceBMap.py` açık `WorldDemoBootstrapActor` ekliyor. `RebuildVerticalSliceBFromScratch.py` hâlâ yalnız sunum amaçlı ground+lighting sahnesi üretir; onu oyun dünyasının yerine kullanmamak gerekir. |
+| A03 save/load preflight | **Kısmen güçlendirildi:** snapshot mutasyona başlamadan önce çapraz-domain preflight yapılıyor; inventory/storage/cargo dışa aktarımını doğrulamak için canlı alt sistemleri değiştiren probe çağrıları kaldırıldı. Aday yükleme başarısızsa eski snapshot yeniden uygulanıyor ve telafi de başarısız olursa coordinator faulted oluyor. Bu yine çok-domain atomik commit garantisi değildir; domain-local commit hatası telafi gerektirebilir. |
+| A04 dinamik fiziksel aktör manifesti | **Kod eklendi, statik kapsamda:** eksik identity'li aktörler kayıtlı sınıftan deferred spawn ile oluşturuluyor, GUID BeginPlay kaydından önce veriliyor; kayıtta bulunmayan identity'li aktörler kaldırılıyor. Sınıf ve primitive component düzeni mutasyon öncesi doğrulanıyor. Schema v12 öncesi eksik fiziksel manifestli kayıtlar reddediliyor. Actor lifecycle/BeginPlay etkileri ve dinamik Blueprint component düzeni Unreal içinde doğrulanmadı. |
+| A06 baskın fixed-step entegrasyonu | **Kod eklendi, statik kapsamda:** coordinator adaptörü domain commit öncesi preflight ediyor, mantıksal fixed-step tamamlandıktan sonra adaptör çalışıyor; post-commit hata simülasyonu fail-closed duruma alıyor. Baskın hedefi en yakın geçerli yapı düğümünü deterministik tie-break ile seçiyor. Saldırı aralığı raid kaydında donduruluyor; pulse watermark save/load için kalıcı, işlem ledger kilidi pulse tamamlanınca watermark arkasında temizleniyor. Bu hâlâ tam AI/navmesh, gerçek settlement target resolver veya geri alınabilir actor/structure transaction değildir. |
 | A05 destek/kaldırma | **Kodda güçlendirildi:** secondary-support kaldırımı son aggregate yükleri doğruluyor; node kaldırma/reparent sonrası grafiği geçici kopya üzerinde doğrulayıp başarısızsa geri alıyor. Eşit yük paylaşımı yine bir prototip sezgiselidir. |
 | A07–A08 kütük kesim reçeteleri | **Kodda güçlendirildi:** çıktı uzunluklarına göre beklenen merkez aralığı doğrulanıyor; aynı uzunluk/şekil anahtarına ait yinelenen mesh eşleşmeleri reddediliyor. |
 | A09 fiziksel kesim geometrisi | **Kısmen kapatıldı:** ölçeklemeyle oluşan uzunluk artık `bHasCustomLengthScale` ile işaretleniyor; bu parçaların canonical kesim/definition ve inventory akışı tarafından sessizce normalleştirilmesi reddediliyor. Mesh'i gerçek bir düzlemle kesen geometri üretimi hâlâ yok. |
@@ -41,14 +44,19 @@ Aşağıdaki A01–A39 bulguları ilk statik inceleme sırasında kaydedilen ris
 
 ### Hâlâ çözülmemiş büyük kapsamlar
 
-- A03: yükleme başarısızlığında önceki snapshot yeniden uygulanıyor ve başarısız telafide coordinator durduruluyor; bu, gerçek çok-domain atomic commit değildir.
-- A04: farklı aktör nüfusuna sahip dünyayı kayıt üzerinden spawn/destroy edip yeniden kuran tam dinamik actor manifesti yok.
-- A06: raid adapter'ın coordinator fixed-step zincirine güvenli, geri alınabilir entegrasyonu tamamlanmadı.
+- A03: snapshot mutasyonundan önce çapraz-domain ön doğrulama var; ancak bütün domain'ler için ortak staged commit/atomic swap yok. Bir domain-local doğrulama uygulama sırasında yine başarısız olursa eski snapshot telafi olarak yeniden uygulanır; telafinin kendisi başarısız olabilir ve simülasyon faulted olur.
+- A04: kayıt manifestiyle dynamic actor spawn/destroy ve kimlik/primitive layout doğrulaması artık kodda var. Açık sınırlar; actor BeginPlay yan etkilerinin motor içinde doğrulanmaması, runtime oluşturulan primitive component düzeninin desteklenmemesi ve UHT/build/PIE doğrulamasının yapılmamış olmasıdır.
+- A06: raid adapter ortak fixed-step coordinator'a bağlıdır ve başarısız saldırı adımı fail-closed davranır. Tam AI davranışı, NavMesh/yol bulma, dalga kompozisyonu, gerçek yerleşim hedef çözümleyicisi ve motor seviyesinde rollback hâlâ yoktur.
 - A17/A18/A19/A20/A21/A31: eşit yük paylaşımı, survival katsayıları, çevresel tarım etkileri, kapasite birimleri, halat fiziği ve yapısal yük kapasitesi hâlâ prototip sözleşmeleri/heuristics.
-- A09/A16/A24/A28/A29 için yukarıdaki kısmi düzeltmeler, gerçek mesh kesimi, paylaşılan batch transaction, kalıcı durable event log veya kanıtlanmış atomiklik anlamına gelmez. A37'de genel operation ledger retention'ı da açık kalır.
+- A09/A16/A24/A28/A29 için kısmi düzeltmeler gerçek mesh kesimi, paylaşılan batch transaction, kalıcı durable event log veya kanıtlanmış atomiklik anlamına gelmez.
+- A37: genel operation ledger tamamlanmış kayıtları sınır dolunca reddediyor; yalnızca kalıcı domain makbuzu/watermark bulunan durumlarda güvenli budama yapılmalı.
+- A38: taşınan item/carry-holder bağını tam save/load etmek hâlâ desteklenmiyor; Held item ile save açıkça reddediliyor.
 
+### Güncel durumun okunması
 
-## 2. Özet: en önemli bulgular
+Bu bölümdeki A01–A39 listesi ilk statik incelemenin bulgularını tarihsel olarak tutar. Hangi bulgunun bugün açık veya kısmen kapalı olduğu için **öncelikli kaynak 1A tablosu ve yukarıdaki “Hâlâ çözülmemiş büyük kapsamlar” güncellemesidir**. Aşağıdaki eski açıklamalar, kod daha sonra değişmiş olsa bile ilk bulgunun ne olduğunu anlatır; onları tek başına güncel açık-hata listesi olarak okumayın.
+
+## 2. İlk denetimdeki en önemli bulgular (tarihsel bulgu listesi)
 
 1. **P0 — Voxel density epsilon düzeltmesi işaret değiştirebiliyor.** Negatif ve sıfıra yakın değer +epsilon yapılabiliyor; bu, katı tarafındaki örnekleri hava tarafına çevirebilir.
 2. **P0 — VerticalSlice_B oluşturma akışı ortak fixed-step simülasyon sürücüsünü kurmuyor.** Oyuncu aktivitesi kaydı var ama coordinator'ın simülasyon adımları bu akıştan çağrılmıyor.
