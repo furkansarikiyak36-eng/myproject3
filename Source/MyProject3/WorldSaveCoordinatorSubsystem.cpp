@@ -611,6 +611,149 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
         AnimalIds.Add(Animal.AnimalId);
     }
 
+    // Validate production recipes, stock, queued output reservations, jobs and
+    // durable receipts before the first domain is mutated by ApplySnapshot.
+    TMap<FName, FWorldProductionRecipe> RecipesById;
+    for (const FWorldProductionRecipe& Recipe : Snapshot.ProductionRecipes)
+    {
+        if (Recipe.RecipeId.IsNone() || RecipesById.Contains(Recipe.RecipeId) ||
+            Recipe.Inputs.IsEmpty() || Recipe.Outputs.IsEmpty() ||
+            !FMath::IsFinite(Recipe.DurationSeconds) || Recipe.DurationSeconds <= 0.0)
+        {
+            return false;
+        }
+        for (const FProductionIngredient& Input : Recipe.Inputs)
+            if (Input.ItemId.IsNone() || Input.Quantity <= 0)
+                return false;
+        for (const FProductionIngredient& Output : Recipe.Outputs)
+            if (Output.ItemId.IsNone() || Output.Quantity <= 0)
+                return false;
+        RecipesById.Add(Recipe.RecipeId, Recipe);
+    }
+
+    TSet<FGuid> StationIds;
+    TSet<FGuid> ProductionJobIds;
+    TSet<FGuid> EnqueueReceiptJobIds;
+    TSet<FGuid> ProductionReceiptOperationIds;
+    TSet<FGuid> IntakeSourceItemIds;
+    TSet<FGuid> MaterializedWorldItemIds;
+    for (const FWorldProductionStation& Station : Snapshot.ProductionStations)
+    {
+        if (!Station.StationId.IsValid() || StationIds.Contains(Station.StationId) ||
+            Station.StationTag.IsNone() || Station.StorageCapacityUnits <= 0 ||
+            Station.Revision <= 0 || Station.Jobs.Num() > ProductionSubsystem->MaxJobsPerStation)
+        {
+            return false;
+        }
+        StationIds.Add(Station.StationId);
+
+        int64 StockUnits = 0;
+        for (const TPair<FName, int32>& Stock : Station.Stock)
+        {
+            if (Stock.Key.IsNone() || Stock.Value < 0 || StockUnits > MAX_int64 - Stock.Value)
+                return false;
+            StockUnits += Stock.Value;
+        }
+        if (StockUnits > MAX_int32 || StockUnits > Station.StorageCapacityUnits)
+            return false;
+
+        int64 ReservedOutputUnits = 0;
+        TSet<FGuid> StationJobIds;
+        for (const FWorldProductionJob& Job : Station.Jobs)
+        {
+            const FWorldProductionRecipe* Recipe = RecipesById.Find(Job.RecipeId);
+            if (!Job.JobId.IsValid() || StationJobIds.Contains(Job.JobId) ||
+                ProductionJobIds.Contains(Job.JobId) || !Recipe ||
+                static_cast<uint8>(Job.State) > static_cast<uint8>(EProductionJobState::Blocked) ||
+                !FMath::IsFinite(Job.ProgressSeconds) || Job.ProgressSeconds < 0.0 ||
+                Job.ProgressSeconds > Recipe->DurationSeconds)
+            {
+                return false;
+            }
+            StationJobIds.Add(Job.JobId);
+            ProductionJobIds.Add(Job.JobId);
+
+            if (Job.State == EProductionJobState::Queued ||
+                Job.State == EProductionJobState::Running)
+            {
+                for (const FProductionIngredient& Output : Recipe->Outputs)
+                {
+                    if (ReservedOutputUnits > MAX_int64 - Output.Quantity)
+                        return false;
+                    ReservedOutputUnits += Output.Quantity;
+                }
+            }
+        }
+        if (ReservedOutputUnits > Station.StorageCapacityUnits - StockUnits)
+            return false;
+
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Station.PhysicalIntakeReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || !Receipt.SourceItemId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 || Receipt.ExpectedItemRevision == MAX_int64 ||
+                Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.SourceDefinitionId.IsNone() || Receipt.StockItemId.IsNone() ||
+                Receipt.StockItemId != UWorldProductionSubsystem::MakePhysicalStockItemId(
+                    Receipt.SourceDefinitionId, Receipt.SourceMeshVariantSetId) ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionReceiptOperationIds.Contains(Receipt.OperationId) ||
+                IntakeSourceItemIds.Contains(Receipt.SourceItemId))
+            {
+                return false;
+            }
+            ProductionReceiptOperationIds.Add(Receipt.OperationId);
+            IntakeSourceItemIds.Add(Receipt.SourceItemId);
+        }
+
+        for (const FWorldProductionEnqueueReceipt& Receipt : Station.EnqueueReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || Receipt.RecipeId.IsNone() ||
+                !RecipesById.Contains(Receipt.RecipeId) || !Receipt.JobId.IsValid() ||
+                Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionReceiptOperationIds.Contains(Receipt.OperationId) ||
+                EnqueueReceiptJobIds.Contains(Receipt.JobId))
+            {
+                return false;
+            }
+            ProductionReceiptOperationIds.Add(Receipt.OperationId);
+            EnqueueReceiptJobIds.Add(Receipt.JobId);
+        }
+
+        for (const FWorldProductionCollectReceipt& Receipt : Station.CollectReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || !Receipt.JobId.IsValid() ||
+                Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionReceiptOperationIds.Contains(Receipt.OperationId) ||
+                ProductionJobIds.Contains(Receipt.JobId))
+            {
+                return false;
+            }
+            ProductionReceiptOperationIds.Add(Receipt.OperationId);
+        }
+
+        for (const FWorldProductionMaterializationReceipt& Receipt : Station.MaterializationReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || Receipt.StockItemId.IsNone() ||
+                Receipt.DefinitionId.IsNone() || Receipt.BaseDefinitionId.IsNone() ||
+                !Receipt.WorldItemId.IsValid() ||
+                Receipt.StockItemId != UWorldProductionSubsystem::MakePhysicalStockItemId(
+                    Receipt.DefinitionId, Receipt.MeshVariantSetId) ||
+                Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision == MAX_int64 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionReceiptOperationIds.Contains(Receipt.OperationId) ||
+                MaterializedWorldItemIds.Contains(Receipt.WorldItemId) ||
+                IntakeSourceItemIds.Contains(Receipt.WorldItemId))
+            {
+                return false;
+            }
+            ProductionReceiptOperationIds.Add(Receipt.OperationId);
+            MaterializedWorldItemIds.Add(Receipt.WorldItemId);
+        }
+    }
+
     TSet<FGuid> StructuralNodeIds;
     for (const FWorldStructuralNodeSnapshot& Node : Snapshot.StructuralGraph)
     {
