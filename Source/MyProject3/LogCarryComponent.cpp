@@ -1303,6 +1303,15 @@ bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
         PlacementStatus = TEXT("This piece is part of a structure.");
         return false;
     }
+    UWorldObjectIdentityComponent* Identity =
+        Piece ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    if (!Identity || !Identity->HasValidIdentity() ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::World ||
+        Identity->StateRevision == MAX_int64)
+    {
+        PlacementStatus = TEXT("The piece has an invalid or non-world lifecycle state.");
+        return false;
+    }
     if (!CarryOwnerId.IsValid())
         CarryOwnerId = FGuid::NewGuid();
 
@@ -1318,8 +1327,16 @@ bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
         PlacementStatus = TEXT("The ownership ledger rejected the pickup.");
         return false;
     }
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held))
+    {
+        TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
+        PlacementStatus = TEXT("The piece lifecycle rejected pickup.");
+        return false;
+    }
     if (!SetMaterialHeld(Piece, true))
     {
+        Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World);
         TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, Piece->GetActorLocation());
         PlacementStatus = TEXT("The piece refused to be held.");
         return false;
@@ -1485,13 +1502,27 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
     if (!IsValid(Piece) || !TargetPiece || !HeldStructural || Target == Piece)
         return false;
 
-    // Commit the ownership transition before connecting anchors. A rejected
-    // connection restores the held owner below; no successful connection may
-    // be left attached while the ledger still says the player owns it.
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    if (!Identity || Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        Identity->StateRevision == MAX_int64)
+    {
+        PlacementStatus = TEXT("Placement blocked: the piece lifecycle is not Held.");
+        return false;
+    }
+    // The actor and ownership ledger transition together with the canonical lifecycle.
     if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
         EWorldItemOwnerKind::World, Piece->GetActorLocation()))
     {
         PlacementStatus = TEXT("Placement blocked: ownership ledger rejected the transfer.");
+        return false;
+    }
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    {
+        TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        PlacementStatus = TEXT("Placement blocked: lifecycle transition was rejected.");
         return false;
     }
 
@@ -1542,12 +1573,15 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
     if (!bConnected)
     {
         // A failed graph/anchor operation must not consume the held item.
-        if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
-            EWorldItemOwnerKind::Held, Piece->GetActorLocation()))
+        const bool bLifecycleRestored = Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+        const bool bOwnershipRestored = TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        if (!bLifecycleRestored || !bOwnershipRestored)
         {
-            UE_LOG(LogTemp, Error, TEXT("Material placement rollback failed for %s; ownership ledger may require recovery."),
+            UE_LOG(LogTemp, Error, TEXT("Material placement rollback failed for %s; item requires recovery."),
                 *GetNameSafe(Piece));
-            PlacementStatus = TEXT("Placement failed and ownership rollback failed; item needs recovery.");
+            PlacementStatus = TEXT("Placement failed and rollback was incomplete; item needs recovery.");
             return false;
         }
         PlacementStatus = FString::Printf(TEXT("Cannot place here: %s"), *Reason);
@@ -1562,15 +1596,27 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
 bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
 {
     AActor* Piece = HeldMaterialPiece;
-    if (!IsValid(Piece) || GroundPoint.ContainsNaN())
+    if (!IsValid(Piece) || !FMath::IsFinite(GroundPoint.X) ||
+        !FMath::IsFinite(GroundPoint.Y) || !FMath::IsFinite(GroundPoint.Z))
+        return false;
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    if (!Identity || Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        Identity->StateRevision == MAX_int64)
         return false;
 
-    // Reserve the world-owned ledger state before mutating placement/graph state.
-    // If physical placement fails, restore the held owner so inventory and actor agree.
     if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::Held,
         EWorldItemOwnerKind::World, Piece->GetActorLocation()))
     {
         PlacementStatus = TEXT("Placement blocked: ownership ledger rejected the transfer.");
+        return false;
+    }
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::Placed))
+    {
+        TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+            EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        PlacementStatus = TEXT("Placement blocked: lifecycle transition was rejected.");
         return false;
     }
 
@@ -1583,8 +1629,16 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
 
     if (!bPlaced)
     {
-        TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
+        const bool bLifecycleRestored = Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::Held);
+        const bool bOwnershipRestored = TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
             EWorldItemOwnerKind::Held, Piece->GetActorLocation());
+        if (!bLifecycleRestored || !bOwnershipRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Ground placement rollback failed for %s."), *GetNameSafe(Piece));
+            PlacementStatus = TEXT("Placement failed and rollback was incomplete; item needs recovery.");
+            return false;
+        }
         PlacementStatus = TEXT("Cannot place on the ground here.");
         return false;
     }
@@ -1621,6 +1675,11 @@ void ULogCarryComponent::DropHeldMaterialPiece()
     AActor* Piece = HeldMaterialPiece;
     if (!IsValid(Piece))
         return;
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    if (!Identity || Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        Identity->StateRevision == MAX_int64)
+        return;
 
     const FVector PreviousLocation = Piece->GetActorLocation();
     FVector ViewLocation;
@@ -1634,8 +1693,11 @@ void ULogCarryComponent::DropHeldMaterialPiece()
 
     // Do not clear the held pointer or enable physics unless the material actor
     // accepts the held-state transition; otherwise restore the authoritative owner.
-    if (!SetMaterialHeld(Piece, false))
+    if (!SetMaterialHeld(Piece, false) ||
+        !Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World))
     {
+        SetMaterialHeld(Piece, true);
         if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World,
             EWorldItemOwnerKind::Held, PreviousLocation))
         {
