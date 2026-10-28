@@ -106,7 +106,13 @@ AVerticalSliceBWorldActor::AVerticalSliceBWorldActor()
 void AVerticalSliceBWorldActor::BeginPlay()
 {
     Super::BeginPlay();
-    BuildWorld();
+    if (!BuildWorld())
+    {
+        // The shared simulation must not advance in a map whose required
+        // playable world failed to initialize.
+        StopSimulation();
+        return;
+    }
 
     // The saved .umap may already contain the generated world. Per-play state
     // is still initialized here rather than being baked into the editor map.
@@ -117,6 +123,12 @@ void AVerticalSliceBWorldActor::BeginPlay()
 void AVerticalSliceBWorldActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+
+    if (!bWorldBuilt)
+    {
+        DrawStatus();
+        return;
+    }
 
     if (!PlayerSurvivalId.IsValid())
         SetupPlayer();
