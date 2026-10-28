@@ -372,6 +372,14 @@ bool UVoxelTerrainChunkComponent::RestoreDensitySnapshot(
     if (!ValidateDensitySnapshot(InCellsPerAxis, InVoxelSizeCm, InRevision, InDensity, InReceipts))
         return false;
 
+    // Stage the prior live state. A rejected restore must not leave density and
+    // collision describing different worlds, particularly during transaction rollback.
+    const int32 PreviousCellsPerAxis = CellsPerAxis;
+    const float PreviousVoxelSizeCm = VoxelSizeCm;
+    const int64 PreviousRevision = DensityRevision;
+    const TArray<float> PreviousDensity = Density;
+    const TMap<FGuid, FVoxelTerrainDigReceipt> PreviousReceipts = DigReceipts;
+
     CellsPerAxis = InCellsPerAxis;
     VoxelSizeCm = InVoxelSizeCm;
     Density = InDensity;
@@ -380,7 +388,29 @@ bool UVoxelTerrainChunkComponent::RestoreDensitySnapshot(
     for (const FVoxelTerrainDigReceipt& Receipt : InReceipts)
         DigReceipts.Add(Receipt.OperationId, Receipt);
 
-    RebuildMesh();
+    bool bHasSolid = false;
+    bool bHasAir = false;
+    for (const float Value : Density)
+    {
+        bHasSolid |= Value < 0.0f;
+        bHasAir |= Value >= 0.0f;
+        if (bHasSolid && bHasAir)
+            break;
+    }
+
+    const int32 TriangleCount = RebuildMesh();
+    // A fully solid or fully empty chunk legitimately has no extracted surface.
+    // Mixed density must produce a surface; otherwise keep the previous state.
+    if (bHasSolid && bHasAir && TriangleCount <= 0)
+    {
+        CellsPerAxis = PreviousCellsPerAxis;
+        VoxelSizeCm = PreviousVoxelSizeCm;
+        DensityRevision = PreviousRevision;
+        Density = PreviousDensity;
+        DigReceipts = PreviousReceipts;
+        RebuildMesh();
+        return false;
+    }
     return true;
 }
 
