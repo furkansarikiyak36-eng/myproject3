@@ -955,6 +955,8 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
     return true;
 }
 
+} // namespace
+
 bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGame* OutSave) const
 {
     UWorld* World = GetWorld();
