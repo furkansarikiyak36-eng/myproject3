@@ -590,9 +590,17 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
         return true;
     }
     FString Note;
-    if (Shape.Length() > Needed * 1.1f &&
-        CutOffRemainder(Log, Needed, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f))
+    const FTransform PreCutTransform = Log->GetActorTransform();
+    ALogBuildPiece* Remainder = nullptr;
+    if (Shape.Length() > Needed * 1.1f)
     {
+        Remainder = CutOffRemainder(Log, Needed,
+            GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f);
+        if (!Remainder)
+        {
+            SetStatus(TEXT("Cut rejected: the required length could not be produced safely."));
+            return true;
+        }
         Note = FString::Printf(TEXT(" Cut to %.0f cm."), Needed);
     }
     const FTransform SlotWorld = Plan->GetSlotWorld(SlotIndex);
@@ -600,7 +608,13 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
         MakeLogRotation(Log, SlotWorld.GetRotation().GetAxisX(), SlotWorld.GetRotation().GetAxisZ()));
     if (!Carry->CommitHeldLogAt(Target, Plan->GetSupportPiece(SlotIndex), nullptr))
     {
-        SetStatus(TEXT("The log could not be placed."));
+        // If the cut succeeded but placement did not, restore the source geometry
+        // and retire the staged offcut; the plan must not consume a partial cut.
+        if (IsValid(Remainder))
+            Remainder->Destroy();
+        if (IsValid(Log) && !Log->IsActorBeingDestroyed())
+            Log->SetActorTransform(PreCutTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        SetStatus(TEXT("The log could not be placed; the cut was rolled back."));
         return true;
     }
     const FString Name = ABuildPlanActor::GetPlanName(Plan->Kind);
