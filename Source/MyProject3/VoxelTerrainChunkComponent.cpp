@@ -22,7 +22,10 @@ namespace
     float AvoidIsoValue(float Value)
     {
         constexpr float Epsilon = 0.01f;
-        return FMath::Abs(Value) < Epsilon ? Epsilon : Value;
+        if (FMath::Abs(Value) >= Epsilon) return Value;
+        // Preserve the signed-distance classification: negative is solid, positive is air.
+        // Moving a small negative sample to +epsilon flips the solid/air topology.
+        return Value < 0.0f ? -Epsilon : Epsilon;
     }
 }
 
