@@ -127,13 +127,11 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
     const int32 MinY = MinGridIndex(CY, Radius), MaxY = MaxGridIndex(CY, Radius);
     const int32 MinZ = MinGridIndex(CZ, Radius), MaxZ = MaxGridIndex(CZ, Radius);
 
-    // Validate the full affected sample set before mutating anything. A corrupt
-    // density entry must not leave a partially edited chunk.
-    for (int32 Z = MinZ; Z <= MaxZ; ++Z)
-        for (int32 Y = MinY; Y <= MaxY; ++Y)
-            for (int32 X = MinX; X <= MaxX; ++X)
-                if (!FMath::IsFinite(Density[PointIndex(X, Y, Z)]))
-                    return 0.0f;
+    // Validate the entire field before mutating any sample. Volume and surface
+    // extraction both require a finite signed-distance field.
+    for (const float Value : Density)
+        if (!FMath::IsFinite(Value))
+            return 0.0f;
 
     const float VolumeBefore = GetSolidVolumeCubicMetres();
     for (int32 Z = MinZ; Z <= MaxZ; ++Z)
