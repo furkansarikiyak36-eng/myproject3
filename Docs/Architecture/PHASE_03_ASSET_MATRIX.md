@@ -19,9 +19,11 @@
 | Special joints | `Archive/SM_RawLog_75_*` (cross-lap, fork, half-lap, saddle, V-notch, cradle/mate) | Later structural joint variants | Not ordinary cut outputs; need separate joint contracts and matching pairs |
 | Short/long raw logs | `SM_RawLog_Short_01..04.fbx`, `SM_RawLog_Long_01..08.fbx` | Additional source lengths | Actual length class, orientation and which output families exist |
 
-## Current implementation gap
+## Current implementation and remaining gap
 
-`ALogBuildPiece` currently has one output-mesh property per action (`SplitHalfVariantMesh`, `QuarterVariantMesh`, etc.). It does not select an output by source length or section. That means a configured output could be the wrong length for a given source actor even when non-null. This must not be “fixed” by guessing dimensions from filenames or assigning a universal mesh to every length.
+`ALogBuildPiece` now supports `ProcessingMeshSets`, where each set binds one exact source `UStaticMesh` to the seven action outputs. If at least one set is configured, it is authoritative: duplicate source entries return a conflict, an unmapped source fails closed, and a missing action output is rejected. The old single-output properties are used only when no sets are configured, preserving older Blueprint defaults during migration.
+
+The mapping API is source code only. No Unreal asset/Blueprint mapping has been populated or verified yet, so existing actors may still use the legacy slots and may select a wrong-length output if misconfigured. Do not guess dimensions from filenames or assign a universal mesh to every length.
 
 ## Required next implementation contract
 
