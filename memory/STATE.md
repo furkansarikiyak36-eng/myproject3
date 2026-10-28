@@ -14,7 +14,8 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 | Persistence delta | SaveGame schema v14 contains identity-bound voxel density snapshots; restore rebuilds mesh/collision for chunks already present in the level |
 | Player terrain tool | `UTerrainDigToolComponent` attached to `ALogSnapCharacter`; `N` traces the crosshair and routes a dig through the combined subsystem API; configured strength is still a prototype value, not inventory-authoritative |
 | Engine acceptance | NOT RUN for this branch: UE 5.8 UHT/build, Automation tests, Editor/PIE, full save/load and performance |
-| Added source tests | Bounded-dig policy, grounded-structure guard, density-snapshot round trip, logical/physical excavation commit/rollback, and repeated dig within one logical cell |\n| Open integration blockers | All changes are source-level and not engine-verified; trusted inventory-tool binding, neighboring chunk seams, async mesh/collision, navmesh update, missing-chunk recreation, and physical excavation yield remain open |
+| Added source tests | Bounded-dig policy, grounded-structure guard, density-snapshot round trip, logical/physical excavation commit/rollback, and repeated dig within one logical cell |
+| Open integration blockers | All changes are source-level and not engine-verified; trusted inventory-tool binding, neighboring chunk seams, async mesh/collision, navmesh update, missing-chunk recreation, and physical excavation yield remain open |
 
 The phase map and remaining source/runtime gates are recorded in `Docs/Architecture/PHASE_02_14_INTEGRATION_CLOSEOUT.md` and the detailed terrain gate in `Docs/Architecture/PHASE_02_VOXEL_VALIDATION_AND_EXIT_GATE.md`. Do not mark any M-ID accepted merely because its source file exists.
 
