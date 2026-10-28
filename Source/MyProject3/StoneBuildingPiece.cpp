@@ -256,23 +256,28 @@ bool AStoneBuildingPiece::TryCommitGroundPlacement(
     const FRotator& SurfaceRotation)
 {
     if (bIsPlaced || !bIsHeld || ParentPiece.IsValid() ||
-        SurfaceLocation.ContainsNaN() || SurfaceRotation.ContainsNaN())
+        !FMath::IsFinite(SurfaceLocation.X) || !FMath::IsFinite(SurfaceLocation.Y) ||
+        !FMath::IsFinite(SurfaceLocation.Z) ||
+        !FMath::IsFinite(SurfaceRotation.Pitch) || !FMath::IsFinite(SurfaceRotation.Yaw) ||
+        !FMath::IsFinite(SurfaceRotation.Roll) || !StructuralIdentity || !GetWorld())
     {
         return false;
     }
 
+    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    if (!Graph)
+        return false;
+    const FTransform PreviousTransform = GetActorTransform();
     SetActorLocationAndRotation(SurfaceLocation, SurfaceRotation, false, nullptr,
         ETeleportType::TeleportPhysics);
-    bIsHeld = false;
-    bIsPlaced = true;
-    if (StructuralIdentity)
+    if (!Graph->SetGroundSupported(StructuralIdentity->GetInstanceId(), true))
     {
-        if (UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>())
-        {
-            Graph->SetGroundSupported(StructuralIdentity->GetInstanceId(), true);
-        }
+        SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        return false;
     }
 
+    bIsHeld = false;
+    bIsPlaced = true;
     if (Mesh)
     {
         Mesh->SetSimulatePhysics(false);
