@@ -369,57 +369,67 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
         return TEXT("Release occupied snap anchors and remove attached pieces before processing this log.");
     }
 
+    // Report transition prerequisites before mesh configuration so the human
+    // message agrees with the machine-readable PrerequisiteNotMet result.
+    switch (Action)
+    {
+    case ELogCutAction::SplitHalf:
+    case ELogCutAction::Hewn:
+    case ELogCutAction::Kalas:
+        if (PieceType != ELogPieceType::WholeLog)
+        {
+            if (Action == ELogCutAction::SplitHalf)
+            {
+                return TEXT("Only a whole log can be split into half-rounds.");
+            }
+            if (Action == ELogCutAction::Hewn)
+            {
+                return TEXT("Hewing is available only on a whole log in this prototype.");
+            }
+            return TEXT("Kalas shaping requires a whole log in this prototype.");
+        }
+        break;
+
+    case ELogCutAction::Quarter:
+    case ELogCutAction::Gutter:
+    case ELogCutAction::Trough:
+    case ELogCutAction::Plank:
+        if (PieceType != ELogPieceType::SplitHalfLog)
+        {
+            if (Action == ELogCutAction::Quarter)
+            {
+                return TEXT("Quartering requires a split half-round log first.");
+            }
+            if (Action == ELogCutAction::Gutter)
+            {
+                return TEXT("A groove can only be cut into a split half-round log.");
+            }
+            if (Action == ELogCutAction::Trough)
+            {
+                return TEXT("A trough can only be carved into a split half-round log.");
+            }
+            return TEXT("Plank shaping requires a split half-round log first.");
+        }
+        break;
+
+    default:
+        return TEXT("Unsupported processing action.");
+    }
+
     bool bAmbiguousMapping = false;
-    ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
+    UStaticMesh* OutputMesh = ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
     if (bAmbiguousMapping)
     {
         return TEXT("More than one processing mesh set matches this source mesh; remove the duplicate mapping.");
     }
-
-    if (ProcessingMeshSets.Num() > 0 &&
-        !ProcessingMeshSets.ContainsByPredicate(
-            [this](const FLogProcessingMeshSet& Set)
-            {
-                return IsValid(Mesh) && IsValid(Mesh->GetStaticMesh()) &&
-                    Set.SourceMesh == Mesh->GetStaticMesh();
-            }))
+    if (!IsValid(OutputMesh))
     {
-        return TEXT("No processing mesh set is mapped to this source mesh.");
+        return ProcessingMeshSets.Num() > 0
+            ? TEXT("No valid output mesh is configured for this source mesh and action.")
+            : TEXT("No output mesh is configured for this processing action.");
     }
 
-    switch (Action)
-    {
-    case ELogCutAction::SplitHalf:
-        return PieceType != ELogPieceType::WholeLog
-            ? TEXT("Only a whole log can be split into half-rounds.")
-            : TEXT("No split-half mesh is configured for this log length.");
-    case ELogCutAction::Quarter:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("Quartering requires a split half-round log first.")
-            : TEXT("No quarter mesh is configured for this log length.");
-    case ELogCutAction::Gutter:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("A groove can only be cut into a split half-round log.")
-            : TEXT("No gutter mesh is configured for this log length.");
-    case ELogCutAction::Trough:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("A trough can only be carved into a split half-round log.")
-            : TEXT("No trough mesh is configured for this log length.");
-    case ELogCutAction::Hewn:
-        return PieceType != ELogPieceType::WholeLog
-            ? TEXT("Hewing is available only on a whole log in this prototype.")
-            : TEXT("No hewn mesh is configured for this log length.");
-    case ELogCutAction::Kalas:
-        return PieceType != ELogPieceType::WholeLog
-            ? TEXT("Kalas shaping requires a whole log in this prototype.")
-            : TEXT("No kalas mesh is configured for this log length.");
-    case ELogCutAction::Plank:
-        return PieceType != ELogPieceType::SplitHalfLog
-            ? TEXT("Plank shaping requires a split half-round log first.")
-            : TEXT("No plank mesh is configured for this log length.");
-    default:
-        return TEXT("Unsupported processing action.");
-    }
+    return TEXT("The selected processing action is available.");
 }
 
 bool ALogBuildPiece::ApplyCutAction(ELogCutAction Action)
@@ -438,8 +448,7 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
 
     if (!CanApplyCutAction(Action))
     {
-        EWorldOperationResultCode FailureCode =
-            EWorldOperationResultCode::InvalidState;
+        EWorldOperationResultCode FailureCode = EWorldOperationResultCode::InvalidState;
 
         if (!bIsPlaced && !bIsHeld && GetAttachedPieceCount() == 0 &&
             !HasOccupiedSnapPoints())
@@ -467,15 +476,22 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
                 break;
             }
 
-            bool bAmbiguousMapping = false;
-            ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
-            FailureCode = bAmbiguousMapping
-                ? EWorldOperationResultCode::Conflict
-                : (!bActionSupported
-                    ? EWorldOperationResultCode::Unsupported
-                    : (!bPrerequisiteMet
-                        ? EWorldOperationResultCode::PrerequisiteNotMet
-                        : EWorldOperationResultCode::MissingConfiguration));
+            if (!bActionSupported)
+            {
+                FailureCode = EWorldOperationResultCode::Unsupported;
+            }
+            else if (!bPrerequisiteMet)
+            {
+                FailureCode = EWorldOperationResultCode::PrerequisiteNotMet;
+            }
+            else
+            {
+                bool bAmbiguousMapping = false;
+                ResolveProcessingOutputMesh(Action, bAmbiguousMapping);
+                FailureCode = bAmbiguousMapping
+                    ? EWorldOperationResultCode::Conflict
+                    : EWorldOperationResultCode::MissingConfiguration;
+            }
         }
 
         return FWorldOperationResult::Failure(
