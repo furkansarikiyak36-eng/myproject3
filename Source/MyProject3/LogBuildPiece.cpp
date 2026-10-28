@@ -1365,6 +1365,8 @@ bool ALogBuildPiece::CanApplyCutAction(ELogCutAction Action) const
 
 FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
 {
+    if (bHasCustomLengthScale)
+        return TEXT("This log has a custom scaled length and no canonical length definition; choose an authored geometry variant first.");
     if (bIsPlaced)
         return TEXT("Remove the log from the structure before processing it.");
     if (bIsHeld)
