@@ -61,5 +61,6 @@ private:
     UWorldThreatDirectorSubsystem* GetThreatDirector() const;
     UWorldStructuralGraphSubsystem* GetStructuralGraph() const;
     bool ResolvePrimaryTargetNode(const FThreatRaidRecord& Raid, FGuid& OutNodeId, FVector& OutLocation) const;
+    bool BuildDamageTargetList(const FThreatRaidRecord& Raid, TArray<FGuid>& OutTargetIds) const;
     bool ResolveCollapsedSubtree(FGuid RootNodeId);
 };
