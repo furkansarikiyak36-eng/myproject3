@@ -57,6 +57,9 @@ public:
     UFUNCTION(BlueprintPure, Category="Heat")
     float GetHeatAt(const FVector& WorldLocation) const;
 
+    /** Pure parameter/state validation for the shared survival fixed-step preflight. */
+    bool CanAdvanceFuel(double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity) const;
+
     /** Burns fuel for one simulation step; called by the survival subsystem only. */
     void AdvanceFuel(double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity);
 
