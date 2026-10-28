@@ -56,19 +56,40 @@ void ARopeLineActor::UpdateVisual()
 
 bool ARopeLineActor::TrySendAlong(AActor* Piece)
 {
-    if (!IsValid(Piece) || !IsZipline())
+    if (!IsValid(Piece) || !GetWorld() || !IsZipline() ||
+        !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f ||
+        Riders.ContainsByPredicate([Piece](const FRider& Rider) { return Rider.Piece.Get() == Piece; }))
         return false;
-    if (!TransferPiece(Piece, EWorldItemOwnerKind::InTransit, NodeId, GetUpperPoint()))
+
+    UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent());
+    UWorldObjectIdentityComponent* Identity =
+        Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+    EWorldItemOwnerKind CurrentOwner = EWorldItemOwnerKind::World;
+    FWorldOwnedItemRecord Item;
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    const IStructuralPieceInterface* Structural = Cast<const IStructuralPieceInterface>(Piece);
+    if (!Root || !Identity || !Identity->HasValidIdentity() ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::World ||
+        !GetPieceOwnerKind(Piece, CurrentOwner) || CurrentOwner != EWorldItemOwnerKind::World ||
+        !Ownership || !Structural ||
+        !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::World || Item.Revision == MAX_int64)
         return false;
-    if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
-        Log->SetHeldState(false);
-    if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent()))
-    {
-        Root->SetSimulatePhysics(false);
-        Root->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-    }
+
+    const FVector Upper = GetUpperPoint();
+    if (!TransferPiece(Piece, EWorldItemOwnerKind::InTransit, NodeId, Upper))
+        return false;
+
+    Piece->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    Piece->SetActorLocation(Upper, false, nullptr, ETeleportType::TeleportPhysics);
+    Root->SetSimulatePhysics(false);
+    Root->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
     FRider& Rider = Riders.AddDefaulted_GetRef();
     Rider.Piece = Piece;
+    Rider.Distance = 0.0f;
+    Rider.Speed = 0.0f;
     return true;
 }
 
@@ -82,13 +103,30 @@ void ARopeLineActor::BeginPlay()
 void ARopeLineActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if (Riders.IsEmpty())
+    if (Riders.IsEmpty() || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0f ||
+        !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f)
         return;
+
     const FVector Upper = GetUpperPoint();
     const FVector Lower = GetLowerPoint();
     const float Length = FVector::Dist(Upper, Lower);
-    const float Gravity = 980.0f * FMath::Sin(FMath::DegreesToRadians(GetSlopeDegrees()));
+    if (!FMath::IsFinite(Length) || Length <= 1.0f)
+        return;
+
+    const float SlopeRadians = FMath::DegreesToRadians(GetSlopeDegrees());
+    const float GravityAlongRope = 980.0f * FMath::Sin(SlopeRadians);
+    constexpr float FrictionAccelerationCmPerSecondSquared = 60.0f;
+    const float NetAcceleration = GravityAlongRope - FrictionAccelerationCmPerSecondSquared;
     const FVector Down = (Lower - Upper).GetSafeNormal();
+    if (!FMath::IsFinite(Down.X) || !FMath::IsFinite(Down.Y) || !FMath::IsFinite(Down.Z))
+        return;
+
+    // Fixed-step the rider integration so large frame deltas cannot create a
+    // single huge speed/distance jump. A rider can stop when gravity cannot
+    // overcome friction; no artificial minimum speed forces it downhill.
+    constexpr float StepSeconds = 0.05f;
+    constexpr int32 MaxStepsPerFrame = 20;
+    const float FrameDelta = FMath::Min(DeltaSeconds, StepSeconds * MaxStepsPerFrame);
 
     for (int32 Index = Riders.Num() - 1; Index >= 0; --Index)
     {
@@ -99,27 +137,42 @@ void ARopeLineActor::Tick(float DeltaSeconds)
             Riders.RemoveAt(Index);
             continue;
         }
-        // Gravity along the rope minus friction, capped.
-        Rider.Speed = FMath::Min(MaxRideSpeed, Rider.Speed + (Gravity - 60.0f) * DeltaSeconds);
-        Rider.Distance += FMath::Max(Rider.Speed, 80.0f) * DeltaSeconds;
-        const FVector OnRope = Upper + Down * FMath::Min(Rider.Distance, Length);
+
+        UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent());
+        if (!Root || !FMath::IsFinite(Rider.Distance) || Rider.Distance < 0.0f ||
+            !FMath::IsFinite(Rider.Speed) || Rider.Speed < 0.0f)
+        {
+            continue;
+        }
+
+        float RemainingSeconds = FrameDelta;
+        while (RemainingSeconds > 0.0f && Rider.Distance < Length)
+        {
+            const float Dt = FMath::Min(StepSeconds, RemainingSeconds);
+            Rider.Speed = FMath::Clamp(Rider.Speed + NetAcceleration * Dt, 0.0f, MaxRideSpeed);
+            Rider.Distance = FMath::Clamp(Rider.Distance + Rider.Speed * Dt, 0.0f, Length);
+            RemainingSeconds -= Dt;
+        }
+
+        const FVector OnRope = Upper + Down * Rider.Distance;
         FVector Origin, Extent;
         Piece->GetActorBounds(false, Origin, Extent);
-        Piece->SetActorLocation(Piece->GetActorLocation() + (OnRope - FVector(0, 0, Extent.Z + 15.0f) - Origin),
+        const FVector DesiredOrigin = OnRope - FVector(0.0f, 0.0f, Extent.Z + 15.0f);
+        Piece->SetActorLocation(Piece->GetActorLocation() + (DesiredOrigin - Origin),
             false, nullptr, ETeleportType::TeleportPhysics);
 
-        if (Rider.Distance >= Length)
-        {
-            // Arrived: drop off at the lower end.
-            TransferPiece(Piece, EWorldItemOwnerKind::World, FGuid(), Piece->GetActorLocation());
-            if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent()))
-            {
-                Root->SetCollisionProfileName(TEXT("PhysicsActor"));
-                Root->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-                Root->SetSimulatePhysics(true);
-                Root->SetPhysicsLinearVelocity(Down * 200.0f);
-            }
-            Riders.RemoveAt(Index);
-        }
+        if (Rider.Distance < Length)
+            continue;
+
+        // Ownership transfer is the delivery commit. If it is rejected, keep
+        // the rider at the lower endpoint with physics disabled and retry later.
+        if (!TransferPiece(Piece, EWorldItemOwnerKind::World, FGuid(), Piece->GetActorLocation()))
+            continue;
+
+        Root->SetCollisionProfileName(TEXT("PhysicsActor"));
+        Root->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Root->SetSimulatePhysics(true);
+        Root->SetPhysicsLinearVelocity(Down * 200.0f);
+        Riders.RemoveAt(Index);
     }
 }
