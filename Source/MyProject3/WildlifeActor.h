@@ -6,6 +6,7 @@
 
 class UPhysicalHealthComponent;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 
 UENUM(BlueprintType)
 enum class EWildlifeKind : uint8
@@ -30,6 +31,9 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wildlife")
     TObjectPtr<UPhysicalHealthComponent> Health;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wildlife")
+    TObjectPtr<UWorldObjectIdentityComponent> Identity;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wildlife")
     EWildlifeKind Kind = EWildlifeKind::SmallAnimal;
 
@@ -49,7 +53,24 @@ private:
     UFUNCTION()
     void HandleDied(AActor* Causer);
 
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="Wildlife|State")
     FVector Home = FVector::ZeroVector;
+
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="Wildlife|State")
     FVector WanderTarget = FVector::ZeroVector;
+
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="Wildlife|State")
     float TimeToNewTarget = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="Wildlife|State")
+    double MovementAccumulatorSeconds = 0.0;
+
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="Wildlife|State")
+    int64 WanderSequence = 0;
+
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="Wildlife|State")
+    bool bWanderStateInitialized = false;
+
+    void SimulateMovementStep(float StepSeconds);
+    int32 GetWanderSeed() const;
 };
