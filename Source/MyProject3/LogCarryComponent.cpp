@@ -653,7 +653,10 @@ bool ULogCarryComponent::ProcessAimedPiece()
         return false;
     }
 
-    if (Piece->ApplyCutAction(SelectedCutAction))
+    const FWorldOperationResult ProcessingResult =
+        Piece->TryApplyCutAction(SelectedCutAction, FGuid::NewGuid());
+
+    if (ProcessingResult.IsSuccess())
     {
         const UEnum* Enum = StaticEnum<ELogCutAction>();
         const FString ActionName = Enum
@@ -668,10 +671,10 @@ bool ULogCarryComponent::ProcessAimedPiece()
         return true;
     }
 
-    const FString Reason = Piece->GetCutActionBlockReason(SelectedCutAction);
-    const FString Message = Reason.IsEmpty()
+    const FString ResultMessage = ProcessingResult.Message.ToString();
+    const FString Message = ResultMessage.IsEmpty()
         ? TEXT("This cut operation is not available on the aimed log.")
-        : Reason;
+        : ResultMessage;
     UE_LOG(LogTemp, Warning, TEXT("%s"), *Message);
     if (GEngine)
     {
