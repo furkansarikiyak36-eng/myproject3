@@ -11,6 +11,7 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldObjectIdentitySubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldSaveCoordinatorSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -486,7 +487,12 @@ void ALogContainerActor::Tick(float DeltaSeconds)
 
 void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
 {
-    if (TowedBy.IsValid())
+    const UWorld* CurrentWorld = GetWorld();
+    const UWorldSaveCoordinatorSubsystem* SaveCoordinator =
+        CurrentWorld ? CurrentWorld->GetSubsystem<UWorldSaveCoordinatorSubsystem>() : nullptr;
+    const bool bApplyingSnapshot = SaveCoordinator && SaveCoordinator->IsApplyingSnapshot();
+
+    if (!bApplyingSnapshot && TowedBy.IsValid())
         ToggleTow(TowedBy.Get());
 
     // Explicit destruction must not strand physically stored items under an owner
@@ -494,6 +500,8 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
     // ownership intact because the world snapshot may still reference this rack.
     if (Reason == EEndPlayReason::Destroyed)
     {
+        if (!bApplyingSnapshot)
+        {
         for (int32 Index = Stored.Num() - 1; Index >= 0; --Index)
         {
             AActor* Piece = Stored[Index].Get();
@@ -547,10 +555,11 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
                 Root->WakeAllRigidBodies();
             }
         }
+        }
         Stored.Reset();
     }
 
-    if (bStorageRegistered)
+    if (bStorageRegistered && !bApplyingSnapshot)
     {
         UWorldStorageSubsystem* Storage =
             GetWorld() ? GetWorld()->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
@@ -564,6 +573,12 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
                 Coordinator->MarkSimulationFaulted(TEXT("A physical storage actor ended play but its shared storage record could not be retired; stop simulation and recover/reset the world."));
             }
         }
+        bStorageRegistered = false;
+    }
+    else if (bApplyingSnapshot)
+    {
+        // The restore will replace the shared storage snapshot directly; do not
+        // mutate its availability or transfer pieces using the old live arrays.
         bStorageRegistered = false;
     }
     Super::EndPlay(Reason);
