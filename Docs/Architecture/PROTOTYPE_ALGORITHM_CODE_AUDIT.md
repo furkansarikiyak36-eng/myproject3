@@ -241,3 +241,27 @@ Survival adımı heat source yakıtını ilerletiyor. Coordinator geri alma sır
 Identity kaydı başarısız olursa component hata loglayıp dönüyor ama aktörün çarpışma ve etkileşimini kapatmıyor. Registry dışında kalan veya duplicate kimlik taşıyan bir fiziksel aktör dünya nesne kayıtlarıyla ayrışabilir.
 
 **Gerekli ilke:** kimlik kaydı başarısızsa aktörü devre dışı bırak veya spawn işlemini geri al; identity registry dışında etkin fiziksel nesne bırakma.
+
+
+## Ek bulgular: build-plan, event ve deterministik dünya
+
+### A28 — Build-plan tamamlanması çok parçalı commit olarak korunmuyor
+**Dosya:** Source/MyProject3/BuildPlanActor.cpp — Complete; MarkFilled.
+
+LogSled planı tamamlanırken her bileşen için ConsumePiece sonucu kontrol edilmiyor; girdiler tüketildikten sonra container spawn edilmeye çalışılıyor. Container spawn başarısız olsa bile plan en sonda Destroy ediliyor. Birden fazla tüketimden biri başarısız olduğunda da işlem kalan parçalarla devam ediyor. Böylece blueprint tamamlanması bütün girdi/çıktı değişimini atomik tutmuyor.
+
+**Gerekli ilke:** tüm slot girdilerini, destek bağlarını ve container spawn olanağını preflight et; girdi tüketimi ve çıktı oluşturmayı tek transaction'a al; hata halinde tüm girdiler/durumlar geri gelsin. MarkFilled da geçerli parça ve başarılı bağlantı sonucuna bağlı olmalı.
+
+### A29 — Committed event yayıncısı duplicate event/operation koruması göstermiyor
+**Dosya:** Source/MyProject3/WorldCommittedEventSubsystem.cpp — PublishCommittedEvent.
+
+Fonksiyon EventId yoksa yeni GUID atıyor, simülasyon zamanını yazıyor ve her çağrıda OnCommittedEvent.Broadcast yapıyor. Önceki EventId veya OperationId kayıtlarını tutup aynı işlemin tekrar yayınlanmasını engelleyen bir de-duplication kontrolü görünmüyor. İşlem retry edildiğinde abone sistemler aynı etkiyi iki kez uygulayabilir.
+
+**Gerekli ilke:** event ID ve operation ID için commit/replay politikası tanımla; aynı operation'a ait event tekrar yayınlanıyorsa ya aynı receipt sonucu dönsün ya da kontrollü biçimde reddedilsin.
+
+### A30 — Wildlife hareketi global RNG ve ayrı actor tick'i kullanıyor
+**Dosya:** Source/MyProject3/WildlifeActor.cpp — Tick.
+
+Hayvan hedefleri FMath::RandPointInCircle ve FMath::FRandRange ile global RNG'den seçiliyor; M006'da planlanan dünya seed/operation stream'ine bağlı değil. Actor ayrıca kendi DeltaSeconds tick'iyle hareket ediyor; bu hareket state'i ortak fixed-step snapshot/restore sisteminde görünmüyor. Aynı world seed ve yükleme durumundan aynı hayvan davranışını yeniden üretmek mümkün değil.
+
+**Gerekli ilke:** world-seed tabanlı per-entity random stream, açık simülasyon adımı ve hareket durumunun snapshot/restore sahibi tanımlanmalı. Eğer vahşi yaşam deterministik olmayacaksa bu ayrı, belgelenmiş bir istisna olmalı.
