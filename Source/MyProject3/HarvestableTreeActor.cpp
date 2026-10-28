@@ -14,6 +14,12 @@ void AHarvestableTreeActor::BeginPlay()
         if (Identity->DefinitionId.IsNone())
             Identity->SetDefinitionId(FName(TEXT("Tree.Harvestable")));
     }
+    if (TreeMesh && TreeMesh->GetStaticMesh() &&
+        (!FMath::IsFinite(StandingWorldHeightCm) || StandingWorldHeightCm <= 0.0f))
+    {
+        const float LocalHeight = TreeMesh->GetStaticMesh()->GetBounds().BoxExtent.Z * 2.0f;
+        StandingWorldHeightCm = LocalHeight * FMath::Abs(TreeMesh->GetComponentScale().Z);
+    }
     if (!bFellingStarted && !bGrounded && !bLogsSpawned)
         ChopHealth = FMath::Max(1.0f, MaxChopHealth);
 }
@@ -137,7 +143,7 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
     ELogPieceType ResolvedPieceType = ELogPieceType::WholeLog;
     if (!YieldRules.IsEmpty())
     {
-        const float TreeWorldHeight = TreeMesh->Bounds.BoxExtent.Z * 2.0f;
+        const float TreeWorldHeight = StandingWorldHeightCm;
         const FHarvestTreeYieldRule* Match = nullptr;
         for (const FHarvestTreeYieldRule& Rule : YieldRules)
         {
@@ -153,7 +159,7 @@ bool AHarvestableTreeActor::SpawnHarvestLogs()
                 Match = &Rule;
             }
         }
-        if (!Match || Match->LogCount < 1)
+        if (!FMath::IsFinite(TreeWorldHeight) || TreeWorldHeight <= 0.0f || !Match || Match->LogCount < 1)
         {
             UE_LOG(LogTemp, Error, TEXT("Tree '%s' has no valid yield rule for world height %.1f."), *GetName(), TreeWorldHeight);
             return false;
