@@ -348,7 +348,8 @@ bool ALogContainerActor::RebuildStoredContentsFromOwnership()
     UWorldItemOwnershipSubsystem* Ownership = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
     FWorldStorageContainerRecord ContainerRecord;
     if (!Storage || !Ownership || !Storage->IsStorageAvailable(StorageId) ||
-        !Storage->GetStorage(StorageId, ContainerRecord))
+        !Storage->GetStorage(StorageId, ContainerRecord) ||
+        ContainerRecord.StorageId != StorageId || ContainerRecord.CapacityUnits <= 0)
     {
         return false;
     }
