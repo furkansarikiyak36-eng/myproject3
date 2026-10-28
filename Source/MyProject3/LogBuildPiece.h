@@ -41,6 +41,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Geometry")
     ELogLengthFraction LengthFraction = ELogLengthFraction::FullLength;
 
+    /** True when prototype trimming changed the longitudinal scale without a canonical length mesh/definition. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Geometry")
+    bool bHasCustomLengthScale = false;
+
+    UFUNCTION(BlueprintPure, Category = "Log Piece|Geometry")
+    bool HasCustomLengthScale() const { return bHasCustomLengthScale; }
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category = "Log Piece|Geometry")
     ELogCrossSectionProfile CrossSectionProfile = ELogCrossSectionProfile::Round;
 
