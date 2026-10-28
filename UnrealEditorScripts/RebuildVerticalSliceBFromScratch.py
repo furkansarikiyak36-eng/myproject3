@@ -6,9 +6,12 @@ are cleared before rebuilding; other maps and assets are never touched.
 """
 import unreal
 
-MAP_PATH = "/Game/Maps/VerticalSlice_B"
+MAP_PATH = "/Game/DemoAssets/Maps/VerticalSlice_B"
 GROUND_LABEL = "VSliceB_Presentation_FallbackGround"
 PREFIX = "VSliceB_Presentation_"
+# Safety lock: this script deletes every actor in VerticalSlice_B before rebuilding.
+# Keep False during normal work. Set True only when intentionally discarding B map actors.
+ALLOW_DESTRUCTIVE_REBUILD = False
 SUN_INTENSITY_LUX = 38.716587
 
 
@@ -35,6 +38,12 @@ def set_property(obj, name, value):
 
 def open_or_create_clean_map():
     if unreal.EditorAssetLibrary.does_asset_exist(MAP_PATH):
+        if not ALLOW_DESTRUCTIVE_REBUILD:
+            raise RuntimeError(
+                "Safety stop: " + MAP_PATH + " already exists. This script deletes every actor in that map. "
+                "Use the normal VerticalSlice_B map workflow, or set ALLOW_DESTRUCTIVE_REBUILD = True "
+                "only when intentionally replacing the map."
+            )
         if not unreal.EditorLoadingAndSavingUtils.load_map(MAP_PATH):
             raise RuntimeError("Could not load existing map: " + MAP_PATH)
         # This is intentionally destructive, but strictly limited to VerticalSlice_B.
@@ -46,8 +55,8 @@ def open_or_create_clean_map():
                     )
         log("Cleared actors from existing VerticalSlice_B.")
     else:
-        if not unreal.EditorAssetLibrary.does_directory_exist("/Game/Maps"):
-            unreal.EditorAssetLibrary.make_directory("/Game/Maps")
+        if not unreal.EditorAssetLibrary.does_directory_exist("/Game/DemoAssets/Maps"):
+            unreal.EditorAssetLibrary.make_directory("/Game/DemoAssets/Maps")
         if not unreal.EditorLevelLibrary.new_level(MAP_PATH):
             raise RuntimeError("Could not create map: " + MAP_PATH)
         log("Created new map: " + MAP_PATH)
