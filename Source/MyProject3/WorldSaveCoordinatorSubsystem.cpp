@@ -502,6 +502,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     }
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors) ||
+        !ValidatePhysicalActorSnapshotSet(World, OutSave->PhysicalActors) ||
         !ReconcilePhysicalActorSnapshotsWithItems(
             OutSave->PhysicalActors, OutSave->Items, OutSave->StorageContainers))
     {
@@ -669,6 +670,19 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     UWorldSimulationSaveGame* Candidate = Cast<UWorldSimulationSaveGame>(
         UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex));
     if (!Candidate) return false;
+
+    // Preserve the on-disk version before migration. Schemas before v12 do not
+    // contain a trustworthy identity-bound physical actor manifest; with
+    // dynamic reconciliation an empty legacy manifest must never mean "delete
+    // every physical actor in the current world".
+    const int32 OriginalSchemaVersion = Candidate->SchemaVersion;
+    if (OriginalSchemaVersion < 12)
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World load refused: save schema %d has no complete physical actor manifest."),
+            OriginalSchemaVersion);
+        return false;
+    }
 
     // Schema v5 adds the optional ownership-transfer receipt snapshot. A v4
     // save has the complete item ledger but no receipt array; migrate it with
