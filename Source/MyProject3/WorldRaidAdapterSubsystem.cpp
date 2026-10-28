@@ -58,13 +58,14 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
     const UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
     const UWorldSimulationClockSubsystem* Clock =
         World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    const UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
     if (!World || !Threat || !Clock || !Threat->IsDirectorInitialized() ||
         !Clock->IsClockInitialized() || !FMath::IsFinite(TargetTimeSeconds) ||
         TargetTimeSeconds < Clock->GetSimulationTimeSeconds() ||
         !FMath::IsFinite(SpawnHeightOffset) || SpawnHeightOffset < 0.0f ||
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
         !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
-        !GetStructuralGraph())
+        !Graph)
     {
         return false;
     }
@@ -86,30 +87,60 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
     if (bRaidNeedsPawn && !RaidPawnClass)
         return false;
 
-    // Preflight the revision counter before any attack can mutate graph damage.
-    const bool bWillBeActive =
-        (bHasRaid && CurrentRaid.State == EThreatRaidState::Active && !bRaidWillFinish) ||
-        (bHasRaid && CurrentRaid.State == EThreatRaidState::Warning &&
-         TargetTimeSeconds >= CurrentRaid.ActiveStartTime &&
-         TargetTimeSeconds < CurrentRaid.PlannedEndTime);
-    if (bWillBeActive)
+    if (!bHasRaid || CurrentRaid.State == EThreatRaidState::None ||
+        IsTerminalRaidState(CurrentRaid.State) || bRaidWillFinish)
     {
-        const double Elapsed = TargetTimeSeconds - CurrentRaid.ActiveStartTime;
-        const double PulseIndex = FMath::FloorToDouble(Elapsed / AttackIntervalSeconds);
-        if (!FMath::IsFinite(Elapsed) || Elapsed < 0.0 ||
-            !FMath::IsFinite(PulseIndex) || PulseIndex < 0.0 ||
-            PulseIndex >= static_cast<double>(MAX_int64 - 1))
-        {
-            return false;
-        }
-        if (static_cast<int64>(PulseIndex) > CurrentRaid.LastCommittedAttackPulseIndex &&
-            CurrentRaid.Revision == MAX_int64)
-        {
-            return false;
-        }
+        return true;
     }
 
-    return true;
+    const bool bWarningWillActivate =
+        CurrentRaid.State == EThreatRaidState::Warning &&
+        TargetTimeSeconds >= CurrentRaid.ActiveStartTime;
+    const bool bWillBeActive =
+        (CurrentRaid.State == EThreatRaidState::Active && !bRaidWillFinish) ||
+        (CurrentRaid.State == EThreatRaidState::Warning &&
+         TargetTimeSeconds >= CurrentRaid.ActiveStartTime &&
+         TargetTimeSeconds < CurrentRaid.PlannedEndTime);
+
+    // A newly created warning freezes the authored interval into its own raid
+    // record. After that, the save's value wins even if tuning changes.
+    double EffectiveIntervalSeconds = CurrentRaid.AttackIntervalSeconds;
+    const bool bNeedsIntervalInitialization =
+        CurrentRaid.State == EThreatRaidState::Warning &&
+        (!FMath::IsFinite(EffectiveIntervalSeconds) || EffectiveIntervalSeconds <= 0.0);
+    if (bNeedsIntervalInitialization)
+        EffectiveIntervalSeconds = AttackIntervalSeconds;
+
+    int64 RequiredRevisionIncrements = 0;
+    if (CurrentRaid.State == EThreatRaidState::Warning && !bRaidWillFinish)
+    {
+        if (bWarningWillActivate)
+            ++RequiredRevisionIncrements;
+        if (bNeedsIntervalInitialization)
+            ++RequiredRevisionIncrements;
+    }
+
+    if (bWillBeActive)
+    {
+        if (!FMath::IsFinite(EffectiveIntervalSeconds) || EffectiveIntervalSeconds <= 0.0)
+            return false;
+
+        const double Elapsed = TargetTimeSeconds - CurrentRaid.ActiveStartTime;
+        const double PulseIndexAsDouble = FMath::FloorToDouble(Elapsed / EffectiveIntervalSeconds);
+        if (!FMath::IsFinite(Elapsed) || Elapsed < 0.0 ||
+            !FMath::IsFinite(PulseIndexAsDouble) || PulseIndexAsDouble < 0.0 ||
+            PulseIndexAsDouble >= static_cast<double>(MAX_int64 - 1))
+        {
+            return false;
+        }
+        if (static_cast<int64>(PulseIndexAsDouble) > CurrentRaid.LastCommittedAttackPulseIndex)
+            ++RequiredRevisionIncrements;
+    }
+
+    // State transition, first interval freeze and attack-pulse commit can each
+    // advance Revision in the same fixed step; reserve room for all of them.
+    return CurrentRaid.Revision >= 0 &&
+        CurrentRaid.Revision <= MAX_int64 - RequiredRevisionIncrements;
 }
 
 bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
@@ -194,6 +225,19 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return true;
     }
 
+    if (Raid.State == EThreatRaidState::Warning &&
+        (!FMath::IsFinite(Raid.AttackIntervalSeconds) || Raid.AttackIntervalSeconds <= 0.0))
+    {
+        if (!Threat->InitializeRaidAttackInterval(Raid.RaidId, AttackIntervalSeconds) ||
+            !Threat->GetCurrentRaid(Raid))
+        {
+            return false;
+        }
+    }
+    if (!FMath::IsFinite(Raid.AttackIntervalSeconds) || Raid.AttackIntervalSeconds <= 0.0)
+        return false;
+    const double EffectiveIntervalSeconds = Raid.AttackIntervalSeconds;
+
     const bool bSameRaid = MaterializedRaidId.IsValid() &&
         MaterializedRaidId == Raid.RaidId;
     if ((Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active) &&
@@ -239,7 +283,7 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return true;
 
     const double Elapsed = Now - Raid.ActiveStartTime;
-    const double PulseIndexAsDouble = FMath::FloorToDouble(Elapsed / AttackIntervalSeconds);
+    const double PulseIndexAsDouble = FMath::FloorToDouble(Elapsed / EffectiveIntervalSeconds);
     if (!FMath::IsFinite(Elapsed) || Elapsed < 0.0 ||
         !FMath::IsFinite(PulseIndexAsDouble) || PulseIndexAsDouble < 0.0 ||
         PulseIndexAsDouble >= static_cast<double>(MAX_int64 - 1))
@@ -258,7 +302,7 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     if (PulseIndex <= Raid.LastCommittedAttackPulseIndex)
     {
         NextDamageTimeSeconds = Raid.ActiveStartTime +
-            (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
+            (static_cast<double>(PulseIndex) + 1.0) * EffectiveIntervalSeconds;
         return FMath::IsFinite(NextDamageTimeSeconds);
     }
 
