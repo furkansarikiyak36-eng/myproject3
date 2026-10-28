@@ -657,6 +657,26 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
             Spawned->Destroy();
             return false;
         }
+        // Restore actor-level SaveGame fields before construction/BeginPlay
+        // so initialization can observe its saved domain state. Reapply after
+        // construction below because construction scripts may reset components.
+        {
+            FMemoryReader Reader(State.ActorSaveGameData, true);
+            FObjectAndNameAsStringProxyArchive ActorArchive(Reader, true);
+            ActorArchive.ArIsSaveGame = true;
+            Spawned->Serialize(ActorArchive);
+            if (Reader.IsError())
+            {
+                Spawned->Destroy();
+                return false;
+            }
+        }
+        Identity = Spawned->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (!IsValid(Identity))
+        {
+            Spawned->Destroy();
+            return false;
+        }
         Identity->InstanceId = State.IdentityId;
         Identity->DefinitionId = State.DefinitionId;
         Identity->LifecycleState = State.LifecycleState;
