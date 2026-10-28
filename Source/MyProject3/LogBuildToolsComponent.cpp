@@ -716,13 +716,24 @@ bool ULogBuildToolsComponent::DismantlePiece(ALogBuildPiece* Piece)
 
 bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPoint, AConstructionOpeningActor*& OutOpening)
 {
+    OutOpening = nullptr;
     FLogGeometry PostShape;
-    GetLogGeometry(Post, PostShape);
+    UWorld* World = GetWorld();
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!IsValid(Post) || !World || !Graph || !Ownership ||
+        !GetLogGeometry(Post, PostShape) || !Post->IsPlaced() ||
+        !FMath::IsFinite(AimPoint.X) || !FMath::IsFinite(AimPoint.Y) || !FMath::IsFinite(AimPoint.Z))
+    {
+        SetStatus(TEXT("Aim at a placed post."));
+        return false;
+    }
+
     // The wall runs from this post to its nearest standing neighbour.
     FVector WallDirection = FVector::ZeroVector;
     float Nearest = 90.0f;
     TArray<ALogBuildPiece*> Posts;
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
     {
         FLogGeometry Other;
         if (!It->IsPlaced() || !GetLogGeometry(*It, Other) || FMath::Abs(Other.Axis.Z) < 0.8f)
@@ -738,21 +749,32 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
     WallDirection.Z = 0.0f;
     if (!WallDirection.Normalize())
     {
-        FVector Location;
-        FRotator Rotation;
-        GetView(Location, Rotation);
-        WallDirection = FVector::CrossProduct(FVector::UpVector, Rotation.Vector()).GetSafeNormal2D();
+        FVector ViewLocation;
+        FRotator ViewRotation;
+        GetView(ViewLocation, ViewRotation);
+        WallDirection = FVector::CrossProduct(FVector::UpVector, ViewRotation.Vector()).GetSafeNormal2D();
     }
+    if (WallDirection.IsNearlyZero())
+    {
+        SetStatus(TEXT("Could not determine a valid wall direction for this gate."));
+        return false;
+    }
+
     const FVector Normal = FVector::CrossProduct(FVector::UpVector, WallDirection);
     TArray<ALogBuildPiece*> Removed;
-    float Min = TNumericLimits<float>::Max(), Max = -TNumericLimits<float>::Max(), Bottom = PostShape.Centre.Z, Height = 1e6f;
+    float Min = TNumericLimits<float>::Max();
+    float Max = -TNumericLimits<float>::Max();
+    float Bottom = PostShape.Centre.Z;
+    float Height = TNumericLimits<float>::Max();
     for (ALogBuildPiece* Candidate : Posts)
     {
         FLogGeometry Shape;
-        GetLogGeometry(Candidate, Shape);
+        if (!GetLogGeometry(Candidate, Shape))
+            continue;
         const FVector Offset = Shape.Centre - PostShape.Centre;
         const float Along = FVector::DotProduct(Offset, WallDirection);
-        if (FMath::Abs(Along) > 0.5f * GateWidth || FMath::Abs(FVector::DotProduct(Offset, Normal)) > 40.0f)
+        if (FMath::Abs(Along) > 0.5f * GateWidth ||
+            FMath::Abs(FVector::DotProduct(Offset, Normal)) > 40.0f)
             continue;
         Removed.Add(Candidate);
         Min = FMath::Min(Min, Along - Shape.Radius);
@@ -760,26 +782,145 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
         Bottom = FMath::Min(Bottom, Shape.Centre.Z - Shape.HalfLength);
         Height = FMath::Min(Height, Shape.Length());
     }
-    UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+
+    if (Removed.IsEmpty() || !FMath::IsFinite(Min) || !FMath::IsFinite(Max) ||
+        Max <= Min || !FMath::IsFinite(Bottom) || !FMath::IsFinite(Height) || Height <= 0.0f)
+    {
+        SetStatus(TEXT("No suitable posts were found for a gate opening here."));
+        return false;
+    }
+
+    struct FPostBefore
+    {
+        ALogBuildPiece* Piece = nullptr;
+        FTransform Transform = FTransform::Identity;
+        EWorldObjectLifecycleState Lifecycle = EWorldObjectLifecycleState::World;
+        int64 LifecycleRevision = 0;
+        bool bCustomLength = false;
+        bool bPlaced = false;
+        bool bHeld = false;
+    };
+    TArray<FPostBefore> BeforePosts;
+    TSet<FGuid> RemovedIds;
     for (ALogBuildPiece* Candidate : Removed)
     {
-        if (!Graph || !Graph->CanSafelyRemove(Candidate->GetStructuralNodeId()))
+        UWorldObjectIdentityComponent* Identity =
+            Candidate ? Candidate->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Candidate);
+        FWorldOwnedItemRecord Item;
+        if (!IsValid(Candidate) || !Identity || !Identity->HasValidIdentity() ||
+            !Structural || Identity->GetLifecycleState() != EWorldObjectLifecycleState::Placed ||
+            Identity->StateRevision == MAX_int64 ||
+            !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
+            Item.OwnerKind != EWorldItemOwnerKind::World || Item.Quantity != 1 ||
+            Item.Revision == MAX_int64 || !Graph->CanSafelyRemove(Structural->GetStructuralNodeId()))
         {
-            SetStatus(TEXT("A post here carries the wall alone; add a support before cutting a gate."));
+            SetStatus(TEXT("A post here cannot be removed safely; add another support before cutting a gate."));
+            return false;
+        }
+
+        FPostBefore& State = BeforePosts.AddDefaulted_GetRef();
+        State.Piece = Candidate;
+        State.Transform = Candidate->GetActorTransform();
+        State.Lifecycle = Identity->GetLifecycleState();
+        State.LifecycleRevision = Identity->StateRevision;
+        State.bCustomLength = Candidate->bHasCustomLengthScale;
+        State.bPlaced = Candidate->IsPlaced();
+        State.bHeld = Candidate->IsHeld();
+        RemovedIds.Add(Structural->GetStructuralNodeId());
+    }
+
+    // Never remove a selected post if a physical piece outside the gate's set
+    // still depends on it. The selected posts are detached as one logical group.
+    for (ALogBuildPiece* Candidate : Removed)
+    {
+        const FGuid NodeId = Candidate->GetStructuralNodeId();
+        for (const FGuid& DependentId : Graph->GetAllDependents(NodeId))
+        {
+            if (!RemovedIds.Contains(DependentId))
+            {
+                SetStatus(TEXT("A post here supports a piece outside the gate opening; add another support first."));
+                return false;
+            }
+        }
+    }
+
+    TArray<FWorldStructuralNodeSnapshot> GraphBefore;
+    if (!Graph->ExportSnapshot(GraphBefore))
+    {
+        SetStatus(TEXT("Gate cut blocked: structural snapshot could not be captured."));
+        return false;
+    }
+    TArray<FWorldOwnedItemRecord> ItemsBefore;
+    TArray<FWorldItemTransferReceipt> TransfersBefore;
+    TArray<FWorldItemSplitReceipt> SplitsBefore;
+    Ownership->ExportSnapshot(ItemsBefore, TransfersBefore, SplitsBefore);
+
+    const FVector Centre = PostShape.Centre + WallDirection * (0.5f * (Min + Max));
+    const FVector OpeningLocation(Centre.X, Centre.Y, Bottom + 0.5f * Height);
+    AConstructionOpeningActor* StagedOpening = World->SpawnActor<AConstructionOpeningActor>(
+        OpeningLocation, WallDirection.Rotation());
+    if (!IsValid(StagedOpening))
+    {
+        SetStatus(TEXT("Gate cut failed: could not create the opening frame; posts were not changed."));
+        return false;
+    }
+    StagedOpening->InitializeOpening(EConstructionOpeningKind::Gate, Max - Min, Height);
+
+    auto Rollback = [&]() -> bool
+    {
+        if (IsValid(StagedOpening))
+            StagedOpening->Destroy();
+
+        // Local transforms/states are restored before the canonical graph. The
+        // graph restore and adapter rebuild then reestablish actor-local links.
+        for (const FPostBefore& State : BeforePosts)
+        {
+            if (!IsValid(State.Piece))
+                continue;
+            State.Piece->SetActorTransform(State.Transform, false, nullptr, ETeleportType::TeleportPhysics);
+            State.Piece->bHasCustomLengthScale = State.bCustomLength;
+            State.Piece->SetHeldState(State.bHeld);
+            State.Piece->SetPlacedState(State.bPlaced);
+            if (UWorldObjectIdentityComponent* Identity =
+                State.Piece->FindComponentByClass<UWorldObjectIdentityComponent>())
+            {
+                Identity->LifecycleState = State.Lifecycle;
+                Identity->StateRevision = State.LifecycleRevision;
+            }
+        }
+
+        const bool bItemsRestored = Ownership->RestoreSnapshot(ItemsBefore, TransfersBefore, SplitsBefore);
+        const bool bGraphRestored = Graph->RestoreSnapshot(GraphBefore);
+        const bool bLinksRestored = bGraphRestored && Graph->RebuildLogActorAttachmentsFromSnapshot();
+        if (!bItemsRestored || !bGraphRestored || !bLinksRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Gate cut rollback failed; structural state needs recovery."));
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(TEXT("Gate cut failed and rollback was incomplete; stop simulation and recover/reset the world."));
+            }
+            SetStatus(TEXT("Gate cut failed and rollback was incomplete; reload/recover the world."));
+            return false;
+        }
+        return true;
+    };
+
+    for (ALogBuildPiece* Candidate : Removed)
+    {
+        if (!DismantlePiece(Candidate))
+        {
+            Rollback();
+            SetStatus(TEXT("Gate cut failed while removing a post; original structure was restored."));
             return false;
         }
     }
-    for (ALogBuildPiece* Candidate : Removed)
-        DismantlePiece(Candidate);
-    const FVector Centre = PostShape.Centre + WallDirection * (0.5f * (Min + Max));
-    OutOpening = GetWorld()->SpawnActor<AConstructionOpeningActor>(
-        FVector(Centre.X, Centre.Y, Bottom + 0.5f * Height), WallDirection.Rotation());
-    if (OutOpening)
-        OutOpening->InitializeOpening(EConstructionOpeningKind::Gate, Max - Min, Height);
-    SetStatus(FString::Printf(TEXT("Gate opening cut (%d posts out). Fill it with split boards."), Removed.Num()));
-    return OutOpening != nullptr;
-}
 
+    OutOpening = StagedOpening;
+    SetStatus(FString::Printf(TEXT("Gate opening cut (%d posts out). Fill it with split boards."), Removed.Num()));
+    return true;
+}
 bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector& AimPoint,
     EConstructionOpeningKind Kind, AConstructionOpeningActor*& OutOpening)
 {
