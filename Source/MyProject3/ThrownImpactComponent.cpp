@@ -16,7 +16,7 @@ UThrownImpactComponent::UThrownImpactComponent()
 void UThrownImpactComponent::Arm(AActor* InThrower, float InMassKg)
 {
     Thrower = InThrower;
-    MassKg = FMath::Max(0.5f, InMassKg);
+    MassKg = FMath::IsFinite(InMassKg) ? FMath::Clamp(InMassKg, 0.5f, 1000.0f) : 0.5f;
     Elapsed = 0.0f;
     if (UPrimitiveComponent* Root = GetOwner() ? Cast<UPrimitiveComponent>(GetOwner()->GetRootComponent()) : nullptr)
     {
@@ -28,20 +28,28 @@ void UThrownImpactComponent::Arm(AActor* InThrower, float InMassKg)
 
 float UThrownImpactComponent::ApplyImpactTo(AActor* Other, float Speed, const FVector& Direction)
 {
-    if (!IsValid(Other) || Other == GetOwner() || Speed < MinImpactSpeed || AlreadyHit.Contains(Other))
+    if (!IsValid(Other) || Other == GetOwner() || !FMath::IsFinite(Speed) ||
+        Speed < MinImpactSpeed || !FMath::IsFinite(MassKg) || MassKg <= 0.0f ||
+        !FMath::IsFinite(DamagePerJoule) || DamagePerJoule < 0.0f ||
+        !FMath::IsFinite(Direction.X) || !FMath::IsFinite(Direction.Y) || !FMath::IsFinite(Direction.Z) ||
+        AlreadyHit.Contains(Other))
         return 0.0f;
     if (Other == Thrower.Get() && Elapsed < 0.35f)
         return 0.0f; // Leaving the thrower's hands.
-    AlreadyHit.Add(Other);
-
     const float SpeedMs = Speed / 100.0f;
     const float Damage = 0.5f * MassKg * SpeedMs * SpeedMs * DamagePerJoule;
+    if (!FMath::IsFinite(Damage) || Damage <= 0.0f)
+        return 0.0f;
     const FVector Push = Direction.GetSafeNormal() * FMath::Min(Speed * 0.6f, 900.0f) + FVector::UpVector * 150.0f;
+    if (!FMath::IsFinite(Push.X) || !FMath::IsFinite(Push.Y) || !FMath::IsFinite(Push.Z))
+        return 0.0f;
 
+    AlreadyHit.Add(Other);
     float Dealt = 0.0f;
     if (UPhysicalHealthComponent* Health = Other->FindComponentByClass<UPhysicalHealthComponent>())
         Dealt = Health->ApplyPhysicalDamage(Damage, Push, Thrower.Get());
-    UGameplayStatics::ApplyDamage(Other, Damage, nullptr, Thrower.Get(), nullptr);
+    else
+        Dealt = UGameplayStatics::ApplyDamage(Other, Damage, nullptr, Thrower.Get(), nullptr);
 
     // A heavy hit also wears down structures.
     if (const IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Other))
