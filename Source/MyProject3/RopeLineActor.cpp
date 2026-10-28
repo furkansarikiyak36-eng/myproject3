@@ -4,6 +4,7 @@
 #include "LogBuildPiece.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -74,7 +75,10 @@ bool ARopeLineActor::TrySendAlong(AActor* Piece)
         !GetPieceOwnerKind(Piece, CurrentOwner) || CurrentOwner != EWorldItemOwnerKind::World ||
         !Ownership || !Structural ||
         !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
-        Item.OwnerKind != EWorldItemOwnerKind::World || Item.Revision == MAX_int64)
+        (Item.OwnerKind != EWorldItemOwnerKind::World &&
+         Item.OwnerKind != EWorldItemOwnerKind::Held) ||
+        (Item.OwnerKind == EWorldItemOwnerKind::Held && !Item.OwnerId.IsValid()) ||
+        Item.Revision == MAX_int64)
         return false;
 
     const FVector Upper = GetUpperPoint();
@@ -90,6 +94,7 @@ bool ARopeLineActor::TrySendAlong(AActor* Piece)
     Rider.Piece = Piece;
     Rider.Distance = 0.0f;
     Rider.Speed = 0.0f;
+    Rider.AccumulatorSeconds = 0.0;
     return true;
 }
 
@@ -145,13 +150,21 @@ void ARopeLineActor::Tick(float DeltaSeconds)
             continue;
         }
 
-        float RemainingSeconds = FrameDelta;
-        while (RemainingSeconds > 0.0f && Rider.Distance < Length)
+        Rider.AccumulatorSeconds += static_cast<double>(FrameDelta);
+        if (!FMath::IsFinite(Rider.AccumulatorSeconds))
         {
-            const float Dt = FMath::Min(StepSeconds, RemainingSeconds);
-            Rider.Speed = FMath::Clamp(Rider.Speed + NetAcceleration * Dt, 0.0f, MaxRideSpeed);
-            Rider.Distance = FMath::Clamp(Rider.Distance + Rider.Speed * Dt, 0.0f, Length);
-            RemainingSeconds -= Dt;
+            Rider.AccumulatorSeconds = 0.0;
+            continue;
+        }
+
+        int32 Steps = 0;
+        while (Rider.AccumulatorSeconds >= StepSeconds && Steps < MaxStepsPerFrame &&
+            Rider.Distance < Length)
+        {
+            Rider.Speed = FMath::Clamp(Rider.Speed + NetAcceleration * StepSeconds, 0.0f, MaxRideSpeed);
+            Rider.Distance = FMath::Clamp(Rider.Distance + Rider.Speed * StepSeconds, 0.0f, Length);
+            Rider.AccumulatorSeconds -= StepSeconds;
+            ++Steps;
         }
 
         const FVector OnRope = Upper + Down * Rider.Distance;
