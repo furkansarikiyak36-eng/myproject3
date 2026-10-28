@@ -157,6 +157,34 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirector()
     return AdvanceDirectorAtTime(Clock->GetSimulationTimeSeconds(), Clock->GetTickIndex());
 }
 
+bool UWorldThreatDirectorSubsystem::InitializeRaidAttackInterval(
+    const FGuid& RaidId, double InAttackIntervalSeconds)
+{
+    if (!bInitialized || !RaidId.IsValid() || RaidId != CurrentRaid.RaidId ||
+        CurrentRaid.State != EThreatRaidState::Warning)
+    {
+        return false;
+    }
+
+    // Once frozen, the saved value is authoritative. A config change must not
+    // reinterpret pulse indices for an already-running or reloaded raid.
+    if (FMath::IsFinite(CurrentRaid.AttackIntervalSeconds) &&
+        CurrentRaid.AttackIntervalSeconds > 0.0)
+    {
+        return true;
+    }
+
+    if (!FMath::IsFinite(InAttackIntervalSeconds) || InAttackIntervalSeconds <= 0.0 ||
+        CurrentRaid.Revision == MAX_int64)
+    {
+        return false;
+    }
+
+    CurrentRaid.AttackIntervalSeconds = InAttackIntervalSeconds;
+    ++CurrentRaid.Revision;
+    return true;
+}
+
 bool UWorldThreatDirectorSubsystem::CommitRaidAttackPulse(const FGuid& RaidId, int64 PulseIndex)
 {
     if (!bInitialized || !RaidId.IsValid() || RaidId != CurrentRaid.RaidId ||
