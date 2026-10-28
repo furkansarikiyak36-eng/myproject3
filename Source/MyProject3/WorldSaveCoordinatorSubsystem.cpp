@@ -1,4 +1,5 @@
 #include "WorldSaveCoordinatorSubsystem.h"
+#include "Misc/GuardValue.h"
 
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -1285,6 +1286,10 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         if (Entry.State != EWorldOperationLedgerEntryState::Completed)
             return false;
     }
+
+    // Suppress ordinary EndPlay ownership transfers while reconciling the actor
+    // set. The snapshot's ledgers are authoritative and will be restored directly.
+    TGuardValue<bool> ApplyingSnapshotGuard(bApplyingSnapshot, true);
 
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
