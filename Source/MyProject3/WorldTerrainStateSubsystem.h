@@ -4,6 +4,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldTerrainStateSubsystem.generated.h"
 
+class UVoxelTerrainChunkComponent;
+
 UENUM(BlueprintType)
 enum class ETerrainCellEdit : uint8
 {
@@ -87,6 +89,13 @@ public:
     bool TryApplyCellEdit(const FGuid& OperationId, const FIntVector& Cell,
         int32 DepthLayer, ETerrainCellEdit Edit, FName MaterialId,
         int64 ExpectedRevision, FWorldTerrainCellState& OutState);
+
+    UFUNCTION(BlueprintCallable, Category="World|Terrain|Voxel")
+    bool TryApplyVoxelExcavation(const FGuid& OperationId,
+        UVoxelTerrainChunkComponent* VoxelChunk, FVector LocalCenter, float RadiusCm,
+        float ToolStrength, int64 ExpectedDensityRevision,
+        const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
+        FName MaterialId, FWorldTerrainCellState& OutState);
 
     UFUNCTION(BlueprintPure, Category="World|Terrain")
     bool TryGetCell(const FIntVector& Cell, FWorldTerrainCellState& OutState) const;
