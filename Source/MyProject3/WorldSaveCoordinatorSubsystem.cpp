@@ -176,6 +176,224 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
     return true;
 }
 
+bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
+{
+    if (Snapshot.SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion ||
+        Snapshot.Clock.SchemaVersion != UWorldSimulationClockSubsystem::CurrentSchemaVersion ||
+        !FMath::IsFinite(Snapshot.Clock.SimulationTimeSeconds) ||
+        Snapshot.Clock.SimulationTimeSeconds < 0.0 ||
+        Snapshot.Clock.TickIndex < 0 || Snapshot.Clock.StateRevision < 0 ||
+        Snapshot.Threat.SchemaVersion != 1 || !Snapshot.Threat.bInitialized ||
+        !FMath::IsFinite(Snapshot.Threat.NextRaidTimeSeconds) ||
+        Snapshot.Threat.NextRaidTimeSeconds < 0.0 || Snapshot.Threat.RaidSerial < 0 ||
+        !FMath::IsFinite(Snapshot.WeatherSeverity) ||
+        Snapshot.WeatherSeverity < 0.0f || Snapshot.WeatherSeverity > 1.0f)
+    {
+        return false;
+    }
+
+    auto IsValidRaidRecord = [](const FThreatRaidRecord& Raid, bool bAllowEmpty)
+    {
+        if (static_cast<uint8>(Raid.State) > static_cast<uint8>(EThreatRaidState::Cancelled))
+            return false;
+        if (Raid.State == EThreatRaidState::None && bAllowEmpty)
+            return true;
+        return Raid.RaidId.IsValid() && Raid.Serial > 0 && Raid.Revision >= 0 &&
+            FMath::IsFinite(Raid.WarningStartTime) && Raid.WarningStartTime >= 0.0 &&
+            FMath::IsFinite(Raid.ActiveStartTime) && Raid.ActiveStartTime >= Raid.WarningStartTime &&
+            FMath::IsFinite(Raid.PlannedEndTime) && Raid.PlannedEndTime >= Raid.ActiveStartTime &&
+            FMath::IsFinite(Raid.Pressure) && Raid.Pressure >= 0.0f &&
+            Raid.TargetLocation.IsFinite();
+    };
+    if (!IsValidRaidRecord(Snapshot.Threat.CurrentRaid, true))
+        return false;
+    TSet<FGuid> RaidIds;
+    for (const FThreatRaidRecord& Raid : Snapshot.Threat.RaidHistory)
+    {
+        if (!IsValidRaidRecord(Raid, false) ||
+            Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active ||
+            RaidIds.Contains(Raid.RaidId))
+        {
+            return false;
+        }
+        RaidIds.Add(Raid.RaidId);
+    }
+    if (Snapshot.Threat.CurrentRaid.State != EThreatRaidState::None &&
+        RaidIds.Contains(Snapshot.Threat.CurrentRaid.RaidId))
+    {
+        return false;
+    }
+
+    TMap<FGuid, FWorldOwnedItemRecord> ItemsById;
+    ItemsById.Reserve(Snapshot.Items.Num());
+    for (const FWorldOwnedItemRecord& Item : Snapshot.Items)
+    {
+        if (!Item.ItemId.IsValid() || ItemsById.Contains(Item.ItemId) ||
+            Item.DefinitionId.IsNone() || Item.Quantity < 1 || Item.Revision < 1 ||
+            static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            Item.OwnerKind == EWorldItemOwnerKind::Held || Item.WorldLocation.ContainsNaN())
+        {
+            return false;
+        }
+        ItemsById.Add(Item.ItemId, Item);
+    }
+
+    TSet<FGuid> OperationIds;
+    for (const FWorldOperationLedgerEntry& Entry : Snapshot.OperationLedgerEntries)
+    {
+        if (!Entry.OperationId.IsValid() ||
+            Entry.State != EWorldOperationLedgerEntryState::Completed ||
+            OperationIds.Contains(Entry.OperationId))
+        {
+            return false;
+        }
+        OperationIds.Add(Entry.OperationId);
+    }
+
+    TMap<FGuid, FWorldStorageContainerRecord> StoragesById;
+    for (const FWorldStorageContainerRecord& Storage : Snapshot.StorageContainers)
+    {
+        if (!Storage.StorageId.IsValid() || StoragesById.Contains(Storage.StorageId) ||
+            Storage.CapacityUnits < 1 || Storage.Revision < 1)
+        {
+            return false;
+        }
+        StoragesById.Add(Storage.StorageId, Storage);
+    }
+
+    TMap<FGuid, FWorldCargoTransportRecord> CargoById;
+    for (const FWorldCargoTransportRecord& Cargo : Snapshot.Cargo)
+    {
+        if (!Cargo.CargoId.IsValid() || CargoById.Contains(Cargo.CargoId) ||
+            !Cargo.ItemId.IsValid() || !Cargo.DestinationStorageId.IsValid() ||
+            !StoragesById.Contains(Cargo.DestinationStorageId) ||
+            static_cast<uint8>(Cargo.State) > static_cast<uint8>(ECargoTransportState::Cancelled) ||
+            !FMath::IsFinite(Cargo.RouteCost) || Cargo.RouteCost < 0.0f ||
+            !FMath::IsFinite(Cargo.Progress) || Cargo.Progress < 0.0f ||
+            !FMath::IsFinite(Cargo.CostPerSecond) || Cargo.CostPerSecond <= 0.0f ||
+            Cargo.ItemRevision < 0 || Cargo.Revision < 1)
+        {
+            return false;
+        }
+        CargoById.Add(Cargo.CargoId, Cargo);
+    }
+
+    TSet<FGuid> ReservedCargoIds;
+    for (const FWorldStorageIncomingReservation& Reservation : Snapshot.StorageReservations)
+    {
+        if (!Reservation.CargoId.IsValid() || !Reservation.ItemId.IsValid() ||
+            !Reservation.DestinationStorageId.IsValid() || Reservation.Quantity < 1 ||
+            !StoragesById.Contains(Reservation.DestinationStorageId) ||
+            !CargoById.Contains(Reservation.CargoId) ||
+            ReservedCargoIds.Contains(Reservation.CargoId))
+        {
+            return false;
+        }
+        const FWorldCargoTransportRecord& Cargo = CargoById.FindChecked(Reservation.CargoId);
+        if (Cargo.ItemId != Reservation.ItemId ||
+            Cargo.DestinationStorageId != Reservation.DestinationStorageId)
+        {
+            return false;
+        }
+        ReservedCargoIds.Add(Reservation.CargoId);
+    }
+
+    TSet<FGuid> PhysicalActorIds;
+    for (const FWorldPhysicalActorSnapshot& Actor : Snapshot.PhysicalActors)
+    {
+        if (!Actor.IdentityId.IsValid() || PhysicalActorIds.Contains(Actor.IdentityId))
+            return false;
+        PhysicalActorIds.Add(Actor.IdentityId);
+    }
+
+    TSet<FGuid> InventoryOwnerIds;
+    for (const FWorldInventorySnapshot& Inventory : Snapshot.Inventories)
+    {
+        if (!Inventory.InventoryOwnerId.IsValid() ||
+            InventoryOwnerIds.Contains(Inventory.InventoryOwnerId) ||
+            (Inventory.OwnerActorId.IsValid() && !PhysicalActorIds.Contains(Inventory.OwnerActorId)))
+        {
+            return false;
+        }
+        InventoryOwnerIds.Add(Inventory.InventoryOwnerId);
+        TSet<FName> StackItemNames;
+        for (const FInventoryStack& Stack : Inventory.Items)
+        {
+            if (Stack.ItemId.IsNone() || StackItemNames.Contains(Stack.ItemId) ||
+                Stack.Quantity < 1 || Stack.MaxStack < 1 || Stack.Quantity > Stack.MaxStack ||
+                static_cast<uint8>(Stack.Category) > static_cast<uint8>(EInventoryItemCategory::Other))
+            {
+                return false;
+            }
+            StackItemNames.Add(Stack.ItemId);
+            if (Stack.OwnedWorldItemId.IsValid())
+            {
+                const FWorldOwnedItemRecord* Item = ItemsById.Find(Stack.OwnedWorldItemId);
+                if (!Item || Item->OwnerKind != EWorldItemOwnerKind::Inventory ||
+                    Item->OwnerId != Inventory.InventoryOwnerId || Item->Quantity != 1)
+                {
+                    return false;
+                }
+            }
+        }
+    }
+
+    TSet<FGuid> CropIds;
+    for (const FWorldCropState& Crop : Snapshot.Crops)
+    {
+        if (!Crop.CropId.IsValid() || CropIds.Contains(Crop.CropId) ||
+            Crop.CropDefinitionId.IsNone() || Crop.Revision < 1 ||
+            !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
+            !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0)
+        {
+            return false;
+        }
+        CropIds.Add(Crop.CropId);
+    }
+
+    TSet<FGuid> AnimalIds;
+    for (const FWorldAnimalState& Animal : Snapshot.Animals)
+    {
+        if (!Animal.AnimalId.IsValid() || AnimalIds.Contains(Animal.AnimalId) ||
+            Animal.AnimalDefinitionId.IsNone() || Animal.Revision < 1 ||
+            !FMath::IsFinite(Animal.Hunger) || Animal.Hunger < 0.0f || Animal.Hunger > 100.0f ||
+            !FMath::IsFinite(Animal.Health) || Animal.Health < 0.0f || Animal.Health > 100.0f ||
+            Animal.ProductUnits < 0 || !FMath::IsFinite(Animal.ProductProgressSeconds) ||
+            Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0)
+        {
+            return false;
+        }
+        AnimalIds.Add(Animal.AnimalId);
+    }
+
+    TSet<FGuid> StructuralNodeIds;
+    for (const FWorldStructuralNodeSnapshot& Node : Snapshot.StructuralGraph)
+    {
+        if (!Node.NodeId.IsValid() || StructuralNodeIds.Contains(Node.NodeId) ||
+            !Node.ActorIdentityId.IsValid() || !PhysicalActorIds.Contains(Node.ActorIdentityId) ||
+            !FMath::IsFinite(Node.LocalLoad) || Node.LocalLoad < 0.0f ||
+            !FMath::IsFinite(Node.MaxSupportedLoad) || Node.MaxSupportedLoad <= 0.0f ||
+            !FMath::IsFinite(Node.Damage) || Node.Damage < 0.0f ||
+            !FMath::IsFinite(Node.DamageThreshold) || Node.DamageThreshold <= 0.0f ||
+            Node.Revision < 1)
+        {
+            return false;
+        }
+        StructuralNodeIds.Add(Node.NodeId);
+    }
+    for (const FWorldStructuralNodeSnapshot& Node : Snapshot.StructuralGraph)
+    {
+        if (Node.ParentNodeId.IsValid() && !StructuralNodeIds.Contains(Node.ParentNodeId))
+            return false;
+        for (const FStructuralSupportLink& Support : Node.SecondarySupports)
+            if (!Support.SupportNodeId.IsValid() || !StructuralNodeIds.Contains(Support.SupportNodeId))
+                return false;
+    }
+
+    return true;
+}
+
 bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysicalActorSnapshot>& Snapshot)
 {
     if (!World)
@@ -523,8 +741,6 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             FWorldInventorySnapshot& Record = OutSave->Inventories.AddDefaulted_GetRef();
             Inventory->ExportSnapshot(Record.OwnerActorId, Record.InventoryOwnerId,
                 Record.Items, Record.QuickAccessItemId);
-            if (!Inventory->RestoreSnapshot(Record.InventoryOwnerId, Record.Items, Record.QuickAccessItemId))
-                return false;
         }
     }
     Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
@@ -539,10 +755,14 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             TEXT("World save refused because production receipts do not match authoritative item ownership records."));
         return false;
     }
-    // Refuse a save that would restore orphaned cargo or exceed storage capacity.
-    if (!Storage->RestoreSnapshot(OutSave->StorageContainers, OutSave->StorageReservations) ||
-        !Cargo->RestoreSnapshot(OutSave->Cargo))
+    // Validate the captured manifest without mutating live subsystem state.
+    // Local domain RestoreSnapshot methods still validate again at commit time.
+    if (!ValidateSnapshotPayloadPreflight(*OutSave))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World save refused because its cross-domain snapshot preflight failed."));
         return false;
+    }
     return true;
 }
 
@@ -564,6 +784,13 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
     if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
         return false;
+
+    // Reject malformed cross-domain references before clock, ownership or actor state mutates.
+    if (!ValidateSnapshotPayloadPreflight(*Snapshot))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("World load refused by cross-domain snapshot preflight."));
+        return false;
+    }
 
     if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
     {
