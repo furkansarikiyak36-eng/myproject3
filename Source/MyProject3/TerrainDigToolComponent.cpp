@@ -2,6 +2,7 @@
 
 #include "VoxelTerrainChunkComponent.h"
 #include "WorldTerrainStateSubsystem.h"
+#include "LogCarryComponent.h"
 #include "Components/InputComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -64,6 +65,16 @@ void UTerrainDigToolComponent::DigInput()
     }
 
     FCollisionQueryParams Params(SCENE_QUERY_STAT(TerrainDigToolTrace), false, GetOwner());
+    // A carried log is in front of the camera in this first-person prototype;
+    // it must not mask the terrain hit test.
+    if (const ULogCarryComponent* Carry = GetOwner()
+        ? GetOwner()->FindComponentByClass<ULogCarryComponent>() : nullptr)
+    {
+        if (Carry->HeldPiece)
+            Params.AddIgnoredActor(Carry->HeldPiece);
+        if (Carry->HeldMaterialPiece)
+            Params.AddIgnoredActor(Carry->HeldMaterialPiece);
+    }
     FHitResult Hit;
     if (!World->LineTraceSingleByChannel(Hit, ViewLocation,
         ViewLocation + ViewRotation.Vector() * TraceDistanceCm, ECC_Visibility, Params))
