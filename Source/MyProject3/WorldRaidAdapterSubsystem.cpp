@@ -458,18 +458,25 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     if (DefenseTargetNodeIds.IsEmpty() && !DamageTargets.IsEmpty())
         MaterializedTargetNodeId = DamageTargets[0];
 
-    // Preflight every threshold-crossing collapse before the first damage
-    // mutation. ResolveCollapsedSubtree repeats this guard at commit time.
+    // Preflight every target and every threshold-crossing collapse before the
+    // operation marker or any damage mutation is committed.
     TSet<FGuid> UniqueTargets;
     for (const FGuid& NodeId : DamageTargets)
     {
         if (!NodeId.IsValid() || UniqueTargets.Contains(NodeId))
-            continue;
+            return false;
         UniqueTargets.Add(NodeId);
 
         FStructuralNodeRecord Node;
-        if (!Graph->GetNode(NodeId, Node))
-            continue;
+        if (!Graph->GetNode(NodeId, Node) || !Node.Actor.IsValid() ||
+            !FMath::IsFinite(Node.Damage) || Node.Damage < 0.0f ||
+            !FMath::IsFinite(Node.DamageThreshold) || Node.DamageThreshold <= 0.0f ||
+            Node.Damage > Node.DamageThreshold ||
+            !FMath::IsFinite(Node.Damage + DamagePerPulse))
+        {
+            return false;
+        }
+
         if (Node.Damage + DamagePerPulse >= Node.DamageThreshold)
         {
             TArray<FGuid> RemovalOrder;
@@ -479,6 +486,14 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             {
                 FStructuralNodeRecord RemovalNode;
                 if (!Graph->GetNode(RemovalId, RemovalNode) || !RemovalNode.Actor.IsValid())
+                    return false;
+
+                // The atomic damage batch increments every target revision before
+                // collapse. Ensure no node slated for removal reaches MAX_int64
+                // as a result of that increment.
+                const bool bAlsoDamaged = UniqueTargets.Contains(RemovalId);
+                const int64 MaxPreDamageRevision = bAlsoDamaged ? MAX_int64 - 2 : MAX_int64 - 1;
+                if (RemovalNode.Revision < 0 || RemovalNode.Revision > MaxPreDamageRevision)
                     return false;
             }
         }
@@ -491,25 +506,24 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return false;
 
     TArray<FGuid> AffectedNodeIds;
-    for (const FGuid& NodeId : DamageTargets)
+    TArray<FGuid> ThresholdExceededNodeIds;
+    if (!Graph->ApplyDamageBatch(
+        DamageTargets, DamagePerPulse, AffectedNodeIds, ThresholdExceededNodeIds))
     {
-        if (!NodeId.IsValid() || AffectedNodeIds.Contains(NodeId))
+        // ApplyDamageBatch stages a graph copy and swaps it only after every
+        // target validates, so failure cannot leave damage on only a prefix.
+        // Keep the Pending receipt and fail closed because the pulse transaction
+        // did not complete.
+        return false;
+    }
+
+    for (const FGuid& RootNodeId : ThresholdExceededNodeIds)
+    {
+        FStructuralNodeRecord RemainingRoot;
+        // An earlier overlapping collapse may already have removed this root.
+        if (!Graph->GetNode(RootNodeId, RemainingRoot))
             continue;
-
-        FStructuralNodeRecord Node;
-        if (!Graph->GetNode(NodeId, Node))
-            continue;
-
-        bool bThresholdExceeded = false;
-        if (!Graph->ApplyDamage(NodeId, DamagePerPulse, bThresholdExceeded))
-        {
-            // The operation remains Pending. The coordinator will fail closed
-            // and durable save refuses to serialize this partial transaction.
-            return false;
-        }
-        AffectedNodeIds.Add(NodeId);
-
-        if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
+        if (!ResolveCollapsedSubtree(RootNodeId))
             return false;
     }
 
