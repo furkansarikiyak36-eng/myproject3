@@ -25,7 +25,8 @@
 - Kazı kimliği makbuzu eklendi. Aynı kimlik + aynı parametreler tekrarlandığında önceki sonuç döner; kimliğin farklı istek için yeniden kullanımı reddedilir.
 - Zemine bağlı yapı grafiği köklerinin belirlenmiş 3B güvenlik marjına yakın kazı reddedilir. Bu kaba bir koruma kuralıdır; fiziksel zemin gerilmesi veya destek kaybı simülasyonu değildir.
 - Yoğunluk örnekleri, chunk boyutları, revizyon ve kazı makbuzları SaveGame v14 içine kimlik bazında eklenmiştir. Yükleme hedef level'de zaten bulunan chunk'ları doğrular ve mesh/çarpışmayı yeniden kurar.
-- `MyProject3.Terrain.Voxel.BoundedDigChecksMaterialToolAndRevision`, `MyProject3.Terrain.Voxel.DigRejectsNearGroundedStructure` ve `MyProject3.Terrain.Voxel.DensitySnapshotRoundTrip` otomasyon test kaynakları eklendi; bu turda UE derlemesi veya bu testlerin çalıştırılması yapılmadı.
+- `MyProject3.Terrain.Voxel.BoundedDigChecksMaterialToolAndRevision`, `MyProject3.Terrain.Voxel.DigRejectsNearGroundedStructure`, `MyProject3.Terrain.Voxel.DensitySnapshotRoundTrip` ve `MyProject3.Terrain.Voxel.LogicalPhysicalExcavationIsAtomic` otomasyon test kaynakları eklendi; bu turda UE derlemesi veya bu testlerin çalıştırılması yapılmadı.
+- `UWorldTerrainStateSubsystem::TryApplyVoxelExcavation` yeni koordinasyon girişidir: önce voxel snapshot alır, fiziksel kazıyı uygular, mantıksal hücre commit'i reddederse fiziksel snapshot'ı geri yükler.
 
 ## Kabul tablosu
 
