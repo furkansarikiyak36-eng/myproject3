@@ -32,7 +32,8 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 - [ ] Inventory/tool requirement and tool durability. The tracked C++ source tree currently contains no inventory/tool durability owner to integrate with; do not add a duplicate inventory authority inside `ALogBuildPiece`.
 - [ ] Resource yield/consumption for each processing action. A shared unit/resource amount type exists, but no wood-processing yield/consumption owner is present in the tracked source tree.
 - [ ] Physical cutting progress and intermediate geometry rather than a single mesh swap.
-- [ ] Length/section-specific output contracts and validation of real mesh bounds/pivots/collision. `AssetPackages/UnrealExport` has named families for 150/300/600 plus 75/short/long variants, but `ALogBuildPiece` currently exposes only one output mesh slot per action; do not claim automatic length-matched selection.
+- [x] Add source-level exact-source-mesh output sets with duplicate/unmapped-source fail-closed behavior and legacy fallback only when no sets are configured.
+- [ ] Populate the output sets for each imported source mesh and validate real mesh bounds/pivots/collision in Unreal. `AssetPackages/UnrealExport` has named families for 150/300/600 plus 75/short/long variants; filenames are not dimension evidence.
 - [ ] Persistence of processed piece type and stable identity.
 - [ ] Structural graph integration for pieces that become attached or support other pieces.
 
