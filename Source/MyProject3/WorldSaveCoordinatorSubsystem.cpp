@@ -176,9 +176,31 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
     return true;
 }
 
-bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
+bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveGame& Snapshot)
 {
-    if (Snapshot.SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion ||
+    UWorldItemOwnershipSubsystem* OwnershipSubsystem =
+        World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldOperationLedgerSubsystem* OperationSubsystem =
+        World->GetSubsystem<UWorldOperationLedgerSubsystem>();
+    UWorldTerrainStateSubsystem* TerrainSubsystem =
+        World->GetSubsystem<UWorldTerrainStateSubsystem>();
+    UWorldAgricultureSubsystem* AgricultureSubsystem =
+        World->GetSubsystem<UWorldAgricultureSubsystem>();
+    UWorldSurvivalSubsystem* SurvivalSubsystem =
+        World->GetSubsystem<UWorldSurvivalSubsystem>();
+    UWorldProductionSubsystem* ProductionSubsystem =
+        World->GetSubsystem<UWorldProductionSubsystem>();
+    UWorldCargoTransportSubsystem* CargoSubsystem =
+        World->GetSubsystem<UWorldCargoTransportSubsystem>();
+    UWorldStorageSubsystem* StorageSubsystem =
+        World->GetSubsystem<UWorldStorageSubsystem>();
+    UWorldStructuralGraphSubsystem* StructuralSubsystem =
+        World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+
+    if (!World || !OwnershipSubsystem || !OperationSubsystem || !TerrainSubsystem ||
+        !AgricultureSubsystem || !SurvivalSubsystem || !ProductionSubsystem ||
+        !CargoSubsystem || !StorageSubsystem || !StructuralSubsystem ||
+        Snapshot.SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion ||
         Snapshot.Clock.SchemaVersion != UWorldSimulationClockSubsystem::CurrentSchemaVersion ||
         !FMath::IsFinite(Snapshot.Clock.SimulationTimeSeconds) ||
         Snapshot.Clock.SimulationTimeSeconds < 0.0 ||
@@ -186,8 +208,24 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
         Snapshot.Threat.SchemaVersion != 2 || !Snapshot.Threat.bInitialized ||
         !FMath::IsFinite(Snapshot.Threat.NextRaidTimeSeconds) ||
         Snapshot.Threat.NextRaidTimeSeconds < 0.0 || Snapshot.Threat.RaidSerial < 0 ||
+        static_cast<uint8>(Snapshot.Weather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
         !FMath::IsFinite(Snapshot.WeatherSeverity) ||
-        Snapshot.WeatherSeverity < 0.0f || Snapshot.WeatherSeverity > 1.0f)
+        Snapshot.WeatherSeverity < 0.0f || Snapshot.WeatherSeverity > 1.0f ||
+        !FMath::IsFinite(SurvivalSubsystem->MaxCaloriesKcal) ||
+        SurvivalSubsystem->MaxCaloriesKcal <= 0.0f ||
+        Snapshot.Items.Num() > OwnershipSubsystem->MaxTrackedItems ||
+        Snapshot.ItemTransferReceipts.Num() > OwnershipSubsystem->MaxTransferReceipts ||
+        Snapshot.ItemSplitReceipts.Num() > OwnershipSubsystem->MaxSplitReceipts ||
+        Snapshot.OperationLedgerEntries.Num() > OperationSubsystem->MaxEntries ||
+        Snapshot.TerrainCells.Num() > TerrainSubsystem->MaxEditedCells ||
+        Snapshot.TerrainReceipts.Num() > TerrainSubsystem->MaxOperationReceipts ||
+        TerrainSubsystem->MaxEditableDepthLayers <= 0 || TerrainSubsystem->MaxDepthPerCell <= 0 ||
+        Snapshot.Crops.Num() > AgricultureSubsystem->MaxCrops ||
+        Snapshot.Animals.Num() > AgricultureSubsystem->MaxAnimals ||
+        Snapshot.ProductionStations.Num() > ProductionSubsystem->MaxStations ||
+        Snapshot.ProductionRecipes.Num() > ProductionSubsystem->MaxRecipes ||
+        Snapshot.Cargo.Num() > CargoSubsystem->MaxActiveCargo ||
+        Snapshot.StorageContainers.Num() > StorageSubsystem->MaxStorages)
     {
         return false;
     }
@@ -883,7 +921,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     }
     // Validate the captured manifest without mutating live subsystem state.
     // Local domain RestoreSnapshot methods still validate again at commit time.
-    if (!ValidateSnapshotPayloadPreflight(*OutSave))
+    if (!ValidateSnapshotPayloadPreflight(World, *OutSave))
     {
         UE_LOG(LogTemp, Warning,
             TEXT("World save refused because its cross-domain snapshot preflight failed."));
@@ -912,7 +950,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         return false;
 
     // Reject malformed cross-domain references before clock, ownership or actor state mutates.
-    if (!ValidateSnapshotPayloadPreflight(*Snapshot))
+    if (!ValidateSnapshotPayloadPreflight(World, *Snapshot))
     {
         UE_LOG(LogTemp, Warning, TEXT("World load refused by cross-domain snapshot preflight."));
         return false;
