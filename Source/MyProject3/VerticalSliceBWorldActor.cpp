@@ -133,13 +133,11 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     if (bWorldBuilt)
         return true;
 
-    // Set the guard before creating components/actors so an accidental second
-    // call cannot duplicate the world if a later optional asset is missing.
-    bWorldBuilt = true;
-
+    // Do not mark the world as built until all required setup succeeds.
+    // Otherwise a missing mesh or failed terrain build permanently blocks retry.
     if (!GetWorld() || !BuildTerrain())
     {
-        LastActionMessage = TEXT("SETUP BLOCKED: terrain could not be created.");
+        LastActionMessage = TEXT("SETUP BLOCKED: terrain could not be created. Retry BuildWorld after fixing the setup.");
         UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B could not create its terrain mesh."));
         return false;
     }
@@ -147,8 +145,9 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     const FLogProcessingMeshSet Family = BuildLogMeshFamily();
     if (!Family.BaseRoundMesh)
     {
-        LastActionMessage = TEXT("Terrain is ready; log meshes are missing. Run BuildLogAssetManifest.py.");
-        UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B: no base log mesh found under %s."), DemoLogAssetRoot);
+        LastActionMessage = TEXT("SETUP BLOCKED: required 600 cm round log mesh is missing. Check /Game/DemoAssets/Logs and run BuildLogAssetManifest.py.");
+        UE_LOG(LogTemp, Error, TEXT("VerticalSlice_B: no base log mesh found under %s; world setup aborted before spawning the settlement."), DemoLogAssetRoot);
+        return false;
     }
 
     // The labels distinguish working mechanics from future staging zones.
@@ -166,6 +165,7 @@ bool AVerticalSliceBWorldActor::BuildWorld()
     BuildFutureZones();
     BuildConstructionFeatures(Family);
 
+    bWorldBuilt = true;
     LastActionMessage = TEXT("VerticalSlice_B ready. Follow the marked trail: camp -> timber -> wood yard -> build yard.");
     return true;
 }
@@ -472,7 +472,10 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
         { ELogLengthFraction::FullLength, TEXT("SM_RawLog_600"), TEXT("SM_RawLog_600") },
         { ELogLengthFraction::HalfLength, TEXT("SM_RawLog_300"), TEXT("SM_RawLog_300") },
         { ELogLengthFraction::QuarterLength, TEXT("SM_RawLog_150"), TEXT("SM_RawLog_150") },
-        { ELogLengthFraction::EighthLength, TEXT("SM_RawLog_75"), TEXT("SM_RawLog_Long_01") }
+        // No authored round 75 cm mesh is currently in the asset catalog.
+        // Never substitute the unrelated Long_01 mesh: leave this output unavailable
+        // so the cut action is rejected until the correct asset is imported.
+        { ELogLengthFraction::EighthLength, TEXT("SM_RawLog_75"), TEXT("SM_RawLog_75") }
     };
     struct FProfileSuffix
     {
