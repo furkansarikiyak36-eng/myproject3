@@ -80,6 +80,8 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
     {
         const FWorldAnimalState& Animal = Pair.Value;
         if (Animal.Revision == MAX_int64 ||
+            !FMath::IsFinite(Animal.Hunger) || Animal.Hunger < 0.0f || Animal.Hunger > 100.0f ||
+            !FMath::IsFinite(Animal.Health) || Animal.Health < 0.0f || Animal.Health > 100.0f ||
             !FMath::IsFinite(Animal.ProductProgressSeconds) ||
             Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
             !FMath::IsFinite(Animal.ProductProgressSeconds + DeltaSeconds) ||
