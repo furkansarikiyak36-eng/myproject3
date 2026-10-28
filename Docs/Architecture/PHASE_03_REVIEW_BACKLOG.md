@@ -22,8 +22,8 @@ This review deliberately continues Phase 3 without pulling the deferred Phase 2 
 ### P0 — Source-level correctness
 
 - [ ] Audit all tracked C++ call sites of `ApplyCutAction` and `TryApplyCutAction`; verify callers do not discard useful failure codes where user feedback is needed.
-- [ ] Verify the action-to-result-code mapping for every enum value, including invalid state, missing output mesh, unmet split prerequisite, and unsupported action.
-- [ ] Decide and document operation-ID retry semantics. The current API accepts an operation ID but the phase does not yet claim durable or in-memory idempotency; callers must not assume that repeating a successful request is safe.
+- [x] Source-reviewed the action-to-result-code mapping for all seven declared actions: invalid state, unmet prerequisite, missing configuration, and unsupported action are distinguished. Engine/runtime behavior remains unverified.
+- [x] Document operation-ID semantics in `LogBuildPiece.h`: the ID is correlation/diagnostic metadata only, not an idempotency key. A repeated request is revalidated against the new piece state and may return a different result; callers must not assume deduplication.
 - [ ] Review whether bottom-height preservation is valid for all configured output meshes and actor rotations; current logic uses world-axis bounds and should be checked with real assets.
 - [ ] Confirm snap-anchor regeneration after processing does not invalidate occupied/custom anchors in any allowed processing state.
 
