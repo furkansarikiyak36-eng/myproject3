@@ -27,8 +27,8 @@ The mapping API is source code only. No Unreal asset/Blueprint mapping has been 
 
 ## Required next implementation contract
 
-1. Create an explicit, authored processing-mesh set keyed by source mesh/length class; include a defined fallback policy and reject ambiguous/missing mappings before any mutation.
-2. Keep old per-action properties as a migration fallback until Blueprint defaults have been migrated and audited.
+1. Populate the source-level `ProcessingMeshSets` with explicit source-mesh/output mappings; reject ambiguous/missing mappings before any mutation.
+2. Keep old per-action properties as a migration fallback only while no mapping sets are configured, then migrate and audit Blueprint defaults.
 3. Define whether `Hewn1` and `Hewn2` are alternative recipes or distinct outputs before binding them.
 4. Record validated import data per mesh: local axis, dimensions in centimeters, pivot/origin, transform scale, collision mode, and section orientation.
 5. Add automated source-level checks for duplicate/missing family mappings; then verify the imported assets in Unreal Editor.
