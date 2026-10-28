@@ -135,11 +135,17 @@ bool UCarryLoadComponent::TryTakePiece(AActor* Piece, FString& OutReason)
 {
     if (!CanCarryMore(Piece, OutReason))
         return false;
+
     IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
     UWorldItemOwnershipSubsystem* Ownership =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldObjectIdentityComponent* Identity =
+        IsValid(Piece) ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
     FWorldOwnedItemRecord Item;
-    if (!Ownership || Structural->IsStructurallyPlaced() || Structural->GetCrossMaterialParent() ||
+    if (!Structural || !Ownership || !Identity || !Identity->HasValidIdentity() ||
+        !CarrierId.IsValid() || Identity->GetLifecycleState() != EWorldObjectLifecycleState::World ||
+        Identity->StateRevision == MAX_int64 ||
+        Structural->IsStructurallyPlaced() || Structural->GetCrossMaterialParent() ||
         !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
         Item.OwnerKind != EWorldItemOwnerKind::World)
     {
@@ -163,12 +169,28 @@ bool UCarryLoadComponent::TryTakePiece(AActor* Piece, FString& OutReason)
         OutReason = TEXT("The ownership ledger rejected the pickup.");
         return false;
     }
-    if (!SetPieceHeld(Piece, true))
+    if (!Identity->TryTransitionLifecycle(
+        EWorldObjectLifecycleState::World, EWorldObjectLifecycleState::Held))
     {
         FWorldOwnedItemRecord RolledBack;
         Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, HeldRecord.Revision,
             EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
             Piece->GetActorLocation(), RolledBack);
+        OutReason = TEXT("The piece lifecycle rejected the pickup.");
+        return false;
+    }
+    if (!SetPieceHeld(Piece, true))
+    {
+        Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World);
+        FWorldOwnedItemRecord RolledBack;
+        const bool bOwnershipRestored = Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, HeldRecord.Revision,
+            EWorldItemOwnerKind::Held, EWorldItemOwnerKind::World, FGuid(),
+            Piece->GetActorLocation(), RolledBack);
+        if (!bOwnershipRestored)
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+        }
         OutReason = TEXT("The piece refused to be held.");
         return false;
     }
@@ -188,8 +210,14 @@ bool UCarryLoadComponent::TryDropPiece(AActor* Piece, FVector WorldLocation)
     IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
     UWorldItemOwnershipSubsystem* Ownership =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldObjectIdentityComponent* Identity =
+        IsValid(Piece) ? Piece->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
     FWorldOwnedItemRecord Item;
-    if (!Structural || !Ownership || !CarriedPieces.Contains(Piece) || WorldLocation.ContainsNaN() ||
+    if (!Structural || !Ownership || !Identity || !CarriedPieces.Contains(Piece) ||
+        !FMath::IsFinite(WorldLocation.X) || !FMath::IsFinite(WorldLocation.Y) ||
+        !FMath::IsFinite(WorldLocation.Z) ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        Identity->StateRevision == MAX_int64 ||
         !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
         Item.OwnerKind != EWorldItemOwnerKind::Held || Item.OwnerId != CarrierId)
     {
@@ -203,10 +231,26 @@ bool UCarryLoadComponent::TryDropPiece(AActor* Piece, FVector WorldLocation)
         return false;
     }
 
+    if (!SetPieceHeld(Piece, false) ||
+        !Identity->TryTransitionLifecycle(
+            EWorldObjectLifecycleState::Held, EWorldObjectLifecycleState::World))
+    {
+        SetPieceHeld(Piece, true);
+        FWorldOwnedItemRecord RolledBack;
+        if (!Ownership->TryTransferItem(FGuid::NewGuid(), Item.ItemId, WorldRecord.Revision,
+            EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, CarrierId,
+            Item.WorldLocation, RolledBack))
+        {
+            Piece->SetActorHiddenInGame(true);
+            Piece->SetActorEnableCollision(false);
+            UE_LOG(LogTemp, Error, TEXT("Carry-load drop rollback failed for %s."), *GetNameSafe(Piece));
+        }
+        return false;
+    }
+
     Piece->SetActorLocation(WorldLocation, false, nullptr, ETeleportType::TeleportPhysics);
     Piece->SetActorHiddenInGame(false);
     Piece->SetActorEnableCollision(true);
-    SetPieceHeld(Piece, false);
     if (UStaticMeshComponent* Mesh = GetPieceMesh(Piece))
     {
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
