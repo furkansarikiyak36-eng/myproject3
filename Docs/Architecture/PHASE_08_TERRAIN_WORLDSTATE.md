@@ -1,6 +1,6 @@
 # Phase 8 — Landscape Builder, Terrain World State and Constrained Digging
 
-**Status (2026-10-28):** Logical terrain state plus a bounded voxel chunk source layer and v14 density snapshot path are present on `integration/phase-02-14-closure`; player-facing integration, Landscape seam/navigation, async meshing, and UE acceptance remain open.  
+**Status (2026-10-28):** Logical terrain state, bounded voxel chunk source layer, v14 density snapshot path, and a first player-facing `N`-key dig tool are present on `integration/phase-02-14-closure`; trusted inventory-tool binding, Landscape seam/navigation, async meshing, and UE acceptance remain open.  
 **Registry scope:** M071–M080; possible Landscape-driven extensions must use existing child requirements first and append M120+ only for distinct gameplay behavior.  
 **Prerequisites:** Core identity/clock/save contracts; structural graph integration where terrain supports buildings.  
 **Detailed plan:** `LANDSCAPE_BUILDER_IMPLEMENTATION_PLAN.md`
