@@ -781,7 +781,11 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
 {
     OutOpening = nullptr;
     FLogGeometry Wall;
-    if (!GetLogGeometry(WallLog, Wall) || !WallLog->IsPlaced())
+    UWorld* World = GetWorld();
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!World || !Graph || !Ownership || !GetOwner() ||
+        !GetLogGeometry(WallLog, Wall) || !WallLog->IsPlaced())
     {
         SetStatus(TEXT("Aim at a wall."));
         return false;
@@ -802,35 +806,72 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
     }
 
     const FVector Along = FVector(Wall.Axis.X, Wall.Axis.Y, 0.0f).GetSafeNormal();
+    if (Along.IsNearlyZero() || !FMath::IsFinite(AimPoint.X) ||
+        !FMath::IsFinite(AimPoint.Y) || !FMath::IsFinite(AimPoint.Z))
+        return false;
     const FVector Normal = FVector::CrossProduct(FVector::UpVector, Along);
     const FVector Origin = Wall.Centre;
     const float Width = Kind == EConstructionOpeningKind::Window ? WindowWidth : DoorWidth;
     const float Height = Kind == EConstructionOpeningKind::Window ? WindowHeight : DoorHeight;
+    if (!FMath::IsFinite(Width) || !FMath::IsFinite(Height) || Width <= 0.0f || Height <= 0.0f)
+        return false;
     const float Mid = FVector::DotProduct(AimPoint - Origin, Along);
     const float S0 = Mid - 0.5f * Width;
     const float S1 = Mid + 0.5f * Width;
 
-    struct FWallLog { ALogBuildPiece* Log; FLogGeometry Shape; float Centre; float Sign; };
+    struct FWallLog
+    {
+        ALogBuildPiece* Log = nullptr;
+        FLogGeometry Shape;
+        float Centre = 0.0f;
+        float Sign = 1.0f;
+        FTransform OriginalTransform;
+        EWorldObjectLifecycleState OriginalLifecycle = EWorldObjectLifecycleState::World;
+        int64 OriginalLifecycleRevision = 0;
+        bool bOriginalPlaced = false;
+        bool bOriginalHeld = false;
+    };
     TArray<FWallLog> WallLogs;
     float Base = TNumericLimits<float>::Max();
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
     {
         FLogGeometry Shape;
-        if (!It->IsPlaced() || !GetLogGeometry(*It, Shape) || FMath::Abs(FVector::DotProduct(Shape.Axis, Along)) < 0.95f)
+        if (!It->IsPlaced() || !GetLogGeometry(*It, Shape) ||
+            FMath::Abs(FVector::DotProduct(Shape.Axis, Along)) < 0.95f)
             continue;
-        if (FMath::Abs(FVector::DotProduct(Shape.Centre - Origin, Normal)) > 1.2f * FMath::Max(Shape.Radius, Wall.Radius))
+        if (FMath::Abs(FVector::DotProduct(Shape.Centre - Origin, Normal)) >
+            1.2f * FMath::Max(Shape.Radius, Wall.Radius))
             continue;
         const float Centre = FVector::DotProduct(Shape.Centre - Origin, Along);
         if (Centre + Shape.HalfLength < S0 || Centre - Shape.HalfLength > S1)
             continue;
-        WallLogs.Add({ *It, Shape, Centre, static_cast<float>(FMath::Sign(FVector::DotProduct(Shape.Axis, Along))) });
+
+        FWallLog& Entry = WallLogs.AddDefaulted_GetRef();
+        Entry.Log = *It;
+        Entry.Shape = Shape;
+        Entry.Centre = Centre;
+        Entry.Sign = static_cast<float>(FMath::Sign(FVector::DotProduct(Shape.Axis, Along)));
+        Entry.OriginalTransform = It->GetActorTransform();
+        if (UWorldObjectIdentityComponent* Identity = It->FindComponentByClass<UWorldObjectIdentityComponent>())
+        {
+            Entry.OriginalLifecycle = Identity->GetLifecycleState();
+            Entry.OriginalLifecycleRevision = Identity->StateRevision;
+        }
+        Entry.bOriginalPlaced = It->IsPlaced();
+        Entry.bOriginalHeld = It->IsHeld();
         Base = FMath::Min(Base, Shape.Centre.Z - Shape.Radius);
+    }
+    if (WallLogs.IsEmpty())
+    {
+        SetStatus(Kind == EConstructionOpeningKind::Window
+            ? TEXT("No wall logs at window height here.") : TEXT("No wall logs to cut here."));
+        return false;
     }
     const float Z0 = Kind == EConstructionOpeningKind::Window ? Base + WindowSill : Base;
     const float Z1 = Z0 + Height;
 
-    // Do not cut through a post that carries the wall.
-    for (TActorIterator<ALogBuildPiece> It(GetWorld()); It; ++It)
+    // Preflight the structural post rule and every source that would be wholly removed.
+    for (TActorIterator<ALogBuildPiece> It(World); It; ++It)
     {
         FLogGeometry Shape;
         if (!It->IsPlaced() || !GetLogGeometry(*It, Shape) || FMath::Abs(Shape.Axis.Z) < 0.8f)
@@ -845,8 +886,6 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
             return false;
         }
     }
-
-    int32 Cut = 0;
     for (const FWallLog& Entry : WallLogs)
     {
         const float ZCentre = Entry.Shape.Centre.Z;
@@ -858,62 +897,205 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         const float OverlapTo = FMath::Min(B, S1);
         if (OverlapTo - OverlapFrom < 5.0f)
             continue;
-        // Convert wall coordinates to the log's own along-axis coordinates.
+        const bool bLeft = OverlapFrom - A >= 25.0f;
+        const bool bRight = B - OverlapTo >= 25.0f;
+        if (!bLeft && !bRight && !Graph->CanSafelyRemove(Entry.Log->GetStructuralNodeId()))
+        {
+            SetStatus(TEXT("The opening would remove a log that is still the only support; add another support first."));
+            return false;
+        }
+    }
+
+    TArray<FWorldStructuralNodeSnapshot> GraphBefore;
+    if (!Graph->ExportSnapshot(GraphBefore))
+    {
+        SetStatus(TEXT("Opening cut blocked: structural snapshot could not be captured."));
+        return false;
+    }
+    TArray<FWorldOwnedItemRecord> ItemsBefore;
+    TArray<FWorldItemTransferReceipt> TransfersBefore;
+    TArray<FWorldItemSplitReceipt> SplitsBefore;
+    Ownership->ExportSnapshot(ItemsBefore, TransfersBefore, SplitsBefore);
+
+    TArray<TWeakObjectPtr<ALogBuildPiece>> SpawnedPieces;
+    AConstructionOpeningActor* StagedOpening = nullptr;
+    auto Rollback = [&]() -> bool
+    {
+        if (IsValid(StagedOpening))
+            StagedOpening->Destroy();
+        for (int32 Index = SpawnedPieces.Num() - 1; Index >= 0; --Index)
+        {
+            if (ALogBuildPiece* Spawned = SpawnedPieces[Index].Get())
+                Spawned->Destroy();
+        }
+
+        for (const FWallLog& Entry : WallLogs)
+        {
+            if (!IsValid(Entry.Log))
+                continue;
+            Entry.Log->SetActorTransform(Entry.OriginalTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            if (UWorldObjectIdentityComponent* Identity =
+                Entry.Log->FindComponentByClass<UWorldObjectIdentityComponent>())
+            {
+                Identity->LifecycleState = Entry.OriginalLifecycle;
+                Identity->StateRevision = Entry.OriginalLifecycleRevision;
+            }
+            Entry.Log->SetHeldState(Entry.bOriginalHeld);
+            Entry.Log->SetPlacedState(Entry.bOriginalPlaced);
+        }
+
+        const bool bItemsRestored = Ownership->RestoreSnapshot(ItemsBefore, TransfersBefore, SplitsBefore);
+        const bool bGraphRestored = Graph->RestoreSnapshot(GraphBefore);
+        const bool bAttachmentsRestored = bGraphRestored && Graph->RebuildLogActorAttachmentsFromSnapshot();
+        if (!bItemsRestored || !bGraphRestored || !bAttachmentsRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Door/window cut rollback failed; world structure requires recovery."));
+            SetStatus(TEXT("Cut failed and rollback was incomplete; stop structural edits and reload/recover the world."));
+            return false;
+        }
+        return true;
+    };
+
+    int32 Cut = 0;
+    for (const FWallLog& Entry : WallLogs)
+    {
+        if (!IsValid(Entry.Log))
+        {
+            Rollback();
+            return false;
+        }
+        const float ZCentre = Entry.Shape.Centre.Z;
+        if (ZCentre < Z0 || ZCentre > Z1)
+            continue;
+
+        const float A = Entry.Centre - Entry.Shape.HalfLength;
+        const float B = Entry.Centre + Entry.Shape.HalfLength;
+        const float OverlapFrom = FMath::Max(A, S0);
+        const float OverlapTo = FMath::Min(B, S1);
+        if (OverlapTo - OverlapFrom < 5.0f)
+            continue;
+
         auto ToLog = [&Entry](float S) { return (S - Entry.Centre) * Entry.Sign; };
         const bool bLeft = OverlapFrom - A >= 25.0f;
         const bool bRight = B - OverlapTo >= 25.0f;
 
-        // The cut-out piece drops loose in front of the wall, where it can be
-        // picked up: useful as firewood or a board.
-        if (ALogBuildPiece* Offcut = SpawnLogCopy(Entry.Log, Entry.Log->GetActorTransform()))
+        ALogBuildPiece* Offcut = nullptr;
+        if (bLeft || bRight)
         {
-            TrimLogToRange(Offcut, ToLog(OverlapFrom), ToLog(OverlapTo));
-            const float Side = FVector::DotProduct(GetOwner()->GetActorLocation() - Origin, Normal) >= 0.0f ? 1.0f : -1.0f;
-            const float Out = 2.5f * Entry.Shape.Radius + 40.0f + 2.2f * Entry.Shape.Radius * Cut;
-            Offcut->SetActorLocation(Offcut->GetActorLocation() + Normal * Side * Out + FVector::UpVector * 5.0f,
-                false, nullptr, ETeleportType::TeleportPhysics);
-            if (UStaticMeshComponent* OffcutMesh = Offcut->GetLogMesh())
-                OffcutMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+            Offcut = SpawnLogCopy(Entry.Log, Entry.OriginalTransform);
+            if (!Offcut)
+            {
+                Rollback();
+                SetStatus(TEXT("Cut failed: could not create an offcut; original wall restored."));
+                return false;
+            }
+            SpawnedPieces.Add(Offcut);
+            if (!TrimLogToRange(Offcut, ToLog(OverlapFrom), ToLog(OverlapTo)))
+            {
+                Rollback();
+                SetStatus(TEXT("Cut failed: offcut geometry could not be trimmed; original wall restored."));
+                return false;
+            }
         }
+        else
+        {
+            // The original piece itself becomes the whole offcut. Copying it here
+            // would duplicate the resource while leaving the full source in the world.
+            Offcut = Entry.Log;
+        }
+
         if (bLeft && bRight)
         {
-            if (ALogBuildPiece* RightPart = SpawnLogCopy(Entry.Log, Entry.Log->GetActorTransform()))
+            ALogBuildPiece* RightPart = SpawnLogCopy(Entry.Log, Entry.OriginalTransform);
+            if (!RightPart)
             {
-                TrimLogToRange(RightPart, ToLog(OverlapTo), ToLog(B));
-                MakePlaced(RightPart);
+                Rollback();
+                SetStatus(TEXT("Cut failed: could not create the remaining right-hand piece."));
+                return false;
             }
-            TrimLogToRange(Entry.Log, ToLog(A), ToLog(OverlapFrom));
+            SpawnedPieces.Add(RightPart);
+            if (!TrimLogToRange(RightPart, ToLog(OverlapTo), ToLog(B)))
+            {
+                Rollback();
+                SetStatus(TEXT("Cut failed: right-hand geometry could not be trimmed."));
+                return false;
+            }
+            MakePlaced(RightPart);
+            if (!RightPart->IsPlaced() ||
+                !TrimLogToRange(Entry.Log, ToLog(A), ToLog(OverlapFrom)))
+            {
+                Rollback();
+                SetStatus(TEXT("Cut failed: source or right-hand segment could not be committed."));
+                return false;
+            }
         }
         else if (bLeft)
         {
-            TrimLogToRange(Entry.Log, ToLog(A), ToLog(OverlapFrom));
+            if (!TrimLogToRange(Entry.Log, ToLog(A), ToLog(OverlapFrom)))
+            {
+                Rollback();
+                SetStatus(TEXT("Cut failed: left-hand source segment could not be trimmed."));
+                return false;
+            }
         }
         else if (bRight)
         {
-            TrimLogToRange(Entry.Log, ToLog(OverlapTo), ToLog(B));
+            if (!TrimLogToRange(Entry.Log, ToLog(OverlapTo), ToLog(B)))
+            {
+                Rollback();
+                SetStatus(TEXT("Cut failed: right-hand source segment could not be trimmed."));
+                return false;
+            }
         }
         else if (!DismantlePiece(Entry.Log))
         {
-            continue;
+            Rollback();
+            SetStatus(TEXT("Cut failed: the source log could not be safely removed from its support."));
+            return false;
         }
+
+        const float Side = FVector::DotProduct(GetOwner()->GetActorLocation() - Origin, Normal) >= 0.0f ? 1.0f : -1.0f;
+        const float Out = 2.5f * Entry.Shape.Radius + 40.0f + 2.2f * Entry.Shape.Radius * Cut;
+        if (Offcut != Entry.Log)
+        {
+            Offcut->SetActorLocation(Offcut->GetActorLocation() + Normal * Side * Out + FVector::UpVector * 5.0f,
+                false, nullptr, ETeleportType::TeleportPhysics);
+        }
+        else
+        {
+            Offcut->SetActorLocation(Offcut->GetActorLocation() + Normal * Side * Out + FVector::UpVector * 5.0f,
+                false, nullptr, ETeleportType::TeleportPhysics);
+            Offcut->SetPlacedState(false);
+        }
+        if (UStaticMeshComponent* OffcutMesh = Offcut->GetLogMesh())
+            OffcutMesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
         ++Cut;
     }
+
     if (Cut == 0)
     {
         SetStatus(Kind == EConstructionOpeningKind::Window
             ? TEXT("No wall logs at window height here.") : TEXT("No wall logs to cut here."));
         return false;
     }
+
     const FVector Centre = Origin + Along * Mid;
-    OutOpening = GetWorld()->SpawnActor<AConstructionOpeningActor>(
+    StagedOpening = World->SpawnActor<AConstructionOpeningActor>(
         FVector(Centre.X, Centre.Y, 0.5f * (Z0 + Z1)), Along.Rotation());
-    if (OutOpening)
-        OutOpening->InitializeOpening(Kind, Width, Height);
+    if (!StagedOpening)
+    {
+        Rollback();
+        SetStatus(TEXT("Cut failed: opening frame could not be created; original wall restored."));
+        return false;
+    }
+    StagedOpening->InitializeOpening(Kind, Width, Height);
+    OutOpening = StagedOpening;
+
     SetStatus(Kind == EConstructionOpeningKind::Window
         ? FString::Printf(TEXT("Window cut through %d logs."), Cut)
         : FString::Printf(TEXT("Door opening cut through %d logs. Fill it with %d split boards."), Cut,
-            OutOpening ? OutOpening->GetRequiredBoards() : 4));
-    return OutOpening != nullptr;
+            OutOpening->GetRequiredBoards()));
+    return true;
 }
 
 // ---------------------------------------------------------------- ropes, fire
