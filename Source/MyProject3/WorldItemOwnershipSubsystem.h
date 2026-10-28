@@ -57,6 +57,9 @@ struct FWorldItemTransferReceipt
     GENERATED_BODY()
 
     UPROPERTY(SaveGame)
+    int64 Sequence = 0;
+
+    UPROPERTY(SaveGame)
     FGuid OperationId;
 
     UPROPERTY(SaveGame)
@@ -100,6 +103,9 @@ struct FWorldItemSplitReceipt
     GENERATED_BODY()
 
     UPROPERTY(SaveGame)
+    int64 Sequence = 0;
+
+    UPROPERTY(SaveGame)
     FGuid OperationId;
 
     UPROPERTY(SaveGame)
@@ -131,6 +137,13 @@ class MYPROJECT3_API UWorldItemOwnershipSubsystem : public UWorldSubsystem
 public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="World|Items", meta=(ClampMin="1", ClampMax="100000"))
     int32 MaxTrackedItems = 16384;
+
+    /** Bounded idempotency window. Evicted retries fail closed rather than reapplying. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="World|Items", meta=(ClampMin="1", ClampMax="1000000"))
+    int32 MaxTransferReceipts = 65536;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="World|Items", meta=(ClampMin="1", ClampMax="250000"))
+    int32 MaxSplitReceipts = 16384;
 
     UFUNCTION(BlueprintCallable, Category="World|Items")
     bool RegisterItem(const FWorldOwnedItemRecord& Record);
@@ -205,4 +218,10 @@ private:
 
     UPROPERTY(Transient)
     TMap<FGuid, FWorldItemSplitReceipt> SplitReceipts;
+
+    /** Next monotonic sequence shared by transfer and split receipts. */
+    int64 NextReceiptSequence = 1;
+
+    bool EnsureItemCapacity(int32 AdditionalItems);
+    bool EnsureReceiptCapacity(bool bForSplitReceipt);
 };
