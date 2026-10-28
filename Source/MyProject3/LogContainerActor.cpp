@@ -337,6 +337,107 @@ AActor* ALogContainerActor::TakeOne(const FVector& DropLocation)
     return nullptr;
 }
 
+bool ALogContainerActor::RebuildStoredContentsFromOwnership()
+{
+    UWorld* World = GetWorld();
+    if (!World || !Identity || !Identity->HasValidIdentity())
+        return false;
+
+    StorageId = Identity->GetInstanceId();
+    UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
+    UWorldItemOwnershipSubsystem* Ownership = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Storage || !Ownership || !Storage->GetStorage(StorageId, /*out*/ FWorldStorageContainerRecord()))
+        return false;
+
+    TArray<FGuid> StoredItemIds;
+    if (!Storage->GetStoredItemIds(StorageId, StoredItemIds))
+        return false;
+
+    TMap<FGuid, AActor*> ActorsById;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* CandidateActor = *It;
+        UWorldObjectIdentityComponent* CandidateIdentity =
+            IsValid(CandidateActor) ? CandidateActor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!IsValid(CandidateIdentity) || !CandidateIdentity->HasValidIdentity())
+            continue;
+        if (ActorsById.Contains(CandidateIdentity->GetInstanceId()))
+            return false;
+        ActorsById.Add(CandidateIdentity->GetInstanceId(), CandidateActor);
+    }
+
+    TArray<AActor*> Rebuilt;
+    Rebuilt.Reserve(StoredItemIds.Num());
+    TSet<AActor*> UniquePieces;
+    for (const FGuid& ItemId : StoredItemIds)
+    {
+        FWorldOwnedItemRecord Item;
+        AActor* const* FoundActor = ActorsById.Find(ItemId);
+        if (!FoundActor || !IsValid(*FoundActor) || UniquePieces.Contains(*FoundActor) ||
+            !Ownership->TryGetItem(ItemId, Item) ||
+            Item.OwnerKind != EWorldItemOwnerKind::Storage || Item.OwnerId != StorageId ||
+            Item.Quantity != 1 || !Cast<IStructuralPieceInterface>(*FoundActor))
+        {
+            return false;
+        }
+        UniquePieces.Add(*FoundActor);
+        Rebuilt.Add(*FoundActor);
+    }
+
+    // Detach stale references before replacing the runtime array. The ownership
+    // ledger, not an actor's pre-load Stored array, determines membership.
+    for (const TObjectPtr<AActor>& PreviousPiece : Stored)
+    {
+        AActor* Piece = PreviousPiece.Get();
+        if (IsValid(Piece) && !UniquePieces.Contains(Piece) &&
+            Piece->GetAttachParentActor() == this)
+        {
+            Piece->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        }
+    }
+    Stored.Reset();
+
+    for (AActor* Piece : Rebuilt)
+    {
+        if (Piece->GetAttachParentActor() != this &&
+            !Piece->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform))
+        {
+            return false;
+        }
+
+        if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent()))
+        {
+            Root->SetSimulatePhysics(false);
+            Root->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        }
+        Piece->SetActorEnableCollision(true);
+        Stored.Add(Piece);
+    }
+
+    // Storage item IDs are deterministic, but historical insertion order is not
+    // part of older saves. Order by saved slot height (then identity) so TakeOne
+    // removes the visually topmost item and remains stable across reloads.
+    const FTransform ContainerTransform = GetActorTransform();
+    Stored.Sort([&ContainerTransform](const TObjectPtr<AActor>& A, const TObjectPtr<AActor>& B)
+    {
+        const FVector LocalA = ContainerTransform.InverseTransformPosition(A->GetActorLocation());
+        const FVector LocalB = ContainerTransform.InverseTransformPosition(B->GetActorLocation());
+        if (!FMath::IsNearlyEqual(LocalA.Z, LocalB.Z, KINDA_SMALL_NUMBER))
+            return LocalA.Z < LocalB.Z;
+
+        const UWorldObjectIdentityComponent* IdentityA =
+            IsValid(A.Get()) ? A->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        const UWorldObjectIdentityComponent* IdentityB =
+            IsValid(B.Get()) ? B->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        return IdentityA && IdentityB
+            ? IdentityA->GetInstanceId().ToString() < IdentityB->GetInstanceId().ToString()
+            : IsValid(A.Get()) && !IsValid(B.Get());
+    });
+
+    ApplyTowSpeed();
+    return true;
+}
+
 bool ALogContainerActor::OwnsPiece(const AActor* Piece) const
 {
     return Piece && Stored.ContainsByPredicate([Piece](const TObjectPtr<AActor>& Item) { return Item.Get() == Piece; });
