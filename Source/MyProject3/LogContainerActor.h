@@ -60,6 +60,7 @@ public:
     /** Starts or stops a pawn pulling the sled behind it. */
     bool ToggleTow(APawn* Puller);
 
+    virtual void OnConstruction(const FTransform& Transform) override;
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
