@@ -140,9 +140,7 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
     {
         if (Cell.DepthLayer < 0 || Cell.DepthLayer >= MaxEditableDepthLayers ||
             Cell.DepthLayer >= MaxDepthPerCell || Cell.Revision <= 0 ||
-            ProposedCells.Contains(Cell.Cell) ||
-            (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)) ||
-            ((Cell.bExcavated || !Cell.MaterialId.IsNone()) && Cell.DepthLayer < 0))
+            (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)))
             return false;
         ProposedCells.Add(Cell.Cell, Cell);
     }
@@ -153,6 +151,7 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
         const FWorldTerrainCellState* CurrentCell = ProposedCells.Find(Receipt.Cell);
         if (!Receipt.OperationId.IsValid() || ProposedReceipts.Contains(Receipt.OperationId) ||
             !CurrentCell || Receipt.ExpectedRevision < 0 || Receipt.ExpectedRevision >= MAX_int64 ||
+            (Receipt.ExpectedRevision == 0 && Receipt.RequestedEdit != ETerrainCellEdit::Excavate) ||
             Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
             Receipt.ResultState.Cell != Receipt.Cell ||
             Receipt.ResultState.Revision != Receipt.ResultingRevision ||
