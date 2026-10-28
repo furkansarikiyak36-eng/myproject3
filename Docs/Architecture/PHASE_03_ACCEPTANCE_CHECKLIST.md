@@ -9,7 +9,7 @@
 ## Processing invariants
 - [x] Split-half output requires a whole log and configured mesh.
 - [x] Groove, trough, quartering and plank require a split-half log.
-- [x] Processing remains blocked while held, placed, or supporting attached pieces.
+- [x] Processing remains blocked while held, placed, supporting attached pieces, or carrying any occupied snap anchor.
 - [x] Verify the selected output mesh before committing state.
 - [x] Preserve the previous bottom world height when swapping output geometry.
 
@@ -20,7 +20,7 @@
 - [x] Do not treat notification failure as if the committed processing operation failed.
 
 ## Pending
-- [ ] Inspect all tracked call sites and Blueprint compatibility in the local project.
+- [ ] Inspect all tracked call sites and Blueprint compatibility in the local project. The tracked C++ interaction path is result-aware; repository search and remote files cannot establish local/untracked Blueprint usage.
 - [ ] Compile/UHT with Unreal Engine 5.8.
 - [ ] Verify processing, invalid prerequisites, missing meshes, and geometry placement in Editor/PIE.
 - [ ] Integrated test evidence remains deferred to the final all-119 gate.
