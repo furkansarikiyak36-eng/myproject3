@@ -203,7 +203,9 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
             FMath::IsFinite(Raid.ActiveStartTime) && Raid.ActiveStartTime >= Raid.WarningStartTime &&
             FMath::IsFinite(Raid.PlannedEndTime) && Raid.PlannedEndTime >= Raid.ActiveStartTime &&
             FMath::IsFinite(Raid.Pressure) && Raid.Pressure >= 0.0f &&
-            Raid.TargetLocation.IsFinite();
+            FMath::IsFinite(Raid.TargetLocation.X) &&
+            FMath::IsFinite(Raid.TargetLocation.Y) &&
+            FMath::IsFinite(Raid.TargetLocation.Z);
     };
     if (!IsValidRaidRecord(Snapshot.Threat.CurrentRaid, true))
         return false;
@@ -218,12 +220,6 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
         }
         RaidIds.Add(Raid.RaidId);
     }
-    if (Snapshot.Threat.CurrentRaid.State != EThreatRaidState::None &&
-        RaidIds.Contains(Snapshot.Threat.CurrentRaid.RaidId))
-    {
-        return false;
-    }
-
     TMap<FGuid, FWorldOwnedItemRecord> ItemsById;
     ItemsById.Reserve(Snapshot.Items.Num());
     for (const FWorldOwnedItemRecord& Item : Snapshot.Items)
