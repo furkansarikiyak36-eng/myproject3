@@ -3,6 +3,11 @@
 #include "ConstructionHelpers.h"
 #include "LogBuildPiece.h"
 #include "LogContainerActor.h"
+#include "StructuralPieceInterface.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldStorageSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -11,8 +16,40 @@ using namespace MyProject3Construction;
 
 ABuildPlanActor::ABuildPlanActor()
 {
-    PrimaryActorTick.bCanEverTick = false;
+    PrimaryActorTick.bCanEverTick = true;
+    SetActorTickEnabled(false);
     SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
+}
+
+void ABuildPlanActor::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (!bCompletionRetryPending || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0f)
+        return;
+
+    CompletionRetryElapsedSeconds += DeltaSeconds;
+    if (CompletionRetryElapsedSeconds < 2.0f)
+        return;
+    CompletionRetryElapsedSeconds = 0.0f;
+
+    if (!IsComplete())
+    {
+        bCompletionRetryPending = false;
+        SetActorTickEnabled(false);
+        return;
+    }
+
+    if (Complete())
+    {
+        bCompletionRetryPending = false;
+        SetActorTickEnabled(false);
+    }
+    else if (!bRetryAfterOutputSpawnFailure)
+    {
+        // Data/ownership errors need intervention rather than an endless retry loop.
+        bCompletionRetryPending = false;
+        SetActorTickEnabled(false);
+    }
 }
 
 FString ABuildPlanActor::GetPlanName(EBuildPlanKind InKind)
@@ -170,8 +207,10 @@ ALogBuildPiece* ABuildPlanActor::GetSupportPiece(int32 Index) const
 
 void ABuildPlanActor::MarkFilled(int32 Index, ALogBuildPiece* Piece)
 {
-    if (!Slots.IsValidIndex(Index))
+    if (!Slots.IsValidIndex(Index) || Slots[Index].bFilled ||
+        !IsValid(Piece) || !Piece->IsPlaced())
         return;
+
     Slots[Index].bFilled = true;
     Slots[Index].Piece = Piece;
     if (Ghosts.IsValidIndex(Index) && Ghosts[Index])
@@ -179,13 +218,22 @@ void ABuildPlanActor::MarkFilled(int32 Index, ALogBuildPiece* Piece)
         Ghosts[Index]->SetVisibility(false);
         Ghosts[Index]->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
-    if (IsComplete())
-        Complete();
+
+    if (IsComplete() && !Complete())
+    {
+        bCompletionRetryPending = bRetryAfterOutputSpawnFailure;
+        CompletionRetryElapsedSeconds = 0.0f;
+        SetActorTickEnabled(bCompletionRetryPending);
+    }
 }
 
-void ABuildPlanActor::Complete()
+bool ABuildPlanActor::Complete()
 {
+    bRetryAfterOutputSpawnFailure = false;
     UWorld* World = GetWorld();
+    if (!World || !IsComplete())
+        return false;
+
     ELogContainerKind ContainerKind = ELogContainerKind::SmallLogStorage;
     bool bSpawnContainer = false;
     switch (Kind)
@@ -195,22 +243,180 @@ void ABuildPlanActor::Complete()
     case EBuildPlanKind::LogSled: ContainerKind = ELogContainerKind::BasicSled; bSpawnContainer = true; break;
     default: break;
     }
-    if (bSpawnContainer && World)
+
+    TArray<ALogBuildPiece*> Pieces;
+    TSet<const ALogBuildPiece*> UniquePieces;
+    for (int32 Index = 0; Index < Slots.Num(); ++Index)
     {
-        // A sled is a single movable object: its logs become the sled.
-        if (Kind == EBuildPlanKind::LogSled)
+        ALogBuildPiece* Piece = Slots[Index].Piece.Get();
+        if (!IsValid(Piece) || !Piece->IsPlaced() || UniquePieces.Contains(Piece))
         {
-            for (FBuildPlanSlot& Slot : Slots)
-                ConsumePiece(Slot.Piece.Get());
+            // Re-open vanished slots instead of destroying a fully marked plan
+            // that no longer has all of its physical resources.
+            for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
+            {
+                if (!Slots[SlotIndex].Piece.IsValid())
+                {
+                    Slots[SlotIndex].bFilled = false;
+                    Slots[SlotIndex].Piece.Reset();
+                    if (Ghosts.IsValidIndex(SlotIndex) && Ghosts[SlotIndex])
+                    {
+                        Ghosts[SlotIndex]->SetVisibility(true);
+                        Ghosts[SlotIndex]->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+                    }
+                }
+            }
+            UE_LOG(LogTemp, Warning, TEXT("Build plan '%s' cannot complete: a slot piece is missing, unplaced or duplicated."),
+                *GetNameSafe(this));
+            return false;
         }
-        const FVector Location = GetActorLocation() + FVector(0, 0, Kind == EBuildPlanKind::LogSled ? 20.0f : 45.0f);
-        ALogContainerActor* Container = World->SpawnActorDeferred<ALogContainerActor>(ALogContainerActor::StaticClass(),
-            FTransform(GetActorRotation(), Location));
-        if (Container)
+        UniquePieces.Add(Piece);
+        Pieces.Add(Piece);
+    }
+
+    UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    UWorldItemOwnershipSubsystem* Ownership = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
+    if (!Graph || !Ownership || !Storage)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Build plan '%s' cannot complete: required world systems are unavailable."),
+            *GetNameSafe(this));
+        return false;
+    }
+
+    TArray<ALogBuildPiece*> ConsumeOrder;
+    if (Kind == EBuildPlanKind::LogSled)
+    {
+        TMap<FGuid, ALogBuildPiece*> PiecesByNodeId;
+        TSet<FGuid> RemainingNodeIds;
+        for (ALogBuildPiece* Piece : Pieces)
         {
-            Container->ConfigureKind(ContainerKind);
-            Container->FinishSpawning(FTransform(GetActorRotation(), Location, Container->GetActorScale3D()));
+            IStructuralPieceInterface* Structural = Cast<IStructuralPieceInterface>(Piece);
+            UWorldObjectIdentityComponent* Identity =
+                Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
+            FWorldOwnedItemRecord Item;
+            FStructuralNodeRecord Node;
+            if (!Structural || !Identity || !Identity->HasValidIdentity() ||
+                Identity->GetLifecycleState() != EWorldObjectLifecycleState::Placed ||
+                Identity->StateRevision > MAX_int64 - 2 ||
+                !Ownership->TryGetItem(Structural->GetStructuralNodeId(), Item) ||
+                Item.OwnerKind != EWorldItemOwnerKind::World || Item.Quantity != 1 ||
+                Item.Revision == MAX_int64 ||
+                !Graph->GetNode(Structural->GetStructuralNodeId(), Node))
+            {
+                UE_LOG(LogTemp, Error, TEXT("Build plan '%s' cannot consume invalid or non-world-owned sled material."),
+                    *GetNameSafe(this));
+                return false;
+            }
+            PiecesByNodeId.Add(Node.NodeId, Piece);
+            RemainingNodeIds.Add(Node.NodeId);
+        }
+
+        // All supports must belong to the plan. Destroy structural leaves first.
+        for (ALogBuildPiece* Piece : Pieces)
+        {
+            for (const FGuid& DependentId : Graph->GetAllDependents(Piece->GetStructuralNodeId()))
+            {
+                if (!RemainingNodeIds.Contains(DependentId))
+                {
+                    UE_LOG(LogTemp, Error, TEXT("Build plan '%s' cannot consume a sled part supporting an external piece."),
+                        *GetNameSafe(this));
+                    return false;
+                }
+            }
+        }
+
+        while (!RemainingNodeIds.IsEmpty())
+        {
+            FGuid LeafId;
+            for (const FGuid& CandidateId : RemainingNodeIds)
+            {
+                bool bHasRemainingDependent = false;
+                for (const FGuid& DependentId : Graph->GetAllDependents(CandidateId))
+                {
+                    if (RemainingNodeIds.Contains(DependentId))
+                    {
+                        bHasRemainingDependent = true;
+                        break;
+                    }
+                }
+                if (!bHasRemainingDependent)
+                {
+                    LeafId = CandidateId;
+                    break;
+                }
+            }
+            if (!LeafId.IsValid())
+            {
+                UE_LOG(LogTemp, Error, TEXT("Build plan '%s' cannot consume cyclic structural dependencies."),
+                    *GetNameSafe(this));
+                return false;
+            }
+            ConsumeOrder.Add(PiecesByNodeId.FindRef(LeafId));
+            RemainingNodeIds.Remove(LeafId);
         }
     }
+
+    ALogContainerActor* Container = nullptr;
+    if (bSpawnContainer)
+    {
+        const FVector Location = GetActorLocation() +
+            FVector(0, 0, Kind == EBuildPlanKind::LogSled ? 20.0f : 45.0f);
+        const FTransform SpawnTransform(GetActorRotation(), Location);
+        Container = World->SpawnActorDeferred<ALogContainerActor>(
+            ALogContainerActor::StaticClass(), SpawnTransform, nullptr, nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (!Container)
+        {
+            bRetryAfterOutputSpawnFailure = true;
+            UE_LOG(LogTemp, Warning, TEXT("Build plan '%s' will retry because output container allocation failed."),
+                *GetNameSafe(this));
+            return false;
+        }
+
+        Container->ConfigureKind(ContainerKind);
+        Container->FinishSpawning(FTransform(GetActorRotation(), Location, Container->GetActorScale3D()));
+        if (!IsValid(Container) || !Storage->IsStorageAvailable(Container->GetStorageId()))
+        {
+            if (IsValid(Container))
+                Container->Destroy();
+            bRetryAfterOutputSpawnFailure = true;
+            UE_LOG(LogTemp, Warning, TEXT("Build plan '%s' will retry because the output container could not register storage."),
+                *GetNameSafe(this));
+            return false;
+        }
+    }
+
+    if (Kind == EBuildPlanKind::LogSled)
+    {
+        for (ALogBuildPiece* Piece : ConsumeOrder)
+        {
+            if (!IsValid(Piece) || !ConsumePiece(Piece))
+            {
+                if (IsValid(Container))
+                    Container->Destroy();
+
+                // Any successfully consumed piece is now a missing resource slot;
+                // reopen it so the player can repair the interrupted build.
+                for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
+                {
+                    if (!Slots[SlotIndex].Piece.IsValid())
+                    {
+                        Slots[SlotIndex].bFilled = false;
+                        if (Ghosts.IsValidIndex(SlotIndex) && Ghosts[SlotIndex])
+                        {
+                            Ghosts[SlotIndex]->SetVisibility(true);
+                            Ghosts[SlotIndex]->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+                        }
+                    }
+                }
+                UE_LOG(LogTemp, Error, TEXT("Build plan '%s' could not consume all sled materials; missing slots were reopened."),
+                    *GetNameSafe(this));
+                return false;
+            }
+        }
+    }
+
     Destroy();
+    return true;
 }
