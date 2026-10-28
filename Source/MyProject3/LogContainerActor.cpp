@@ -10,6 +10,7 @@
 #include "WorldStorageSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldObjectIdentitySubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -505,6 +506,11 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
                     *GetNameSafe(this), *GetNameSafe(Piece));
                 Piece->SetActorHiddenInGame(true);
                 Piece->SetActorEnableCollision(false);
+                if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                    GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr)
+                {
+                    Coordinator->MarkSimulationFaulted(TEXT("A destroyed physical storage could not return a stored item to World; stop simulation and recover/reset the world."));
+                }
                 continue;
             }
 
@@ -548,9 +554,16 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
     {
         UWorldStorageSubsystem* Storage =
             GetWorld() ? GetWorld()->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
-        if (Storage && !Storage->SetStorageAvailable(StorageId, false))
+        if (!Storage || !Storage->SetStorageAvailable(StorageId, false))
+        {
             UE_LOG(LogTemp, Error, TEXT("Container storage %s could not be marked unavailable."),
                 *StorageId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr)
+            {
+                Coordinator->MarkSimulationFaulted(TEXT("A physical storage actor ended play but its shared storage record could not be retired; stop simulation and recover/reset the world."));
+            }
+        }
         bStorageRegistered = false;
     }
     Super::EndPlay(Reason);
