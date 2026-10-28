@@ -83,8 +83,33 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
         (bHasRaid && (CurrentRaid.State == EThreatRaidState::Warning ||
                       CurrentRaid.State == EThreatRaidState::Active) && !bRaidWillFinish) ||
         bRaidWillStart;
+    if (bRaidNeedsPawn && !RaidPawnClass)
+        return false;
 
-    return !bRaidNeedsPawn || RaidPawnClass != nullptr;
+    // Preflight the revision counter before any attack can mutate graph damage.
+    const bool bWillBeActive =
+        (bHasRaid && CurrentRaid.State == EThreatRaidState::Active && !bRaidWillFinish) ||
+        (bHasRaid && CurrentRaid.State == EThreatRaidState::Warning &&
+         TargetTimeSeconds >= CurrentRaid.ActiveStartTime &&
+         TargetTimeSeconds < CurrentRaid.PlannedEndTime);
+    if (bWillBeActive)
+    {
+        const double Elapsed = TargetTimeSeconds - CurrentRaid.ActiveStartTime;
+        const double PulseIndex = FMath::FloorToDouble(Elapsed / AttackIntervalSeconds);
+        if (!FMath::IsFinite(Elapsed) || Elapsed < 0.0 ||
+            !FMath::IsFinite(PulseIndex) || PulseIndex < 0.0 ||
+            PulseIndex >= static_cast<double>(MAX_int64 - 1))
+        {
+            return false;
+        }
+        if (static_cast<int64>(PulseIndex) > CurrentRaid.LastCommittedAttackPulseIndex &&
+            CurrentRaid.Revision == MAX_int64)
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
