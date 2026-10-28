@@ -591,6 +591,7 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
     }
     FString Note;
     const FTransform PreCutTransform = Log->GetActorTransform();
+    const bool bPreCutCustomLengthScale = Log->bHasCustomLengthScale;
     ALogBuildPiece* Remainder = nullptr;
     if (Shape.Length() > Needed * 1.1f)
     {
@@ -613,7 +614,10 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
         if (IsValid(Remainder))
             Remainder->Destroy();
         if (IsValid(Log) && !Log->IsActorBeingDestroyed())
+        {
             Log->SetActorTransform(PreCutTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            Log->bHasCustomLengthScale = bPreCutCustomLengthScale;
+        }
         SetStatus(TEXT("The log could not be placed; the cut was rolled back."));
         return true;
     }
