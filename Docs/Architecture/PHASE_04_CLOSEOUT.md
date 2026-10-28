@@ -6,6 +6,8 @@
 
 ## Delivered
 - Stone piece categories and explicit authored snap-anchor data.
+- Result-bearing throw operation for loose held stone.
+- Source-specific mesh mapping and validated shape transitions for block, slab, column, lintel and corner.
 - Dedicated stone actor with held/placed state and parent-child attachment records.
 - Anchor permission, occupancy, compatibility, data-integrity and support-chain checks.
 - Transform alignment and attachment reservation logic with rollback on failure.
@@ -16,7 +18,8 @@
 ## Not claimed
 - No Unreal Engine 5.8 build/UHT, Editor, PIE or gameplay test was run.
 - The ten M029–M038 registry mechanics are not all implemented by this initial layer.
-- Structural load calculations, collapse, damage/repair, bulk inventory, shaping recipes, mixed-material structural integration and persistence remain future work.
+- Structural load calculations, collapse, damage/repair, bulk inventory, tool/resource costs, physical shaping progress, mixed-material structural integration and persistence remain future work.
+- Source-specific stone output mappings are supported by code but have not been populated or validated against imported Unreal assets.
 - The 119-mechanic registry remains `unreviewed` / `not_run`.
 - This branch is based on the latest Phase 3 source branch, but it does not imply Phase 3 or Phase 2 has passed its own exit gate.
 
