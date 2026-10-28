@@ -25,10 +25,21 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Gameplay|Events")
     FOnWorldCommittedEvent OnCommittedEvent;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Gameplay|Events", meta=(ClampMin="1", ClampMax="65536"))
+    int32 MaxRetainedEvents = 8192;
+
     /**
      * Publishes a committed fact. Rejects invalid type, unsupported schema,
      * or missing operation identity. This is notification, not persistence.
      */
     UFUNCTION(BlueprintCallable, Category = "Gameplay|Events")
     bool PublishCommittedEvent(FWorldCommittedEvent Event);
+
+private:
+    /** Bounded in-memory de-duplication; this is not a durable event log. */
+    UPROPERTY(Transient)
+    TMap<FGuid, FWorldCommittedEvent> PublishedEvents;
+
+    UPROPERTY(Transient)
+    TMap<FString, FGuid> PublishedOperationKeys;
 };
