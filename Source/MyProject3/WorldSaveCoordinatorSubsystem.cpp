@@ -206,7 +206,11 @@ bool ValidateSnapshotPayloadPreflight(const UWorldSimulationSaveGame& Snapshot)
             FMath::IsFinite(Raid.TargetLocation.X) &&
             FMath::IsFinite(Raid.TargetLocation.Y) &&
             FMath::IsFinite(Raid.TargetLocation.Z) &&
-            Raid.LastCommittedAttackPulseIndex >= -1;
+            Raid.LastCommittedAttackPulseIndex >= -1 &&
+            FMath::IsFinite(Raid.AttackIntervalSeconds) &&
+            (Raid.State == EThreatRaidState::None
+                ? Raid.AttackIntervalSeconds >= 0.0
+                : Raid.AttackIntervalSeconds > 0.0);
     };
     if (!IsValidRaidRecord(Snapshot.Threat.CurrentRaid, true))
         return false;
@@ -1015,8 +1019,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // "nothing committed" sentinel rather than infer history from time.
         Candidate->Threat.SchemaVersion = 2;
         Candidate->Threat.CurrentRaid.LastCommittedAttackPulseIndex = -1;
+        if (Candidate->Threat.CurrentRaid.State != EThreatRaidState::None)
+            Candidate->Threat.CurrentRaid.AttackIntervalSeconds = 30.0;
         for (FThreatRaidRecord& Raid : Candidate->Threat.RaidHistory)
+        {
             Raid.LastCommittedAttackPulseIndex = -1;
+            Raid.AttackIntervalSeconds = 30.0;
+        }
         Candidate->SchemaVersion = 16;
     }
 
