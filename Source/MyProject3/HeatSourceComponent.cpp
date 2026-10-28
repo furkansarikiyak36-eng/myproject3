@@ -42,7 +42,9 @@ bool UHeatSourceComponent::AddFuel(float BurnSeconds)
 
 bool UHeatSourceComponent::Ignite()
 {
-    if (FuelSeconds <= 0.0f)
+    if (!FMath::IsFinite(FuelSeconds) || FuelSeconds <= 0.0f ||
+        !FMath::IsFinite(MaxFuelSeconds) || MaxFuelSeconds <= 0.0f ||
+        FuelSeconds > MaxFuelSeconds)
         return false;
     bLit = true;
     return true;
@@ -68,9 +70,24 @@ float UHeatSourceComponent::GetHeatAt(const FVector& WorldLocation) const
     return HeatOutputCelsius * Closeness * Closeness;
 }
 
+bool UHeatSourceComponent::CanAdvanceFuel(
+    double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity) const
+{
+    return FMath::IsFinite(DeltaSeconds) && DeltaSeconds > 0.0 && DeltaSeconds <= 3600.0 &&
+        static_cast<uint8>(Weather) <= static_cast<uint8>(EWorldWeatherState::Heatwave) &&
+        FMath::IsFinite(WeatherSeverity) && WeatherSeverity >= 0.0f && WeatherSeverity <= 1.0f &&
+        FMath::IsFinite(FuelSeconds) && FuelSeconds >= 0.0f &&
+        FMath::IsFinite(MaxFuelSeconds) && MaxFuelSeconds > 0.0f &&
+        FuelSeconds <= MaxFuelSeconds &&
+        FMath::IsFinite(WeatherProtection) && WeatherProtection >= 0.0f && WeatherProtection <= 1.0f &&
+        FMath::IsFinite(HeatOutputCelsius) && HeatOutputCelsius >= 0.0f &&
+        FMath::IsFinite(RadiusCm) && RadiusCm >= 10.0f &&
+        (!bLit || FuelSeconds > 0.0f);
+}
+
 void UHeatSourceComponent::AdvanceFuel(double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity)
 {
-    if (!bLit || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0)
+    if (!bLit || !CanAdvanceFuel(DeltaSeconds, Weather, WeatherSeverity))
         return;
 
     // Heavy rain and storms drown a fire that is not sheltered enough.
