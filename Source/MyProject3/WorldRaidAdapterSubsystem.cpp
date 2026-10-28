@@ -458,15 +458,20 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     if (DefenseTargetNodeIds.IsEmpty() && !DamageTargets.IsEmpty())
         MaterializedTargetNodeId = DamageTargets[0];
 
-    // Preflight every target and every threshold-crossing collapse before the
-    // operation marker or any damage mutation is committed.
+    // Establish the complete target set before validating overlapping collapse
+    // plans, so revision headroom does not depend on target iteration order.
     TSet<FGuid> UniqueTargets;
     for (const FGuid& NodeId : DamageTargets)
     {
         if (!NodeId.IsValid() || UniqueTargets.Contains(NodeId))
             return false;
         UniqueTargets.Add(NodeId);
+    }
 
+    // Preflight every target and every threshold-crossing collapse before the
+    // operation marker or any damage mutation is committed.
+    for (const FGuid& NodeId : DamageTargets)
+    {
         FStructuralNodeRecord Node;
         if (!Graph->GetNode(NodeId, Node) || !Node.Actor.IsValid() ||
             !FMath::IsFinite(Node.Damage) || Node.Damage < 0.0f ||
@@ -498,7 +503,6 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             }
         }
     }
-
     // Reserve the durable operation only after all predictable graph work has
     // passed preflight. From this point a failure leaves a Pending receipt and
     // must stop the simulation rather than replay potentially partial damage.
