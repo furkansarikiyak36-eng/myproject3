@@ -196,6 +196,57 @@ bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
     return bFound;
 }
 
+bool UWorldRaidAdapterSubsystem::BuildDamageTargetList(
+    const FThreatRaidRecord& Raid, TArray<FGuid>& OutTargetIds) const
+{
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    if (!Graph)
+        return false;
+
+    OutTargetIds.Reset();
+    if (DefenseTargetNodeIds.IsEmpty())
+    {
+        FGuid TargetNodeId;
+        FVector TargetLocation;
+        if (MaterializedTargetNodeId.IsValid())
+        {
+            FStructuralNodeRecord ExistingTarget;
+            if (Graph->GetNode(MaterializedTargetNodeId, ExistingTarget) &&
+                ExistingTarget.Actor.IsValid())
+            {
+                TargetNodeId = MaterializedTargetNodeId;
+                TargetLocation = ExistingTarget.Actor->GetActorLocation();
+            }
+        }
+        if (!TargetNodeId.IsValid() &&
+            !ResolvePrimaryTargetNode(Raid, TargetNodeId, TargetLocation))
+        {
+            // A world with no registered structures has nothing for the raid to damage.
+            return true;
+        }
+        OutTargetIds.Add(TargetNodeId);
+        return true;
+    }
+
+    TSet<FGuid> UniqueTargets;
+    OutTargetIds = DefenseTargetNodeIds;
+    for (const FGuid& TargetId : OutTargetIds)
+    {
+        FStructuralNodeRecord Node;
+        if (!TargetId.IsValid() || UniqueTargets.Contains(TargetId) ||
+            !Graph->GetNode(TargetId, Node) || !Node.Actor.IsValid())
+        {
+            return false;
+        }
+        UniqueTargets.Add(TargetId);
+    }
+    OutTargetIds.Sort([](const FGuid& A, const FGuid& B)
+    {
+        return A.ToString() < B.ToString();
+    });
+    return true;
+}
+
 bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
 {
     UWorld* World = GetWorld();
