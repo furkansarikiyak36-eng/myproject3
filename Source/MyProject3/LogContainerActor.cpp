@@ -487,6 +487,63 @@ void ALogContainerActor::EndPlay(const EEndPlayReason::Type Reason)
 {
     if (TowedBy.IsValid())
         ToggleTow(TowedBy.Get());
+
+    // Explicit destruction must not strand physically stored items under an owner
+    // ID that will never become available again. Level transitions/unloads keep
+    // ownership intact because the world snapshot may still reference this rack.
+    if (Reason == EEndPlayReason::Destroyed)
+    {
+        for (int32 Index = Stored.Num() - 1; Index >= 0; --Index)
+        {
+            AActor* Piece = Stored[Index].Get();
+            if (!IsValid(Piece))
+                continue;
+
+            if (!TransferPiece(Piece, EWorldItemOwnerKind::World, FGuid(), Piece->GetActorLocation()))
+            {
+                UE_LOG(LogTemp, Error, TEXT("Destroying storage '%s' could not release stored item '%s' to World."),
+                    *GetNameSafe(this), *GetNameSafe(Piece));
+                Piece->SetActorHiddenInGame(true);
+                Piece->SetActorEnableCollision(false);
+                continue;
+            }
+
+            Piece->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+            Piece->SetActorHiddenInGame(false);
+            Piece->SetActorEnableCollision(true);
+            if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Piece))
+            {
+                if (Log->IsHeld())
+                    Log->SetHeldState(false);
+                Log->SetPlacedState(false);
+                if (UWorldObjectIdentityComponent* PieceIdentity =
+                    Log->FindComponentByClass<UWorldObjectIdentityComponent>())
+                {
+                    if (PieceIdentity->GetLifecycleState() == EWorldObjectLifecycleState::Placed)
+                        PieceIdentity->TryTransitionLifecycle(
+                            EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
+                }
+            }
+            else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Piece))
+            {
+                Stone->SetHeldState(false);
+            }
+            else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Piece))
+            {
+                Stick->SetHeldState(false);
+            }
+
+            if (UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent()))
+            {
+                Root->SetCollisionProfileName(TEXT("PhysicsActor"));
+                Root->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+                Root->SetSimulatePhysics(true);
+                Root->WakeAllRigidBodies();
+            }
+        }
+        Stored.Reset();
+    }
+
     if (bStorageRegistered)
     {
         UWorldStorageSubsystem* Storage =
