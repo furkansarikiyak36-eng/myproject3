@@ -157,6 +157,21 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirector()
     return AdvanceDirectorAtTime(Clock->GetSimulationTimeSeconds(), Clock->GetTickIndex());
 }
 
+bool UWorldThreatDirectorSubsystem::CommitRaidAttackPulse(const FGuid& RaidId, int64 PulseIndex)
+{
+    if (!bInitialized || !RaidId.IsValid() || RaidId != CurrentRaid.RaidId ||
+        CurrentRaid.State != EThreatRaidState::Active || PulseIndex < 0 ||
+        PulseIndex <= CurrentRaid.LastCommittedAttackPulseIndex ||
+        CurrentRaid.Revision == MAX_int64)
+    {
+        return false;
+    }
+
+    CurrentRaid.LastCommittedAttackPulseIndex = PulseIndex;
+    ++CurrentRaid.Revision;
+    return true;
+}
+
 bool UWorldThreatDirectorSubsystem::ResolveCurrentRaid(bool bRepelled)
 {
     UWorldSimulationClockSubsystem* Clock = GetClock();
