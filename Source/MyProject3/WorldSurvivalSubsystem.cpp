@@ -214,6 +214,12 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
         return false;
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
         if (Pair.Value.Revision == MAX_int64 || !IsValidProfile(Pair.Value)) return false;
+
+    // Heat fuel is mutated in this step too; every source must pass preflight before
+    // the first profile or fuel value is changed.
+    for (const TWeakObjectPtr<UHeatSourceComponent>& Source : HeatSources)
+        if (Source.IsValid() && !Source->CanAdvanceFuel(DeltaSeconds, Weather, WeatherSeverity))
+            return false;
     return true;
 }
 
