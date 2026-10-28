@@ -1,4 +1,5 @@
 #include "LogBuildPiece.h"
+#include "ConstructionHelpers.h"
 
 #include "GameplayCoreTypes.h"
 #include "MaterialConnectionSubsystem.h"
@@ -966,11 +967,11 @@ bool ALogBuildPiece::IsValidLengthCutLayout(const FLogLengthCutVariant& Variant)
     float SourceRatio = 0.0f;
     float FirstRatio = 0.0f;
     float SecondRatio = 0.0f;
-    FLogGeometry SourceGeometry;
+    MyProject3Construction::FLogGeometry SourceGeometry;
     if (!LengthRatio(Variant.SourceLengthFraction, SourceRatio) ||
         !LengthRatio(Variant.FirstOutputLengthFraction, FirstRatio) ||
         !LengthRatio(Variant.SecondOutputLengthFraction, SecondRatio) ||
-        !GetLogGeometry(this, SourceGeometry))
+        !MyProject3Construction::GetLogGeometry(this, SourceGeometry))
         return false;
 
     const FVector WorldSeparation = GetActorTransform().TransformVector(Separation);
