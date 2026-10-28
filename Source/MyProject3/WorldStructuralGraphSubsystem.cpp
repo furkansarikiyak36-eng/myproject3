@@ -605,18 +605,33 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
 bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId, FGuid SupportNodeId)
 {
     FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
-    if (!Child || Child->Revision == MAX_int64)
+    FStructuralNodeRecord* Support = Nodes.Find(SupportNodeId);
+    if (!Child || !Support || ChildNodeId == SupportNodeId ||
+        Child->Revision == MAX_int64 || Support->Revision == MAX_int64)
         return false;
+
+    const TArray<FStructuralSupportLink> PreviousSupports = Child->SecondarySupports;
     const int32 Removed = Child->SecondarySupports.RemoveAll(
         [&SupportNodeId](const FStructuralSupportLink& Link) { return Link.SupportNodeId == SupportNodeId; });
     if (Removed == 0)
         return false;
-    ++Child->Revision;
-    if (FStructuralNodeRecord* Support = Nodes.Find(SupportNodeId))
+
+    // Removing a secondary support redirects more load to the remaining supports.
+    // Preflight every resulting aggregate before advancing revisions/committing.
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
-        if (Support->Revision < MAX_int64)
-            ++Support->Revision;
+        TSet<FGuid> Visiting;
+        bool bLoadValid = true;
+        const float Aggregate = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid);
+        if (!bLoadValid || Aggregate > Pair.Value.MaxSupportedLoad)
+        {
+            Child->SecondarySupports = PreviousSupports;
+            return false;
+        }
     }
+
+    ++Child->Revision;
+    ++Support->Revision;
     return true;
 }
 
