@@ -5,6 +5,9 @@
 #include "LogBuildPiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StructuralPieceInterface.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
+#include "WorldItemOwnershipSubsystem.h"
 #include "EngineUtils.h"
 
 bool UWorldStructuralGraphSubsystem::ExportSnapshot(
@@ -251,6 +254,10 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
         }
         if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
             Log->ResetActorLocalSnapStateForGraphRestore();
+        else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Actor))
+            Stone->ResetLocalConnectionStateForGraphRestore();
+        else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Actor))
+            Stick->ResetLocalConnectionStateForGraphRestore();
     }
 
     TArray<FGuid> OrderedIds;
@@ -281,33 +288,88 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
             continue;
         }
 
-        ALogBuildPiece* Child = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
-        ALogBuildPiece* Parent = ParentNode
+        ALogBuildPiece* ChildLog = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
+        ALogBuildPiece* ParentLog = ParentNode
             ? Cast<ALogBuildPiece>(ParentNode->Actor.Get()) : nullptr;
-
-        // Non-log structural adapters own their own local anchor bookkeeping.
-        // Do not fabricate a log-only link for a cross-domain edge.
-        if (!Child || !Parent)
-            continue;
-
-        if (!Child->RestoreActorLocalSnapLinkFromGraph(
-            Parent, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId, true))
+        if (ChildLog && ParentLog)
         {
-            UE_LOG(LogTemp, Error,
-                TEXT("Structural graph restored but log-local anchor reconstruction failed for node %s."),
-                *NodeId.ToString());
-            return false;
+            if (!ChildLog->RestoreActorLocalSnapLinkFromGraph(
+                ParentLog, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId, true))
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Structural graph restored but log-local anchor reconstruction failed for node %s."),
+                    *NodeId.ToString());
+                return false;
+            }
+            continue;
+        }
+
+        if (AStoneBuildingPiece* ChildStone = Cast<AStoneBuildingPiece>(ChildNode->Actor.Get()))
+        {
+            AStoneBuildingPiece* ParentStone = ParentNode
+                ? Cast<AStoneBuildingPiece>(ParentNode->Actor.Get()) : nullptr;
+            if (!ParentStone || !ChildStone->RestoreConnectionFromGraph(
+                ParentStone, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId))
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Structural graph restored but stone-local anchor reconstruction failed for node %s."),
+                    *NodeId.ToString());
+                return false;
+            }
+            continue;
+        }
+
+        if (AStickPrimitivePiece* ChildStick = Cast<AStickPrimitivePiece>(ChildNode->Actor.Get()))
+        {
+            AStickPrimitivePiece* ParentStick = ParentNode
+                ? Cast<AStickPrimitivePiece>(ParentNode->Actor.Get()) : nullptr;
+            if (!ParentStick || !ChildStick->RestoreConnectionFromGraph(
+                ParentStick, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId))
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Structural graph restored but stick-local anchor reconstruction failed for node %s."),
+                    *NodeId.ToString());
+                return false;
+            }
         }
     }
 
-    // A root log is considered placed only if the canonical graph says it is
-    // ground-supported; loose logs remain available for physics/carry actions.
+    // Root placement and storage physics come from the canonical graph/owner ledger.
+    // This is intentionally done after rebuilding child links so occupied anchors remain intact.
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
+        if (Pair.Value.ParentNodeId.IsValid())
+            continue;
+
+        FWorldOwnedItemRecord Item;
+        const bool bStorageOwned = Ownership &&
+            Ownership->TryGetItem(Pair.Key, Item) &&
+            Item.OwnerKind == EWorldItemOwnerKind::Storage;
+
         if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Pair.Value.Actor.Get()))
         {
-            if (!Pair.Value.ParentNodeId.IsValid())
-                Log->SetPlacedState(Pair.Value.bGroundSupported);
+            Log->SetHeldState(false);
+            Log->SetPlacedState(Pair.Value.bGroundSupported);
+            if (bStorageOwned)
+            {
+                if (UStaticMeshComponent* Mesh = Log->GetLogMesh())
+                {
+                    Mesh->SetSimulatePhysics(false);
+                    Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+                    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+                }
+                Log->SetActorEnableCollision(true);
+            }
+        }
+        else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Pair.Value.Actor.Get()))
+        {
+            Stone->RestoreRootStateFromGraph(Pair.Value.bGroundSupported, bStorageOwned);
+        }
+        else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Pair.Value.Actor.Get()))
+        {
+            Stick->RestoreRootStateFromGraph(Pair.Value.bGroundSupported, bStorageOwned);
         }
     }
     return true;
