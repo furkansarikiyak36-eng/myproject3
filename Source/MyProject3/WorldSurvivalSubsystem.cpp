@@ -341,3 +341,31 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     WeatherSeverity = InSeverity;
     return true;
 }
+
+
+void UWorldSurvivalSubsystem::ExportHeatSourceRuntimeSnapshot(
+    TArray<FWorldHeatSourceRuntimeSnapshot>& OutSnapshot) const
+{
+    OutSnapshot.Reset();
+    for (const TWeakObjectPtr<UHeatSourceComponent>& Source : HeatSources)
+    {
+        if (!Source.IsValid())
+            continue;
+        FWorldHeatSourceRuntimeSnapshot& State = OutSnapshot.AddDefaulted_GetRef();
+        State.Source = Source;
+        State.FuelSeconds = Source->GetFuelSeconds();
+        State.bLit = Source->IsLit();
+    }
+}
+
+bool UWorldSurvivalSubsystem::RestoreHeatSourceRuntimeSnapshot(
+    const TArray<FWorldHeatSourceRuntimeSnapshot>& Snapshot)
+{
+    for (const FWorldHeatSourceRuntimeSnapshot& State : Snapshot)
+    {
+        UHeatSourceComponent* Source = State.Source.Get();
+        if (!IsValid(Source) || !Source->RestoreRuntimeState(State.FuelSeconds, State.bLit))
+            return false;
+    }
+    return true;
+}
