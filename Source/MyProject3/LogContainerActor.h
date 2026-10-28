@@ -61,6 +61,9 @@ public:
     AActor* TakeOne(const FVector& DropLocation);
     bool OwnsPiece(const AActor* Piece) const;
 
+    /** Rebuilds runtime stored-piece references from the authoritative ownership ledger after load. */
+    bool RebuildStoredContentsFromOwnership();
+
     /** Starts or stops a pawn pulling the sled behind it. */
     bool ToggleTow(APawn* Puller);
 
