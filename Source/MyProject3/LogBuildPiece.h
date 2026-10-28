@@ -80,6 +80,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
     TObjectPtr<UStaticMesh> PlankVariantMesh;
 
+    // When at least one set is configured, exact source-mesh mappings are
+    // authoritative and legacy single-output properties are not used as a
+    // fallback for unmatched source meshes.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Log Piece|Processing")
+    TArray<FLogProcessingMeshSet> ProcessingMeshSets;
+
     UFUNCTION(BlueprintPure, Category = "Log Piece")
     UStaticMeshComponent* GetLogMesh() const { return Mesh; }
 
@@ -176,6 +182,8 @@ private:
     TArray<TWeakObjectPtr<ALogBuildPiece>> AttachedPieces;
 
     bool HasOccupiedSnapPoints() const;
+    UStaticMesh* ResolveProcessingOutputMesh(
+        ELogCutAction Action, bool& bOutAmbiguousMapping) const;
     void RegenerateAutomaticSnapPoints();
     void GenerateDefaultEndSnapPoints();
     void GenerateDefaultSideSnapPoints();
