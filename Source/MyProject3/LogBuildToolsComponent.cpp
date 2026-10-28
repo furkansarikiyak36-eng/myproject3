@@ -11,6 +11,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 #include "Components/InputComponent.h"
 #include "Engine/OverlapResult.h"
@@ -830,20 +831,9 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
         RemovedIds.Add(Structural->GetStructuralNodeId());
     }
 
-    // Never remove a selected post if a physical piece outside the gate's set
-    // still depends on it. The selected posts are detached as one logical group.
-    for (ALogBuildPiece* Candidate : Removed)
-    {
-        const FGuid NodeId = Candidate->GetStructuralNodeId();
-        for (const FGuid& DependentId : Graph->GetAllDependents(NodeId))
-        {
-            if (!RemovedIds.Contains(DependentId))
-            {
-                SetStatus(TEXT("A post here supports a piece outside the gate opening; add another support first."));
-                return false;
-            }
-        }
-    }
+    // CanSafelyRemove() preflights every post. DismantlePiece() rechecks after
+    // each prior removal; if a group removal makes a later post unsafe, the full
+    // transaction below restores the original graph and actor-local links.
 
     TArray<FWorldStructuralNodeSnapshot> GraphBefore;
     if (!Graph->ExportSnapshot(GraphBefore))
