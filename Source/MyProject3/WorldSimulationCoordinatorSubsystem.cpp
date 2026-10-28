@@ -7,6 +7,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldRaidAdapterSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
@@ -91,7 +92,11 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorldSurvivalSubsystem* Survival = GetSurvival();
     UWorldProductionSubsystem* Production = GetProduction();
     UWorldCargoTransportSubsystem* Cargo = GetCargo();
+    UWorld* World = GetWorld();
+    UWorldRaidAdapterSubsystem* RaidAdapter =
+        World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
     if (bSimulationFaulted || !Clock || !Threat || !Agriculture || !Survival || !Production || !Cargo ||
+        !World || !RaidAdapter ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() ||
         !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
         CompletedCoordinatorSteps == MAX_int64 || !Clock->CanAdvanceSimulation(DeltaSeconds))
@@ -105,14 +110,14 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         !Survival->CanAdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->CanAdvanceProductionStep(DeltaSeconds) ||
         !Cargo->CanAdvanceCargoStep(DeltaSeconds) ||
-        !Threat->CanAdvanceDirectorAtTime(TargetTime, TargetTick))
+        !Threat->CanAdvanceDirectorAtTime(TargetTime, TargetTick) ||
+        !RaidAdapter->CanAdvanceRaidWorldAdapterAtTime(TargetTime))
     {
         return false;
     }
 
-    // Capture every mutable participant before the first commit. Cargo delivery
+    // Capture every logical participant before the first commit. Cargo delivery
     // also mutates item ownership, so the ledger must be part of the same rollback.
-    UWorld* World = GetWorld();
     UWorldItemOwnershipSubsystem* Ownership =
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UWorldStorageSubsystem* Storage =
@@ -194,6 +199,18 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     }
 
     ++CompletedCoordinatorSteps;
+
+    // The raid adapter may spawn/destroy actors and apply structural damage,
+    // which cannot be rolled back by the logical subsystem snapshots above.
+    // Run it only after the shared clock and all logical domains commit. Any
+    // unexpected adapter failure freezes the world instead of replaying a tick
+    // whose effects may be partial.
+    if (!RaidAdapter->AdvanceRaidWorldAdapter())
+    {
+        MarkSimulationFaulted(
+            TEXT("Raid world adapter failed after the fixed-step logical commit. Actor/structure effects may be partial; recover from a durable save or reset the world."));
+        return false;
+    }
     return true;
 }
 
