@@ -23,9 +23,10 @@ This is a source-layer increment, not a playable digging feature yet: no player/
 - [x] Replaying a matching operation ID returns its prior receipt; conflicting reuse is rejected.
 - [x] A registered grounded structure root inside the configured spatial clearance blocks the dig.
 - [x] SaveGame v14 stores per-chunk stable actor identity, dimensions, density samples, density revision and accepted dig receipts; restore regenerates mesh/collision for an already-present chunk.
-- [ ] Make the logical `WorldTerrainStateSubsystem` request and physical voxel mutation one prepare/commit/rollback operation; currently these are separate authorities.
+- [x] Add `TryApplyVoxelExcavation` as a coordinated entry point: capture density snapshot, apply bounded physical dig, commit logical cell, restore the density snapshot if logical commit rejects. This is source-level rollback logic, not a verified runtime transaction.
 - [ ] Connect actual player/tool interaction to the bounded API using tool strength from trusted item/tool data.
 - [ ] Verify the support guard against foundation/post/bridge test cases and replace spatial clearance with explicit terrain-support invalidation where necessary.
+- [ ] Run `MyProject3.Terrain.Voxel.LogicalPhysicalExcavationIsAtomic` and verify rollback/commit behavior in UE 5.8; source test exists but has not been executed.
 - [ ] Build/PIE test save → dig → save → alter → load → trace collision, including changed and missing chunk cases.
 - [ ] Handle neighboring chunk samples/seams, async mesh generation, Landscape visibility holes, navmesh refresh and excavation-derived item yield.
 
