@@ -811,18 +811,23 @@ bool ALogBuildPiece::TryResolveGeometryVariant(
             return IsValid(OutMesh);
         }
 
+        const FLogGeometryVariantMesh* Match = nullptr;
         for (const FLogGeometryVariantMesh& Variant : Set->MeshVariants)
         {
             if (Variant.LengthFraction != InLength || Variant.CrossSectionProfile != InProfile)
                 continue;
-            OutMesh = Variant.Mesh.Get();
-            if (OutSecondPieceCenterOffset)
-                *OutSecondPieceCenterOffset = Variant.SecondPieceCenterOffsetLocal;
-            if (OutSecondPieceRotationOffset)
-                *OutSecondPieceRotationOffset = Variant.SecondPieceRotationOffsetLocal;
-            return IsValid(OutMesh);
+            if (Match)
+                return false; // Duplicate exact geometry keys must not depend on array order.
+            Match = &Variant;
         }
-        return false;
+        if (!Match || !IsValid(Match->Mesh))
+            return false;
+        OutMesh = Match->Mesh.Get();
+        if (OutSecondPieceCenterOffset)
+            *OutSecondPieceCenterOffset = Match->SecondPieceCenterOffsetLocal;
+        if (OutSecondPieceRotationOffset)
+            *OutSecondPieceRotationOffset = Match->SecondPieceRotationOffsetLocal;
+        return true;
     }
 
     const FLogGeometryVariantMesh* Match = nullptr;
