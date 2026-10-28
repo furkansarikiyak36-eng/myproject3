@@ -503,7 +503,10 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
         { TEXT("_Kalas"), ELogCrossSectionProfile::SquareBeam },
         { TEXT("_Plank"), ELogCrossSectionProfile::Plank },
         { TEXT("_Gutter"), ELogCrossSectionProfile::GroovedHalfRound },
-        { TEXT("_Trough"), ELogCrossSectionProfile::Trough }
+        { TEXT("_Trough"), ELogCrossSectionProfile::Trough },
+        // The catalog currently contains this notched variant only for the 75 cm
+        // family. Missing lengths are intentionally skipped by AddRow below.
+        { TEXT("_FlatNotch_TopBottom"), ELogCrossSectionProfile::Notched }
     };
 
     auto AddRow = [&Family](ELogLengthFraction Fraction,
@@ -554,7 +557,8 @@ FLogProcessingMeshSet AVerticalSliceBWorldActor::BuildLogMeshFamily()
             ELogCrossSectionProfile::HalfRound, ELogCrossSectionProfile::QuarterRound,
             ELogCrossSectionProfile::Hewn, ELogCrossSectionProfile::HewnTwoFaces,
             ELogCrossSectionProfile::SquareBeam, ELogCrossSectionProfile::Plank,
-            ELogCrossSectionProfile::GroovedHalfRound, ELogCrossSectionProfile::Trough })
+            ELogCrossSectionProfile::GroovedHalfRound, ELogCrossSectionProfile::Trough,
+            ELogCrossSectionProfile::Notched })
         {
             Cut.CrossSectionProfile = Profile;
             Family.LengthCutVariants.Add(Cut);
