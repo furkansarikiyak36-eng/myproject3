@@ -407,7 +407,7 @@ bool ABuildPlanActor::Complete()
                 // reopen it so the player can repair the interrupted build.
                 for (int32 SlotIndex = 0; SlotIndex < Slots.Num(); ++SlotIndex)
                 {
-                    if (!Slots[SlotIndex].Piece.IsValid())
+                    if (!Slots[SlotIndex].Piece.IsValid() || Slots[SlotIndex].Piece.Get() == Piece)
                     {
                         Slots[SlotIndex].bFilled = false;
                         Slots[SlotIndex].Piece.Reset();
@@ -418,7 +418,7 @@ bool ABuildPlanActor::Complete()
                         }
                     }
                 }
-                UE_LOG(LogTemp, Error, TEXT("Build plan '%s' could not consume all sled materials; missing slots were reopened."),
+                UE_LOG(LogTemp, Error, TEXT("Build plan '%s' could not consume all sled materials; affected slots were reopened."),
                     *GetNameSafe(this));
                 return false;
             }
