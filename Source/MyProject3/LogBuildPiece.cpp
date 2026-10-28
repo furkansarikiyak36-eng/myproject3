@@ -380,7 +380,8 @@ FString ALogBuildPiece::GetCutActionBlockReason(ELogCutAction Action) const
         !ProcessingMeshSets.ContainsByPredicate(
             [this](const FLogProcessingMeshSet& Set)
             {
-                return IsValid(Mesh) && Set.SourceMesh == Mesh->GetStaticMesh();
+                return IsValid(Mesh) && IsValid(Mesh->GetStaticMesh()) &&
+                    Set.SourceMesh == Mesh->GetStaticMesh();
             }))
     {
         return TEXT("No processing mesh set is mapped to this source mesh.");
