@@ -119,7 +119,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (captures seed definition/count at planting; harvest emits produce+seeds as one batch; validators use total outputs).
 - `Source/MyProject3/WildlifeActor.h` (in-world wildlife enum, movable actor and private death handler reviewed).
 - `Source/MyProject3/WildlifeActor.cpp` (current spawning/tick/death behavior inspected).
-- `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed `FWorldOwnedItemRecord` exact fields: `ItemId`, `DefinitionId`, `BaseDefinitionId`, `OwnerKind/OwnerId`, `WorldLocation`, creation/spoilage timestamps and `Revision`; water fill uses valid field names).
+- `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed exact owned-item fields and owner kinds).
+- `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires a valid owner ID for Inventory, finite timestamps/location, bounded tracked-item count; fills `BaseDefinitionId` and normalizes missing creation time).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
@@ -151,4 +152,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Finish the source audit by reviewing `RegisterItem` and restore validation invariants for an inventory-owned item; then check whether the current fill transaction leaves an output item receipt in the item ledger or only the survival profile receipt, and make that behavior safe across later transfers/consumption.
+Fix any source-contract issue in the water fill transaction, and then review the survival receipt ownership validator to ensure a filled water item can be moved/consumed later while the original fill retry still resolves to the same ID. Update the task status and codebase map for the new player inventory/backfill/water path without claiming it has been built.
