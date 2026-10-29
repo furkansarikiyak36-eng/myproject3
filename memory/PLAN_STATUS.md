@@ -1,7 +1,7 @@
 # Plan status: what exists, what is partial, what is missing
 
-Checked 2026-10-29 against `feature/simple-intent` (ours, builds, 68 tests) and
-`group-a-code-closure` (ChatGPT). Both are now merged on `game/p00-adopt-group-a`: builds, 85/85 tests (2026-10-29). Task ids from `ROADMAP.md`.
+Baseline checked 2026-10-29 against `feature/simple-intent` (builds, 68 tests) and
+`group-a-code-closure` (85/85 tests at merge). Subsequent changes in this work session are committed to `game/p00-adopt-group-a` but have **not** been compiled or run in Unreal yet; the earlier 85/85 result does not cover them. Task ids from `ROADMAP.md`.
 Update this file whenever a task changes state.
 
 - **Var / exists**: code covers the task's behaviour (backend). Still not played in PIE.
@@ -14,9 +14,9 @@ Update this file whenever a task changes state.
 
 | Status | Count | Tasks |
 |---|---:|---|
-| Var | 10 | P0.3, P0.4, P0.5, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3 |
-| Kısmi | 21 | P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
-| Yok | 12 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
+| Var | 12 | P0.3, P0.4, P0.5, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3, P6.1, P6.4 |
+| Kısmi | 20 | P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
+| Yok | 11 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P8.1, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
 
@@ -49,10 +49,10 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P5.1 layers → items | Var | yield rules [A] filled from layers.json (soil, clay, sand, stone, flint, ochre; layers 0-3); clay digs out only in its layer (test) | which material a voxel cell holds is still chosen by the caller (no per-location geology map) |
 | P5.2 cellar, trench, collapse | Yok | dig refused near grounded structures [A] | collapse of unsupported rooms; cellar/trench/cistern/embankment |
 | P5.3 dig limits + save | Var [A] | bounded dig, soil classes, tool strength, receipts, density save | chunk seams, neighbour chunks (later) |
-| P6.1 field cell state | Yok | crop moisture only [S] | cleared, tilled, fertility, weeds, mulch |
-| P6.2 15 field steps | Kısmi | planting with a seed item, harvesting into items [A] (2 of 15) | clearing, tilling, fertilising, watering, weeding, mulch, fence, drying, threshing, winnowing, grinding, storing, seed saving |
-| P6.3 seeds, exhaustion, 3 crops | Kısmi | crop definitions seed → harvest [A] | seed saving, soil exhaustion, the 3 crops |
-| P6.4 animal chain | Kısmi | animal hunger/health/products [S]; feeding and collecting with items [A]; stick traps [S] | catching live animals, pen, slaughter outputs |
+| P6.1 field cell state | Var (code-written) | persistent field-cell map: cleared, tilled, fenced, fertility, weed pressure, mulch, moisture, harvest count, optimistic revisions and idempotent action receipts; seasonal crop registration; save schema v23+ | physical plot/input/HUD wiring and Unreal validation remain |
+| P6.2 15 field steps | Kısmi | planting and harvest use owned items [A]; backend field actions now cover clear, till, fertilise, water, weed, mulch and fence; moisture, weeds and mulch affect growth; one configured seed is returned per harvest | material/tool costs and player input for field actions; drying, threshing, winnowing, grinding and storage steps |
+| P6.3 seeds, exhaustion, 3 crops | Kısmi | crops load from `crops.json` into agriculture; planting months and discovery-zone metadata are registered; harvest emits configured seed-return units; each harvest reduces fertility | three crop records are still placeholders and need full authored distinctions/balancing; discovery placement/locks and field-item costs |
+| P6.4 animal chain | Var (code-written) | stable wildlife identity; idempotent capture; capacity/species/revision-gated logical pens; saved captured/penned/slaughtered states; atomic meat/hide/bone outputs; slaughter retries and v25 save migration; regression test authored | capture definition data loader, trap/player interaction, physical pen/build-piece placement, HUD, build/PIE validation |
 | P7.1 load, slope, surface | Kısmi | carry mass slows the player [S]; route cost with slope/surface/weather/load/infrastructure for cargo [A] | the same cost for the player's own walking |
 | P7.2 zones | Kısmi | VerticalSlice_C: creek, far ford, old rope bridge, cliff terrace, lookout [S] | zones 0–4 with their resources |
 | P7.3 rewards | Kısmi | discovery definitions with prerequisites, required equipment, unlocks [A] | discoveries placed in the world; recipes/seeds gated by them |
@@ -66,4 +66,4 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P10 physical assembly | Kısmi | log family: cuts, split, hew, plank, snap kernel [S]; stone pieces with anchors [S]; stake by sharpening [S]; incremental cut progress [A] | thatch bundle, cut stone block making, notches/sockets, mitre cuts, crossing diagonals |
 | P11 story | Yok | — | — |
 | P12 polish and demo | Yok | — | — |
-| Save (all phases) | Kısmi | saves every subsystem [S]; schema v20, voxel, component snapshots [A] | full actor transforms after physics, each new system |
+| Save (all phases) | Kısmi | coordinator persists subsystem state; schema v25 includes crop field cells and animal pens; v22→v23, v23→v24 and v24→v25 migrations are defined; actor/component SaveGame snapshots remain | batch build/load validation; verify all physical actor transforms after physics and every newly added domain's roundtrip, including the whole-year scenario |
