@@ -149,5 +149,6 @@ private:
     void SetupPlayer();
     void ChopInput();
     void FillCreekWaterInput();
+    void RefuelFireInput();
     void UpdateSun();
 };
