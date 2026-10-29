@@ -1018,6 +1018,50 @@ bool AVerticalSliceCWorldActor::BuildWorld()
     }
     BuildLife();
     BuildHelper();
+
+    // Phase 4: make the data-driven work stations discoverable in the continuous
+    // world instead of leaving their records accessible only to tests/tools.
+    // Primitive meshes are intentional placeholders; registration still uses
+    // the same station IDs and recipe data as the production subsystem.
+    if (UWorld* World = GetWorld())
+    {
+        struct FStationPlacement
+        {
+            const TCHAR* Id;
+            FVector Location;
+            FVector Scale;
+            const TCHAR* Shape;
+            FLinearColor Colour;
+        };
+        const FStationPlacement Stations[] =
+        {
+            { TEXT("workbench_log"), FVector(-250.0f, -420.0f, GetGroundHeight(-250.0f, -420.0f)), FVector(1.5f, 0.55f, 0.28f), TEXT("Cube"), FLinearColor(0.22f, 0.12f, 0.055f) },
+            { TEXT("pit_kiln"), FVector(520.0f, -420.0f, GetGroundHeight(520.0f, -420.0f)), FVector(0.75f, 0.75f, 0.35f), TEXT("Sphere"), FLinearColor(0.28f, 0.22f, 0.16f) },
+            { TEXT("charcoal_pit"), FVector(680.0f, -520.0f, GetGroundHeight(680.0f, -520.0f)), FVector(0.9f, 0.65f, 0.22f), TEXT("Cylinder"), FLinearColor(0.12f, 0.11f, 0.10f) },
+            { TEXT("smoke_rack"), FVector(-420.0f, -500.0f, GetGroundHeight(-420.0f, -500.0f)), FVector(0.8f, 0.12f, 0.85f), TEXT("Cube"), FLinearColor(0.28f, 0.19f, 0.10f) },
+            { TEXT("drying_rack"), FVector(-520.0f, -300.0f, GetGroundHeight(-520.0f, -300.0f)), FVector(0.8f, 0.12f, 0.7f), TEXT("Cube"), FLinearColor(0.38f, 0.28f, 0.15f) },
+            { TEXT("grinding_stone"), FVector(360.0f, -520.0f, GetGroundHeight(360.0f, -520.0f)), FVector(0.55f, 0.55f, 0.22f), TEXT("Sphere"), FLinearColor(0.27f, 0.27f, 0.25f) },
+            { TEXT("hide_frame"), FVector(-600.0f, -480.0f, GetGroundHeight(-600.0f, -480.0f)), FVector(0.7f, 0.12f, 0.8f), TEXT("Cube"), FLinearColor(0.3f, 0.2f, 0.12f) },
+            { TEXT("threshing_floor"), FVector(900.0f, -380.0f, GetGroundHeight(900.0f, -380.0f)), FVector(1.25f, 1.0f, 0.08f), TEXT("Cylinder"), FLinearColor(0.42f, 0.32f, 0.19f) },
+            { TEXT("compost_heap"), FVector(-750.0f, -650.0f, GetGroundHeight(-750.0f, -650.0f)), FVector(0.7f, 0.7f, 0.45f), TEXT("Sphere"), FLinearColor(0.18f, 0.14f, 0.08f) }
+        };
+        for (const FStationPlacement& Placement : Stations)
+        {
+            AProductionStationActor* Station = World->SpawnActor<AProductionStationActor>(
+                AProductionStationActor::StaticClass(), Placement.Location, FRotator::ZeroRotator);
+            if (!Station)
+                continue;
+            Station->StationDataId = FName(Placement.Id);
+            if (UStaticMeshComponent* Mesh = Station->Mesh)
+            {
+                Mesh->SetStaticMesh(LoadEngineShape(Placement.Shape));
+                Mesh->SetRelativeScale3D(Placement.Scale);
+                Mesh->SetMaterial(0, Tint(Placement.Colour));
+                Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+            }
+            Station->EnsureRegistered();
+        }
+    }
     return true;
 }
 
