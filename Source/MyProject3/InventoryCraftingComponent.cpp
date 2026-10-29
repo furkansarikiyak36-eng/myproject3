@@ -635,6 +635,30 @@ bool UInventoryCraftingComponent::TryDropOwnedItem(
  return true;
 }
 
+bool UInventoryCraftingComponent::TryRemoveOwnedItemReference(
+ const FGuid& ItemId, FInventoryStack& OutRemovedStack)
+{
+ if (!ItemId.IsValid() || !InventoryOwnerId.IsValid())
+  return false;
+
+ for (int32 Index = 0; Index < Items.Num(); ++Index)
+ {
+  const FInventoryStack& Stack = Items[Index];
+  if (Stack.OwnedWorldItemId != ItemId)
+   continue;
+
+  if (Stack.Quantity != 1 || Stack.ItemId.IsNone())
+   return false;
+
+  OutRemovedStack = Stack;
+  Items.RemoveAt(Index);
+  if (!QuickAccessItemId.IsNone() && GetItemCount(QuickAccessItemId) <= 0)
+   QuickAccessItemId = NAME_None;
+  return true;
+ }
+ return false;
+}
+
 bool UInventoryCraftingComponent::TryRemoveItem(FName ItemId, int32 Quantity)
 {
  if (ItemId.IsNone() || Quantity <= 0 || GetItemCount(ItemId) < Quantity) return false;
