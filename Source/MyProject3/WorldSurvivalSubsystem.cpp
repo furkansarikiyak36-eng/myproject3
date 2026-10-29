@@ -132,11 +132,11 @@ float UWorldSurvivalSubsystem::GetWeatherTemperatureDelta() const
 {
     switch (Weather)
     {
-    case EWorldWeatherState::Rain:     return -4.0f * WeatherSeverity;
-    case EWorldWeatherState::Wind:     return -2.0f * WeatherSeverity;
-    case EWorldWeatherState::Snow:     return -14.0f * WeatherSeverity;
-    case EWorldWeatherState::Storm:    return -10.0f * WeatherSeverity;
-    case EWorldWeatherState::Heatwave: return 18.0f * WeatherSeverity;
+    case EWorldWeatherState::Rain:     return -RainCoolingCelsius * WeatherSeverity;
+    case EWorldWeatherState::Wind:     return -WindCoolingCelsius * WeatherSeverity;
+    case EWorldWeatherState::Snow:     return -SnowCoolingCelsius * WeatherSeverity;
+    case EWorldWeatherState::Storm:    return -StormCoolingCelsius * WeatherSeverity;
+    case EWorldWeatherState::Heatwave: return HeatwaveWarmingCelsius * WeatherSeverity;
     case EWorldWeatherState::Clear:
     default:                           return 0.0f;
     }
@@ -146,9 +146,9 @@ float UWorldSurvivalSubsystem::GetWindChill() const
 {
     switch (Weather)
     {
-    case EWorldWeatherState::Wind:  return 8.0f * WeatherSeverity;
-    case EWorldWeatherState::Storm: return 10.0f * WeatherSeverity;
-    case EWorldWeatherState::Snow:  return 4.0f * WeatherSeverity;
+    case EWorldWeatherState::Wind:  return WindChillWindCelsius * WeatherSeverity;
+    case EWorldWeatherState::Storm: return WindChillStormCelsius * WeatherSeverity;
+    case EWorldWeatherState::Snow:  return WindChillSnowCelsius * WeatherSeverity;
     default:                        return 0.0f;
     }
 }
@@ -210,7 +210,22 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
         !FMath::IsFinite(ComfortTemperatureCelsius) ||
         !FMath::IsFinite(HypothermiaThresholdCelsius) ||
         !FMath::IsFinite(CoreCoolingPerDegreeHour) || CoreCoolingPerDegreeHour < 0.0f ||
-        !FMath::IsFinite(CoreRecoveryPerHour) || CoreRecoveryPerHour < 0.0f)
+        !FMath::IsFinite(CoreRecoveryPerHour) || CoreRecoveryPerHour < 0.0f ||
+        !InRange(RainCoolingCelsius, 0.0f, 60.0f) ||
+        !InRange(WindCoolingCelsius, 0.0f, 60.0f) ||
+        !InRange(SnowCoolingCelsius, 0.0f, 60.0f) ||
+        !InRange(StormCoolingCelsius, 0.0f, 60.0f) ||
+        !InRange(HeatwaveWarmingCelsius, 0.0f, 60.0f) ||
+        !InRange(WindChillWindCelsius, 0.0f, 60.0f) ||
+        !InRange(WindChillStormCelsius, 0.0f, 60.0f) ||
+        !InRange(WindChillSnowCelsius, 0.0f, 60.0f) ||
+        !InRange(RainWetnessPerHour, 0.0f, 1.0f) ||
+        !InRange(StormWetnessPerHour, 0.0f, 1.0f) ||
+        !InRange(BaseDryingPerHour, 0.0f, 1.0f) ||
+        !InRange(ShelterDryingBonusPerHour, 0.0f, 1.0f) ||
+        !InRange(WarmthDryingPerDegree, 0.0f, 1.0f) ||
+        !InRange(HeatThirstPerDegreeHour, 0.0f, 10.0f) ||
+        !InRange(HeatThirstThresholdCelsius, -20.0f, 60.0f))
         return false;
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
         if (Pair.Value.Revision == MAX_int64 || !IsValidProfile(Pair.Value)) return false;
@@ -255,8 +270,10 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         }
         const float HypothermiaDegrees = FMath::Max(0.0f, HypothermiaThresholdCelsius - P.CoreTemperatureCelsius);
         P.Health = FMath::Max(0.0f, P.Health - ColdDamagePerHour * HypothermiaDegrees * Hours);
-        if (P.FeltTemperatureCelsius > 32.0f)
-            P.Thirst = FMath::Clamp(P.Thirst + (P.FeltTemperatureCelsius - 32.0f) * 0.2f * Hours, 0.0f, 100.0f);
+        if (P.FeltTemperatureCelsius > HeatThirstThresholdCelsius)
+            P.Thirst = FMath::Clamp(P.Thirst +
+                (P.FeltTemperatureCelsius - HeatThirstThresholdCelsius) * HeatThirstPerDegreeHour * Hours,
+                0.0f, 100.0f);
 
         // Calories: basal metabolism, reported activity and shivering.
         const float BurnKcal = BasalKcalPerHour * Hours + P.PendingActivityKcal +
@@ -266,10 +283,17 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         P.Hunger = 100.0f * (1.0f - P.CaloriesKcal / MaxCaloriesKcal);
 
         if (Weather == EWorldWeatherState::Rain || Weather == EWorldWeatherState::Storm)
-            P.Wetness = FMath::Clamp(P.Wetness + WeatherSeverity * (1.0f - P.ShelterProtection) * Hours * 0.2f, 0.0f, 1.0f);
-        // Warmth dries clothing faster.
-        const float DryingBoost = FMath::Max(0.0f, P.FeltTemperatureCelsius - ComfortTemperatureCelsius) * 0.01f;
-        P.Wetness = FMath::Max(0.0f, P.Wetness - Hours * (0.05f + P.ShelterProtection * 0.25f + DryingBoost));
+        {
+            const float WetnessRate = Weather == EWorldWeatherState::Rain
+                ? RainWetnessPerHour : StormWetnessPerHour;
+            P.Wetness = FMath::Clamp(P.Wetness + WeatherSeverity *
+                (1.0f - P.ShelterProtection) * Hours * WetnessRate, 0.0f, 1.0f);
+        }
+        // Warmth dries clothing faster; all rates are in the authored per-hour units.
+        const float DryingBoost = FMath::Max(0.0f,
+            P.FeltTemperatureCelsius - ComfortTemperatureCelsius) * WarmthDryingPerDegree;
+        P.Wetness = FMath::Max(0.0f, P.Wetness - Hours *
+            (BaseDryingPerHour + P.ShelterProtection * ShelterDryingBonusPerHour + DryingBoost));
 
         if (P.CaloriesKcal <= 0.0f || P.Thirst >= 98.0f)
             P.Health = FMath::Max(0.0f, P.Health - Hours * 2.0f);
