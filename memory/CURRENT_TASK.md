@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `TryUpdateItemDefinition` internals and the `FHeatFuelDefinition`/`TryAddFuelItem` contract; verify owner-state changes and definition state are compatible. Then design rain exposure to convert only accessible dry Firewood items owned by World or Inventory into Firewood.Wet, honoring outside/shelter location and weather severity.
+Inspect `HeatSourceComponent.h/.cpp` fuel definition registration/consumption and survival/world coordinator step order. Implement weather wetting for loose world-owned Firewood via `TryUpdateItemDefinition`; define the boundary clearly so inventory-held wood isn't silently mutated by a world-only API. Then add a test for wet definition and reduced fuel heat/burn data.
