@@ -19,7 +19,8 @@
       "permanent_solution_ids": [],
       "seasonal_months": [],
       "required_capabilities": [],
-      "required_discovery_ids": []
+      "required_discovery_ids": [],
+      "discovery_id": "Discovery.Zone0.Camp"
     },
     {
       "id": "Zone.1",
@@ -42,7 +43,10 @@
       ],
       "seasonal_months": [],
       "required_capabilities": [],
-      "required_discovery_ids": []
+      "required_discovery_ids": [
+        "Discovery.Zone0.Camp"
+      ],
+      "discovery_id": "Discovery.Zone1.Creek"
     },
     {
       "id": "Zone.2",
@@ -65,7 +69,10 @@
       ],
       "seasonal_months": [],
       "required_capabilities": [],
-      "required_discovery_ids": []
+      "required_discovery_ids": [
+        "Discovery.Zone1.Creek"
+      ],
+      "discovery_id": "Discovery.Zone2.HighForest"
     },
     {
       "id": "Zone.3",
@@ -89,7 +96,8 @@
       "required_capabilities": [],
       "required_discovery_ids": [
         "Discovery.Zone2.HighForest"
-      ]
+      ],
+      "discovery_id": "Discovery.Zone3.LakeSwamp"
     },
     {
       "id": "Zone.4",
@@ -119,7 +127,8 @@
       ],
       "required_discovery_ids": [
         "Discovery.Zone3.LakeSwamp"
-      ]
+      ],
+      "discovery_id": "Discovery.Zone4.MountainPass"
     }
   ]
 }
