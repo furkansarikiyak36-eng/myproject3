@@ -9,6 +9,7 @@ class ADirectionalLight;
 class AHarvestableTreeActor;
 class AHelperCompanionActor;
 class ALogBuildPiece;
+class AProductionStationActor;
 class UHierarchicalInstancedStaticMeshComponent;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -150,5 +151,9 @@ private:
     void ChopInput();
     void FillCreekWaterInput();
     void RefuelFireInput();
+    void StationStartCollectInput();
+    void StationDepositInput();
+    void StationTakeInput();
+    AProductionStationActor* FindNearestStation(const FVector& Location, float MaxDistanceCm) const;
     void UpdateSun();
 };
