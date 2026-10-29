@@ -26,6 +26,15 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rope")
     float MinZiplineSlopeDegrees = 6.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rope|Capacity",
+        meta = (ClampMin = "1.0"))
+    float MaxLoadMassKg = 250.0f;
+
+    /** Dimensionless sliding-friction coefficient, clamped to [0, 1]. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rope|Physics",
+        meta = (ClampMin = "0.0", ClampMax = "1.0"))
+    float SlidingFrictionCoefficient = 0.06f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rope")
     float MaxRideSpeed = 1500.0f;
 
