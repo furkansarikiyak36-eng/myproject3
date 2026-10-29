@@ -66,6 +66,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (current crop/animal/action receipts, API, and save-state definitions).
 - `Config/GameData/crops.json` (authoritative crop IDs, seed/harvest item IDs, stage durations, planting months and discovery zones).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (current planting, harvesting, growth, animal transactions, snapshots inspected by symbol).
+- `Source/MyProject3/WorldGameDataSubsystem.cpp` lines 360–470 (the complete world-application path checked specifically for crop registration).
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
