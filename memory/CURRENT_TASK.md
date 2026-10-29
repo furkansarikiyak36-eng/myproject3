@@ -151,4 +151,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Fix `TryFillWaterFromCreek`'s capacity probe by giving the simulated dirty-water stack its own valid temporary `OwnedWorldItemId`, so capacity preflight reserves a new unique slot instead of assuming it can merge into an ordinary water stack. Add an automation case where the fired pot fills the only slot, then succeeds once a second slot becomes available.
+Update `FCreekWaterFillWithReusablePotTest` to exercise full-inventory rejection and recovery, then perform a source-level audit of fill rollback and action receipt validation. After tests are aligned, record P2.1/2.2/2.3 progress and proceed to fall/animal-attack injury triggers.
