@@ -15,6 +15,8 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
+#include "WorldThreatDirectorSubsystem.h"
+#include "LogContainerActor.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WallCoatingComponent.h"
 #include "StoneBuildingPiece.h"
@@ -1185,6 +1187,78 @@ bool FFloodClosesAndRestoresFloodProneRoutesTest::RunTest(const FString& Paramet
     TestTrue(TEXT("Clear ended flood claims"), Routes->ApplyActiveFloodEvents({}));
     TestTrue(TEXT("Route reopens after the flood"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
     TestEqual(TEXT("Route returns three nodes"), Path.Num(), 3);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRaidPressureRespondsToStoredFoodLightAndSmokeTest,
+    "MyProject3.World.Threat.RaidPressureUsesFoodStorageLightAndSmoke", Flags)
+bool FRaidPressureRespondsToStoredFoodLightAndSmokeTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldThreatDirectorSubsystem* Threat = World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Threat director"), Threat) ||
+        !TestNotNull(TEXT("Item ownership"), Ownership))
+        return false;
+
+    TestTrue(TEXT("Load game data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply game data"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize deterministic clock"), Clock->InitializeClock(72419));
+    TestTrue(TEXT("Initialize raid director"), Threat->InitializeDirector(0.0));
+
+    // Capture the pressure of a quiet settlement first. The same seed, time, and
+    // serial are used after signals are added so the delta comes from world state.
+    TestTrue(TEXT("Schedule quiet raid"), Threat->AdvanceDirectorAtTime(1.0, 1));
+    FThreatRaidRecord QuietRaid;
+    TestTrue(TEXT("Read quiet raid"), Threat->GetCurrentRaid(QuietRaid));
+
+    const FVector StorageLocation(1800.0, -450.0, 40.0);
+    ALogContainerActor* FoodStorage = World->SpawnActor<ALogContainerActor>(
+        ALogContainerActor::StaticClass(), StorageLocation, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Food storage actor"), FoodStorage))
+        return false;
+    const FGuid StorageId = FoodStorage->GetStorageId();
+    if (!TestTrue(TEXT("Storage has a runtime ID"), StorageId.IsValid()))
+        return false;
+
+    FWorldOwnedItemRecord Meat;
+    Meat.ItemId = FGuid::NewGuid();
+    Meat.DefinitionId = TEXT("Meat.Raw");
+    Meat.BaseDefinitionId = Meat.DefinitionId;
+    Meat.Quantity = 16;
+    Meat.OwnerKind = EWorldItemOwnerKind::Storage;
+    Meat.OwnerId = StorageId;
+    Meat.WorldLocation = StorageLocation;
+    Meat.CreatedAtWorldTimeSeconds = 0.0;
+    TestTrue(TEXT("Register stored food in the ownership ledger"), Ownership->RegisterItem(Meat));
+
+    AActor* FireActor = World->SpawnActor<AActor>(
+        AActor::StaticClass(), StorageLocation + FVector(180.0, 0.0, 0.0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Fire actor"), FireActor))
+        return false;
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor, TEXT("RaidSignalHeat"));
+    if (!TestNotNull(TEXT("Heat component"), Fire))
+        return false;
+    FireActor->AddInstanceComponent(Fire);
+    FireActor->SetRootComponent(Fire);
+    Fire->RegisterComponent();
+    TestTrue(TEXT("Provide fuel to the heat source"), Fire->AddFuel(1800.0f));
+    TestTrue(TEXT("Light the heat source"), Fire->Ignite());
+
+    TestTrue(TEXT("Reset director against the same schedule"), Threat->InitializeDirector(0.0));
+    TestTrue(TEXT("Schedule signal-driven raid"), Threat->AdvanceDirectorAtTime(1.0, 1));
+    FThreatRaidRecord SignalRaid;
+    TestTrue(TEXT("Read signal-driven raid"), Threat->GetCurrentRaid(SignalRaid));
+
+    TestTrue(TEXT("Stored food, light, and smoke raise raid pressure"),
+        SignalRaid.Pressure > QuietRaid.Pressure + 0.25f);
+    TestTrue(TEXT("Target stays near the food/fire signal cluster"),
+        FVector::Dist2D(SignalRaid.TargetLocation, StorageLocation) < 1000.0f);
     return true;
 }
 
