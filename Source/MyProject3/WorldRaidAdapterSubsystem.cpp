@@ -1,6 +1,7 @@
 #include "WorldRaidAdapterSubsystem.h"
 
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "GameplayCoreTypes.h"
