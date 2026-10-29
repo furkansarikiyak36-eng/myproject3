@@ -14,6 +14,48 @@ UENUM(BlueprintType)
 enum class ESurvivalActivity : uint8 { Walk, Run, Chop, Dig, Build, Carry };
 
 USTRUCT(BlueprintType)
+struct FWorldSurvivalConsumableDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables") FName DefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0", ClampMax="10000")) float CaloriesKcal = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0", ClampMax="100")) float ThirstRelief = 0.0f;
+    /** 0 disables spoilage; otherwise food freshness is measured against the shared world clock. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0")) double FreshnessDurationSeconds = 0.0;
+    /** Energy retained after the freshness duration expires; 0 makes spoiled food inedible. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0", ClampMax="1")) float SpoiledEnergyFraction = 0.0f;
+};
+
+UENUM(BlueprintType)
+enum class EWorldSurvivalActionKind : uint8
+{
+    ConsumeFoodItem,
+    BeginRest
+};
+
+/** Persistent idempotency receipt stored with the affected survival profile. */
+USTRUCT(BlueprintType)
+struct FWorldSurvivalActionReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid EntityId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") EWorldSurvivalActionKind Action = EWorldSurvivalActionKind::ConsumeFoodItem;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ItemId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ExpectedItemOwnerId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedProfileRevision = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedItemRevision = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ResultingProfileRevision = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ResultingItemRevision = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName ItemDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") float CaloriesKcal = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") float ThirstRelief = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedStartTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedDurationSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double ResultingRestUntilTimeSeconds = 0.0;
+};
+
+USTRUCT(BlueprintType)
 struct FWorldSurvivalProfile
 {
     GENERATED_BODY()
@@ -39,6 +81,9 @@ struct FWorldSurvivalProfile
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival") float PendingActivityKcal = 0.0f;
     /** Last computed felt temperature, for HUD and AI; the formula is authoritative. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival") float FeltTemperatureCelsius = 20.0f;
+    /** A rest action is an interval on the shared world timeline, not a private timer. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival") double RestUntilTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") TArray<FWorldSurvivalActionReceipt> ActionReceipts;
 };
 
 USTRUCT(BlueprintType)
@@ -85,6 +130,10 @@ public:
     /** Extra burn per hour per degree below comfort (shivering). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Calories") float ShiverKcalPerDegreeHour = 4.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Calories") float CarryKcalPerKgHour = 3.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="1", ClampMax="4096")) int32 MaxConsumableDefinitions = 256;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Receipts", meta=(ClampMin="1", ClampMax="4096")) int32 MaxActionReceiptsPerProfile = 256;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Rest", meta=(ClampMin="0", ClampMax="12")) float RestFatigueRecoveryMultiplier = 3.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Rest", meta=(ClampMin="0")) float RestStaminaRecoveryPerHour = 25.0f;
 
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool RegisterProfile(const FWorldSurvivalProfile& Profile);
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateProtection(const FGuid& EntityId, float ClothingInsulation, float ShelterProtection, int64 ExpectedRevision);
@@ -92,8 +141,20 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateLocation(const FGuid& EntityId, FVector NewLocation);
     /** Adds the calorie and stamina cost of an activity; the energy burns on the next step. */
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool RecordActivity(const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg);
-    /** Restores food energy and water; item-bound eating builds on this. */
-    UFUNCTION(BlueprintCallable, Category="World|Survival") bool ConsumeFood(const FGuid& EntityId, float Kcal, float ThirstRelief);
+    /** Data-driven consumable registry. Unknown definitions fail closed. */
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Consumables")
+    bool RegisterConsumableDefinition(const FWorldSurvivalConsumableDefinition& Definition);
+    /** Consumes one uniquely owned inventory item and applies its registered effects once. */
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Consumables")
+    bool TryConsumeFoodItem(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, const FGuid& ItemId, int64 ExpectedItemRevision,
+        const FGuid& ExpectedInventoryOwnerId);
+    /** Begins a bounded rest interval on the common world clock; it does not create a second clock. */
+    UFUNCTION(BlueprintCallable, Category="World|Survival")
+    bool TryBeginRest(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, double DurationSeconds);
+    /** Legacy numerical helper retained for controlled systems; player food interactions should use TryConsumeFoodItem. */
+    bool ConsumeFood(const FGuid& EntityId, float Kcal, float ThirstRelief);
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetActivityKcalPerHour(ESurvivalActivity Activity) const;
     /** The single felt-temperature function every system reads. */
     UFUNCTION(BlueprintPure, Category="World|Survival") float ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const;
@@ -113,8 +174,11 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Survival") TMap<FGuid, FWorldSurvivalProfile> Profiles;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Exploration") TArray<FWorldDiscoveryRecord> Discoveries;
     UPROPERTY(Transient) TArray<TWeakObjectPtr<UHeatSourceComponent>> HeatSources;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables") TArray<FWorldSurvivalConsumableDefinition> ConsumableDefinitions;
 
     bool IsValidProfile(const FWorldSurvivalProfile& Profile) const;
+    const FWorldSurvivalConsumableDefinition* FindConsumableDefinition(FName DefinitionId) const;
+    const FWorldSurvivalActionReceipt* FindActionReceipt(const FGuid& OperationId) const;
     float GetWeatherTemperatureDelta() const;
     float GetWindChill() const;
 };
