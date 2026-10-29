@@ -1346,6 +1346,14 @@ bool FWorldZonesAndDiscoveryContractsTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Apply world data and register discovery definitions"), GameData->ApplyToWorld());
     TestEqual(TEXT("Exactly five ecological zones"), GameData->GetZones().Num(), 5);
     TestEqual(TEXT("Six data-authored discoveries"), GameData->GetDiscoveries().Num(), 6);
+    TestTrue(TEXT("Abandoned-camp rope recipe is discovery-gated"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("twist_rope")));
+    TestTrue(TEXT("Ochre grinding is discovery-gated"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("grind_ochre")));
+    TestTrue(TEXT("Hide curing is discovery-gated"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("cure_hide")));
+    TestFalse(TEXT("Ordinary drying remains available before discovery"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("dry_grain")));
 
     const FGameDataZone* CreekZone =
         GameData->FindZoneAtLocation(FVector(1150.0f, -950.0f, 25.0f));
