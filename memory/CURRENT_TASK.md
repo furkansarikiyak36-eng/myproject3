@@ -20,11 +20,11 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
 ### Plan
 0. [x] Refresh this checkpoint before reviewing gameplay source.
-1. [ ] Re-check exact current Phase 2 APIs and current status ledger.
-2. [ ] Choose the highest-value safe gap, implement code + focused tests from verified interfaces.
-3. [ ] Repeat for other P2 gaps where code can be completed without guessing.
-4. [ ] Update `PLAN_STATUS.md`, `ROADMAP.md`, `CODEBASE.md`, and this checkpoint.
-5. [ ] Mark all newly authored work `code-written / unbuilt-unrun`; batch validation comes later.
+1. [x] Re-check exact current Phase 2 APIs and current status ledger.
+2. [x] Implement timed ledger-owned water boiling, schema v27 migration, and player-facing M/F5/F6/F7 controls already present on this branch; add low-noise wetness-band feedback.
+3. [x] Audit rest/fatigue hooks, existing water transaction tests and climate-driven wetness/drying paths; confirmed remaining work is validation/tuning plus a few action-cost edge cases.
+4. [x] Update `PLAN_STATUS.md`, `ROADMAP.md`, `CODEBASE.md`, and this checkpoint.
+5. [x] Mark new code as `code-written / unbuilt-unrun`; batch validation comes later.
 
 ### User constraints
 - Backend/mechanics first, scene last.
@@ -38,7 +38,7 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Previously inspected in earlier work: `WorldSurvivalSubsystem.h/.cpp`, `VerticalSliceCWorldActor.h/.cpp`, `LogSnapCharacter.h/.cpp`, `Config/GameData/conditions.json`, `Tests/MyProject3CoreTests.cpp`. Refresh the exact portions needed before editing.
 
 ### Findings
-- The current status ledger's P2.1 notes were stale: the branch now has authored creek filling, timed boiling, ledger-owned drinking, direct player controls and status feedback.
+- The status ledger was refreshed for P2.3 feedback: branch has creek fill, timed boiling, ledger-owned drinking, direct player controls, status feedback and transition-only wetness messages.
 - P2.2 now has F6 rest on the shared clock; active rest blocks movement, jump is next to audit, and fatigue effectiveness scales tree chop, log processing and voxel digging.
 - P2.3 has rain/creek wetness, shelter/warmth drying, wet-cold illness and F7 wetness status; a warm-shelter drying test was authored, with thresholds still requiring batch/PIE tuning.
 - P2.5 has dirty-water/spoiled-food/wet-cold, fall and bite triggers; F7 lists condition IDs and survival health. Toxic rain remains part of P8.1; all new tests remain unrun.
@@ -50,7 +50,8 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - `TryBeginRest` uses `UWorldSimulationClockSubsystem`; VerticalSlice_C binds I=fill, M=drink, F5=boil, F6=rest and F7=status. The bootstrap advances the shared clock. `RecordActivity` blocks activity during rest; `GetWorkEffectiveness` scales tree chop, log-cut work and digging. A rest/fatigue regression assertion and warm-shelter drying test are authored/unrun.
 
 ### Changes
-- Implemented receipt-backed inventory-owned water processing transitions and added schema v27 migration.
+- Confirmed receipt-backed inventory-owned water processing transitions and schema v27 migration; checked timed completion against the shared logical clock.
+- Added transition-only dry/damp/wet/soaked feedback in `AVerticalSliceCWorldActor::Tick`; it reports exposure changes but does not alter survival state.
 - Source audit verified rest blocks jump and that log-cut/dig already use survival activity hooks. Added `CanRecordActivity` as the shared pure preflight; `RecordActivity` now uses that same preflight.
 - `LogCarryComponent` now gates and charges stamina/energy for regular log/material pickup and central log/material placement commit paths. Preflight coverage was added to the existing rest test; test remains unrun.
 - Other `LogBuildToolsComponent` direct placement/action paths were not exhaustively converted; keep P2.2 partial.
@@ -59,4 +60,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Next: source-audit the `LogBuildToolsComponent.cpp` patch (method signatures, direct-action cost placement, fuel ownership invariants), add focused tests for shared preflight if feasible, then update PLAN_STATUS/ROADMAP/CODEBASE and checkpoint. All new build-tool changes are authored but unbuilt/unrun.
+Next: close the remaining P2.2 interaction-cost edge cases in `LogBuildToolsComponent` (bar/lock and sled tow), then re-audit status counts and run one batch compile/automation pass when user permits. Current changes remain unbuilt/unrun; no PIE validation.
