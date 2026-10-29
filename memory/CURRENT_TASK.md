@@ -133,4 +133,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Modify `LogSnapCharacter.cpp` to read the survival profile through `ShelterSensor->SurvivalEntityId`, make fatigue lower walking speed, add LeftShift sprint when stamina/fatigue allow, and report Walk/Run activity once per second. Then update `RecordActivity` to reject invalid Run/Chop/Dig/Build/Carry requests when depleted, and bind chop action cost in `VerticalSliceCWorldActor.cpp`.
+Modify `WorldSurvivalSubsystem::RecordActivity` to fail closed for Run/Chop/Dig/Build/Carry when stamina/fatigue are depleted. Then make `VerticalSliceCWorldActor::ChopInput` call RecordActivity before repairs/cutting and show feedback when exhausted. Next add P2.3 creek exposure + long wet-cold condition, then P2.1 container-gated water fill.
