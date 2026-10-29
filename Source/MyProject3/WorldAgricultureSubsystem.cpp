@@ -595,6 +595,166 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& FieldCell)
+{
+    if (FieldCells.Contains(FieldCell.Cell) ||
+        !FMath::IsFinite(FieldCell.Fertility) || FieldCell.Fertility < 0.0f || FieldCell.Fertility > 100.0f ||
+        !FMath::IsFinite(FieldCell.WeedPressure) || FieldCell.WeedPressure < 0.0f || FieldCell.WeedPressure > 1.0f ||
+        !FMath::IsFinite(FieldCell.MulchCoverage) || FieldCell.MulchCoverage < 0.0f || FieldCell.MulchCoverage > 1.0f ||
+        !FMath::IsFinite(FieldCell.Moisture) || FieldCell.Moisture < 0.0f || FieldCell.Moisture > 1.0f ||
+        FieldCell.Revision <= 0 || FieldCell.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+        MaxFieldCells <= 0 || MaxFieldCells > 100000 || FieldCells.Num() >= MaxFieldCells ||
+        (FieldCell.PlantedCropId.IsValid() && !Crops.Contains(FieldCell.PlantedCropId)))
+        return false;
+
+    FWorldFieldCellState NewCell = FieldCell;
+    if (!NewCell.FieldCellId.IsValid())
+        NewCell.FieldCellId = FGuid::NewGuid();
+    if (!NewCell.FieldCellId.IsValid())
+        return false;
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+        if (Pair.Value.FieldCellId == NewCell.FieldCellId)
+            return false;
+
+    TSet<FGuid> SeenOperations;
+    for (const FWorldAgricultureActionReceipt& Receipt : NewCell.ActionReceipts)
+    {
+        if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
+            Receipt.EntityId != NewCell.FieldCellId ||
+            Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
+            Receipt.ResultingEntityRevision > NewCell.Revision ||
+            Receipt.Action < EWorldAgricultureActionKind::ClearFieldCell ||
+            Receipt.Action > EWorldAgricultureActionKind::WaterFieldCell ||
+            !Receipt.OutputItemIds.IsEmpty() || !FMath::IsFinite(Receipt.WorkAmount))
+            return false;
+        SeenOperations.Add(Receipt.OperationId);
+    }
+
+    FieldCells.Add(NewCell.Cell, MoveTemp(NewCell));
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::GetFieldCell(
+    const FIntVector& Cell, FWorldFieldCellState& OutFieldCell) const
+{
+    const FWorldFieldCellState* Found = FieldCells.Find(Cell);
+    if (!Found)
+        return false;
+    OutFieldCell = *Found;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryApplyFieldWork(
+    const FGuid& OperationId, const FIntVector& Cell, int64 ExpectedFieldRevision,
+    EWorldFieldWorkKind WorkKind, float WorkAmount, FWorldFieldCellState& OutFieldCell)
+{
+    OutFieldCell = FWorldFieldCellState();
+    if (!OperationId.IsValid() || ExpectedFieldRevision <= 0 ||
+        static_cast<uint8>(WorkKind) > static_cast<uint8>(EWorldFieldWorkKind::Water) ||
+        !FMath::IsFinite(WorkAmount) || WorkAmount <= 0.0f ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
+        return false;
+
+    EWorldAgricultureActionKind Action = EWorldAgricultureActionKind::ClearFieldCell;
+    FName WorkId = NAME_None;
+    switch (WorkKind)
+    {
+    case EWorldFieldWorkKind::Clear:
+        Action = EWorldAgricultureActionKind::ClearFieldCell;
+        WorkId = TEXT("Clear");
+        if (WorkAmount > 1.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Till:
+        Action = EWorldAgricultureActionKind::TillFieldCell;
+        WorkId = TEXT("Till");
+        if (WorkAmount > 1.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Fertilize:
+        Action = EWorldAgricultureActionKind::FertilizeFieldCell;
+        WorkId = TEXT("Fertilize");
+        if (WorkAmount > 25.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Weed:
+        Action = EWorldAgricultureActionKind::WeedFieldCell;
+        WorkId = TEXT("Weed");
+        if (WorkAmount > 1.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Mulch:
+        Action = EWorldAgricultureActionKind::MulchFieldCell;
+        WorkId = TEXT("Mulch");
+        if (WorkAmount > 1.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Water:
+        Action = EWorldAgricultureActionKind::WaterFieldCell;
+        WorkId = TEXT("Water");
+        if (WorkAmount > 1.0f) return false;
+        break;
+    default:
+        return false;
+    }
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != Action || Existing->ExpectedEntityRevision != ExpectedFieldRevision ||
+            Existing->DefinitionId != WorkId || !FMath::IsNearlyEqual(Existing->WorkAmount, WorkAmount, 0.0001f))
+            return false;
+        const FWorldFieldCellState* ExistingField = FieldCells.Find(Cell);
+        if (!ExistingField || Existing->EntityId != ExistingField->FieldCellId)
+            return false;
+        OutFieldCell = *ExistingField;
+        return true;
+    }
+
+    FWorldFieldCellState* FieldCell = FieldCells.Find(Cell);
+    if (!FieldCell || FieldCell->Revision != ExpectedFieldRevision ||
+        FieldCell->Revision >= MAX_int64 - 1 ||
+        FieldCell->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
+        return false;
+
+    switch (WorkKind)
+    {
+    case EWorldFieldWorkKind::Clear:
+        if (FieldCell->PlantedCropId.IsValid())
+            return false;
+        FieldCell->bCleared = true;
+        FieldCell->bTilled = false;
+        FieldCell->WeedPressure = FMath::Clamp(FieldCell->WeedPressure - 0.9f * WorkAmount, 0.0f, 1.0f);
+        break;
+    case EWorldFieldWorkKind::Till:
+        if (!FieldCell->bCleared || FieldCell->PlantedCropId.IsValid())
+            return false;
+        FieldCell->bTilled = true;
+        break;
+    case EWorldFieldWorkKind::Fertilize:
+        FieldCell->Fertility = FMath::Clamp(FieldCell->Fertility + WorkAmount, 0.0f, 100.0f);
+        break;
+    case EWorldFieldWorkKind::Weed:
+        FieldCell->WeedPressure = FMath::Clamp(FieldCell->WeedPressure - WorkAmount, 0.0f, 1.0f);
+        break;
+    case EWorldFieldWorkKind::Mulch:
+        FieldCell->MulchCoverage = FMath::Clamp(FieldCell->MulchCoverage + WorkAmount, 0.0f, 1.0f);
+        break;
+    case EWorldFieldWorkKind::Water:
+        FieldCell->Moisture = FMath::Clamp(FieldCell->Moisture + WorkAmount, 0.0f, 1.0f);
+        break;
+    default:
+        return false;
+    }
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = Action;
+    Receipt.EntityId = FieldCell->FieldCellId;
+    Receipt.ExpectedEntityRevision = ExpectedFieldRevision;
+    Receipt.ResultingEntityRevision = ExpectedFieldRevision + 1;
+    Receipt.DefinitionId = WorkId;
+    Receipt.WorkAmount = WorkAmount;
+    FieldCell->ActionReceipts.Add(Receipt);
+    ++FieldCell->Revision;
+    OutFieldCell = *FieldCell;
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
 {
     if (!Crop.CropId.IsValid() || Crop.CropDefinitionId.IsNone() ||
