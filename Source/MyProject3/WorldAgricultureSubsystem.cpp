@@ -1494,19 +1494,30 @@ void UWorldAgricultureSubsystem::ExportSnapshot(
     TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals) const
 {
     TArray<FWorldFieldCellState> IgnoredFieldCells;
-    ExportSnapshot(OutCrops, OutAnimals, IgnoredFieldCells);
+    TArray<FWorldAnimalPenState> IgnoredPens;
+    ExportSnapshot(OutCrops, OutAnimals, IgnoredFieldCells, IgnoredPens);
 }
 
 void UWorldAgricultureSubsystem::ExportSnapshot(
     TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
     TArray<FWorldFieldCellState>& OutFieldCells) const
 {
+    TArray<FWorldAnimalPenState> IgnoredPens;
+    ExportSnapshot(OutCrops, OutAnimals, OutFieldCells, IgnoredPens);
+}
+
+void UWorldAgricultureSubsystem::ExportSnapshot(
+    TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
+    TArray<FWorldFieldCellState>& OutFieldCells, TArray<FWorldAnimalPenState>& OutPens) const
+{
     OutCrops.Reset();
     OutAnimals.Reset();
     OutFieldCells.Reset();
+    OutPens.Reset();
     Crops.GenerateValueArray(OutCrops);
     Animals.GenerateValueArray(OutAnimals);
     FieldCells.GenerateValueArray(OutFieldCells);
+    AnimalPens.GenerateValueArray(OutPens);
     OutCrops.Sort([](const FWorldCropState& A, const FWorldCropState& B)
         { return A.CropId.ToString() < B.CropId.ToString(); });
     OutAnimals.Sort([](const FWorldAnimalState& A, const FWorldAnimalState& B)
@@ -1517,6 +1528,8 @@ void UWorldAgricultureSubsystem::ExportSnapshot(
         if (A.Cell.Y != B.Cell.Y) return A.Cell.Y < B.Cell.Y;
         return A.Cell.Z < B.Cell.Z;
     });
+    OutPens.Sort([](const FWorldAnimalPenState& A, const FWorldAnimalPenState& B)
+        { return A.PenId.ToString() < B.PenId.ToString(); });
 }
 
 bool UWorldAgricultureSubsystem::RestoreSnapshot(
