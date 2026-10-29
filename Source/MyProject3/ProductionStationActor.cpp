@@ -24,19 +24,23 @@ bool AProductionStationActor::EnsureRegistered()
 {
     UWorld* World = GetWorld();
     UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
-    if (!Production || StationDataId.IsNone())
+    const UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!Production || !GameData || !GameData->IsApplied() || StationDataId.IsNone())
         return false;
+
+    const FGameDataStation* Data = GameData->GetStations().Find(StationDataId);
+    if (!Data)
+        return false; // Never register a station with an invented fallback capacity.
     if (!StationId.IsValid())
         StationId = FGuid::NewGuid();
     FWorldProductionStation Existing;
     if (Production->GetStation(StationId, Existing))
-        return true;
+        return Existing.StationTag == StationDataId;
+
     FWorldProductionStation Station;
     Station.StationId = StationId;
     Station.StationTag = StationDataId;
-    if (const UWorldGameDataSubsystem* GameData = World->GetSubsystem<UWorldGameDataSubsystem>())
-        if (const FGameDataStation* Data = GameData->GetStations().Find(StationDataId))
-            Station.StorageCapacityUnits = Data->Capacity;
+    Station.StorageCapacityUnits = Data->Capacity;
     return Production->RegisterStation(Station);
 }
 
