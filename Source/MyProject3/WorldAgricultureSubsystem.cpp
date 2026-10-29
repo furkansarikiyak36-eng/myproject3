@@ -703,6 +703,7 @@ bool UWorldAgricultureSubsystem::TryCaptureAnimal(
     Animal->bCaptured = true;
     Animal->CaptureOperationId = OperationId;
     Animal->CaptureToolItemId = CaptureToolItemId;
+    Animal->CaptureToolDefinitionId = Tool.DefinitionId;
     Animal->CaptureInventoryOwnerId = ExpectedInventoryOwnerId;
     Animal->CaptureToolExpectedRevision = ExpectedToolItemRevision;
     ++Animal->Revision;
@@ -718,6 +719,61 @@ bool UWorldAgricultureSubsystem::TryCaptureAnimal(
     Receipt.ResultingEntityRevision = Animal->Revision;
     Receipt.ResultingItemRevision = ExpectedToolItemRevision; // Tool is reusable and not consumed.
     Receipt.DefinitionId = Animal->AnimalDefinitionId;
+    Receipt.RequestedInputDefinitionId = Tool.DefinitionId;
+    Animal->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryCaptureAnimalWithToolStack(
+    const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+    FName CaptureToolDefinitionId, const FGuid& ExpectedInventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0 ||
+        CaptureToolDefinitionId.IsNone() || !ExpectedInventoryOwnerId.IsValid())
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldAgricultureActionKind::CaptureAnimal &&
+            Existing->EntityId == AnimalId && !Existing->InputItemId.IsValid() &&
+            Existing->ExpectedInventoryOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
+            Existing->ExpectedItemRevision == 0 &&
+            Existing->RequestedInputDefinitionId == CaptureToolDefinitionId;
+    }
+
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    const FWorldAnimalDefinition* Definition =
+        Animal ? FindAnimalDefinition(Animal->AnimalDefinitionId) : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!Animal || !Definition || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+        Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
+        Animal->bCaptured || Animal->bSlaughtered || Animal->Health <= 0.0f ||
+        Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
+        !Definition->CaptureToolDefinitionIds.Contains(CaptureToolDefinitionId) ||
+        Inventory->GetItemCount(CaptureToolDefinitionId) <= 0 ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
+        return false;
+
+    Animal->bCaptured = true;
+    Animal->CaptureOperationId = OperationId;
+    Animal->CaptureToolDefinitionId = CaptureToolDefinitionId;
+    Animal->CaptureToolItemId.Invalidate();
+    Animal->CaptureInventoryOwnerId = ExpectedInventoryOwnerId;
+    Animal->CaptureToolExpectedRevision = 0;
+    ++Animal->Revision;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::CaptureAnimal;
+    Receipt.EntityId = AnimalId;
+    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedEntityRevision = ExpectedAnimalRevision;
+    Receipt.ExpectedItemRevision = 0;
+    Receipt.ResultingEntityRevision = Animal->Revision;
+    Receipt.ResultingItemRevision = 0;
+    Receipt.DefinitionId = Animal->AnimalDefinitionId;
+    Receipt.RequestedInputDefinitionId = CaptureToolDefinitionId;
     Animal->ActionReceipts.Add(Receipt);
     return true;
 }
