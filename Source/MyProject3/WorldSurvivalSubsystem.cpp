@@ -1092,19 +1092,17 @@ float UWorldSurvivalSubsystem::GetWorkEffectiveness(const FGuid& EntityId) const
         FMath::Clamp(Profile->Fatigue / 100.0f, 0.0f, 1.0f));
 }
 
-bool UWorldSurvivalSubsystem::RecordActivity(
-    const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg)
+bool UWorldSurvivalSubsystem::CanRecordActivity(
+    const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg) const
 {
-    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    const FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
     if (!Profile || static_cast<uint8>(Activity) > static_cast<uint8>(ESurvivalActivity::Carry) ||
         !InRange(DurationSeconds, 0.0f, 3600.0f) || DurationSeconds == 0.0f ||
         !InRange(CarriedMassKg, 0.0f, 1000.0f) || Profile->Revision >= MAX_int64 - 1)
-    {
         return false;
-    }
 
-    // A rest interval freezes the player's work/movement loop. Keep the
-    // domain gate here too, so a direct tool call cannot work through rest.
+    // A rest interval freezes the player's work/movement loop. The pure
+    // preflight lets interactions reject invalid work before committing a piece.
     if (Profile->RestUntilTimeSeconds > 0.0)
     {
         const UWorldSimulationClockSubsystem* Clock =
@@ -1114,8 +1112,8 @@ bool UWorldSurvivalSubsystem::RecordActivity(
             return false;
     }
 
-    // Player adapters call this before a costly action. Sprinting stops earlier
-    // than ordinary work; severe exhaustion also blocks strenuous actions.
+    // Sprinting stops earlier than ordinary work; severe exhaustion blocks
+    // all strenuous actions. Keep this policy shared with the mutating method.
     if (Activity == ESurvivalActivity::Run &&
         (Profile->Stamina <= 20.0f || Profile->Fatigue >= 85.0f))
         return false;
@@ -1123,6 +1121,17 @@ bool UWorldSurvivalSubsystem::RecordActivity(
         Activity == ESurvivalActivity::Dig || Activity == ESurvivalActivity::Build ||
         Activity == ESurvivalActivity::Carry;
     if (bStrenuous && (Profile->Stamina <= 5.0f || Profile->Fatigue >= 95.0f))
+        return false;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::RecordActivity(
+    const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg)
+{
+    if (!CanRecordActivity(EntityId, Activity, DurationSeconds, CarriedMassKg))
+        return false;
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile)
         return false;
 
     const float Hours = DurationSeconds / 3600.0f;
