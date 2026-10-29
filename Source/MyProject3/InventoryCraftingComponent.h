@@ -45,6 +45,7 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory|Farm") bool TryHarvestCrop(FGuid CropId, int64 ExpectedCropRevision);
  /** Consumes authored feed from this inventory and applies its effect to one animal. */
  UFUNCTION(BlueprintCallable, Category="Inventory|Animals") bool TryFeedAnimal(FName ItemId, FGuid AnimalId, int32 Quantity = 1);
+ UFUNCTION(BlueprintCallable, Category="Inventory|Animals") bool TryCollectAnimalProduct(FGuid AnimalId, int64 ExpectedAnimalRevision);
  UFUNCTION(BlueprintCallable, Category="Inventory|Farm") bool TryCollectAnimalProduct(
      FGuid AnimalId, int64 ExpectedAnimalRevision, int32 Quantity = 1);
  /** Consumes authored fuel items into the heat source's single burn-time counter. */
