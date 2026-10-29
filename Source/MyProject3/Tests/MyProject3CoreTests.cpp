@@ -31,6 +31,7 @@
 #include "MaterialConnectionSubsystem.h"
 #include "StoneBuildingPiece.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
@@ -2601,6 +2602,146 @@ bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
         Survival->RestoreSnapshot(Profiles, Discoveries, Weather, Severity));
     TestTrue(TEXT("Rest retry remains idempotent after snapshot restore"),
         Survival->TryBeginRest(RestOperationId, Profile.EntityId, Profile.Revision, 3600.0));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAgricultureConsumesInputsAndCollectsProductsTest,
+    "MyProject3.Farming.InputOwnershipAndProductReceiptsAreIdempotent", TestFlags)
+bool FAgricultureConsumesInputsAndCollectsProductsTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldAgricultureSubsystem* Agriculture = World
+        ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Agriculture"), Agriculture) ||
+        !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    TestTrue(TEXT("Inventory owner identity is valid"), InventoryOwnerId.IsValid());
+
+    const FGuid SeedId = FGuid::NewGuid();
+    const FGuid FeedId = FGuid::NewGuid();
+    auto RegisterInventoryItem = [&](const FGuid& Id, FName DefinitionId)
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = Id;
+        Item.DefinitionId = DefinitionId;
+        Item.BaseDefinitionId = DefinitionId;
+        Item.Quantity = 1;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = InventoryOwnerId;
+        return Ownership->RegisterItem(Item);
+    };
+    TestTrue(TEXT("Register owned seed"), RegisterInventoryItem(SeedId, TEXT("Test.Seed")));
+    TestTrue(TEXT("Register owned feed"), RegisterInventoryItem(FeedId, TEXT("Test.Feed")));
+
+    Inventory->ItemWeightGrams.Add(TEXT("Test.Seed"), 10);
+    Inventory->ItemWeightGrams.Add(TEXT("Test.Feed"), 10);
+    FInventoryStack SeedStack;
+    SeedStack.ItemId = TEXT("Test.Seed");
+    SeedStack.Quantity = 1;
+    SeedStack.MaxStack = 1;
+    SeedStack.OwnedWorldItemId = SeedId;
+    FInventoryStack FeedStack;
+    FeedStack.ItemId = TEXT("Test.Feed");
+    FeedStack.Quantity = 1;
+    FeedStack.MaxStack = 1;
+    FeedStack.OwnedWorldItemId = FeedId;
+    TestTrue(TEXT("Restore unique owned inventory stacks"), Inventory->RestoreSnapshot(
+        InventoryOwnerId, { SeedStack, FeedStack }, NAME_None));
+
+    FWorldCropDefinition Definition;
+    Definition.CropDefinitionId = TEXT("Test.Crop");
+    Definition.SeedDefinitionId = TEXT("Test.Seed");
+    Definition.HarvestDefinitionId = TEXT("Test.CropOutput");
+    Definition.HarvestUnits = 2;
+    Definition.SecondsPerStage = 10.0;
+    Definition.MinimumPlantMoisture = 0.2f;
+    TestTrue(TEXT("Register crop recipe"), Agriculture->RegisterCropDefinition(Definition));
+
+    const FGuid PlantOperationId = FGuid::NewGuid();
+    FGuid CropId;
+    TestTrue(TEXT("Planting consumes seed and creates crop record"), Agriculture->TryPlantCrop(
+        PlantOperationId, Definition.CropDefinitionId, SeedId, 1, InventoryOwnerId,
+        FIntVector(1, 2, 0), 0.8f, CropId));
+    TestTrue(TEXT("Crop identity returned"), CropId.IsValid());
+    TestEqual(TEXT("Seed stack removed exactly once"), Inventory->GetItemCount(TEXT("Test.Seed")), 0);
+    FWorldOwnedItemRecord SeedAfter;
+    TestTrue(TEXT("Seed identity is retained as consumed history"), Ownership->TryGetItem(SeedId, SeedAfter));
+    TestEqual(TEXT("Seed owner becomes Consumed"), SeedAfter.OwnerKind, EWorldItemOwnerKind::Consumed);
+
+    FGuid CropRetryId;
+    TestTrue(TEXT("Duplicate plant request replays original crop"), Agriculture->TryPlantCrop(
+        PlantOperationId, Definition.CropDefinitionId, SeedId, 1, InventoryOwnerId,
+        FIntVector(1, 2, 0), 0.8f, CropRetryId));
+    TestEqual(TEXT("Plant retry returns same crop ID"), CropRetryId, CropId);
+    TestEqual(TEXT("Plant retry does not consume extra seed"), Ownership->GetTrackedItemCount(), 2);
+
+    FWorldAnimalState Animal;
+    Animal.AnimalId = FGuid::NewGuid();
+    Animal.AnimalDefinitionId = TEXT("Test.Chicken");
+    Animal.FeedDefinitionId = TEXT("Test.Feed");
+    Animal.ProductDefinitionId = TEXT("Test.Egg");
+    Animal.ProductUnits = 1;
+    Animal.Hunger = 50.0f;
+    Animal.Health = 100.0f;
+    Animal.Location = FVector(100, 200, 30);
+    TestTrue(TEXT("Register animal"), Agriculture->RegisterAnimal(Animal));
+
+    const FGuid FeedOperationId = FGuid::NewGuid();
+    TestTrue(TEXT("Feeding consumes an owned feed item"), Agriculture->TryFeedAnimal(
+        FeedOperationId, Animal.AnimalId, 1, FeedId, 1, InventoryOwnerId, 25.0f));
+    FWorldAnimalState Fed;
+    TestTrue(TEXT("Read fed animal"), Agriculture->GetAnimal(Animal.AnimalId, Fed));
+    TestTrue(TEXT("Feeding lowers hunger"), FMath::IsNearlyEqual(Fed.Hunger, 25.0f));
+    TestEqual(TEXT("Feed stack removed exactly once"), Inventory->GetItemCount(TEXT("Test.Feed")), 0);
+    TestTrue(TEXT("Feed retry returns same committed result"), Agriculture->TryFeedAnimal(
+        FeedOperationId, Animal.AnimalId, 1, FeedId, 1, InventoryOwnerId, 25.0f));
+    FWorldAnimalState FedAfterRetry;
+    TestTrue(TEXT("Read animal after feed retry"), Agriculture->GetAnimal(Animal.AnimalId, FedAfterRetry));
+    TestEqual(TEXT("Feeding retry does not increment animal revision"),
+        FedAfterRetry.Revision, Fed.Revision);
+
+    const FGuid CollectOperationId = FGuid::NewGuid();
+    TArray<FGuid> ProductIds;
+    TestTrue(TEXT("Collect animal product creates owned world item"),
+        Agriculture->TryCollectAnimalProducts(CollectOperationId, Animal.AnimalId,
+            Fed.Revision, ProductIds));
+    TestEqual(TEXT("One configured product unit materialized"), ProductIds.Num(), 1);
+    FWorldOwnedItemRecord Product;
+    TestTrue(TEXT("Product is in ownership ledger"), Ownership->TryGetItem(ProductIds[0], Product));
+    TestEqual(TEXT("Product is world-owned"), Product.OwnerKind, EWorldItemOwnerKind::World);
+
+    TArray<FGuid> ProductRetry;
+    TestTrue(TEXT("Repeated collection returns same product identity"),
+        Agriculture->TryCollectAnimalProducts(CollectOperationId, Animal.AnimalId,
+            Fed.Revision, ProductRetry));
+    TestTrue(TEXT("Product IDs are unchanged"), ProductRetry == ProductIds);
+    TestEqual(TEXT("No duplicate product created"), Ownership->GetTrackedItemCount(), 3);
+
+    TArray<FWorldCropState> Crops;
+    TArray<FWorldAnimalState> Animals;
+    Agriculture->ExportSnapshot(Crops, Animals);
+    TestTrue(TEXT("Agriculture transaction receipts restore with owned items"),
+        Agriculture->RestoreSnapshot(Crops, Animals));
+    TArray<FGuid> ProductAfterRestore;
+    TestTrue(TEXT("Collection retry remains idempotent after restore"),
+        Agriculture->TryCollectAnimalProducts(CollectOperationId, Animal.AnimalId,
+            Fed.Revision, ProductAfterRestore));
+    TestTrue(TEXT("Restored collection uses original output IDs"), ProductAfterRestore == ProductIds);
     return true;
 }
 
