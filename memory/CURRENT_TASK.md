@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Use unoccupied E/F/R prototype keys for station interaction: E = start first ready station recipe or collect finished jobs, F = deposit one needed input/tool chosen from game-data transformations for the nearby station, R = take one stock item. Require a nearby `AProductionStationActor` within 300 cm, resolve the actor's `StationDataId` through game data, show concise on-screen feedback, and repair `TryTake`'s item category/tool metadata using authored `items.json` data.
+Add station-use input helpers to VerticalSlice_C header/cpp: E start/collect, F deposit one missing recipe input/tool from generic non-ledger stacks, R take one stock item. Use nearest station within 300 cm and game-data transformation IDs; show clear feedback when no station, fire missing, job started/collected or ingredient deposited.
