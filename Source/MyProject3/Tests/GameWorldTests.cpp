@@ -16,6 +16,7 @@
 #include "WorldGameDataSubsystem.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
+#include "VoxelTerrainChunkComponent.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
 #include "HAL/FileManager.h"
@@ -888,6 +889,53 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Take it"), Kiln->TryTake(Inventory, TEXT("Pot.Fired"), 1));
     TestEqual(TEXT("Fired pot in hand"), Inventory->GetItemCount(TEXT("Pot.Fired")), 1);
     TestFalse(TEXT("Nothing more to take"), Kiln->TryTake(Inventory, TEXT("Pot.Fired"), 1));
+    return true;
+}
+
+// P5.1: dig layers come from layers.json; clay comes out of its layer, not out of the surface layer.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDigLayersFromDataTest,
+    "MyProject3.World.Dig.LayersFromDataYieldTheirItem", Flags)
+bool FDigLayersFromDataTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldTerrainStateSubsystem* Terrain = World ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Data"), Data->LoadDefault() && Data->ApplyToWorld());
+
+    AActor* ChunkActor = World->SpawnActor<AActor>();
+    UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(ChunkActor);
+    ChunkActor->AddInstanceComponent(Identity);
+    Identity->RegisterComponent();
+    TestTrue(TEXT("Chunk identity"), Identity->EnsureIdentity());
+    UVoxelTerrainChunkComponent* Voxel = NewObject<UVoxelTerrainChunkComponent>(ChunkActor);
+    ChunkActor->AddInstanceComponent(Voxel);
+    Voxel->CellsPerAxis = 16;
+    Voxel->VoxelSizeCm = 25.0f;
+    Voxel->EditableBoundsLocal = FBox(FVector::ZeroVector, FVector(400.0f));
+    Voxel->RegisterComponent();
+    Voxel->InitializeFlatGround(350.0f);
+    TestTrue(TEXT("Ground"), Voxel->RebuildMesh() > 0);
+
+    FWorldTerrainCellState Cell;
+    TArray<FGuid> Outputs;
+    TestFalse(TEXT("No clay in the surface layer"), Terrain->TryExcavateForResource(
+        FGuid::NewGuid(), Voxel, FVector(100.0f, 100.0f, 250.0f), 60.0f, 1.0f,
+        Voxel->GetDensityRevision(), FIntVector(1, 1, 0), 0, 0, TEXT("Clay"), Cell, Outputs));
+
+    TestTrue(TEXT("Dig clay in its layer"), Terrain->TryExcavateForResource(
+        FGuid::NewGuid(), Voxel, FVector(250.0f, 250.0f, 200.0f), 60.0f, 1.0f,
+        Voxel->GetDensityRevision(), FIntVector(2, 2, 1), 1, 0, TEXT("Clay"), Cell, Outputs));
+    TestTrue(TEXT("Clay came out"), Outputs.Num() >= 1);
+    for (const FGuid& Id : Outputs)
+    {
+        FWorldOwnedItemRecord Record;
+        TestTrue(TEXT("Clay item exists"), Ownership->TryGetItem(Id, Record));
+        TestEqual(TEXT("It is clay"), Record.DefinitionId, FName(TEXT("Clay")));
+    }
     return true;
 }
 

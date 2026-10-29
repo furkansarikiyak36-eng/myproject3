@@ -32,7 +32,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 3. [x] P2.1/P2.5 consume conditions (92), P2.2 rest quality (93), P2.4 spoilage by storage+temperature (94)
 4. [x] P3.1 fuel heat 95/95; P3.2 shelter keeps fire heat + placed pieces only 96/96
 5. [x] P0.3/P0.4 data, P4.2 recipes, P4.4 hand tools (99); P4.1 gatherable actor, P4.3 station actor (101)
-6. [ ] P5.1 layer data
+6. [x] P5.1 layer data (102)
 7. [ ] P6.2-P6.4 field steps, seeds, animal chain
 8. [ ] P7.1-P7.4 player route cost, zones, reward placement, infrastructure
 9. [ ] P8.2-P8.3 raid signals, snow load/avalanche/fire, repair
@@ -55,4 +55,4 @@ User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; ski
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 6: P5.1 layers are now data (layers.json -> terrain yield rules); check that a dig at each layer yields its item (test with TryExcavateForResource). Then step 7: P6 farming (field cell state, steps, seeds, crops from crops.json).
+Step 7: P6 farming. Read WorldAgricultureSubsystem.h/.cpp (TryPlantCrop/TryHarvestCrop, FWorldCropDefinition). Add field cell state (cleared, tilled, fertility, weeds, mulch) + steps with tools; crops from crops.json; plant months from the calendar; soil exhaustion; seed saving. Then P6.4 animal chain.

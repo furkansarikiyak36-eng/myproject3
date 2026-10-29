@@ -14,8 +14,8 @@ Update this file whenever a task changes state.
 
 | Status | Count | Tasks |
 |---|---:|---|
-| Var | 8 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.3 |
-| Kısmi | 23 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P5.1, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
+| Var | 9 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3 |
+| Kısmi | 22 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
 | Yok | 12 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
@@ -46,7 +46,7 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P4.2 item transformations | Var | every E transformation is data: hand ones become inventory crafting recipes, station ones production recipes (station tools go in and come back) | hand-crafted items are plain stacks, not ledger items (eating needs ledger items) |
 | P4.3 stations | Kısmi | `AProductionStationActor` for every station in stations.json: deposit, start (fire / charcoal-hot fire rule), collect, take; `TryTakeStock` in production; kiln test | station meshes and placing them; the fire is checked only at the start of a job; player input |
 | P4.4 tool requirements | Kısmi | hand recipes need their tools (not used up; CanCraft now checks them, it ignored them before); station recipes need the tool in the station | the log axe and the dig tool strength are not tied to tool items yet |
-| P5.1 layers → items | Kısmi | yield rules material + depth layer → item, units per m³ [A]; voxel prototype [S] | our layers: soil, clay, sand, stone, flint, ochre |
+| P5.1 layers → items | Var | yield rules [A] filled from layers.json (soil, clay, sand, stone, flint, ochre; layers 0-3); clay digs out only in its layer (test) | which material a voxel cell holds is still chosen by the caller (no per-location geology map) |
 | P5.2 cellar, trench, collapse | Yok | dig refused near grounded structures [A] | collapse of unsupported rooms; cellar/trench/cistern/embankment |
 | P5.3 dig limits + save | Var [A] | bounded dig, soil classes, tool strength, receipts, density save | chunk seams, neighbour chunks (later) |
 | P6.1 field cell state | Yok | crop moisture only [S] | cleared, tilled, fertility, weeds, mulch |

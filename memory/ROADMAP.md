@@ -256,6 +256,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P5.1 · tested · dig layers from data, 102/102
 - 2026-10-29 · P4.1/P4.3 (part) · tested · gatherable spots, station actor with fire rules, 101/101
 - 2026-10-29 · P0.3/P0.4/P4.2 · tested · Config/GameData + UWorldGameDataSubsystem, CanCraft checks tools, 99/99
 - 2026-10-29 · P3.2 (part) · tested · shelter keeps fire heat, sensor counts only placed pieces, 96/96
