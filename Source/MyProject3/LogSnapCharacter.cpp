@@ -203,6 +203,27 @@ void ALogSnapCharacter::BeginPlay()
     }
 }
 
+void ALogSnapCharacter::ApplyFallImpact(float ImpactSpeedCmPerSecond)
+{
+    if (!FMath::IsFinite(ImpactSpeedCmPerSecond) || ImpactSpeedCmPerSecond < 850.0f)
+        return;
+
+    const float Damage = FMath::Clamp((ImpactSpeedCmPerSecond - 800.0f) * 0.06f, 5.0f, 40.0f);
+    if (IsValid(PhysicalHealth))
+        PhysicalHealth->ApplyPhysicalDamage(Damage, FVector(0.0f, 0.0f, 100.0f), nullptr);
+
+    if (!IsValid(ShelterSensor) || !ShelterSensor->SurvivalEntityId.IsValid() || !GetWorld())
+        return;
+    UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+    FWorldSurvivalProfile Profile;
+    if (!Survival || !Survival->GetProfile(ShelterSensor->SurvivalEntityId, Profile))
+        return;
+
+    const float Severity = FMath::Clamp((ImpactSpeedCmPerSecond - 850.0f) / 700.0f, 0.25f, 1.0f);
+    Survival->TryApplyCondition(FGuid::NewGuid(), Profile.EntityId, Profile.Revision,
+        FName(TEXT("Injury.Fall")), Severity);
+}
+
 void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
     Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -296,6 +317,23 @@ void ALogSnapCharacter::PlayAxeSwing()
 void ALogSnapCharacter::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+
+    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+    {
+        if (Movement->IsFalling())
+        {
+            bWasFalling = true;
+            PeakFallSpeedCmPerSecond = FMath::Max(
+                PeakFallSpeedCmPerSecond, FMath::Max(0.0f, -Movement->Velocity.Z));
+        }
+        else if (bWasFalling)
+        {
+            const float ImpactSpeed = PeakFallSpeedCmPerSecond;
+            bWasFalling = false;
+            PeakFallSpeedCmPerSecond = 0.0f;
+            ApplyFallImpact(ImpactSpeed);
+        }
+    }
 
     if (bAxeSwingActive && AxePivot)
     {
