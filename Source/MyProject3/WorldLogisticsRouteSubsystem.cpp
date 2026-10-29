@@ -30,7 +30,6 @@ bool UWorldLogisticsRouteSubsystem::UpsertEdge(const FLogisticsRouteEdge& Edge)
         !FMath::IsFinite(Edge.LoadSensitivity) || Edge.LoadSensitivity < 0.0f || Edge.LoadSensitivity > 100.0f ||
         !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
         Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f ||
-        (Edge.bRequiresInfrastructure && !Edge.bHasBuiltInfrastructure) ||
         MaxEdges < 1 || MaxEdges > 16384)
     {
         return false;
