@@ -2400,15 +2400,24 @@ bool FTraversalMovementMultiplierTest::RunTest(const FString& Parameters)
     if (!Load->GetCarrierId().IsValid())
         Load->BeginPlay();
 
+    UStaticMesh* Cube = LoadEngineMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
+    AStoneBuildingPiece* Stone = World->SpawnActor<AStoneBuildingPiece>();
+    if (!TestNotNull(TEXT("Cube mesh"), Cube) || !TestNotNull(TEXT("Stone piece"), Stone))
+        return false;
+    Stone->Mesh->SetStaticMesh(Cube);
+    TestTrue(TEXT("Register a stowed material for mass speed"), Load->RegisterCarried(Stone));
+    const float MassMultiplier = Load->GetSpeedMultiplier();
+    TestTrue(TEXT("Carried mass independently slows movement"), MassMultiplier < 1.0f);
+
     TestTrue(TEXT("Apply half-speed environment modifier"), Load->SetTraversalEnvironmentMultiplier(0.5f));
     TestTrue(TEXT("Environment getter keeps the accepted modifier"),
         FMath::IsNearlyEqual(Load->GetTraversalEnvironmentMultiplier(), 0.5f, 0.001f));
-    TestTrue(TEXT("Environment modifier reduces actual character speed"),
-        FMath::IsNearlyEqual(Movement->MaxWalkSpeed, BaseSpeed * Load->GetSpeedMultiplier() * 0.5f, 0.1f));
+    TestTrue(TEXT("Environment and carried mass both affect actual character speed"),
+        FMath::IsNearlyEqual(Movement->MaxWalkSpeed, BaseSpeed * MassMultiplier * 0.5f, 0.1f));
 
     TestTrue(TEXT("Apply a new environment modifier"), Load->SetTraversalEnvironmentMultiplier(0.8f));
     TestTrue(TEXT("Second modifier updates the speed"), FMath::IsNearlyEqual(
-        Movement->MaxWalkSpeed, BaseSpeed * Load->GetSpeedMultiplier() * 0.8f, 0.1f));
+        Movement->MaxWalkSpeed, BaseSpeed * MassMultiplier * 0.8f, 0.1f));
     const float SpeedBeforeInvalidRequest = Movement->MaxWalkSpeed;
     TestFalse(TEXT("Reject an out-of-range environment modifier"),
         Load->SetTraversalEnvironmentMultiplier(3.0f));
