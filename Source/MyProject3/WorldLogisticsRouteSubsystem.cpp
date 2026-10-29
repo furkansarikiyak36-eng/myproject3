@@ -292,6 +292,51 @@ bool UWorldLogisticsRouteSubsystem::FindRouteWithContext(
     return true;
 }
 
+bool UWorldLogisticsRouteSubsystem::CalculatePathCost(
+    const TArray<FName>& Path,
+    const FLogisticsRouteCostContext& Context,
+    float& OutTotalCost) const
+{
+    OutTotalCost = 0.0f;
+    if (Path.Num() < 2 ||
+        !FMath::IsFinite(Context.CarriedMassKg) || Context.CarriedMassKg < 0.0f ||
+        !FMath::IsFinite(Context.MaxCarryMassKg) || Context.MaxCarryMassKg <= 0.0f ||
+        Context.CarriedMassKg > Context.MaxCarryMassKg ||
+        !FMath::IsFinite(Context.WeatherSeverity) ||
+        Context.WeatherSeverity < 0.0f || Context.WeatherSeverity > 1.0f)
+    {
+        return false;
+    }
+
+    double TotalCost = 0.0;
+    for (int32 Index = 0; Index < Path.Num(); ++Index)
+    {
+        const FLogisticsRouteNode* Node = Nodes.Find(Path[Index]);
+        if (!Node || !Node->bEnabled)
+            return false;
+        if (Index == 0)
+            continue;
+
+        const int32 EdgeIndex = FindEdgeIndex(Path[Index - 1], Path[Index]);
+        if (!Edges.IsValidIndex(EdgeIndex))
+            return false;
+        const FLogisticsRouteEdge& Edge = Edges[EdgeIndex];
+        if (!Edge.bEnabled)
+            return false;
+
+        float EdgeCost = 0.0f;
+        if (!ComputeEdgeCost(Edge, Context, EdgeCost))
+            return false;
+        TotalCost += EdgeCost;
+        if (!FMath::IsFinite(TotalCost) ||
+            TotalCost > static_cast<double>(TNumericLimits<float>::Max()))
+            return false;
+    }
+
+    OutTotalCost = static_cast<float>(TotalCost);
+    return true;
+}
+
 int32 UWorldLogisticsRouteSubsystem::FindEdgeIndex(FName FromNode, FName ToNode) const
 {
     for (int32 Index = 0; Index < Edges.Num(); ++Index)
