@@ -303,6 +303,7 @@ bool UWorldAgricultureSubsystem::TryPlantCropOnField(
         !FieldCell->bCleared || !FieldCell->bTilled || FieldCell->PlantedCropId.IsValid() ||
         FieldCell->Fertility < Definition->MinimumFertility ||
         FieldCell->WeedPressure > Definition->MaximumPlantWeedPressure ||
+        FieldCell->Moisture < Definition->MinimumPlantMoisture ||
         InitialMoisture < Definition->MinimumPlantMoisture ||
         MaxCrops <= 0 || Crops.Num() >= MaxCrops ||
         MaxOperationReceiptsPerEntity <= 0 ||
@@ -336,7 +337,7 @@ bool UWorldAgricultureSubsystem::TryPlantCropOnField(
     Crop.CropDefinitionId = CropDefinitionId;
     Crop.PlotCell = PlotCell;
     Crop.Stage = ECropGrowthStage::Seed;
-    Crop.Moisture = InitialMoisture;
+    Crop.Moisture = FieldCell->Moisture;
     Crop.SecondsPerStage = Definition->SecondsPerStage;
     Crop.Revision = 1;
     Crop.PlantOperationId = OperationId;
@@ -603,6 +604,7 @@ bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& F
         !FMath::IsFinite(FieldCell.MulchCoverage) || FieldCell.MulchCoverage < 0.0f || FieldCell.MulchCoverage > 1.0f ||
         !FMath::IsFinite(FieldCell.Moisture) || FieldCell.Moisture < 0.0f || FieldCell.Moisture > 1.0f ||
         FieldCell.Revision <= 0 || FieldCell.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256 ||
         MaxFieldCells <= 0 || MaxFieldCells > 100000 || FieldCells.Num() >= MaxFieldCells ||
         (FieldCell.PlantedCropId.IsValid() && !Crops.Contains(FieldCell.PlantedCropId)))
         return false;
@@ -619,7 +621,8 @@ bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& F
     TSet<FGuid> SeenOperations;
     for (const FWorldAgricultureActionReceipt& Receipt : NewCell.ActionReceipts)
     {
-        if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
+        if (FindActionReceipt(Receipt.OperationId) ||
+            !Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
             Receipt.EntityId != NewCell.FieldCellId ||
             Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
             Receipt.ResultingEntityRevision > NewCell.Revision ||
