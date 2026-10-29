@@ -147,4 +147,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-The character source creates gameplay components in the constructor but does not currently create an inventory component. Add the canonical inventory default subobject next, then verify the game-data initialization order.
+`ALogSnapCharacter` now constructs a default `UInventoryCraftingComponent`. Check `WorldDemoBootstrapActor` and `WorldGameDataSubsystem` to ensure the newly added inventory receives data-backed item weights after bootstrap even if component BeginPlay ran first; then tighten capacity preflight for unique water stacks.
