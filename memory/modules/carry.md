@@ -1,3 +1,5 @@
+> **FROZEN UNTIL P10:** No new mitre-cut geometry, NotchCradle socket authoring, crossing-diagonal geometry changes, or deck-path snap changes in this blind-coding pass. Preserve these as explicit P10 follow-ups. Do not silently modify the placement kernel to work around them.
+
 # Player hands (carry, place, cut)
 
 Files: `Source/MyProject3/LogCarryComponent.*` (3000+ lines: grep, do not read whole), HUD in `LogSnapHUD.*`.
