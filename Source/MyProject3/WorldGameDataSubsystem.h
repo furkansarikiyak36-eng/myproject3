@@ -128,6 +128,8 @@ struct FGameDataCrop
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 HarvestUnits = 1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 SeedReturnUnits = 1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double SecondsPerStage = 3600.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double PlantLaborSeconds = 600.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double HarvestLaborSeconds = 450.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") TArray<int32> PlantMonths;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 FoundInZone = 0;
 };
