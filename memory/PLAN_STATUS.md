@@ -14,8 +14,8 @@ Update this file whenever a task changes state.
 
 | Status | Count | Tasks |
 |---|---:|---|
-| Var | 9 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3 |
-| Kısmi | 22 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
+| Var | 10 | P0.3, P0.4, P0.5, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3 |
+| Kısmi | 21 | P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
 | Yok | 12 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
@@ -27,7 +27,7 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P0.2 freeze note | Yok | — | note in Placement/CLAUDE.md, carry.md |
 | P0.3 data files | Var | `Config/GameData/`: materials, items (88), transformations (59 rows = the 38 plan steps), stations (10), conditions, crops (3 placeholders), calendar, climate, layers | user review of the lists; events.json comes with P1.3 |
 | P0.4 data loader | Var | `UWorldGameDataSubsystem`: loads + checks every reference, keeps good data on a bad load, applies to production, survival, climate, calendar, terrain; inventories and fires pick up hand recipes / fuels at BeginPlay; the bootstrap loads it; 3 tests | VerticalSlice_C does not use the bootstrap yet (P1.4) |
-| P0.5 recipes from data | Kısmi | all game recipes come from data | the old demo recipe in `WorldDemoScenarioActor.cpp` is still in C++ |
+| P0.5 recipes from data | Var | `UWorldGameDataSubsystem` builds hand/station recipes from `transformations.json`; demo scenario now selects only a data transformation ID and builds recipe payload from that record | batch build + legacy Blueprint/config compatibility and PIE still unverified |
 | P1.1 calendar | Var | `WorldCalendar` + clock `GetCalendarDate`: year, month, day, hour, season from saved time; 5 days/month, start March 5 08:00; 3 tests | config from data file (P0.3), HUD (P1.4) |
 | P1.2 climate by month | Var | `UWorldClimateSubsystem`: 12-month table, daily weather from clock seed, 05:00/15:00 temperature curve, snow depth, ground wetness, pushes weather + air temperature to survival; in the coordinator step + rollback; save schema v21; 3 tests | VerticalSlice_C does not run the coordinator yet (own hours, own weather) -> P1.4 |
 | P1.3 event director | Yok | only raids have a warning phase [S] | natural events with signals: snowstorm, heavy rain, flood |
