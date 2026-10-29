@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add a post-load enumeration in `ApplyToWorld` to apply fuel definitions to already spawned `UHeatSourceComponent`s; then ensure heat source owner identity, followed by I/J/K/O input collision checks and player fire refuelling. Wet/dry world-fuel conversion should run on the shared survival step. No build.
+Ensure every dynamic heat-source owner has stable identity before `TryAddFuelItem` is used, preferably in `UHeatSourceComponent::BeginPlay` with a registered identity component. Then implement world-fire fuel drying/wetting and the player O refuel/ignite interaction; do not build.
