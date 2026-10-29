@@ -1,0 +1,93 @@
+{
+  "_about": "Primitive-era regions grounded in Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md section 8.2. Coordinates are prototype world-space centimetres; keep resources in existing items.json.",
+  "zones": [
+    {
+      "id": "Zone.BaseValley",
+      "index": 0,
+      "name": "Üs vadisi",
+      "center_x": 0,
+      "center_y": 0,
+      "center_z": 0,
+      "radius_cm": 1700,
+      "resources": [
+        "Log",
+        "Stick",
+        "Stone",
+        "Water.Dirty",
+        "Berries"
+      ],
+      "obstacle": "Başlangıç bölgesi; kaynaklar çevreye dağılmıştır.",
+      "solution": "Ocak, depo ve ilk barınak"
+    },
+    {
+      "id": "Zone.RiverBank",
+      "index": 1,
+      "name": "Dere boyu",
+      "center_x": 1100,
+      "center_y": -900,
+      "center_z": 0,
+      "radius_cm": 1350,
+      "resources": [
+        "Clay",
+        "Sand",
+        "Reed",
+        "Fish.Raw",
+        "Seed.Grain"
+      ],
+      "obstacle": "Dere yatağı ve çamurlu kıyı",
+      "solution": "Kütük köprü ve basamak taşları"
+    },
+    {
+      "id": "Zone.HighForest",
+      "index": 2,
+      "name": "Yüksek orman",
+      "center_x": 1400,
+      "center_y": 1200,
+      "center_z": 0,
+      "radius_cm": 1400,
+      "resources": [
+        "Resin",
+        "Antler",
+        "Hide.Raw",
+        "Flint",
+        "Seed.Root"
+      ],
+      "obstacle": "Yamaç ve kayalık geçişler",
+      "solution": "Patika, merdiven ve ip hattı"
+    },
+    {
+      "id": "Zone.LakeWetland",
+      "index": 3,
+      "name": "Göl ve bataklık",
+      "center_x": -2050,
+      "center_y": -600,
+      "center_z": 0,
+      "radius_cm": 1300,
+      "resources": [
+        "OchreEarth",
+        "Fish.Raw",
+        "Reed",
+        "Seed.Legume"
+      ],
+      "obstacle": "Yumuşak zemin ve sığ su yolları",
+      "solution": "Tahta yol ve sal"
+    },
+    {
+      "id": "Zone.MountainPass",
+      "index": 4,
+      "name": "Dağ geçidi",
+      "center_x": -1800,
+      "center_y": 2350,
+      "center_z": 0,
+      "radius_cm": 1550,
+      "resources": [
+        "Flint",
+        "Stone",
+        "Antler",
+        "Clothing.HideTunic"
+      ],
+      "obstacle": "Soğuk, kar ve uzun sefer mesafesi",
+      "solution": "Yalıtım, erzak ve ileri kamp"
+    }
+  ]
+}
