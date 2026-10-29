@@ -48,9 +48,17 @@ bool AProductionStationActor::HasRequiredFire() const
 {
     const UWorld* World = GetWorld();
     const UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
-    const FGameDataStation* Data = GameData ? GameData->GetStations().Find(StationDataId) : nullptr;
-    if (!Data || (!Data->bNeedsFire && !Data->bNeedsHotFire))
+    if (!World || !GameData || !GameData->IsApplied() || StationDataId.IsNone())
+        return false;
+
+    const FGameDataStation* Data = GameData->GetStations().Find(StationDataId);
+    // Fail closed for missing/invalid station definitions; otherwise a typo in
+    // StationDataId could silently bypass the station's fuel/fire requirements.
+    if (!Data)
+        return false;
+    if (!Data->bNeedsFire && !Data->bNeedsHotFire)
         return true;
+
     const FVector Here = GetActorLocation();
     for (TActorIterator<AActor> It(World); It; ++It)
     {
