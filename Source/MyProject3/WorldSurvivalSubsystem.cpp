@@ -17,60 +17,207 @@ namespace
     }
 }
 
+const FWorldSurvivalConditionDefinition*
+UWorldSurvivalSubsystem::FindConditionDefinition(FName DefinitionId) const
+{
+    return DefinitionId.IsNone() ? nullptr :
+        ConditionDefinitions.FindByPredicate([DefinitionId](const FWorldSurvivalConditionDefinition& Definition)
+        { return Definition.DefinitionId == DefinitionId; });
+}
+
+const FWorldSurvivalEquipmentDefinition*
+UWorldSurvivalSubsystem::FindEquipmentDefinition(FName ItemDefinitionId) const
+{
+    return ItemDefinitionId.IsNone() ? nullptr :
+        EquipmentDefinitions.FindByPredicate([ItemDefinitionId](const FWorldSurvivalEquipmentDefinition& Definition)
+        { return Definition.ItemDefinitionId == ItemDefinitionId; });
+}
+
+const FWorldDiscoveryDefinition*
+UWorldSurvivalSubsystem::FindDiscoveryDefinition(FName DiscoveryId) const
+{
+    return DiscoveryId.IsNone() ? nullptr :
+        DiscoveryDefinitions.FindByPredicate([DiscoveryId](const FWorldDiscoveryDefinition& Definition)
+        { return Definition.DiscoveryId == DiscoveryId; });
+}
+
+bool UWorldSurvivalSubsystem::FindInventoryForOwner(
+    const FGuid& InventoryOwnerId, UInventoryCraftingComponent*& OutInventory) const
+{
+    OutInventory = nullptr;
+    UWorld* World = GetWorld();
+    if (!World || !InventoryOwnerId.IsValid())
+        return false;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        UInventoryCraftingComponent* Candidate =
+            IsValid(*It) ? It->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+        if (!IsValid(Candidate) || Candidate->GetInventoryOwnerId() != InventoryOwnerId)
+            continue;
+        if (OutInventory)
+        {
+            OutInventory = nullptr;
+            return false; // Duplicate owner identities are ambiguous and fail closed.
+        }
+        OutInventory = Candidate;
+    }
+    return OutInventory != nullptr;
+}
+
+void UWorldSurvivalSubsystem::RecomputeEquipmentProtection(FWorldSurvivalProfile& Profile) const
+{
+    double Insulation = 0.0;
+    double WaterResistance = 0.0;
+    for (const FWorldEquippedItemState& Equipped : Profile.EquippedItems)
+    {
+        const FWorldSurvivalEquipmentDefinition* Definition =
+            FindEquipmentDefinition(Equipped.ItemDefinitionId);
+        if (!Definition || Definition->Slot != Equipped.Slot)
+            continue;
+        Insulation += Definition->Insulation;
+        WaterResistance += Definition->WaterResistance;
+    }
+    Profile.ClothingInsulation = static_cast<float>(FMath::Clamp(Insulation, 0.0, 1.0));
+    Profile.ClothingWaterResistance = static_cast<float>(FMath::Clamp(WaterResistance, 0.0, 1.0));
+}
+
 bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profile) const
 {
-    return Profile.EntityId.IsValid() && Profile.Revision > 0 &&
-        InRange(Profile.Health, 0.0f, 100.0f) && InRange(Profile.Hunger, 0.0f, 100.0f) &&
-        InRange(Profile.Thirst, 0.0f, 100.0f) && InRange(Profile.Stamina, 0.0f, 100.0f) &&
-        InRange(Profile.Fatigue, 0.0f, 100.0f) && InRange(Profile.ClothingInsulation, 0.0f, 1.0f) &&
-        InRange(Profile.ShelterProtection, 0.0f, 1.0f) && InRange(Profile.Wetness, 0.0f, 1.0f) &&
-        InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) &&
-        InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) &&
-        InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) &&
-        FMath::IsFinite(Profile.RestUntilTimeSeconds) && Profile.RestUntilTimeSeconds >= 0.0 &&
-        MaxActionReceiptsPerProfile > 0 &&
-        Profile.ActionReceipts.Num() <= MaxActionReceiptsPerProfile &&
-        !Profile.Location.ContainsNaN() &&
-        [&Profile]()
+    if (!Profile.EntityId.IsValid() || Profile.Revision <= 0 ||
+        !InRange(Profile.Health, 0.0f, 100.0f) || !InRange(Profile.Hunger, 0.0f, 100.0f) ||
+        !InRange(Profile.Thirst, 0.0f, 100.0f) || !InRange(Profile.Stamina, 0.0f, 100.0f) ||
+        !InRange(Profile.Fatigue, 0.0f, 100.0f) || !InRange(Profile.ClothingInsulation, 0.0f, 1.0f) ||
+        !InRange(Profile.ClothingWaterResistance, 0.0f, 1.0f) ||
+        !InRange(Profile.ShelterProtection, 0.0f, 1.0f) || !InRange(Profile.Wetness, 0.0f, 1.0f) ||
+        !InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) ||
+        !InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) ||
+        !InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) ||
+        !FMath::IsFinite(Profile.RestUntilTimeSeconds) || Profile.RestUntilTimeSeconds < 0.0 ||
+        MaxActionReceiptsPerProfile <= 0 || Profile.ActionReceipts.Num() > MaxActionReceiptsPerProfile ||
+        Profile.EquippedItems.Num() > MaxEquippedItemsPerProfile ||
+        MaxEquippedItemsPerProfile <= 0 || MaxEquippedItemsPerProfile > 5 ||
+        Profile.Conditions.Num() > 128 || Profile.Location.ContainsNaN())
+        return false;
+
+    TSet<FGuid> SeenConditionIds;
+    for (const FWorldSurvivalConditionState& Condition : Profile.Conditions)
+    {
+        const FWorldSurvivalConditionDefinition* Definition =
+            FindConditionDefinition(Condition.DefinitionId);
+        if (!Condition.ConditionId.IsValid() || SeenConditionIds.Contains(Condition.ConditionId) ||
+            !Definition || Definition->Kind != Condition.Kind ||
+            static_cast<uint8>(Condition.Kind) > static_cast<uint8>(EWorldSurvivalConditionKind::Poisoning) ||
+            !FMath::IsFinite(Condition.StartedAtWorldTimeSeconds) ||
+            Condition.StartedAtWorldTimeSeconds < 0.0 ||
+            !FMath::IsFinite(Condition.EndsAtWorldTimeSeconds) ||
+            Condition.EndsAtWorldTimeSeconds < 0.0 ||
+            (Condition.EndsAtWorldTimeSeconds > 0.0 &&
+             Condition.EndsAtWorldTimeSeconds < Condition.StartedAtWorldTimeSeconds) ||
+            !InRange(Condition.Severity, 0.0f, 1.0f) || Condition.Severity <= 0.0f ||
+            Condition.Revision <= 0)
+            return false;
+        SeenConditionIds.Add(Condition.ConditionId);
+    }
+
+    TSet<FGuid> SeenEquippedItems;
+    TSet<uint8> SeenSlots;
+    double DerivedInsulation = 0.0;
+    double DerivedWaterResistance = 0.0;
+    for (const FWorldEquippedItemState& Equipped : Profile.EquippedItems)
+    {
+        const FWorldSurvivalEquipmentDefinition* Definition =
+            FindEquipmentDefinition(Equipped.ItemDefinitionId);
+        const uint8 Slot = static_cast<uint8>(Equipped.Slot);
+        if (!Equipped.ItemId.IsValid() || SeenEquippedItems.Contains(Equipped.ItemId) ||
+            SeenSlots.Contains(Slot) || Slot > static_cast<uint8>(EWorldEquipmentSlot::Feet) ||
+            !Definition || Definition->Slot != Equipped.Slot ||
+            Definition->ItemDefinitionId != Equipped.ItemDefinitionId ||
+            Equipped.ItemRevision <= 0)
+            return false;
+        SeenEquippedItems.Add(Equipped.ItemId);
+        SeenSlots.Add(Slot);
+        DerivedInsulation += Definition->Insulation;
+        DerivedWaterResistance += Definition->WaterResistance;
+    }
+
+    // Profiles from legacy saves may have authored protection fields but no
+    // equipment ledger yet. Once any item is equipped, the equipment records
+    // are authoritative for both clothing protection values.
+    if (!Profile.EquippedItems.IsEmpty() &&
+        (!FMath::IsNearlyEqual(Profile.ClothingInsulation,
+            static_cast<float>(FMath::Clamp(DerivedInsulation, 0.0, 1.0)), 0.001f) ||
+         !FMath::IsNearlyEqual(Profile.ClothingWaterResistance,
+            static_cast<float>(FMath::Clamp(DerivedWaterResistance, 0.0, 1.0)), 0.001f)))
+        return false;
+
+    TSet<FGuid> SeenOperations;
+    for (const FWorldSurvivalActionReceipt& Receipt : Profile.ActionReceipts)
+    {
+        if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
+            Receipt.EntityId != Profile.EntityId ||
+            static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::RecordDiscovery) ||
+            Receipt.ExpectedProfileRevision <= 0 ||
+            Receipt.ResultingProfileRevision != Receipt.ExpectedProfileRevision + 1 ||
+            Receipt.ResultingProfileRevision > Profile.Revision)
+            return false;
+        SeenOperations.Add(Receipt.OperationId);
+
+        switch (Receipt.Action)
         {
-            TSet<FGuid> SeenOperations;
-            for (const FWorldSurvivalActionReceipt& Receipt : Profile.ActionReceipts)
-            {
-                if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
-                    Receipt.EntityId != Profile.EntityId ||
-                    static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::BeginRest) ||
-                    Receipt.ExpectedProfileRevision <= 0 ||
-                    Receipt.ResultingProfileRevision != Receipt.ExpectedProfileRevision + 1 ||
-                    Receipt.ResultingProfileRevision > Profile.Revision)
-                    return false;
-                SeenOperations.Add(Receipt.OperationId);
-                if (Receipt.Action == EWorldSurvivalActionKind::ConsumeFoodItem)
-                {
-                    if (!Receipt.ItemId.IsValid() || !Receipt.ExpectedItemOwnerId.IsValid() ||
-                        Receipt.ExpectedItemRevision <= 0 ||
-                        Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
-                        Receipt.ItemDefinitionId.IsNone() ||
-                        !FMath::IsFinite(Receipt.CaloriesKcal) ||
-                        Receipt.CaloriesKcal < 0.0f || Receipt.CaloriesKcal > 10000.0f ||
-                        !FMath::IsFinite(Receipt.ThirstRelief) ||
-                        Receipt.ThirstRelief < 0.0f || Receipt.ThirstRelief > 100.0f)
-                        return false;
-                }
-                else
-                {
-                    if (!FMath::IsFinite(Receipt.RequestedStartTimeSeconds) ||
-                        Receipt.RequestedStartTimeSeconds < 0.0 ||
-                        !FMath::IsFinite(Receipt.RequestedDurationSeconds) ||
-                        Receipt.RequestedDurationSeconds <= 0.0 ||
-                        Receipt.RequestedDurationSeconds > 43200.0 ||
-                        !FMath::IsFinite(Receipt.ResultingRestUntilTimeSeconds) ||
-                        !FMath::IsNearlyEqual(Receipt.ResultingRestUntilTimeSeconds,
-                            Receipt.RequestedStartTimeSeconds + Receipt.RequestedDurationSeconds, 0.001))
-                        return false;
-                }
-            }
-            return true;
-        }();
+        case EWorldSurvivalActionKind::ConsumeFoodItem:
+            if (!Receipt.ItemId.IsValid() || !Receipt.ExpectedItemOwnerId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ItemDefinitionId.IsNone() ||
+                !InRange(Receipt.CaloriesKcal, 0.0f, 10000.0f) ||
+                !InRange(Receipt.ThirstRelief, 0.0f, 100.0f))
+                return false;
+            break;
+        case EWorldSurvivalActionKind::BeginRest:
+            if (!FMath::IsFinite(Receipt.RequestedStartTimeSeconds) ||
+                Receipt.RequestedStartTimeSeconds < 0.0 ||
+                !FMath::IsFinite(Receipt.RequestedDurationSeconds) ||
+                Receipt.RequestedDurationSeconds <= 0.0 ||
+                Receipt.RequestedDurationSeconds > 43200.0 ||
+                !FMath::IsFinite(Receipt.ResultingRestUntilTimeSeconds) ||
+                !FMath::IsNearlyEqual(Receipt.ResultingRestUntilTimeSeconds,
+                    Receipt.RequestedStartTimeSeconds + Receipt.RequestedDurationSeconds, 0.001))
+                return false;
+            break;
+        case EWorldSurvivalActionKind::ApplyCondition:
+            if (!Receipt.RelatedConditionId.IsValid() || Receipt.ConditionDefinitionId.IsNone() ||
+                !FMath::IsFinite(Receipt.ConditionEndTimeSeconds) ||
+                Receipt.ConditionEndTimeSeconds < 0.0)
+                return false;
+            break;
+        case EWorldSurvivalActionKind::TreatCondition:
+            if (!Receipt.RelatedConditionId.IsValid() || Receipt.ConditionDefinitionId.IsNone() ||
+                !Receipt.ItemId.IsValid() || !Receipt.ExpectedItemOwnerId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ItemDefinitionId.IsNone())
+                return false;
+            break;
+        case EWorldSurvivalActionKind::EquipItem:
+        case EWorldSurvivalActionKind::UnequipItem:
+            if (!Receipt.ItemId.IsValid() || !Receipt.ExpectedItemOwnerId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ItemDefinitionId.IsNone() ||
+                static_cast<uint8>(Receipt.EquipmentSlot) > static_cast<uint8>(EWorldEquipmentSlot::Feet))
+                return false;
+            break;
+        case EWorldSurvivalActionKind::RecordDiscovery:
+            if (Receipt.DiscoveryId.IsNone() || Receipt.RequestedLocation.ContainsNaN() ||
+                !FMath::IsFinite(Receipt.RequestedDiscoveryTimeSeconds) ||
+                Receipt.RequestedDiscoveryTimeSeconds < 0.0)
+                return false;
+            break;
+        default:
+            return false;
+        }
+    }
+    return true;
 }
 
 bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profile)
