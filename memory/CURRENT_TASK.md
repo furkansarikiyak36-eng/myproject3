@@ -83,7 +83,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (passes configured seed return into crop definitions).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` lines 350–442 (planting and feed paths re-read).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` lines 443–530 (harvest output construction and crop state read).
-- `Source/MyProject3/WorldAgricultureSubsystem.h` (added saved `SeedDefinitionId` so a planted crop returns the seed type that was planted even if data later changes).
+- `Source/MyProject3/WorldAgricultureSubsystem.h` (crop state stores seed definition and seed-return count).
+- `Source/MyProject3/WorldAgricultureSubsystem.cpp` (captures both at planting; harvest creates harvest items plus seed items as one atomic output batch; receipt and restore validators use total output count and enforce a max of 64 combined units).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
