@@ -1302,6 +1302,14 @@ void ULogCarryComponent::ClearHeldStateForSnapshotRestore()
             Load->UnregisterCarried(HeldMaterialPiece);
     }
 
+    // Held flags are Transient on the physical actors. They are not restored
+    // by the actor SaveGame archive, so clear the live relationship explicitly;
+    // the target snapshot's CarryComponents will reapply Held after actor restore.
+    if (IsValid(HeldPiece))
+        HeldPiece->SetHeldState(false);
+    if (IsValid(HeldMaterialPiece))
+        SetMaterialHeld(HeldMaterialPiece, false);
+
     HeldPiece = nullptr;
     HeldMaterialPiece = nullptr;
     CurrentSnapTarget = nullptr;
