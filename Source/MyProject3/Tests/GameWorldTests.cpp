@@ -1289,6 +1289,26 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Craft filter after its discovery"), Inventory->TryCraft(TEXT("make_filter")));
     TestEqual(TEXT("One water filter is crafted"), Inventory->GetItemCount(TEXT("Tool.Filter")), 1);
 
+    FInventoryStack RootSeed;
+    RootSeed.ItemId = TEXT("Seed.Root");
+    RootSeed.Quantity = 1;
+    RootSeed.MaxStack = 99;
+    TestTrue(TEXT("Root seed enters inventory before its knowledge gate"), Inventory->TryAddItem(RootSeed));
+    FWorldProductionStation StationSnapshot;
+    TestTrue(TEXT("Read kiln station before adding test stock"), Production->GetStation(Kiln->GetStationId(), StationSnapshot));
+    TestTrue(TEXT("Seed stock is arranged by a system-level setup"), Production->AddStock(
+        Kiln->GetStationId(), TEXT("Seed.Root"), 1, StationSnapshot.Revision));
+    TestFalse(TEXT("Player cannot deposit a locked root seed into a station"),
+        Kiln->TryDeposit(Inventory, TEXT("Seed.Root"), 1));
+    TestFalse(TEXT("Player cannot take a locked root seed from a station"),
+        Kiln->TryTake(Inventory, TEXT("Seed.Root"), 1));
+    TestTrue(TEXT("Discover high forest to unlock root seed handling"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), PlayerProfile.EntityId, TEXT("Zone.2"), FVector::ZeroVector, AccessReason));
+    TestTrue(TEXT("Root seed can be taken after discovery"), Kiln->TryTake(Inventory, TEXT("Seed.Root"), 1));
+    TestEqual(TEXT("Taken root seed is now in inventory"), Inventory->GetItemCount(TEXT("Seed.Root")), 2);
+    TestTrue(TEXT("Root seed can be deposited after discovery"), Kiln->TryDeposit(Inventory, TEXT("Seed.Root"), 1));
+    TestEqual(TEXT("Only the original root seed remains in inventory"), Inventory->GetItemCount(TEXT("Seed.Root")), 1);
+
     TestTrue(TEXT("Replace it with a plain wood fire"),
         Fire->RestoreSimulationFuelState(7200.0f, true, 1.0f));
     TestFalse(TEXT("A wood fire is not hot enough"),
