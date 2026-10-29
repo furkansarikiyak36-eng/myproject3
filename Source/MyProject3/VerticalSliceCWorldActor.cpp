@@ -1051,6 +1051,8 @@ void AVerticalSliceCWorldActor::SetupPlayer()
     if (!Survival->RegisterProfile(Profile))
         return;
     PlayerSurvivalId = Profile.EntityId;
+    if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Pawn))
+        Character->SetSurvivalEntityId(PlayerSurvivalId);
     // Start by the cold fire looking towards the unfinished cabin.
     if (!FParse::Param(FCommandLine::Get(), TEXT("NoStartView")))
         Controller->SetControlRotation(FRotator(-6.0f, 148.0f, 0.0f));
