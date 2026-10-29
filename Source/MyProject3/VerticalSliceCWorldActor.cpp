@@ -10,6 +10,8 @@
 #include "LogBuildPiece.h"
 #include "LogContainerActor.h"
 #include "LogCarryComponent.h"
+#include "InventoryCraftingComponent.h"
+#include "InventoryCraftingTypes.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
 #include "StickPrimitivePiece.h"
@@ -19,6 +21,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
 
 #include "Components/DirectionalLightComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -1067,9 +1070,80 @@ void AVerticalSliceCWorldActor::SetupPlayer()
                 &AVerticalSliceCWorldActor::ChopInput);
             Binding.bConsumeInput = false;
             InputComponent->BindKey(EKeys::J, IE_Pressed, this, &AVerticalSliceCWorldActor::HelperOrderInput);
+            FInputKeyBinding& FillWaterBinding = InputComponent->BindKey(
+                EKeys::I, IE_Pressed, this, &AVerticalSliceCWorldActor::FillCreekWaterInput);
+            FillWaterBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
+}
+
+void AVerticalSliceCWorldActor::FillCreekWaterInput()
+{
+    APlayerController* Controller = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    if (!Pawn || !PlayerSurvivalId.IsValid())
+        return;
+
+    const FVector PlayerLocation = Pawn->GetActorLocation();
+    if (!IsInCreek(PlayerLocation))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
+                TEXT("Move into the creek to collect water. (I: fill fired pot)"));
+        return;
+    }
+
+    UInventoryCraftingComponent* Inventory = Pawn->FindComponentByClass<UInventoryCraftingComponent>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+    if (!Inventory || !Ownership || !Survival)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Red,
+                TEXT("Water collection is unavailable: inventory or survival system missing."));
+        return;
+    }
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    FWorldSurvivalProfile Profile;
+    if (!InventoryOwnerId.IsValid() || !Survival->GetProfile(PlayerSurvivalId, Profile))
+        return;
+
+    for (const FInventoryStack& Stack : Inventory->Items)
+    {
+        if (Stack.ItemId != FName(TEXT("Pot.Fired")) ||
+            !Stack.OwnedWorldItemId.IsValid() || Stack.Quantity != 1 || Stack.MaxStack != 1)
+            continue;
+
+        FWorldOwnedItemRecord Container;
+        if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Container) ||
+            Container.OwnerKind != EWorldItemOwnerKind::Inventory ||
+            Container.OwnerId != InventoryOwnerId ||
+            Container.DefinitionId != FName(TEXT("Pot.Fired")))
+            continue;
+
+        FGuid WaterItemId;
+        if (Survival->TryFillWaterFromCreek(
+            FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision,
+            Container.ItemId, Container.Revision, InventoryOwnerId, PlayerLocation, WaterItemId))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(150, 205, 255),
+                    TEXT("Filled the fired pot with dirty creek water. Boil it before drinking."));
+        }
+        else if (GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                TEXT("Could not fill the pot. Check inventory space and try again."));
+        }
+        return;
+    }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+            TEXT("You need a fired clay pot (Pot.Fired) to collect creek water."));
 }
 
 void AVerticalSliceCWorldActor::ChopInput()
