@@ -14,17 +14,17 @@ Update this file whenever a task changes state.
 
 | Status | Count | Tasks |
 |---|---:|---|
-| Var | 13 | P0.3, P0.4, P0.5, P1.1, P1.2, P2.4, P2.6, P4.2, P4.4, P5.1, P5.3, P6.1, P6.4 |
-| Kısmi | 19 | P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P6.2, P6.3, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
-| Yok | 11 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P8.1, P9.1, P9.3, P11, P12 |
+| Var | 14 | P0.2, P0.3, P0.4, P0.5, P1.1, P1.2, P2.4, P2.6, P4.2, P4.4, P5.1, P5.3, P6.1, P6.4 |
+| Kısmi | 21 | P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P3.3, P3.4, P4.1, P4.3, P6.2, P6.3, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
+| Yok | 8 | P1.3, P1.4, P5.2, P8.1, P9.1, P9.3, P11, P12 |
 
-Player input/HUD: prototype controls include carry/cut/build, dig (N), creek fill (I), drink (M), boil (F5), rest (F6), survival status (F7), fire refuel (O), helper order (J) and station controls (F2/F3/F4). F7 shows both physical-body HP and survival HP, thirst, stamina, fatigue, wetness, core temperature, rest and condition IDs. Controls/status are source-authored but not built or PIE-verified. No station actors/meshes have yet been placed in VerticalSlice_C.
+Player input/HUD: prototype controls include carry/cut/build, dig (N), creek fill (I), drink (M), boil (F5), rest (F6), survival status (F7), fire refuel (O), helper order (J) and station controls (F2/F3/F4). F7 shows both physical-body HP and survival HP, thirst, stamina, fatigue, wetness, core temperature, rest and condition IDs. Controls/status are source-authored but not built or PIE-verified. Primitive station actors are now placed in VerticalSlice_C on this branch; placement and meshes remain unverified in PIE.
 
 ## Per task
 
 | Task | Status | Exists | Missing |
 |---|---|---|---|
-| P0.2 freeze note | Yok | — | note in Placement/CLAUDE.md, carry.md |
+| P0.2 freeze note | Var (docs) | `Source/MyProject3/Placement/CLAUDE.md`, `Source/MyProject3/Placement/carry.md` | Contract documented; code behavior and all other tasks still need their own evidence |
 | P0.3 data files | Var | `Config/GameData/`: materials, items (89), transformations (59 rows = the 38 plan steps), stations (10), conditions, crops (3 placeholders), calendar, climate, layers | user review of the lists; events.json comes with P1.3 |
 | P0.4 data loader | Var | `UWorldGameDataSubsystem`: loads + checks every reference, applies data to production/survival/climate/calendar/terrain/agriculture; inventory item weights and hand recipes are backfilled for inventories that began play before data application; existing and newly spawned fires receive authored fuels; 3 baseline tests | VerticalSlice_C coordinator/bootstrap integration and PIE remain unverified |
 | P0.5 recipes from data | Var | `UWorldGameDataSubsystem` builds hand/station recipes from `transformations.json`; demo scenario now selects only a data transformation ID and builds recipe payload from that record | batch build + legacy Blueprint/config compatibility and PIE still unverified |
