@@ -2,6 +2,11 @@
 
 Newest first. Each: the decision, then why.
 
+- **2026-10-29 · From now on code is written without building; one batch build/test/fix session at the end.**
+  Any assistant (web, other accounts) continues from GitHub on `game/p00-adopt-group-a`, status ceiling
+  `code-written`, following "Writing code without a compiler" in `ROADMAP.md`. At the end one Claude Code session
+  runs "Batch build and fix" (same file). Why: Claude Code sessions run out; building per task costs tokens;
+  failures are fixed by root cause in one pass instead of one by one.
 - **2026-10-29 · Build the backend first; open the new game scene ("Valley") last.** VerticalSlice_C stays the
   log/placement test level. Until the scene exists, tasks stop at `tested` (no `played`); a headless
   "whole world" automation test (data + bootstrap + a fast year + save/load) stands in for seeing it all together.

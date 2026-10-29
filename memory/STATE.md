@@ -8,7 +8,9 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 Working branch: **`game/p00-adopt-group-a`** = `group-a-code-closure` (ChatGPT backend) + `feature/simple-intent`
 (placement kernel, plan, memory). Builds; **85/85 automation tests pass**. Not played in PIE.
 Plan: `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`; tasks `ROADMAP.md`; per-task status `PLAN_STATUS.md`.
-Current work: finishing the partial tasks (`CURRENT_TASK.md`).
+Current work: finishing the partial tasks (`CURRENT_TASK.md`). From 2026-10-29 code is written without
+building (rules in `ROADMAP.md`); one batch build/test/fix at the end; the new scene last.
+Last built and tested: `bbc57b3` = 102/102.
 
 ## Branches
 

@@ -38,6 +38,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 9. [ ] P8.2-P8.3 raid signals, snow load/avalanche/fire, repair
 10. [ ] P9.2 helper uses stations; P10 thatch/notches (frozen: skip); save gaps
 Order may change; record why here.
+User 2026-10-29: no more builds per task; write code (ROADMAP 'Writing code without a compiler'), batch build/fix at the end.
 User 2026-10-29: scene last. Backend first; add a headless whole-world year test.
 User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; skip P10 (frozen).
 
@@ -56,4 +57,9 @@ User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; ski
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 7: P6 farming backend (field cell state, 15 steps with tools, crops.json, plant months, exhaustion, seed saving, animal chain). Then P7, P8, P9.2. Then the headless whole-world year test. Scene (P1.4) last.
+Any assistant: step 7, P6 farming, WITHOUT building (ROADMAP rules). Read first: WorldAgricultureSubsystem.h
+(FWorldCropDefinition, TryPlantCrop, TryHarvestCrop, ECropGrowthStage), Config/GameData/crops.json,
+WorldGameDataSubsystem.h (FGameDataCrop). Then: field cell state (cleared, tilled, fertility, weeds, mulch, moisture),
+plant only in plant_months (WorldCalendar), soil exhaustion per harvest, seed saving (harvest gives seeds back),
+register crops from data in UWorldGameDataSubsystem::ApplyToWorld. Write tests. Then P6.4, P7, P8, P9.2,
+the headless whole-world year test, then the batch build/fix session, then the scene.

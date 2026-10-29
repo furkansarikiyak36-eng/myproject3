@@ -6,6 +6,10 @@ Branch: feature/simple-intent
 - Decision summary in `DECISIONS.md`.
 - `memory/ROADMAP.md`: ordered tasks P0-P12, honest status levels, resume protocol, open questions Q0-Q8.
 - `memory/CODEBASE.md` (living analysis by plan area) + generated `memory/CODE_INDEX.md` (`tools/memory_code_index.py`).
+- Adopted group-a on `game/p00-adopt-group-a` (fixed 16 build errors, 4 tests). Then built and tested: calendar,
+  climate (save v21), consume conditions, rest quality, spoilage by storage (save v22), fuel heat, shelter heat,
+  game data JSON + loader, crafting tool check fix, gather spots, station actor, dig layers. 102/102 at bbc57b3.
+- Decisions: scene last; from now on no per-task builds, batch fix at the end.
 ## Found
 - No code for seasons/months, spoilage, disease, flood, avalanche, wildfire, soil fertility.
 - Agriculture is plant -> stages by time and moisture only.

@@ -4,6 +4,39 @@ Design (what the game is): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md` (Turkis
 This file (how we build it): ordered tasks, honest status, evidence. Any assistant with access to
 this GitHub repo can continue from here: Claude Code, Claude web, another account, ChatGPT.
 
+## Writing code without a compiler (all assistants, from 2026-10-29)
+
+Work branch: `game/p00-adopt-group-a` (builds, 102/102 tests at `bbc57b3`). Status ceiling: `code-written`.
+Most errors in unbuilt code are names that do not exist (group-a had 16). So:
+
+1. **Read the header before you use anything.** Copy field, function and enum names from the `.h` file you read
+   in this session (search `memory/CODE_INDEX.md`, then open the header). Never guess a name or a signature.
+2. Unreal rules that broke builds before: `BlueprintReadWrite` is not allowed on `private:` members;
+   `FBox::IsValid` is a field (no `()`); a `USTRUCT` with `GENERATED_BODY()` cannot be brace-initialised
+   (`{a, b}`): set fields one by one; a loop variable must not reuse a name from an outer scope (C4459);
+   every new `.h` needs `#include "X.generated.h"` as its last include.
+3. Survival steps take the step's **end** time (`AdvanceSurvivalStep(Delta, EndTime)`).
+4. A new saved field: add it to the struct, to the restore validation, and a save schema migration step
+   (`WorldSaveCoordinatorSubsystem.cpp`, current schema 22).
+5. Keep a change small and in one place; do not refactor files you are not changing.
+6. **Write the test with the code** (in `Tests/GameWorldTests.cpp`), even though you cannot run it.
+   Name: `MyProject3.World.<Area>.<What>`.
+7. Lists live in `Config/GameData/*.json`; new items/recipes go there, not into C++. Keep ids unique and
+   every reference existing (the loader refuses the whole load otherwise).
+8. Commit per task with the message `<Area>: <what> (P#.#) [unbuilt]`. Log the task in `CURRENT_TASK.md` and
+   the progress log with status `code-written`.
+
+## Batch build and fix (one Claude Code session at the end)
+
+Editor closed. Then, in order, without fixing anything in between:
+1. Build. Collect **all** errors into `memory/sessions/<date>_batch-fix.md`, grouped by file and by cause.
+2. Fix compile errors by cause (a wrong name used in 5 places is one fix). Rebuild until it builds.
+3. Run all tests once. List every failure with its first `Error: Expected` line.
+4. Group failures by root cause before touching code: same system, same data, same contract.
+   Fix a whole group together; decide whether the code or the test is wrong (say which).
+5. Run all tests again. Repeat 4-5 only for what still fails.
+6. Update `PLAN_STATUS.md` (`code-written` -> `tested`), commit, push.
+
 ## How to continue (read this first)
 
 1. Read `memory/README.md`, `memory/STATE.md`, the newest file in `memory/sessions/`, then this file.
