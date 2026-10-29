@@ -3,6 +3,7 @@
 #include "LogBuildToolsComponent.h"
 #include "PhysicalHealthComponent.h"
 #include "ShelterSensorComponent.h"
+#include "WorldSurvivalSubsystem.h"
 #include "TerrainDigToolComponent.h"
 
 #include "Camera/CameraComponent.h"
@@ -35,6 +36,7 @@ ALogSnapCharacter::ALogSnapCharacter()
         Movement->bOrientRotationToMovement = false;
         Movement->RotationRate = FRotator(0.0f, 540.0f, 0.0f);
         Movement->MaxWalkSpeed = 420.0f;
+        BaseWalkSpeed = Movement->MaxWalkSpeed;
         Movement->JumpZVelocity = 420.0f;
         Movement->AirControl = 0.25f;
         // A rolling or turning log under the feet must not spin the view or
@@ -314,8 +316,62 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
     {
         return PlayerController->IsInputKeyDown(Key) ? 1.0f : 0.0f;
     };
-    MoveForward(KeyValue(EKeys::W) - KeyValue(EKeys::S));
-    MoveRight(KeyValue(EKeys::D) - KeyValue(EKeys::A));
+    const float ForwardInput = KeyValue(EKeys::W) - KeyValue(EKeys::S);
+    const float RightInput = KeyValue(EKeys::D) - KeyValue(EKeys::A);
+    const bool bHasMovementInput = !FMath::IsNearlyZero(ForwardInput) ||
+        !FMath::IsNearlyZero(RightInput);
+
+    UWorldSurvivalSubsystem* Survival = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    FWorldSurvivalProfile SurvivalProfile;
+    const bool bHasSurvivalProfile = Survival && IsValid(ShelterSensor) &&
+        ShelterSensor->SurvivalEntityId.IsValid() &&
+        Survival->GetProfile(ShelterSensor->SurvivalEntityId, SurvivalProfile);
+    bool bSprintActive = false;
+    float FatigueSpeedFactor = 1.0f;
+    if (bHasSurvivalProfile)
+    {
+        FatigueSpeedFactor = FMath::Lerp(1.0f, 0.45f,
+            FMath::Clamp(SurvivalProfile.Fatigue / 100.0f, 0.0f, 1.0f));
+        bSprintActive = bHasMovementInput &&
+            PlayerController->IsInputKeyDown(EKeys::LeftShift) &&
+            SurvivalProfile.Stamina > 20.0f && SurvivalProfile.Fatigue < 85.0f;
+        if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+            Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor * (bSprintActive ? 1.5f : 1.0f);
+
+        if (bHasMovementInput)
+        {
+            SurvivalActivityAccumulator += DeltaSeconds;
+            if (SurvivalActivityAccumulator >= 1.0f)
+            {
+                const float ActivitySeconds = FMath::Clamp(SurvivalActivityAccumulator, 1.0f, 10.0f);
+                SurvivalActivityAccumulator = 0.0f;
+                const bool bRecorded = Survival->RecordActivity(
+                    ShelterSensor->SurvivalEntityId,
+                    bSprintActive ? ESurvivalActivity::Run : ESurvivalActivity::Walk,
+                    ActivitySeconds, 0.0f);
+                if (bSprintActive && !bRecorded)
+                {
+                    bSprintActive = false;
+                    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+                        Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor;
+                }
+            }
+        }
+        else
+        {
+            SurvivalActivityAccumulator = 0.0f;
+        }
+    }
+    else
+    {
+        SurvivalActivityAccumulator = 0.0f;
+        if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+            Movement->MaxWalkSpeed = BaseWalkSpeed;
+    }
+
+    MoveForward(ForwardInput);
+    MoveRight(RightInput);
 
     // Step-ups onto logs and rocks move the capsule in one frame; the camera
     // follows smoothly instead of snapping.
