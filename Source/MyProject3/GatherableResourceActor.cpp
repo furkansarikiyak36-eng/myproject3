@@ -4,6 +4,7 @@
 #include "WorldGameDataSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 
@@ -66,17 +67,20 @@ bool AGatherableResourceActor::TryGather(UInventoryCraftingComponent* Inventory,
     Refill();
     if (!IsValid(Inventory) || ItemDefinitionId.IsNone() || UnitsPerGather <= 0 || AvailableUnits <= 0)
         return false;
+
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    const FGameDataItem* ItemDefinition =
+        GameData && GameData->IsApplied() ? GameData->GetItems().Find(ItemDefinitionId) : nullptr;
+    if (!ItemDefinition)
+        return false; // Gather nodes may only grant registered game-data items.
     if (!RequiredToolId.IsNone() && Inventory->GetItemCount(RequiredToolId) <= 0)
         return false;
 
     const int32 Units = FMath::Min(UnitsPerGather, AvailableUnits);
-    UWorld* World = GetWorld();
-    if (const UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr)
-    {
-        const FGameDataItem* Item = GameData->GetItems().Find(ItemDefinitionId);
-        if (Item && !Inventory->ItemWeightGrams.Contains(ItemDefinitionId))
-            Inventory->ItemWeightGrams.Add(ItemDefinitionId, Item->WeightGrams);
-    }
+    if (!Inventory->ItemWeightGrams.Contains(ItemDefinitionId))
+        Inventory->ItemWeightGrams.Add(ItemDefinitionId, ItemDefinition->WeightGrams);
 
     if (!bGiveLedgerItems)
     {
@@ -103,17 +107,49 @@ bool AGatherableResourceActor::TryGather(UInventoryCraftingComponent* Inventory,
         }
         if (!Inventory->CanAddItems(Incoming))
             return false;
+
+        FGuid OwnerActorId;
+        FGuid InventoryOwnerBefore;
+        TArray<FInventoryStack> InventoryItemsBefore;
+        FName QuickAccessBefore = NAME_None;
+        Inventory->ExportSnapshot(OwnerActorId, InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        if (!InventoryOwnerBefore.IsValid() || InventoryOwnerBefore != Inventory->GetInventoryOwnerId())
+            return false;
+
+        TArray<FWorldOwnedItemRecord> ItemsBefore;
+        TArray<FWorldItemTransferReceipt> TransfersBefore;
+        TArray<FWorldItemSplitReceipt> SplitsBefore;
+        Ownership->ExportSnapshot(ItemsBefore, TransfersBefore, SplitsBefore);
+        auto Rollback = [&]() -> bool
+        {
+            const bool bOwnershipRestored = Ownership->RestoreSnapshot(ItemsBefore, TransfersBefore, SplitsBefore);
+            const bool bInventoryRestored = Inventory->RestoreSnapshot(
+                InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+            if (!bOwnershipRestored || !bInventoryRestored)
+            {
+                if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                    World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                    Coordinator->MarkSimulationFaulted(
+                        TEXT("Gather rollback failed; stop simulation and recover/reset the world."));
+                return false;
+            }
+            return true;
+        };
+
         for (FInventoryStack& Stack : Incoming)
         {
             FWorldOwnedItemRecord Record;
             Record.ItemId = FGuid::NewGuid();
             Record.DefinitionId = ItemDefinitionId;
             Record.OwnerKind = EWorldItemOwnerKind::Inventory;
-            Record.OwnerId = Inventory->GetInventoryOwnerId();
+            Record.OwnerId = InventoryOwnerBefore;
             Record.CreatedAtWorldTimeSeconds = Now();
             Stack.OwnedWorldItemId = Record.ItemId;
             if (!Ownership->RegisterItem(Record) || !Inventory->TryAddItem(Stack))
+            {
+                Rollback();
                 return false;
+            }
         }
     }
     // Refill() left the refill clock at "now" when the place was full, so regrowth starts here.
