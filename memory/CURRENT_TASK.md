@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Fix `ShelterSensorComponent::HitsBuiltPiece` to skip `AConstructionOpeningActor` hits unless the panel exists and is closed. Prefer a multi-hit line trace so an empty/open frame doesn't mask a legitimate built piece behind it. Add/update the shelter automation test for empty door opening vs closed built panel vs open door and ensure only placed structural pieces count. Then update P3.2 status.
+Change `HitsBuiltPiece` to use a multi-hit ray; return shelter protection for a placed structural piece or an opening actor only when it has a panel and is closed. Ignore empty/open opening hits and continue checking farther hits. Add the empty-opening shelter regression to `FShelterCoverTest` (and verify existing roof coverage still counts).
