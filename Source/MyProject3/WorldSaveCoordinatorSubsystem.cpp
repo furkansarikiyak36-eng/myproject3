@@ -1,5 +1,9 @@
 #include "WorldSaveCoordinatorSubsystem.h"
 #include "LogContainerActor.h"
+#include "LogCarryComponent.h"
+#include "LogBuildPiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 #include "Misc/GuardValue.h"
 
 #include "Engine/World.h"
@@ -177,6 +181,204 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
         // Save the authoritative item record at the same world location as its
         // physics actor; otherwise a load would restore a stale ledger position.
         Item.WorldLocation = ActorState.ActorTransform.GetLocation();
+    }
+    return true;
+}
+
+bool CaptureCarryComponentSnapshots(
+    UWorld* World,
+    TArray<FWorldCarryComponentSnapshot>& OutSnapshots)
+{
+    if (!World)
+        return false;
+
+    OutSnapshots.Reset();
+    TSet<FGuid> SeenCarryIds;
+    TSet<FGuid> SeenItemIds;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* OwnerActor = *It;
+        TArray<ULogCarryComponent*> CarryComponents;
+        if (!IsValid(OwnerActor))
+            continue;
+        OwnerActor->GetComponents<ULogCarryComponent>(CarryComponents);
+        for (ULogCarryComponent* Carry : CarryComponents)
+        {
+            if (!IsValid(Carry))
+                return false;
+            AActor* HeldItem = nullptr;
+            bool bIsMaterial = false;
+            if (!Carry->GetHeldItemForSnapshot(HeldItem, bIsMaterial))
+                return false;
+            if (!HeldItem)
+                continue;
+
+            UWorldObjectIdentityComponent* Identity =
+                HeldItem->FindComponentByClass<UWorldObjectIdentityComponent>();
+            const FGuid CarryOwnerId = Carry->GetCarryOwnerIdForSnapshot();
+            if (!Identity || !Identity->HasValidIdentity() ||
+                Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+                !CarryOwnerId.IsValid() ||
+                SeenCarryIds.Contains(CarryOwnerId) ||
+                SeenItemIds.Contains(Identity->GetInstanceId()))
+                return false;
+
+            FWorldCarryComponentSnapshot& State = OutSnapshots.AddDefaulted_GetRef();
+            State.OwnerActorPath = FSoftObjectPath(OwnerActor);
+            State.CarryComponentName = Carry->GetFName();
+            State.CarryOwnerId = CarryOwnerId;
+            State.HeldItemId = Identity->GetInstanceId();
+            State.HeldItemRelativeTransform =
+                HeldItem->GetActorTransform().GetRelativeTransform(OwnerActor->GetActorTransform());
+            State.bHeldMaterialPiece = bIsMaterial;
+            const APawn* OwnerPawn = Cast<APawn>(OwnerActor);
+            State.bPlayerControlledOwner = OwnerPawn && OwnerPawn->IsPlayerControlled();
+            if (State.OwnerActorPath.IsNull() || State.CarryComponentName.IsNone() ||
+                !State.HeldItemRelativeTransform.IsValid())
+                return false;
+
+            SeenCarryIds.Add(CarryOwnerId);
+            SeenItemIds.Add(Identity->GetInstanceId());
+        }
+    }
+    OutSnapshots.Sort([](const FWorldCarryComponentSnapshot& A,
+        const FWorldCarryComponentSnapshot& B)
+    {
+        return A.HeldItemId.ToString() < B.HeldItemId.ToString();
+    });
+    return true;
+}
+
+bool ValidateCarryComponentSnapshots(
+    const TArray<FWorldOwnedItemRecord>& Items,
+    const TArray<FWorldPhysicalActorSnapshot>& PhysicalActors,
+    const TArray<FWorldCarryComponentSnapshot>& CarrySnapshots)
+{
+    TMap<FGuid, const FWorldOwnedItemRecord*> ItemsById;
+    for (const FWorldOwnedItemRecord& Item : Items)
+    {
+        if (!Item.ItemId.IsValid() || ItemsById.Contains(Item.ItemId))
+            return false;
+        ItemsById.Add(Item.ItemId, &Item);
+    }
+
+    TMap<FGuid, const FWorldPhysicalActorSnapshot*> ActorsById;
+    for (const FWorldPhysicalActorSnapshot& Actor : PhysicalActors)
+    {
+        if (!Actor.IdentityId.IsValid() || ActorsById.Contains(Actor.IdentityId))
+            return false;
+        ActorsById.Add(Actor.IdentityId, &Actor);
+    }
+
+    TSet<FGuid> CarryIds;
+    TSet<FGuid> HeldItemIds;
+    for (const FWorldCarryComponentSnapshot& Carry : CarrySnapshots)
+    {
+        if (!Carry.CarryOwnerId.IsValid() || !Carry.HeldItemId.IsValid() ||
+            Carry.OwnerActorPath.IsNull() || Carry.CarryComponentName.IsNone() ||
+            !Carry.HeldItemRelativeTransform.IsValid() ||
+            CarryIds.Contains(Carry.CarryOwnerId) || HeldItemIds.Contains(Carry.HeldItemId))
+            return false;
+
+        const FWorldOwnedItemRecord* Item = ItemsById.FindRef(Carry.HeldItemId);
+        const FWorldPhysicalActorSnapshot* Actor = ActorsById.FindRef(Carry.HeldItemId);
+        if (!Item || !Actor || Item->OwnerKind != EWorldItemOwnerKind::Held ||
+            Item->OwnerId != Carry.CarryOwnerId || Item->Quantity != 1 ||
+            Actor->LifecycleState != EWorldObjectLifecycleState::Held)
+            return false;
+
+        CarryIds.Add(Carry.CarryOwnerId);
+        HeldItemIds.Add(Carry.HeldItemId);
+    }
+
+    for (const FWorldOwnedItemRecord& Item : Items)
+    {
+        if (Item.OwnerKind == EWorldItemOwnerKind::Held && !HeldItemIds.Contains(Item.ItemId))
+            return false;
+    }
+    return true;
+}
+
+void ClearCarryComponentsForSnapshotRestore(UWorld* World)
+{
+    if (!World)
+        return;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        TArray<ULogCarryComponent*> CarryComponents;
+        if (IsValid(*It))
+            It->GetComponents<ULogCarryComponent>(CarryComponents);
+        for (ULogCarryComponent* Carry : CarryComponents)
+            if (IsValid(Carry))
+                Carry->ClearHeldStateForSnapshotRestore();
+    }
+}
+
+bool RestoreCarryComponentSnapshots(
+    UWorld* World,
+    const TArray<FWorldCarryComponentSnapshot>& CarrySnapshots)
+{
+    if (!World)
+        return false;
+
+    TSet<ULogCarryComponent*> RestoredComponents;
+    TSet<FGuid> RestoredItemIds;
+    for (const FWorldCarryComponentSnapshot& State : CarrySnapshots)
+    {
+        AActor* OwnerActor = Cast<AActor>(State.OwnerActorPath.ResolveObject());
+        if (!IsValid(OwnerActor) && State.bPlayerControlledOwner)
+            OwnerActor = UGameplayStatics::GetPlayerPawn(World, 0);
+        if (!IsValid(OwnerActor))
+        {
+            for (TActorIterator<AActor> It(World); It; ++It)
+            {
+                if (IsValid(*It) && It->GetPathName() == State.OwnerActorPath.ToString())
+                {
+                    OwnerActor = *It;
+                    break;
+                }
+            }
+        }
+        if (!IsValid(OwnerActor))
+            return false;
+
+        TArray<ULogCarryComponent*> CarryComponents;
+        OwnerActor->GetComponents<ULogCarryComponent>(CarryComponents);
+        ULogCarryComponent* Carry = nullptr;
+        for (ULogCarryComponent* Candidate : CarryComponents)
+        {
+            if (IsValid(Candidate) && Candidate->GetFName() == State.CarryComponentName)
+            {
+                Carry = Candidate;
+                break;
+            }
+        }
+        if (!Carry && State.bPlayerControlledOwner && CarryComponents.Num() == 1)
+            Carry = CarryComponents[0];
+        if (!IsValid(Carry) || RestoredComponents.Contains(Carry) ||
+            RestoredItemIds.Contains(State.HeldItemId))
+            return false;
+
+        AActor* ItemActor = nullptr;
+        for (TActorIterator<AActor> It(World); It; ++It)
+        {
+            AActor* Candidate = *It;
+            UWorldObjectIdentityComponent* Identity = IsValid(Candidate)
+                ? Candidate->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+            if (IsValid(Identity) && Identity->HasValidIdentity() &&
+                Identity->GetInstanceId() == State.HeldItemId)
+            {
+                if (ItemActor)
+                    return false;
+                ItemActor = Candidate;
+            }
+        }
+        if (!IsValid(ItemActor) ||
+            !Carry->RestoreHeldItemFromSnapshot(State.CarryOwnerId, ItemActor,
+                State.bHeldMaterialPiece, State.HeldItemRelativeTransform))
+            return false;
+        RestoredComponents.Add(Carry);
+        RestoredItemIds.Add(State.HeldItemId);
     }
     return true;
 }
