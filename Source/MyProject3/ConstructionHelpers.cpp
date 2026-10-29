@@ -277,41 +277,141 @@ bool TrimLogToRange(ALogBuildPiece* Log, float FromAlong, float ToAlong)
 ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVector& DropLocation)
 {
     FLogGeometry Geometry;
-    if (!GetLogGeometry(Log, Geometry) || !FMath::IsFinite(KeepLength) ||
+    if (!IsValid(Log) || !GetLogGeometry(Log, Geometry) ||
+        !FMath::IsFinite(KeepLength) ||
         !FMath::IsFinite(DropLocation.X) || !FMath::IsFinite(DropLocation.Y) ||
         !FMath::IsFinite(DropLocation.Z) ||
+        Log->bHasCustomLengthScale || Log->IsPlaced() ||
+        Log->GetAttachedPieceCount() > 0 ||
         KeepLength >= Geometry.Length() - 10.0f || KeepLength < 20.0f)
         return nullptr;
 
-    const FTransform SourceTransform = Log->GetActorTransform();
-    const bool bSourceHadCustomLengthScale = Log->bHasCustomLengthScale;
-    const float OriginalLength = Geometry.Length();
-    const float Split = -Geometry.HalfLength + KeepLength;
-    ALogBuildPiece* Rest = SpawnLogCopy(Log, SourceTransform);
+    auto LengthRatio = [](ELogLengthFraction Fraction, double& OutRatio) -> bool
+    {
+        switch (Fraction)
+        {
+        case ELogLengthFraction::FullLength: OutRatio = 1.0; return true;
+        case ELogLengthFraction::ThreeQuarterLength: OutRatio = 0.75; return true;
+        case ELogLengthFraction::HalfLength: OutRatio = 0.5; return true;
+        case ELogLengthFraction::QuarterLength: OutRatio = 0.25; return true;
+        case ELogLengthFraction::EighthLength: OutRatio = 0.125; return true;
+        default: OutRatio = 0.0; return false;
+        }
+    };
+
+    const ELogLengthFraction SourceLength = Log->GetLengthFraction();
+    const ELogCrossSectionProfile Profile = Log->GetCrossSectionProfile();
+    double SourceRatio = 0.0;
+    if (!LengthRatio(SourceLength, SourceRatio) || SourceRatio <= 0.0)
+        return nullptr;
+
+    const double OriginalLength = Geometry.Length();
+    const double DesiredKeptRatio = SourceRatio * KeepLength / OriginalLength;
+    const double DesiredRestRatio = SourceRatio - DesiredKeptRatio;
+    const double Tolerance = FMath::Max(2.0, static_cast<double>(KeepLength) * 0.02);
+    const ELogCutAction CandidateActions[] = {
+        ELogCutAction::SplitLengthHalf,
+        ELogCutAction::SplitLengthThreeQuarter,
+        ELogCutAction::SplitHalfLengthIntoQuarters,
+        ELogCutAction::SplitQuarterLengthIntoEighths
+    };
+
+    const FTransform OriginalTransform = Log->GetActorTransform();
+    FLogLengthCutVariant SelectedVariant;
+    ELogLengthFraction KeptFraction = ELogLengthFraction::FullLength;
+    ELogLengthFraction RestFraction = ELogLengthFraction::FullLength;
+    FTransform KeptTransform = OriginalTransform;
+    FTransform RestTransform = OriginalTransform;
+    bool bFoundRecipe = false;
+
+    for (const ELogCutAction Action : CandidateActions)
+    {
+        FLogLengthCutVariant Variant;
+        if (!Log->TryGetAuthoredLengthCutVariant(Action, Variant) ||
+            Variant.SourceLengthFraction != SourceLength ||
+            Variant.CrossSectionProfile != Profile)
+            continue;
+
+        double FirstRatio = 0.0;
+        double SecondRatio = 0.0;
+        if (!LengthRatio(Variant.FirstOutputLengthFraction, FirstRatio) ||
+            !LengthRatio(Variant.SecondOutputLengthFraction, SecondRatio))
+            continue;
+
+        const double FirstLength = OriginalLength * FirstRatio / SourceRatio;
+        const double SecondLength = OriginalLength * SecondRatio / SourceRatio;
+        const bool bKeepFirst =
+            FMath::Abs(FirstRatio - DesiredKeptRatio) <= 0.01 &&
+            FMath::Abs(SecondRatio - DesiredRestRatio) <= 0.01 &&
+            FMath::Abs(FirstLength - KeepLength) <= Tolerance &&
+            FMath::Abs(SecondLength - (OriginalLength - KeepLength)) <= Tolerance;
+        const bool bKeepSecond =
+            FMath::Abs(SecondRatio - DesiredKeptRatio) <= 0.01 &&
+            FMath::Abs(FirstRatio - DesiredRestRatio) <= 0.01 &&
+            FMath::Abs(SecondLength - KeepLength) <= Tolerance &&
+            FMath::Abs(FirstLength - (OriginalLength - KeepLength)) <= Tolerance;
+        if (!bKeepFirst && !bKeepSecond)
+            continue;
+
+        const FVector FirstLocation =
+            OriginalTransform.TransformPosition(Variant.FirstOutputCenterOffsetLocal);
+        const FVector SecondLocation =
+            OriginalTransform.TransformPosition(Variant.SecondOutputCenterOffsetLocal);
+        const FQuat FirstRotation =
+            OriginalTransform.GetRotation() * Variant.FirstOutputRotationOffsetLocal.Quaternion();
+        const FQuat SecondRotation =
+            OriginalTransform.GetRotation() * Variant.SecondOutputRotationOffsetLocal.Quaternion();
+
+        SelectedVariant = Variant;
+        if (bKeepFirst)
+        {
+            KeptFraction = Variant.FirstOutputLengthFraction;
+            RestFraction = Variant.SecondOutputLengthFraction;
+            KeptTransform = FTransform(FirstRotation, FirstLocation, OriginalTransform.GetScale3D());
+            RestTransform = FTransform(SecondRotation, SecondLocation, OriginalTransform.GetScale3D());
+        }
+        else
+        {
+            KeptFraction = Variant.SecondOutputLengthFraction;
+            RestFraction = Variant.FirstOutputLengthFraction;
+            KeptTransform = FTransform(SecondRotation, SecondLocation, OriginalTransform.GetScale3D());
+            RestTransform = FTransform(FirstRotation, FirstLocation, OriginalTransform.GetScale3D());
+        }
+        bFoundRecipe = true;
+        break;
+    }
+
+    // Arbitrary lengths remain unavailable until a true mesh-slicing pipeline is
+    // implemented. The operation only proceeds when an exact two-output recipe
+    // and both authored meshes can preserve nominal geometry and end grain.
+    if (!bFoundRecipe || !KeptTransform.IsValid() || !RestTransform.IsValid())
+        return nullptr;
+
+    ALogBuildPiece* Rest = SpawnLogCopy(Log, RestTransform);
     if (!Rest)
         return nullptr;
 
-    // A two-output cut is one logical operation. Never leave a full duplicate or
-    // a partially trimmed source when either geometry transformation fails.
-    const bool bRestTrimmed = TrimLogToRange(Rest, Split, Geometry.HalfLength);
-    const bool bSourceTrimmed = bRestTrimmed && TrimLogToRange(Log, -Geometry.HalfLength, Split);
-    FLogGeometry KeptGeometry;
-    FLogGeometry RestGeometry;
-    const bool bLengthsValid = bSourceTrimmed &&
-        GetLogGeometry(Log, KeptGeometry) && GetLogGeometry(Rest, RestGeometry) &&
-        FMath::Abs(KeptGeometry.Length() - KeepLength) <= FMath::Max(2.0f, KeepLength * 0.02f) &&
-        FMath::Abs((KeptGeometry.Length() + RestGeometry.Length()) - OriginalLength) <=
-            FMath::Max(3.0f, OriginalLength * 0.02f);
-
-    if (!bLengthsValid)
+    if (!Rest->TrySetAuthoredGeometryVariant(
+            RestFraction, Profile, RestTransform, FGuid::NewGuid()))
     {
-        Log->SetActorTransform(SourceTransform, false, nullptr, ETeleportType::TeleportPhysics);
-        Log->bHasCustomLengthScale = bSourceHadCustomLengthScale;
         Rest->Destroy();
         return nullptr;
     }
 
-    Rest->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics);
+    if (!Log->TrySetAuthoredGeometryVariant(
+            KeptFraction, Profile, KeptTransform, FGuid::NewGuid()))
+    {
+        Rest->Destroy();
+        return nullptr;
+    }
+
+    // The offcut's shape remains authored and exact; only its final drop position
+    // is changed after the split geometry has committed.
+    if (!Rest->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("Exact cut committed but the offcut could not be moved to its drop location."));
+    }
     return Rest;
 }
 
