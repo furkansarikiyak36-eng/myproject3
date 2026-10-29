@@ -43,8 +43,8 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return true;
     }
 
-    if (Raid.State == EThreatRaidState::Warning &&
-        (!MaterializedRaidId.IsValid() || MaterializedRaidId != Raid.RaidId))
+    if ((Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active) &&
+        (!ActiveRaidPawn.IsValid() || !MaterializedRaidId.IsValid() || MaterializedRaidId != Raid.RaidId))
     {
         if (!RaidPawnClass) return false;
         const FVector SpawnLocation = Raid.TargetLocation + FVector(0.0f, 0.0f, SpawnHeightOffset);
@@ -55,7 +55,22 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         Spawned->SpawnDefaultController();
         ActiveRaidPawn = Spawned;
         MaterializedRaidId = Raid.RaidId;
-        NextDamageTimeSeconds = Raid.ActiveStartTime;
+        if (Raid.LastAppliedDamagePulseIndex >= MAX_int64 - 1)
+        {
+            Spawned->Destroy();
+            ActiveRaidPawn.Reset();
+            MaterializedRaidId.Invalidate();
+            return false;
+        }
+        NextDamageTimeSeconds = Raid.ActiveStartTime +
+            (static_cast<double>(Raid.LastAppliedDamagePulseIndex) + 1.0) * AttackIntervalSeconds;
+        if (!FMath::IsFinite(NextDamageTimeSeconds))
+        {
+            Spawned->Destroy();
+            ActiveRaidPawn.Reset();
+            MaterializedRaidId.Invalidate();
+            return false;
+        }
     }
 
     if (Raid.State != EThreatRaidState::Active || Clock->GetSimulationTimeSeconds() < NextDamageTimeSeconds)
