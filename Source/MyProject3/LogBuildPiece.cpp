@@ -504,6 +504,130 @@ bool ALogBuildPiece::TrySetInitialPieceType(ELogPieceType DesiredType, FGuid Ope
     return true;
 }
 
+bool ALogBuildPiece::TryGetAuthoredLengthCutVariant(
+    ELogCutAction Action, FLogLengthCutVariant& OutVariant) const
+{
+    return TryResolveLengthCutVariant(Action, OutVariant);
+}
+
+bool ALogBuildPiece::TrySetAuthoredGeometryVariant(
+    ELogLengthFraction NewLength,
+    ELogCrossSectionProfile NewProfile,
+    const FTransform& NewTransform,
+    FGuid OperationId)
+{
+    if (!OperationId.IsValid())
+        OperationId = FGuid::NewGuid();
+
+    if (!IsValid(this) || !Mesh || bHasCustomLengthScale || bIsPlaced ||
+        GetAttachedPieceCount() > 0 || HasStructuralDependents() ||
+        !NewTransform.IsValid())
+        return false;
+
+    UWorldObjectIdentityComponent* Identity =
+        FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord CurrentItem;
+    if (!Identity || !Identity->HasValidIdentity() || !Ownership ||
+        !Ownership->TryGetItem(Identity->GetInstanceId(), CurrentItem) ||
+        CurrentItem.Quantity != 1 ||
+        (CurrentItem.OwnerKind != EWorldItemOwnerKind::World &&
+         CurrentItem.OwnerKind != EWorldItemOwnerKind::Held) ||
+        (CurrentItem.OwnerKind == EWorldItemOwnerKind::Held) != bIsHeld ||
+        (CurrentItem.OwnerKind == EWorldItemOwnerKind::Held && !CurrentItem.OwnerId.IsValid()))
+        return false;
+
+    auto LengthRatio = [](ELogLengthFraction Fraction, double& OutRatio) -> bool
+    {
+        switch (Fraction)
+        {
+        case ELogLengthFraction::FullLength: OutRatio = 1.0; return true;
+        case ELogLengthFraction::ThreeQuarterLength: OutRatio = 0.75; return true;
+        case ELogLengthFraction::HalfLength: OutRatio = 0.5; return true;
+        case ELogLengthFraction::QuarterLength: OutRatio = 0.25; return true;
+        case ELogLengthFraction::EighthLength: OutRatio = 0.125; return true;
+        default: OutRatio = 0.0; return false;
+        }
+    };
+
+    double CurrentRatio = 0.0;
+    double NewRatio = 0.0;
+    MyProject3Construction::FLogGeometry BeforeGeometry;
+    if (!LengthRatio(GetLengthFraction(), CurrentRatio) ||
+        !LengthRatio(NewLength, NewRatio) ||
+        !MyProject3Construction::GetLogGeometry(this, BeforeGeometry) ||
+        BeforeGeometry.Length() <= KINDA_SMALL_NUMBER)
+        return false;
+
+    UStaticMesh* NewMesh = nullptr;
+    if (!TryResolveGeometryVariant(NewLength, NewProfile, NewMesh) || !IsValid(NewMesh))
+        return false;
+
+    const FTransform PreviousTransform = GetActorTransform();
+    UStaticMesh* PreviousMesh = Mesh->GetStaticMesh();
+    if (!IsValid(PreviousMesh))
+        return false;
+
+    const double ExpectedLength = static_cast<double>(BeforeGeometry.Length()) *
+        NewRatio / CurrentRatio;
+    if (!FMath::IsFinite(ExpectedLength) || ExpectedLength < 5.0 ||
+        ExpectedLength > static_cast<double>(MAX_flt))
+        return false;
+
+    // Validate the authored output asset's real bounds before touching the
+    // authoritative ownership definition. Scaling is never used to fake a cut.
+    SetPieceStaticMesh(NewMesh);
+    MyProject3Construction::FLogGeometry CandidateGeometry;
+    const bool bGeometryMatches = MyProject3Construction::GetLogGeometry(this, CandidateGeometry) &&
+        FMath::IsFinite(CandidateGeometry.Length()) &&
+        FMath::Abs(static_cast<double>(CandidateGeometry.Length()) - ExpectedLength) <=
+            FMath::Max(2.0, ExpectedLength * 0.02);
+    if (!bGeometryMatches)
+    {
+        SetPieceStaticMesh(PreviousMesh);
+        return false;
+    }
+
+    if (!SetActorTransform(NewTransform, false, nullptr, ETeleportType::TeleportPhysics))
+    {
+        SetPieceStaticMesh(PreviousMesh);
+        SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        return false;
+    }
+
+    const FName EffectiveBaseDefinition = !CurrentItem.BaseDefinitionId.IsNone()
+        ? CurrentItem.BaseDefinitionId
+        : (!BaseDefinitionId.IsNone() ? BaseDefinitionId : CurrentItem.DefinitionId);
+    const FName NewDefinition = MakeDefinitionIdForGeometry(
+        EffectiveBaseDefinition, NewLength, NewProfile);
+    if (NewDefinition.IsNone())
+    {
+        SetPieceStaticMesh(PreviousMesh);
+        SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        return false;
+    }
+
+    FWorldOwnedItemRecord UpdatedItem = CurrentItem;
+    if (NewDefinition != CurrentItem.DefinitionId &&
+        !Ownership->TryUpdateItemDefinition(OperationId, CurrentItem.ItemId,
+            CurrentItem.Revision, CurrentItem.OwnerKind, NewDefinition, UpdatedItem))
+    {
+        SetPieceStaticMesh(PreviousMesh);
+        SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        return false;
+    }
+
+    BaseDefinitionId = EffectiveBaseDefinition;
+    LengthFraction = NewLength;
+    CrossSectionProfile = NewProfile;
+    bUseCanonicalGeometryDimensions = true;
+    PieceType = LegacyTypeFromCanonicalDimensions(NewLength, NewProfile);
+    Identity->SetDefinitionId(NewDefinition);
+    bHasCustomLengthScale = false;
+    return true;
+}
+
 bool ALogBuildPiece::ActivateAfterOwnershipTransfer()
 {
     if (!StructuralIdentity || !Mesh || !GetWorld() ||
