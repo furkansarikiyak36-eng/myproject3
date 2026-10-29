@@ -191,7 +191,7 @@ public:
     const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
     const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
     /** Evaluates season, required clothing capabilities and prerequisite discoveries for a zone. */
-    UFUNCTION(BlueprintPure, Category="GameData|Zones") bool CanEnterZone(const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const;
+    UFUNCTION(BlueprintCallable, Category="GameData|Zones") bool CanEnterZone(const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const;
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
