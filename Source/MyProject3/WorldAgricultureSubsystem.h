@@ -53,7 +53,7 @@ struct FWorldFieldActionDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") TArray<FWorldFieldActionCost> Inputs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") TArray<FName> RequiredTools;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="0", ClampMax="1")) float Amount = 0.0f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="1", ClampMax="7200")) double LaborSeconds = 300.0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="1", ClampMax="3600")) double LaborSeconds = 300.0;
 };
 
 USTRUCT(BlueprintType)
