@@ -8,6 +8,7 @@
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
@@ -125,11 +126,14 @@ bool AWorldDiscoveryMarkerActor::TryCommitDiscovery()
         World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     UWorldGameDataSubsystem* GameData =
         World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     if (!World || !Pawn || !Shelter || !Shelter->SurvivalEntityId.IsValid() ||
         !Survival || !Clock || !Clock->IsClockInitialized() ||
         !GameData || !GameData->IsApplied() || DiscoveryId.IsNone() ||
         !FMath::IsFinite(RevealRadiusCm) || RevealRadiusCm < 50.0f ||
-        !FMath::IsFinite(Clock->GetSimulationTimeSeconds()))
+        !FMath::IsFinite(Clock->GetSimulationTimeSeconds()) ||
+        RewardQuantity < 0 || RewardQuantity > 64)
         return false;
 
     FWorldSurvivalProfile Profile;
@@ -138,30 +142,72 @@ bool AWorldDiscoveryMarkerActor::TryCommitDiscovery()
 
     UInventoryCraftingComponent* Inventory =
         Pawn->FindComponentByClass<UInventoryCraftingComponent>();
-    FInventoryStack RewardStack;
-    bool bHasReward = RewardQuantity > 0;
+    const bool bHasReward = RewardQuantity > 0;
+    if (bHasReward != !RewardItemId.IsNone() ||
+        (bRewardUniqueItems && !bHasReward))
+        return false;
+
+    TArray<FInventoryStack> RewardStacks;
+    FGuid InventoryActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+
     if (bHasReward)
     {
         const FGameDataItem* RewardDefinition =
             GameData->GetItems().Find(RewardItemId);
-        if (!Inventory || RewardItemId.IsNone() || !RewardDefinition ||
-            RewardDefinition->bConsumable || RewardDefinition->WeightGrams <= 0)
+        if (!Inventory || !RewardDefinition || RewardDefinition->bConsumable ||
+            RewardDefinition->WeightGrams <= 0)
             return false;
 
         if (!Inventory->ItemWeightGrams.Contains(RewardItemId))
             Inventory->ItemWeightGrams.Add(RewardItemId, RewardDefinition->WeightGrams);
-        RewardStack.ItemId = RewardItemId;
-        RewardStack.Quantity = RewardQuantity;
-        RewardStack.Category = EInventoryItemCategory::Resource;
-        RewardStack.MaxStack = 99;
-        TArray<FInventoryStack> IncomingReward;
-        IncomingReward.Add(RewardStack);
-        if (!Inventory->CanAddItems(IncomingReward))
+
+        Inventory->ExportSnapshot(InventoryActorBefore, InventoryOwnerBefore,
+            InventoryItemsBefore, QuickAccessBefore);
+        if (!InventoryOwnerBefore.IsValid() ||
+            InventoryOwnerBefore != Inventory->GetInventoryOwnerId())
             return false;
-    }
-    else if (!RewardItemId.IsNone() || RewardQuantity != 0)
-    {
-        return false;
+        (void)InventoryActorBefore;
+
+        if (bRewardUniqueItems)
+        {
+            if (!Ownership || Ownership->MaxTrackedItems <= 0 ||
+                RewardQuantity > Ownership->MaxTrackedItems - Ownership->GetTrackedItemCount())
+                return false;
+            RewardStacks.Reserve(RewardQuantity);
+            for (int32 Index = 0; Index < RewardQuantity; ++Index)
+            {
+                FInventoryStack Stack;
+                Stack.ItemId = RewardItemId;
+                Stack.Quantity = 1;
+                Stack.Category = EInventoryItemCategory::Resource;
+                Stack.MaxStack = 1;
+                Stack.OwnedWorldItemId = FGuid::NewGuid();
+                if (!Stack.OwnedWorldItemId.IsValid())
+                    return false;
+                RewardStacks.Add(Stack);
+            }
+            Ownership->ExportSnapshot(OwnershipItemsBefore,
+                OwnershipTransfersBefore, OwnershipSplitsBefore);
+        }
+        else
+        {
+            FInventoryStack Stack;
+            Stack.ItemId = RewardItemId;
+            Stack.Quantity = RewardQuantity;
+            Stack.Category = EInventoryItemCategory::Resource;
+            Stack.MaxStack = 99;
+            RewardStacks.Add(Stack);
+        }
+
+        if (!Inventory->CanAddItems(RewardStacks))
+            return false;
     }
 
     TArray<FWorldSurvivalProfile> ProfilesBefore;
@@ -170,38 +216,55 @@ bool AWorldDiscoveryMarkerActor::TryCommitDiscovery()
     float WeatherSeverityBefore = 0.0f;
     Survival->ExportSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
 
-    FGuid InventoryActorId;
-    FGuid InventoryOwnerBefore;
-    TArray<FInventoryStack> InventoryItemsBefore;
-    FName QuickAccessBefore = NAME_None;
-    if (bHasReward)
-    {
-        Inventory->ExportSnapshot(InventoryActorId, InventoryOwnerBefore,
-            InventoryItemsBefore, QuickAccessBefore);
-        if (!InventoryOwnerBefore.IsValid() ||
-            InventoryOwnerBefore != Inventory->GetInventoryOwnerId())
-            return false;
-    }
-
     const bool bDiscoveryCommitted = Survival->TryRecordConfiguredDiscovery(
         FGuid::NewGuid(), Shelter->SurvivalEntityId, Profile.Revision,
         DiscoveryId, GetActorLocation(), Clock->GetSimulationTimeSeconds());
     if (!bDiscoveryCommitted)
         return false;
 
-    if (bHasReward && !Inventory->TryAddItem(RewardStack))
+    bool bRewardCommitted = true;
+    if (bHasReward && bRewardUniqueItems)
     {
+        for (const FInventoryStack& Stack : RewardStacks)
+        {
+            FWorldOwnedItemRecord Record;
+            Record.ItemId = Stack.OwnedWorldItemId;
+            Record.DefinitionId = RewardItemId;
+            Record.BaseDefinitionId = RewardItemId;
+            Record.Quantity = 1;
+            Record.OwnerKind = EWorldItemOwnerKind::Inventory;
+            Record.OwnerId = InventoryOwnerBefore;
+            Record.WorldLocation = Pawn->GetActorLocation();
+            if (!Ownership->RegisterItem(Record) || !Inventory->TryAddItem(Stack))
+            {
+                bRewardCommitted = false;
+                break;
+            }
+        }
+    }
+    else if (bHasReward)
+    {
+        bRewardCommitted = Inventory->TryAddItem(RewardStacks[0]);
+    }
+
+    if (!bRewardCommitted)
+    {
+        const bool bOwnershipRestored = !bRewardUniqueItems ||
+            Ownership->RestoreSnapshot(OwnershipItemsBefore,
+                OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored = !bHasReward ||
+            Inventory->RestoreSnapshot(InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
         const bool bSurvivalRestored = Survival->RestoreSnapshot(
             ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
-        const bool bInventoryRestored = Inventory->RestoreSnapshot(
-            InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
-        if (!bSurvivalRestored || !bInventoryRestored)
+        if (!bOwnershipRestored || !bInventoryRestored || !bSurvivalRestored)
         {
             if (UWorldSimulationCoordinatorSubsystem* Coordinator =
                 World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
                 Coordinator->MarkSimulationFaulted(
                     TEXT("Discovery reward rollback failed; stop simulation and recover/reset the world."));
-            UE_LOG(LogTemp, Error, TEXT("Discovery rollback failed for %s."),
+            }
+            UE_LOG(LogTemp, Error, TEXT("Discovery reward rollback failed for %s."),
                 *DiscoveryId.ToString());
         }
         return false;
