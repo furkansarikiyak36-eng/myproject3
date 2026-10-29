@@ -244,7 +244,7 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool SetWeather(EWorldWeatherState NewWeather, float Severity);
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateLocation(const FGuid& EntityId, FVector NewLocation);
     /** Adds the calorie and stamina cost of an activity; the energy burns on the next step. */
-    UFUNCTION(BlueprintCallable, Category="World|Survival") bool RecordActivity(const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg);
+    UFUNCTION(BlueprintCallable, Category="World|Survival") bool RecordActivity(const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg, float WorkMultiplier = 1.0f);
     /** Data-driven consumable registry. Unknown definitions fail closed. */
     UFUNCTION(BlueprintCallable, Category="World|Survival|Consumables")
     bool RegisterConsumableDefinition(const FWorldSurvivalConsumableDefinition& Definition);
