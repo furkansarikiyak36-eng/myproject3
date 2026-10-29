@@ -78,6 +78,13 @@ public:
     UFUNCTION(BlueprintPure, Category="Carry")
     float GetSpeedMultiplier() const;
 
+    /** Combines traversal effects with the carried-mass multiplier in one movement-speed write. */
+    UFUNCTION(BlueprintCallable, Category="Carry")
+    bool SetTraversalEnvironmentMultiplier(float Multiplier);
+
+    UFUNCTION(BlueprintPure, Category="Carry")
+    float GetTraversalEnvironmentMultiplier() const { return TraversalEnvironmentMultiplier; }
+
     UFUNCTION(BlueprintPure, Category="Carry")
     float EstimateMassKg(const AActor* Piece) const;
 
@@ -92,6 +99,9 @@ private:
 
     UPROPERTY(Transient)
     float BaseWalkSpeed = -1.0f;
+
+    UPROPERTY(Transient)
+    float TraversalEnvironmentMultiplier = 1.0f;
 
     const FCarrySlotRule* FindRule(EStructuralNodeKind Kind) const;
     void ApplyMovementSpeed();
