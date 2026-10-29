@@ -15,6 +15,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
 #include "WorldInfrastructureRouteLinkComponent.h"
 #include "WorldAgricultureSubsystem.h"
 #include "GatherableResourceActor.h"
@@ -913,7 +914,10 @@ bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
     UWorld* World = TestWorld.World;
     UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
-    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Route graph"), Routes))
+    UWorldStructuralGraphSubsystem* StructuralGraph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Route graph"), Routes) ||
+        !TestNotNull(TEXT("Structural graph"), StructuralGraph))
         return false;
 
     TestTrue(TEXT("Load zone and route data"), Data->LoadDefault());
@@ -943,6 +947,12 @@ bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Completed bridge root marks both route directions usable"),
         RouteLink->SetInfrastructureUsable(true));
     TestTrue(TEXT("Bridge root retains usable state"), RouteLink->IsInfrastructureUsable());
+
+    const FGuid BridgeStructuralNodeId = FGuid::NewGuid();
+    TestTrue(TEXT("Register the route root with the structural damage graph"),
+        StructuralGraph->RegisterNode(BridgeRoot, BridgeStructuralNodeId,
+            EStructuralNodeKind::Wood, true, 1.0f, 100000.0f, 100.0f));
+
     TArray<FName> AfterPath;
     float AfterCost = 0.0f;
     TestTrue(TEXT("Find route after bridge construction"),
@@ -953,11 +963,31 @@ bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
         !AfterPath.Contains(TEXT("Route.Ford.WestBank")));
     TestTrue(TEXT("Bridge lowers the same journey's route cost"), AfterCost < BeforeCost);
 
+    bool bThresholdExceeded = false;
+    TestTrue(TEXT("Structural damage applies to the bridge root"),
+        StructuralGraph->ApplyDamage(BridgeStructuralNodeId, 100.0f, bThresholdExceeded));
+    TestTrue(TEXT("Full structural damage exceeds the node threshold"), bThresholdExceeded);
+    TestFalse(TEXT("Threshold damage disables bridge routing"), RouteLink->IsInfrastructureUsable());
+    TArray<FName> DamagedPath;
+    float DamagedCost = 0.0f;
+    TestTrue(TEXT("Route replans after bridge damage"), Routes->FindRouteWithContext(
+        StartNode, DestinationNode, Context, DamagedPath, DamagedCost));
+    TestTrue(TEXT("Damaged bridge restores the ford detour"), DamagedPath.Contains(TEXT("Route.Ford.WestBank")));
+
+    TestTrue(TEXT("Structural repair applies to the bridge root"),
+        StructuralGraph->RepairDamage(BridgeStructuralNodeId, 100.0f));
+    TestTrue(TEXT("Repaired bridge automatically becomes usable"), RouteLink->IsInfrastructureUsable());
+    TArray<FName> RepairedPath;
+    float RepairedCost = 0.0f;
+    TestTrue(TEXT("Route resolves after repair"), Routes->FindRouteWithContext(
+        StartNode, DestinationNode, Context, RepairedPath, RepairedCost));
+    TestTrue(TEXT("Repair restores direct bridge routing"),
+        RepairedPath == AfterPath && FMath::IsNearlyEqual(RepairedCost, AfterCost, 0.001f));
+
     TArray<FLogisticsRouteNode> SavedNodes;
     TArray<FLogisticsRouteEdge> SavedEdges;
     Routes->ExportSnapshot(SavedNodes, SavedEdges);
-    TestTrue(TEXT("Simulate bridge damage by disabling the route root"),
-        RouteLink->SetInfrastructureUsable(false));
+    TestTrue(TEXT("Simulate complete route removal"), RouteLink->SetInfrastructureUsable(false));
     TArray<FName> UnbuiltPath;
     float UnbuiltCost = 0.0f;
     TestTrue(TEXT("Find route while bridge is marked absent"),
