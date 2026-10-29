@@ -116,6 +116,8 @@ private:
     bool bStarterToolsGranted = false;
     bool bDiscoveryMarkersSpawned = false;
     bool bGatherableZonesAssigned = false;
+    bool bFarmPlotBuilt = false;
+    int32 SelectedFieldActionIndex = 0;
     int32 ChopSwingCount = 0;
     int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
@@ -137,6 +139,7 @@ private:
     void BuildHill();
     void BuildPalisade();
     void BuildLife();
+    void BuildFarmPlot();
     void BuildCreekDam();
     void BuildHelper();
     void HelperOrderInput();
@@ -159,6 +162,8 @@ private:
     void AssignGatherableZones();
     void ChopInput();
     void GatherInput();
+    void CycleFieldActionInput();
+    void ApplyFieldActionInput();
     void FillCreekWaterInput();
     void DrinkWaterInput();
     void BoilWaterInput();
