@@ -2941,6 +2941,17 @@ bool FConnectedStructureDismantleTransactionTest::RunTest(const FString& Paramet
     TestTrue(TEXT("Apply item weights and recipes to salvage inventory"), Data->ApplyToInventory(Inventory));
     TestEqual(TEXT("Inventory starts without stone salvage"), Inventory->GetItemCount(TEXT("Stone")), 0);
 
+    // A full inventory must reject the transaction during preflight, without
+    // consuming a single source item or mutating any structural link.
+    Inventory->MaxSlots = 1;
+    FInventoryStack Axe;
+    Axe.ItemId = TEXT("Tool.Axe");
+    Axe.Quantity = 1;
+    Axe.MaxStack = 1;
+    Axe.Category = EInventoryItemCategory::Tool;
+    Axe.bIsTool = true;
+    TestTrue(TEXT("Add one unrelated stack to fill the constrained inventory"), Inventory->TryAddItem(Axe));
+
     const FGuid FoundationId = Foundation->GetStructuralNodeId();
     const FGuid WallId = Wall->GetStructuralNodeId();
     const FGuid UpperWallId = UpperWall->GetStructuralNodeId();
@@ -2956,6 +2967,22 @@ bool FConnectedStructureDismantleTransactionTest::RunTest(const FString& Paramet
         Graph->TryDismantleConnectedStructureToInventory(FoundationId, RootBefore.Revision - 1, Inventory));
     TestEqual(TEXT("Stale dismantle leaves every graph node intact"), Graph->GetNodeCount(), NodesBefore);
     TestEqual(TEXT("Stale dismantle returns no inventory material"), Inventory->GetItemCount(TEXT("Stone")), 0);
+
+    TestFalse(TEXT("Full inventory rejects connected dismantle before mutation"),
+        Graph->TryDismantleConnectedStructureToInventory(FoundationId, RootBefore.Revision, Inventory));
+    TestEqual(TEXT("Capacity rejection leaves all graph nodes present"), Graph->GetNodeCount(), NodesBefore);
+    TestEqual(TEXT("Capacity rejection returns no salvage"), Inventory->GetItemCount(TEXT("Stone")), 0);
+    for (const FGuid& SourceId : {FoundationId, WallId, UpperWallId})
+    {
+        FWorldOwnedItemRecord SourceBefore;
+        TestTrue(TEXT("Capacity rejection keeps each source record available"),
+            Ownership->TryGetItem(SourceId, SourceBefore));
+        TestTrue(TEXT("Capacity rejection preserves world ownership"),
+            SourceBefore.OwnerKind == EWorldItemOwnerKind::World);
+    }
+    TestTrue(TEXT("Remove the inventory blocker before the successful transaction"),
+        Inventory->TryRemoveItem(TEXT("Tool.Axe"), 1));
+    Inventory->MaxSlots = 24;
 
     TestTrue(TEXT("Dismantle the full connected structure as one transaction"),
         Graph->TryDismantleConnectedStructureToInventory(FoundationId, RootBefore.Revision, Inventory));

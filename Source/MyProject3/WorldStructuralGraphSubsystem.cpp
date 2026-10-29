@@ -1364,6 +1364,7 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
         TWeakObjectPtr<AActor> Actor;
         TWeakObjectPtr<UWorldObjectIdentityComponent> Identity;
         EWorldObjectLifecycleState Lifecycle = EWorldObjectLifecycleState::World;
+        int64 IdentityRevision = 0;
         FWorldOwnedItemRecord Item;
     };
     TArray<FRemovalEntry> Entries;
@@ -1386,6 +1387,7 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
             return false;
         Entry.Identity = Identity;
         Entry.Lifecycle = Identity->GetLifecycleState();
+        Entry.IdentityRevision = Identity->StateRevision;
         if (Entry.Lifecycle != EWorldObjectLifecycleState::World &&
             Entry.Lifecycle != EWorldObjectLifecycleState::Placed)
             return false;
@@ -1573,6 +1575,23 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
     // become real parent links and regain their anchor reservations.
     if (!RebuildLogActorAttachmentsFromSnapshot())
         return RollbackData();
+
+    // Revalidate identity/lifecycle revisions and ownership outcomes after the
+    // only actor-level callback boundary, before the irreversible graph commit.
+    for (const FRemovalEntry& Entry : Entries)
+    {
+        UWorldObjectIdentityComponent* Identity = Entry.Identity.Get();
+        FStructuralNodeRecord LiveNode;
+        FWorldOwnedItemRecord LiveItem;
+        if (!IsValid(Identity) ||
+            Identity->GetLifecycleState() != Entry.Lifecycle ||
+            Identity->StateRevision != Entry.IdentityRevision ||
+            !GetNode(Entry.NodeId, LiveNode) || LiveNode.Revision != Entry.Node.Revision ||
+            !Ownership->TryGetItem(Entry.NodeId, LiveItem) ||
+            LiveItem.OwnerKind != EWorldItemOwnerKind::Consumed ||
+            LiveItem.OwnerId.IsValid() || LiveItem.Revision != Entry.Item.Revision + 1)
+            return RollbackData();
+    }
 
     if (!RemoveNodesAtomically(LeafFirstOrder))
         return RollbackData();
