@@ -1,0 +1,66 @@
+{
+  "_about": "P7.3 data-driven exploration rewards. Discovery recording still needs physical-world placement/player interaction hooks; these entries define prerequisites, equipment gates and unlock IDs only.",
+  "discoveries": [
+    {
+      "id": "Discovery.Zone0.Camp",
+      "name": "Üs vadisi",
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "Seed.Grain"
+      ]
+    },
+    {
+      "id": "Discovery.Zone1.Creek",
+      "name": "Dere geçişi",
+      "prerequisites": [
+        "Discovery.Zone0.Camp"
+      ],
+      "required_equipment": [],
+      "unlocks": [
+        "Infrastructure.CreekBridge",
+        "Tool.Filter"
+      ]
+    },
+    {
+      "id": "Discovery.Zone2.HighForest",
+      "name": "Yüksek orman",
+      "prerequisites": [
+        "Discovery.Zone1.Creek"
+      ],
+      "required_equipment": [],
+      "unlocks": [
+        "Seed.Root",
+        "Tool.Hoe",
+        "Infrastructure.HillSteps"
+      ]
+    },
+    {
+      "id": "Discovery.Zone3.LakeSwamp",
+      "name": "Göl ve bataklık",
+      "prerequisites": [
+        "Discovery.Zone2.HighForest"
+      ],
+      "required_equipment": [],
+      "unlocks": [
+        "Seed.Legume",
+        "Infrastructure.Boardwalk",
+        "Infrastructure.Raft"
+      ]
+    },
+    {
+      "id": "Discovery.Zone4.MountainPass",
+      "name": "Dağ geçidi",
+      "prerequisites": [
+        "Discovery.Zone3.LakeSwamp"
+      ],
+      "required_equipment": [
+        "Clothing.HideTunic",
+        "Clothing.HideBoots"
+      ],
+      "unlocks": [
+        "Infrastructure.ForwardCamp"
+      ]
+    }
+  ]
+}
