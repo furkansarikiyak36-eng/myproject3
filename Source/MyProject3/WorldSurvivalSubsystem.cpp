@@ -958,6 +958,176 @@ bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    const FGuid& WaterItemId, int64 ExpectedWaterItemRevision,
+    const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
+    const FGuid& ExpectedInventoryOwnerId, bool& bOutStarted)
+{
+    bOutStarted = false;
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !WaterItemId.IsValid() || ExpectedWaterItemRevision <= 0 ||
+        !ContainerItemId.IsValid() || ExpectedContainerRevision <= 0 ||
+        WaterItemId == ContainerItemId || !ExpectedInventoryOwnerId.IsValid())
+        return false;
+
+    // A retry after commit must not advance the item a second time.
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != EWorldSurvivalActionKind::BoilWater ||
+            Existing->EntityId != EntityId || Existing->ItemId != WaterItemId ||
+            Existing->RelatedItemId != ContainerItemId ||
+            Existing->ExpectedItemOwnerId != ExpectedInventoryOwnerId ||
+            Existing->ExpectedProfileRevision != ExpectedProfileRevision ||
+            Existing->ExpectedItemRevision != ExpectedWaterItemRevision ||
+            Existing->ExpectedRelatedItemRevision != ExpectedContainerRevision)
+            return false;
+        bOutStarted = Existing->ResultingItemDefinitionId == FName(TEXT("Water.Boiling"));
+        return true;
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!Profile || !Ownership || !Clock || !Clock->IsClockInitialized() ||
+        !GameData || !GameData->IsApplied() ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        MaxActionReceiptsPerProfile <= 0 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile)
+        return false;
+
+    const FGameDataTransformation* Recipe =
+        GameData->FindTransformation(FName(TEXT("boil_water")));
+    if (!Recipe || Recipe->Where != FName(TEXT("campfire")) ||
+        !FMath::IsFinite(Recipe->DurationSeconds) ||
+        Recipe->DurationSeconds <= 0.0 || Recipe->DurationSeconds > 43200.0)
+        return false;
+
+    // A heat source must be lit and actually warm the player at the point of use.
+    bool bNearLitFire = false;
+    for (TActorIterator<AActor> It(World); It && !bNearLitFire; ++It)
+    {
+        if (!IsValid(*It))
+            continue;
+        TArray<UHeatSourceComponent*> Sources;
+        It->GetComponents<UHeatSourceComponent>(Sources);
+        for (const UHeatSourceComponent* Source : Sources)
+        {
+            if (IsValid(Source) && Source->IsLit() && Source->GetHeatAt(Profile->Location) >= 8.0f)
+            {
+                bNearLitFire = true;
+                break;
+            }
+        }
+    }
+    if (!bNearLitFire)
+        return false;
+
+    FWorldOwnedItemRecord Water;
+    FWorldOwnedItemRecord Container;
+    if (!Ownership->TryGetItem(WaterItemId, Water) ||
+        Water.Revision != ExpectedWaterItemRevision || Water.Revision >= MAX_int64 - 1 ||
+        Water.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Water.OwnerId != ExpectedInventoryOwnerId || Water.Quantity != 1 ||
+        (Water.DefinitionId != FName(TEXT("Water.Dirty")) &&
+         Water.DefinitionId != FName(TEXT("Water.Boiling"))) ||
+        !Ownership->TryGetItem(ContainerItemId, Container) ||
+        Container.Revision != ExpectedContainerRevision || Container.Revision >= MAX_int64 - 1 ||
+        Container.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Container.OwnerId != ExpectedInventoryOwnerId || Container.Quantity != 1 ||
+        Container.DefinitionId != FName(TEXT("Pot.Fired")))
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory))
+        return false;
+
+    int32 WaterStackIndex = INDEX_NONE;
+    bool bFoundContainerStack = false;
+    for (int32 Index = 0; Index < Inventory->Items.Num(); ++Index)
+    {
+        const FInventoryStack& Stack = Inventory->Items[Index];
+        if (Stack.OwnedWorldItemId == WaterItemId)
+        {
+            if (WaterStackIndex != INDEX_NONE || Stack.ItemId != Water.DefinitionId ||
+                Stack.Quantity != 1 || Stack.MaxStack != 1)
+                return false;
+            WaterStackIndex = Index;
+        }
+        if (Stack.OwnedWorldItemId == ContainerItemId)
+        {
+            if (Stack.ItemId != FName(TEXT("Pot.Fired")) ||
+                Stack.Quantity != 1 || Stack.MaxStack != 1)
+                return false;
+            bFoundContainerStack = true;
+        }
+    }
+    if (WaterStackIndex == INDEX_NONE || !bFoundContainerStack)
+        return false;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (!FMath::IsFinite(Now) || Now < 0.0)
+        return false;
+
+    FName NewDefinitionId = NAME_None;
+    bool bStarting = false;
+    if (Water.DefinitionId == FName(TEXT("Water.Dirty")))
+    {
+        // First activation starts a persistent processing interval; it does not
+        // create another item or consume the reusable pot.
+        NewDefinitionId = FName(TEXT("Water.Boiling"));
+        bStarting = true;
+    }
+    else
+    {
+        if (!FMath::IsFinite(Water.ProcessingStartedAtWorldTimeSeconds) ||
+            Water.ProcessingStartedAtWorldTimeSeconds < 0.0 ||
+            Now - Water.ProcessingStartedAtWorldTimeSeconds < Recipe->DurationSeconds)
+            return false; // UI can tell the player to wait for the authored duration.
+        NewDefinitionId = FName(TEXT("Water.Boiled"));
+    }
+
+    FWorldOwnedItemRecord UpdatedWater;
+    if (!Ownership->TryUpdateItemDefinition(
+        OperationId, WaterItemId, Water.Revision, EWorldItemOwnerKind::Inventory,
+        NewDefinitionId, UpdatedWater, bStarting ? Now : -1.0))
+        return false;
+
+    // The stack is a view of the authoritative ledger definition. Keep the same
+    // unique ID, category, slot and weight, merely synchronizing the definition.
+    FInventoryStack& WaterStack = Inventory->Items[WaterStackIndex];
+    WaterStack.ItemId = NewDefinitionId;
+    WaterStack.Category = EInventoryItemCategory::Consumable;
+    WaterStack.bIsTool = false;
+    WaterStack.Quantity = 1;
+    WaterStack.MaxStack = 1;
+
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::BoilWater;
+    Receipt.ItemId = WaterItemId;
+    Receipt.ResultingItemId = WaterItemId;
+    Receipt.RelatedItemId = ContainerItemId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = ExpectedWaterItemRevision;
+    Receipt.ExpectedRelatedItemRevision = ExpectedContainerRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.ResultingItemRevision = UpdatedWater.Revision;
+    Receipt.ItemDefinitionId = Water.DefinitionId;
+    Receipt.ResultingItemDefinitionId = NewDefinitionId;
+    Profile->ActionReceipts.Add(Receipt);
+    bOutStarted = bStarting;
+    return true;
+}
+
 bool UWorldSurvivalSubsystem::TryBeginRest(
     const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
     double DurationSeconds)
