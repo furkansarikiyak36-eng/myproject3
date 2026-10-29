@@ -1078,6 +1078,16 @@ void AVerticalSliceCWorldActor::ChopInput()
     if (!Controller)
         return;
 
+    UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+    if (Survival && PlayerSurvivalId.IsValid() &&
+        !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
+                TEXT("Too exhausted to work. Rest or recover stamina first."));
+        return;
+    }
+
     FVector Location;
     FRotator Rotation;
     Controller->GetPlayerViewPoint(Location, Rotation);
