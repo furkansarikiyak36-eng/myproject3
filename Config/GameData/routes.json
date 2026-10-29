@@ -1,0 +1,205 @@
+{
+  "_about": "Route graph anchors for the existing VerticalSlice_C only. Costs are deterministic traversal-cost units, not meters or measured times. Bridge and hill-step edges can be updated by infrastructure adapters using their stable infrastructure IDs. Zones 3–4 are catalogued but intentionally have no spatial nodes until the final world-scene phase.",
+  "nodes": [
+    {
+      "id": "Route.Camp",
+      "zone": "Zone.0",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    {
+      "id": "Route.Creek.WestBank",
+      "zone": "Zone.1",
+      "x": 760,
+      "y": -882,
+      "z": 0
+    },
+    {
+      "id": "Route.Creek.EastBank",
+      "zone": "Zone.1",
+      "x": 760,
+      "y": -1602,
+      "z": 0
+    },
+    {
+      "id": "Route.Ford.WestBank",
+      "zone": "Zone.1",
+      "x": 2200,
+      "y": -1109,
+      "z": 0
+    },
+    {
+      "id": "Route.Ford.EastBank",
+      "zone": "Zone.1",
+      "x": 2200,
+      "y": -1829,
+      "z": 0
+    },
+    {
+      "id": "Route.HighForest.Lookout",
+      "zone": "Zone.2",
+      "x": 600,
+      "y": 2650,
+      "z": 700
+    }
+  ],
+  "edges": [
+    {
+      "from": "Route.Camp",
+      "to": "Route.Creek.WestBank",
+      "cost": 3,
+      "slope_ratio": 0.15,
+      "surface_multiplier": 1,
+      "weather_sensitivity": 0.2,
+      "load_sensitivity": 0.1,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Creek.WestBank",
+      "to": "Route.Camp",
+      "cost": 3,
+      "slope_ratio": 0.15,
+      "surface_multiplier": 1,
+      "weather_sensitivity": 0.2,
+      "load_sensitivity": 0.1,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Creek.WestBank",
+      "to": "Route.Creek.EastBank",
+      "cost": 1,
+      "slope_ratio": 0.2,
+      "surface_multiplier": 1,
+      "weather_sensitivity": 1,
+      "load_sensitivity": 1.5,
+      "missing_infrastructure_penalty": 30,
+      "infrastructure_id": "Infrastructure.CreekBridge",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Creek.EastBank",
+      "to": "Route.Creek.WestBank",
+      "cost": 1,
+      "slope_ratio": 0.2,
+      "surface_multiplier": 1,
+      "weather_sensitivity": 1,
+      "load_sensitivity": 1.5,
+      "missing_infrastructure_penalty": 30,
+      "infrastructure_id": "Infrastructure.CreekBridge",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Creek.WestBank",
+      "to": "Route.Ford.WestBank",
+      "cost": 4,
+      "slope_ratio": 0.2,
+      "surface_multiplier": 1.2,
+      "weather_sensitivity": 0.5,
+      "load_sensitivity": 0.2,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Ford.WestBank",
+      "to": "Route.Creek.WestBank",
+      "cost": 4,
+      "slope_ratio": 0.2,
+      "surface_multiplier": 1.2,
+      "weather_sensitivity": 0.5,
+      "load_sensitivity": 0.2,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Ford.WestBank",
+      "to": "Route.Ford.EastBank",
+      "cost": 4,
+      "slope_ratio": 0.1,
+      "surface_multiplier": 4,
+      "weather_sensitivity": 3,
+      "load_sensitivity": 0.8,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Ford.EastBank",
+      "to": "Route.Ford.WestBank",
+      "cost": 4,
+      "slope_ratio": 0.1,
+      "surface_multiplier": 4,
+      "weather_sensitivity": 3,
+      "load_sensitivity": 0.8,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Ford.EastBank",
+      "to": "Route.Creek.EastBank",
+      "cost": 4,
+      "slope_ratio": 0.2,
+      "surface_multiplier": 1.2,
+      "weather_sensitivity": 0.5,
+      "load_sensitivity": 0.2,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Creek.EastBank",
+      "to": "Route.Ford.EastBank",
+      "cost": 4,
+      "slope_ratio": 0.2,
+      "surface_multiplier": 1.2,
+      "weather_sensitivity": 0.5,
+      "load_sensitivity": 0.2,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "",
+      "built": false,
+      "requires_infrastructure": false
+    },
+    {
+      "from": "Route.Creek.EastBank",
+      "to": "Route.HighForest.Lookout",
+      "cost": 10,
+      "slope_ratio": 2,
+      "surface_multiplier": 1.5,
+      "weather_sensitivity": 2,
+      "load_sensitivity": 4,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "Infrastructure.HillSteps",
+      "built": false,
+      "requires_infrastructure": true
+    },
+    {
+      "from": "Route.HighForest.Lookout",
+      "to": "Route.Creek.EastBank",
+      "cost": 10,
+      "slope_ratio": 2,
+      "surface_multiplier": 1.5,
+      "weather_sensitivity": 2,
+      "load_sensitivity": 4,
+      "missing_infrastructure_penalty": 0,
+      "infrastructure_id": "Infrastructure.HillSteps",
+      "built": false,
+      "requires_infrastructure": true
+    }
+  ]
+}
