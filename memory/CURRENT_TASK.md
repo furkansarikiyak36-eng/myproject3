@@ -38,3 +38,7 @@ Started: 2026-10-29 · ChatGPT
 - `mix_plaster` has no persistent wall-coating behavior yet; natural-event runtime and date/event UI are still open. Event definitions are data only until the scheduler/effect lifecycle is implemented.
 - The status ledger was reconciled for P0.2/P3.3/P3.4, but broader task closure and one batch validation remain.
 - Current known baseline evidence does not cover these recent unbuilt changes. All new work stays `code-written / unbuilt-unrun`.
+
+
+## User scope update (2026-10-29)
+User approved blind coding through Phases 1–10; Phases 11–12 are deferred until after demo. Author tests as mechanisms are coded, but batch Unreal build/automation/PIE validation is reserved for the user's later pass. P10 physical joinery remains last/frozen until upstream mechanics are closed.
