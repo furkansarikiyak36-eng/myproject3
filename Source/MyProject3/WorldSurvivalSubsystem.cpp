@@ -934,7 +934,11 @@ bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
         Rollback();
         return false;
     }
-    Inventory->Items[WaterStackIndex].ItemId = ResultDefinitionId;
+    FInventoryStack& WaterStack = Inventory->Items[WaterStackIndex];
+    WaterStack.ItemId = ResultDefinitionId;
+    WaterStack.Category = ResultDefinitionId == FName(TEXT("Water.Boiling"))
+        ? EInventoryItemCategory::Resource : EInventoryItemCategory::Consumable;
+    WaterStack.bIsTool = false;
 
     ++Profile->Revision;
     FWorldSurvivalActionReceipt Receipt;
