@@ -152,6 +152,24 @@ void ARopeLineActor::Tick(float DeltaSeconds)
     if (!FMath::IsFinite(Length) || Length <= 1.0f)
         return;
 
+    // Revalidate the currently applied total rating before moving any rider. A
+    // runtime capacity reduction pauses the entire line rather than moving only
+    // a prefix of riders under an over-capacity state.
+    double CurrentTotalLoadKg = 0.0;
+    for (const FRider& ExistingRider : Riders)
+    {
+        const AActor* ExistingPiece = ExistingRider.Piece.Get();
+        if (!IsValid(ExistingPiece))
+            continue;
+        const float ExistingMassKg = EstimateMassKg(ExistingPiece);
+        if (!FMath::IsFinite(ExistingMassKg) || ExistingMassKg <= 0.0f)
+            return;
+        CurrentTotalLoadKg += static_cast<double>(ExistingMassKg);
+        if (!FMath::IsFinite(CurrentTotalLoadKg) ||
+            CurrentTotalLoadKg > static_cast<double>(MaxLoadMassKg))
+            return;
+    }
+
     const float SlopeRadians = FMath::DegreesToRadians(GetSlopeDegrees());
     constexpr float GravityCmPerSecondSquared = 980.0f;
     const float GravityAlongRope = GravityCmPerSecondSquared * FMath::Sin(SlopeRadians);
