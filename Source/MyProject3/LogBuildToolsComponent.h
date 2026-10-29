@@ -65,7 +65,7 @@ public:
     bool CutOpening(ALogBuildPiece* WallLog, const FVector& AimPoint, EConstructionOpeningKind Kind,
         AConstructionOpeningActor*& OutOpening);
     /** Takes a piece out of a structure when everything on it has another support. */
-    bool DismantlePiece(ALogBuildPiece* Piece);
+    bool DismantlePiece(ALogBuildPiece* Piece, bool bChargeSurvivalCost = true);
     /** Where Board would lie across Support and a parallel second support. */
     bool ComputeDeckPlacement(ALogBuildPiece* Board, AActor* Support, const FVector& AimPoint,
         const FVector& ViewDirection, bool bStairs, FTransform& OutTransform, AActor*& OutSecondSupport,

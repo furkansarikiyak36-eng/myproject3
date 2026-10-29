@@ -6,6 +6,9 @@
 #include "StoneBuildingPiece.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldSimulationClockSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -207,16 +210,85 @@ bool ALogContainerActor::ToggleTow(APawn* Puller)
         if (Character && Character->GetCharacterMovement() && PullerBaseSpeed > 0.0f)
             Character->GetCharacterMovement()->MaxWalkSpeed = PullerBaseSpeed;
         TowedBy.Reset();
+        LastTowCostWorldTimeSeconds = -1.0;
         return true;
     }
     TowedBy = Puller;
     Character = Cast<ACharacter>(Puller);
     PullerBaseSpeed = Character && Character->GetCharacterMovement() ? Character->GetCharacterMovement()->MaxWalkSpeed : 0.0f;
+    if (const UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+        Clock && Clock->IsClockInitialized())
+        LastTowCostWorldTimeSeconds = Clock->GetSimulationTimeSeconds();
+    else
+        LastTowCostWorldTimeSeconds = -1.0;
     Base->SetSimulatePhysics(false);
     ApplyTowSpeed();
     return true;
 }
 
+void ALogContainerActor::UpdateTowWorkCost()
+{
+    APawn* Puller = TowedBy.Get();
+    if (!IsValid(Puller))
+    {
+        LastTowCostWorldTimeSeconds = -1.0;
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Clock || !Clock->IsClockInitialized())
+        return;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (!FMath::IsFinite(Now) || Now < 0.0)
+        return;
+    if (!FMath::IsFinite(LastTowCostWorldTimeSeconds) || LastTowCostWorldTimeSeconds < 0.0 ||
+        Now < LastTowCostWorldTimeSeconds)
+    {
+        LastTowCostWorldTimeSeconds = Now;
+        return;
+    }
+
+    const double Elapsed = Now - LastTowCostWorldTimeSeconds;
+    if (Elapsed <= 0.0)
+        return;
+    LastTowCostWorldTimeSeconds = Now;
+
+    UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+    UShelterSensorComponent* Sensor = Puller->FindComponentByClass<UShelterSensorComponent>();
+    FWorldSurvivalProfile Profile;
+    // Old prototype maps may have no registered survival profile; keep those maps operable.
+    if (!Survival || !IsValid(Sensor) || !Sensor->SurvivalEntityId.IsValid() ||
+        !Survival->GetProfile(Sensor->SurvivalEntityId, Profile))
+        return;
+
+    // Bounded catch-up prevents a large time jump from creating an unbounded loop.
+    if (Elapsed > 64.0 * 3600.0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Sled tow stopped after an oversized logical-time gap."));
+        ToggleTow(Puller);
+        return;
+    }
+
+    double Remaining = Elapsed;
+    while (Remaining > 0.0 && TowedBy.Get() == Puller)
+    {
+        const float ChargeSeconds = static_cast<float>(FMath::Min(Remaining, 3600.0));
+        if (!Survival->CanRecordActivity(Sensor->SurvivalEntityId,
+            ESurvivalActivity::Carry, ChargeSeconds, 0.0f) ||
+            !Survival->RecordActivity(Sensor->SurvivalEntityId,
+                ESurvivalActivity::Carry, ChargeSeconds, 0.0f))
+        {
+            UE_LOG(LogTemp, Verbose, TEXT("Sled tow released because the puller is resting or exhausted."));
+            ToggleTow(Puller);
+            return;
+        }
+        Remaining -= static_cast<double>(ChargeSeconds);
+    }
+}
 void ALogContainerActor::CatchThrownLogs()
 {
     const FVector Centre = GetActorLocation();
@@ -286,6 +358,9 @@ void ALogContainerActor::Tick(float DeltaSeconds)
             CatchThrownLogs();
         }
     }
+
+    if (TowedBy.IsValid())
+        UpdateTowWorkCost();
 
     if (APawn* Puller = TowedBy.Get())
     {
