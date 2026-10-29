@@ -42,6 +42,9 @@ struct FWorldTerrainResourceYieldRule
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources") FName SourceMaterialId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources") FName OutputDefinitionId = NAME_None;
+    /** Empty means all regions; otherwise this material is valid only in these geology regions. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources") TArray<FName> GeologyRegions;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="1", ClampMax="10000")) int32 GeologyWeight = 1;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="0", ClampMax="63")) int32 MinimumDepthLayer = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="0", ClampMax="63")) int32 MaximumDepthLayer = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="0.01", ClampMax="100000")) float UnitsPerCubicMetre = 10.0f;
@@ -147,6 +150,19 @@ public:
         float ToolStrength, int64 ExpectedDensityRevision,
         const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
         FName MaterialId, FWorldTerrainCellState& OutState);
+
+    /** Resolve geology by region, depth and stable cell/world seed. */
+    UFUNCTION(BlueprintPure, Category="World|Terrain|Geology")
+    bool ResolveGeologyMaterial(const FIntVector& LogicalCell, FName RegionId, int32 DepthLayer,
+        int32 WorldSeed, FName& OutMaterialId) const;
+
+    /** Excavate using saved cell material, or resolve geology on first dig. */
+    UFUNCTION(BlueprintCallable, Category="World|Terrain|Geology")
+    bool TryExcavateForGeology(const FGuid& OperationId, UVoxelTerrainChunkComponent* VoxelChunk,
+        FVector LocalCenter, float RadiusCm, float ToolStrength, int64 ExpectedDensityRevision,
+        const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
+        FName RegionId, int32 WorldSeed, FWorldTerrainCellState& OutState,
+        TArray<FGuid>& OutResourceItemIds);
 
     /** Atomic bounded excavation that also registers deterministically-yielded resources in ownership. */
     UFUNCTION(BlueprintCallable, Category="World|Terrain|Resources")

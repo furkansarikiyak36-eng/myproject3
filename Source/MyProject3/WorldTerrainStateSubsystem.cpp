@@ -76,7 +76,11 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     Updated.DepthLayer = DepthLayer;
     if (Edit == ETerrainCellEdit::Excavate)
     {
+        if (Existing && !Existing->MaterialId.IsNone() && !MaterialId.IsNone() && Existing->MaterialId != MaterialId)
+            return false; // A cell keeps its first resolved geology when excavated again.
         Updated.bExcavated = true;
+        if (Updated.MaterialId.IsNone() && !MaterialId.IsNone())
+            Updated.MaterialId = MaterialId;
     }
     else if (Edit == ETerrainCellEdit::Fill)
     {
@@ -182,6 +186,88 @@ bool UWorldTerrainStateSubsystem::TryApplyVoxelExcavation(
             *OperationId.ToString());
     }
     return false;
+}
+
+bool UWorldTerrainStateSubsystem::ResolveGeologyMaterial(
+    const FIntVector& LogicalCell, FName RegionId, int32 DepthLayer, int32 WorldSeed,
+    FName& OutMaterialId) const
+{
+    OutMaterialId = NAME_None;
+    if (RegionId.IsNone() || DepthLayer < 0 || DepthLayer >= MaxEditableDepthLayers ||
+        MaxDepthPerCell <= 0 || DepthLayer >= MaxDepthPerCell ||
+        MaxResourceYieldRules <= 0 || ResourceYieldRules.Num() > MaxResourceYieldRules)
+        return false;
+
+    TArray<const FWorldTerrainResourceYieldRule*> Candidates;
+    int64 TotalWeight = 0;
+    for (const FWorldTerrainResourceYieldRule& Rule : ResourceYieldRules)
+    {
+        if (Rule.SourceMaterialId.IsNone() || DepthLayer < Rule.MinimumDepthLayer ||
+            DepthLayer > Rule.MaximumDepthLayer ||
+            (!Rule.GeologyRegions.IsEmpty() && !Rule.GeologyRegions.Contains(RegionId)))
+            continue;
+        if (Rule.GeologyWeight <= 0 || Rule.GeologyWeight > 10000 ||
+            Rule.MinimumDepthLayer < 0 || Rule.MaximumDepthLayer < Rule.MinimumDepthLayer ||
+            Rule.MaximumDepthLayer >= MaxDepthPerCell ||
+            !FMath::IsFinite(Rule.UnitsPerCubicMetre) || Rule.UnitsPerCubicMetre <= 0.0f)
+            return false;
+        if (Candidates.ContainsByPredicate([&Rule](const FWorldTerrainResourceYieldRule* Existing)
+            { return Existing->SourceMaterialId == Rule.SourceMaterialId; }))
+            return false;
+        Candidates.Add(&Rule);
+        TotalWeight += Rule.GeologyWeight;
+    }
+    if (Candidates.IsEmpty() || TotalWeight <= 0)
+        return false;
+
+    // Stable FNV-1a hash: world state does not depend on global RNG or frame order.
+    uint64 Hash = 1469598103934665603ull;
+    auto Mix = [&Hash](uint32 Value) { Hash ^= Value; Hash *= 1099511628211ull; };
+    Mix(static_cast<uint32>(WorldSeed));
+    Mix(static_cast<uint32>(LogicalCell.X));
+    Mix(static_cast<uint32>(LogicalCell.Y));
+    Mix(static_cast<uint32>(LogicalCell.Z));
+    Mix(static_cast<uint32>(DepthLayer));
+    const FString RegionString = RegionId.ToString();
+    for (const TCHAR* Ch = *RegionString; *Ch; ++Ch) Mix(static_cast<uint32>(*Ch));
+
+    const int64 Pick = static_cast<int64>(Hash % static_cast<uint64>(TotalWeight));
+    int64 Accumulated = 0;
+    for (const FWorldTerrainResourceYieldRule* Candidate : Candidates)
+    {
+        Accumulated += Candidate->GeologyWeight;
+        if (Pick < Accumulated)
+        {
+            OutMaterialId = Candidate->SourceMaterialId;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool UWorldTerrainStateSubsystem::TryExcavateForGeology(
+    const FGuid& OperationId, UVoxelTerrainChunkComponent* VoxelChunk,
+    FVector LocalCenter, float RadiusCm, float ToolStrength, int64 ExpectedDensityRevision,
+    const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
+    FName RegionId, int32 WorldSeed, FWorldTerrainCellState& OutState,
+    TArray<FGuid>& OutResourceItemIds)
+{
+    OutResourceItemIds.Reset();
+    FName SourceMaterialId = NAME_None;
+    FWorldTerrainCellState ExistingCell;
+    if (TryGetCell(LogicalCell, ExistingCell))
+    {
+        if (ExistingCell.DepthLayer != DepthLayer || ExistingCell.Revision != ExpectedCellRevision)
+            return false;
+        SourceMaterialId = ExistingCell.MaterialId;
+    }
+    if (SourceMaterialId.IsNone() &&
+        !ResolveGeologyMaterial(LogicalCell, RegionId, DepthLayer, WorldSeed, SourceMaterialId))
+        return false;
+
+    return TryExcavateForResource(OperationId, VoxelChunk, LocalCenter, RadiusCm, ToolStrength,
+        ExpectedDensityRevision, LogicalCell, DepthLayer, ExpectedCellRevision, SourceMaterialId,
+        OutState, OutResourceItemIds);
 }
 
 bool UWorldTerrainStateSubsystem::TryExcavateForResource(

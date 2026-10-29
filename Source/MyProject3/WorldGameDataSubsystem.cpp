@@ -422,7 +422,16 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             L.MinLayer = static_cast<int32>(NumberField(Entry, TEXT("min_layer")));
             L.MaxLayer = static_cast<int32>(NumberField(Entry, TEXT("max_layer")));
             L.UnitsPerCubicMetre = NumberField(Entry, TEXT("units_per_m3"), 1.0);
-            if (L.Material.IsNone() || !HasItem(L.ItemId) || L.MinLayer < 0 || L.MaxLayer < L.MinLayer || L.UnitsPerCubicMetre <= 0.0f)
+            L.GeologyWeight = static_cast<int32>(NumberField(Entry, TEXT("geology_weight"), 1.0));
+            if (const TArray<TSharedPtr<FJsonValue>>* Regions = ArrayField(Entry, TEXT("regions")))
+                for (const TSharedPtr<FJsonValue>& RegionValue : *Regions)
+                {
+                    const FName RegionId(*RegionValue->AsString());
+                    if (RegionId.IsNone() || L.Regions.Contains(RegionId))
+                        return Fail(FString::Printf(TEXT("Bad/repeated geology region in layer %s"), *L.Material.ToString()));
+                    L.Regions.Add(RegionId);
+                }
+            if (L.Material.IsNone() || !HasItem(L.ItemId) || L.MinLayer < 0 || L.MaxLayer < L.MinLayer || L.UnitsPerCubicMetre <= 0.0f || L.GeologyWeight < 1 || L.GeologyWeight > 10000)
                 return Fail(FString::Printf(TEXT("Bad layer %s"), *L.Material.ToString()));
             NewLayers.Add(L);
         }
@@ -574,6 +583,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         FWorldTerrainResourceYieldRule Rule;
         Rule.SourceMaterialId = L.Material;
         Rule.OutputDefinitionId = L.ItemId;
+        Rule.GeologyRegions = L.Regions;
+        Rule.GeologyWeight = L.GeologyWeight;
         Rule.MinimumDepthLayer = L.MinLayer;
         Rule.MaximumDepthLayer = L.MaxLayer;
         Rule.UnitsPerCubicMetre = L.UnitsPerCubicMetre;

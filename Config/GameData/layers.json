@@ -6,42 +6,80 @@
       "item": "Soil",
       "min_layer": 0,
       "max_layer": 1,
-      "units_per_m3": 4
+      "units_per_m3": 4,
+      "regions": [
+        "Zone0",
+        "Zone1",
+        "Zone3"
+      ],
+      "geology_weight": 60
     },
     {
       "material": "Clay",
       "item": "Clay",
       "min_layer": 1,
       "max_layer": 3,
-      "units_per_m3": 4
+      "units_per_m3": 4,
+      "regions": [
+        "Zone1",
+        "Zone2",
+        "Zone3"
+      ],
+      "geology_weight": 30
     },
     {
       "material": "Sand",
       "item": "Sand",
       "min_layer": 0,
       "max_layer": 2,
-      "units_per_m3": 4
+      "units_per_m3": 4,
+      "regions": [
+        "Zone0",
+        "Zone1",
+        "Zone2",
+        "Zone4"
+      ],
+      "geology_weight": 35
     },
     {
       "material": "Stone",
       "item": "Stone",
       "min_layer": 2,
       "max_layer": 3,
-      "units_per_m3": 2
+      "units_per_m3": 2,
+      "regions": [
+        "Zone0",
+        "Zone2",
+        "Zone3",
+        "Zone4"
+      ],
+      "geology_weight": 65
     },
     {
       "material": "Flint",
       "item": "Flint",
       "min_layer": 2,
       "max_layer": 3,
-      "units_per_m3": 3
+      "units_per_m3": 3,
+      "regions": [
+        "Zone1",
+        "Zone2",
+        "Zone4"
+      ],
+      "geology_weight": 20
     },
     {
       "material": "Ochre",
       "item": "OchreEarth",
       "min_layer": 1,
       "max_layer": 3,
-      "units_per_m3": 3
+      "units_per_m3": 3,
+      "regions": [
+        "Zone1",
+        "Zone3",
+        "Zone4"
+      ],
+      "geology_weight": 10
     }
   ]
 }
