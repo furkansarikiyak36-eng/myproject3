@@ -2010,11 +2010,11 @@ void AVerticalSliceCWorldActor::BoilWaterInput()
                 Stack.Quantity != 1 || Stack.MaxStack != 1)
                 continue;
 
-            FWorldOwnedItemRecord Water;
-            if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Water) ||
-                Water.OwnerKind != EWorldItemOwnerKind::Inventory ||
-                Water.OwnerId != InventoryOwnerId ||
-                Water.DefinitionId != WaterDefinitionId || Water.Quantity != 1)
+            FWorldOwnedItemRecord WaterItem;
+            if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, WaterItem) ||
+                WaterItem.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                WaterItem.OwnerId != InventoryOwnerId ||
+                WaterItem.DefinitionId != WaterDefinitionId || WaterItem.Quantity != 1)
                 continue;
 
             // Do not ask the transaction to finish a job that cannot have
@@ -2022,10 +2022,10 @@ void AVerticalSliceCWorldActor::BoilWaterInput()
             if (WaterDefinitionId == FName(TEXT("Water.Boiling")))
             {
                 const FWorldSurvivalActionReceipt* Start = Profile.ActionReceipts.FindByPredicate(
-                    [&Water, &Pot, &InventoryOwnerId](const FWorldSurvivalActionReceipt& Receipt)
+                    [&WaterItem, &Pot, &InventoryOwnerId](const FWorldSurvivalActionReceipt& Receipt)
                     {
                         return Receipt.Action == EWorldSurvivalActionKind::BoilWater &&
-                            Receipt.ItemId == Water.ItemId && Receipt.RelatedItemId == Pot.ItemId &&
+                            Receipt.ItemId == WaterItem.ItemId && Receipt.RelatedItemId == Pot.ItemId &&
                             Receipt.ExpectedItemOwnerId == InventoryOwnerId &&
                             Receipt.ItemDefinitionId == FName(TEXT("Water.Dirty")) &&
                             Receipt.ResultingItemDefinitionId == FName(TEXT("Water.Boiling"));
@@ -2055,7 +2055,7 @@ void AVerticalSliceCWorldActor::BoilWaterInput()
             bool bStarted = false;
             const bool bSucceeded = Survival->TryBoilWaterAtFire(
                 FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision,
-                Water.ItemId, Water.Revision, Pot.ItemId, Pot.Revision,
+                WaterItem.ItemId, WaterItem.Revision, Pot.ItemId, Pot.Revision,
                 InventoryOwnerId, bStarted);
             if (GEngine)
             {

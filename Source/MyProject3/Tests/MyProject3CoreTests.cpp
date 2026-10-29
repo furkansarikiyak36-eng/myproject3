@@ -4326,8 +4326,8 @@ bool FFallImpactAppliesPhysicalAndSurvivalInjuryTest::RunTest(const FString& Par
     ALogSnapCharacter* Player = World->SpawnActor<ALogSnapCharacter>(
         ALogSnapCharacter::StaticClass(), SpawnTransform, SpawnParameters);
     if (!TestNotNull(TEXT("Player character"), Player) ||
-        !TestNotNull(TEXT("Player physical health"), Player->PhysicalHealth) ||
-        !TestNotNull(TEXT("Player shelter sensor"), Player->ShelterSensor))
+        !TestNotNull(TEXT("Player physical health"), Player->PhysicalHealth.Get()) ||
+        !TestNotNull(TEXT("Player shelter sensor"), Player->ShelterSensor.Get()))
         return false;
     Player->ShelterSensor->SurvivalEntityId = Profile.EntityId;
 
@@ -4387,8 +4387,8 @@ bool FHostileBiteAppliesInjuryAndRespectsCooldownTest::RunTest(const FString& Pa
     ALogSnapCharacter* Player = World->SpawnActor<ALogSnapCharacter>(
         ALogSnapCharacter::StaticClass(), PlayerTransform, SpawnParameters);
     if (!TestNotNull(TEXT("Player character"), Player) ||
-        !TestNotNull(TEXT("Player physical health"), Player->PhysicalHealth) ||
-        !TestNotNull(TEXT("Player shelter sensor"), Player->ShelterSensor))
+        !TestNotNull(TEXT("Player physical health"), Player->PhysicalHealth.Get()) ||
+        !TestNotNull(TEXT("Player shelter sensor"), Player->ShelterSensor.Get()))
         return false;
     Player->ShelterSensor->SurvivalEntityId = Profile.EntityId;
 

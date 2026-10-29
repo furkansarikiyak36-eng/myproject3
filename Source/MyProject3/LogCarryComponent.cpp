@@ -1202,7 +1202,7 @@ bool ULogCarryComponent::ProcessAimedPiece()
 
     const UShelterSensorComponent* Sensor = GetOwner()
         ? GetOwner()->FindComponentByClass<UShelterSensorComponent>() : nullptr;
-    const UWorldSurvivalSubsystem* Survival = GetWorld()
+    UWorldSurvivalSubsystem* Survival = GetWorld()
         ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     if (Survival && Sensor && Sensor->SurvivalEntityId.IsValid())
     {
