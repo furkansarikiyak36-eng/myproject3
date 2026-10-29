@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Start P4.4 tool strength. Read `LogBuildToolsComponent` actual tree chopping call, `TerrainDigToolComponent` excavation action, `WorldGameDataSubsystem` item schema/parser, `items.json` axe/digging-stick rows, then choose a backward-compatible data-backed strength model. Do not modify the frozen P10 snap kernel and don't build.
+Inspect exact `VerticalSliceCWorldActor::ChopInput`, `TerrainDigToolComponent::DigInput` and item parsing loop to add optional data-defined `tool_strength` for `FGameDataItem`, validate it for Tool items, and link it to tree chop damage + N excavation. Decide how the visible blockout axe/dig tool relates to inventory: avoid silently disabling the slice when tools are absent, and don't add a duplicate item ledger.
