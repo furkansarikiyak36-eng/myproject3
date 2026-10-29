@@ -104,7 +104,12 @@ UENUM(BlueprintType)
 enum class EWorldSurvivalActionKind : uint8
 {
     ConsumeFoodItem,
-    BeginRest,\n    ApplyCondition,\n    TreatCondition,\n    EquipItem,\n    UnequipItem,\n    RecordDiscovery
+    BeginRest,
+    ApplyCondition,
+    TreatCondition,
+    EquipItem,
+    UnequipItem,
+    RecordDiscovery
 };
 
 /** Persistent idempotency receipt stored with the affected survival profile. */
