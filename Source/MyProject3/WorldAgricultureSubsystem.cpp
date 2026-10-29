@@ -650,6 +650,354 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::TryCaptureAnimal(
+    const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+    const FGuid& CaptureToolItemId, int64 ExpectedToolItemRevision,
+    const FGuid& ExpectedInventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0 ||
+        !CaptureToolItemId.IsValid() || ExpectedToolItemRevision <= 0 ||
+        !ExpectedInventoryOwnerId.IsValid())
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldAgricultureActionKind::CaptureAnimal &&
+            Existing->EntityId == AnimalId &&
+            Existing->InputItemId == CaptureToolItemId &&
+            Existing->ExpectedInventoryOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
+            Existing->ExpectedItemRevision == ExpectedToolItemRevision;
+    }
+
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    const FWorldAnimalDefinition* Definition =
+        Animal ? FindAnimalDefinition(Animal->AnimalDefinitionId) : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    FWorldOwnedItemRecord Tool;
+    if (!Animal || !Definition || !Ownership ||
+        !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+        Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
+        Animal->bCaptured || Animal->bSlaughtered || Animal->Health <= 0.0f ||
+        Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
+        !Ownership->TryGetItem(CaptureToolItemId, Tool) ||
+        Tool.Revision != ExpectedToolItemRevision || Tool.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Tool.OwnerId != ExpectedInventoryOwnerId || Tool.Quantity != 1 ||
+        !Definition->CaptureToolDefinitionIds.Contains(Tool.DefinitionId) ||
+        Tool.Revision >= MAX_int64 - 1 ||
+        !Inventory->Items.ContainsByPredicate([CaptureToolItemId](const FInventoryStack& Stack)
+        {
+            return Stack.OwnedWorldItemId == CaptureToolItemId && Stack.Quantity == 1;
+        }))
+        return false;
+
+    Animal->bCaptured = true;
+    Animal->CaptureOperationId = OperationId;
+    Animal->CaptureToolItemId = CaptureToolItemId;
+    Animal->CaptureInventoryOwnerId = ExpectedInventoryOwnerId;
+    Animal->CaptureToolExpectedRevision = ExpectedToolItemRevision;
+    ++Animal->Revision;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::CaptureAnimal;
+    Receipt.EntityId = AnimalId;
+    Receipt.InputItemId = CaptureToolItemId;
+    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedEntityRevision = ExpectedAnimalRevision;
+    Receipt.ExpectedItemRevision = ExpectedToolItemRevision;
+    Receipt.ResultingEntityRevision = Animal->Revision;
+    Receipt.ResultingItemRevision = ExpectedToolItemRevision; // Tool is reusable and not consumed.
+    Receipt.DefinitionId = Animal->AnimalDefinitionId;
+    Animal->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryBuildAnimalPen(
+    const FGuid& OperationId, const FGuid& ExpectedInventoryOwnerId,
+    const FVector& Location, int32 Capacity, FGuid& OutPenId)
+{
+    OutPenId.Invalidate();
+    if (!OperationId.IsValid() || !ExpectedInventoryOwnerId.IsValid() ||
+        Location.ContainsNaN() || Capacity < 1 || Capacity > 4 ||
+        MaxAnimalPens <= 0 || MaxAnimalPens > 1024 ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != EWorldAgricultureActionKind::BuildAnimalPen ||
+            Existing->ExpectedInventoryOwnerId != ExpectedInventoryOwnerId ||
+            Existing->DefinitionId != TEXT("AnimalPen") ||
+            Existing->ExpectedEntityRevision != 0 || Existing->WorkAmount != Capacity)
+            return false;
+        const FWorldAnimalPenState* Pen = AnimalPens.Find(Existing->EntityId);
+        if (!Pen || !Pen->Location.Equals(Location, 0.1f) || Pen->Capacity != Capacity)
+            return false;
+        OutPenId = Pen->PenId;
+        return true;
+    }
+
+    if (AnimalPens.Num() >= MaxAnimalPens)
+        return false;
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+        Inventory->GetItemCount(TEXT("Stake")) < 4 || Inventory->GetItemCount(TEXT("Rope")) < 1 ||
+        Inventory->Items.Num() > Inventory->MaxSlots)
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid InventoryOwnerId;
+    TArray<FInventoryStack> BeforeInventory;
+    FName BeforeQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, InventoryOwnerId, BeforeInventory, BeforeQuickAccess);
+    TArray<FWorldOwnedItemRecord> BeforeItems;
+    TArray<FWorldItemTransferReceipt> BeforeTransfers;
+    TArray<FWorldItemSplitReceipt> BeforeSplits;
+    Ownership->ExportSnapshot(BeforeItems, BeforeTransfers, BeforeSplits);
+    auto RollbackMaterials = [&]()
+    {
+        const bool bItemsRestored =
+            Ownership->RestoreSnapshot(BeforeItems, BeforeTransfers, BeforeSplits);
+        const bool bInventoryRestored =
+            Inventory->RestoreSnapshot(InventoryOwnerId, BeforeInventory, BeforeQuickAccess);
+        return bItemsRestored && bInventoryRestored;
+    };
+
+    if (!Inventory->TryRemoveItem(TEXT("Stake"), 4) ||
+        !Inventory->TryRemoveItem(TEXT("Rope"), 1))
+    {
+        if (!RollbackMaterials())
+            UE_LOG(LogTemp, Error, TEXT("Failed to roll back inventory after animal-pen construction was refused."));
+        return false;
+    }
+
+    FWorldAnimalPenState Pen;
+    Pen.PenId = FGuid::NewGuid();
+    Pen.Location = Location;
+    Pen.Capacity = Capacity;
+    Pen.StakeUnits = 4;
+    Pen.RopeUnits = 1;
+    Pen.bGateClosed = false;
+    Pen.Revision = 1;
+    if (!Pen.PenId.IsValid())
+    {
+        if (!RollbackMaterials())
+            UE_LOG(LogTemp, Error, TEXT("Failed to roll back inventory after an invalid animal-pen ID."));
+        return false;
+    }
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::BuildAnimalPen;
+    Receipt.EntityId = Pen.PenId;
+    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedEntityRevision = 0;
+    Receipt.ResultingEntityRevision = 1;
+    Receipt.DefinitionId = TEXT("AnimalPen");
+    Receipt.WorkAmount = static_cast<float>(Capacity);
+    Pen.ActionReceipts.Add(Receipt);
+
+    AnimalPens.Add(Pen.PenId, Pen);
+    OutPenId = Pen.PenId;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryAssignAnimalToPen(
+    const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+    const FGuid& PenId, int64 ExpectedPenRevision)
+{
+    if (!OperationId.IsValid() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0 ||
+        !PenId.IsValid() || ExpectedPenRevision <= 0)
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        const FWorldAnimalState* ExistingAnimal = Animals.Find(AnimalId);
+        const FWorldAnimalPenState* ExistingPen = AnimalPens.Find(PenId);
+        return Existing->Action == EWorldAgricultureActionKind::AssignAnimalToPen &&
+            Existing->EntityId == AnimalId && Existing->RelatedEntityId == PenId &&
+            Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
+            Existing->ExpectedRelatedEntityRevision == ExpectedPenRevision &&
+            ExistingAnimal && ExistingPen && ExistingAnimal->PenId == PenId &&
+            ExistingPen->AnimalIds.Contains(AnimalId);
+    }
+
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    FWorldAnimalPenState* Pen = AnimalPens.Find(PenId);
+    if (!Animal || !Pen || Animal->Revision != ExpectedAnimalRevision ||
+        Pen->Revision != ExpectedPenRevision || Animal->Revision >= MAX_int64 - 1 ||
+        Pen->Revision >= MAX_int64 - 1 || Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
+        !Animal->bCaptured || Animal->bSlaughtered || Animal->Health <= 0.0f ||
+        Animal->PenId.IsValid() || Pen->bGateClosed || Pen->AnimalIds.Contains(AnimalId) ||
+        Pen->AnimalIds.Num() >= Pen->Capacity ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
+        return false;
+
+    Animal->PenId = PenId;
+    Pen->AnimalIds.Add(AnimalId);
+    Pen->AnimalIds.Sort([](const FGuid& A, const FGuid& B) { return A.ToString() < B.ToString(); });
+    const int64 NewPenRevision = ExpectedPenRevision + 1;
+    const int64 NewAnimalRevision = ExpectedAnimalRevision + 1;
+    Pen->Revision = NewPenRevision;
+    Animal->Revision = NewAnimalRevision;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::AssignAnimalToPen;
+    Receipt.EntityId = AnimalId;
+    Receipt.RelatedEntityId = PenId;
+    Receipt.ExpectedEntityRevision = ExpectedAnimalRevision;
+    Receipt.ResultingEntityRevision = NewAnimalRevision;
+    Receipt.ExpectedRelatedEntityRevision = ExpectedPenRevision;
+    Receipt.ResultingRelatedEntityRevision = NewPenRevision;
+    Receipt.DefinitionId = TEXT("AnimalPen");
+    Animal->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TrySetAnimalPenGate(
+    const FGuid& OperationId, const FGuid& PenId, int64 ExpectedPenRevision, bool bClosed)
+{
+    if (!OperationId.IsValid() || !PenId.IsValid() || ExpectedPenRevision <= 0)
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        const FWorldAnimalPenState* ExistingPen = AnimalPens.Find(PenId);
+        return Existing->Action == EWorldAgricultureActionKind::SetAnimalPenGate &&
+            Existing->EntityId == PenId && Existing->ExpectedEntityRevision == ExpectedPenRevision &&
+            Existing->WorkAmount == (bClosed ? 1.0f : 0.0f) &&
+            ExistingPen && ExistingPen->bGateClosed == bClosed;
+    }
+
+    FWorldAnimalPenState* Pen = AnimalPens.Find(PenId);
+    if (!Pen || Pen->Revision != ExpectedPenRevision || Pen->Revision >= MAX_int64 - 1 ||
+        Pen->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
+        return false;
+    if (!bClosed && !Pen->AnimalIds.IsEmpty())
+        return false;
+
+    if (bClosed)
+    {
+        for (const FGuid& AnimalId : Pen->AnimalIds)
+        {
+            const FWorldAnimalState* Animal = Animals.Find(AnimalId);
+            if (!Animal || Animal->PenId != PenId || !Animal->bCaptured ||
+                Animal->bSlaughtered || Animal->Health <= 0.0f)
+                return false;
+        }
+    }
+
+    Pen->bGateClosed = bClosed;
+    ++Pen->Revision;
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::SetAnimalPenGate;
+    Receipt.EntityId = PenId;
+    Receipt.ExpectedEntityRevision = ExpectedPenRevision;
+    Receipt.ResultingEntityRevision = Pen->Revision;
+    Receipt.DefinitionId = TEXT("Gate");
+    Receipt.WorkAmount = bClosed ? 1.0f : 0.0f;
+    Pen->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TrySlaughterAnimal(
+    const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+    TArray<FGuid>& OutItemIds)
+{
+    OutItemIds.Reset();
+    if (!OperationId.IsValid() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0)
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != EWorldAgricultureActionKind::SlaughterAnimal ||
+            Existing->EntityId != AnimalId || Existing->ExpectedEntityRevision != ExpectedAnimalRevision)
+            return false;
+        OutItemIds = Existing->OutputItemIds;
+        return !OutItemIds.IsEmpty();
+    }
+
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    const FWorldAnimalDefinition* Definition =
+        Animal ? FindAnimalDefinition(Animal->AnimalDefinitionId) : nullptr;
+    FWorldAnimalPenState* Pen = Animal && Animal->PenId.IsValid()
+        ? AnimalPens.Find(Animal->PenId) : nullptr;
+    if (!Animal || !Definition || !Pen || Animal->Revision != ExpectedAnimalRevision ||
+        Animal->Revision >= MAX_int64 - 1 || Pen->Revision >= MAX_int64 - 1 ||
+        !Animal->bCaptured || Animal->bSlaughtered || Animal->Health <= 0.0f ||
+        !Pen->bGateClosed || !Pen->AnimalIds.Contains(AnimalId) ||
+        Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
+        Pen->AnimalIds.Num() <= 0 || Definition->SlaughterYields.IsEmpty())
+        return false;
+
+    TArray<FName> OutputDefinitions;
+    TArray<FVector> OutputLocations;
+    int32 TotalUnits = 0;
+    for (const FWorldAnimalYieldDefinition& Yield : Definition->SlaughterYields)
+    {
+        if (Yield.ItemDefinitionId.IsNone() || Yield.Units <= 0 || Yield.Units > 64 ||
+            TotalUnits > 64 - Yield.Units)
+            return false;
+        for (int32 Unit = 0; Unit < Yield.Units; ++Unit)
+        {
+            OutputDefinitions.Add(Yield.ItemDefinitionId);
+            OutputLocations.Add(Animal->Location + FVector(static_cast<double>(TotalUnits) * 12.0, 0.0, 8.0));
+            ++TotalUnits;
+        }
+    }
+    if (TotalUnits <= 0 || TotalUnits > 64)
+        return false;
+
+    TArray<FGuid> CreatedItems;
+    if (!RegisterWorldOutputsAtomically(OutputDefinitions, OutputLocations, CreatedItems))
+        return false;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::SlaughterAnimal;
+    Receipt.EntityId = AnimalId;
+    Receipt.RelatedEntityId = Pen->PenId;
+    Receipt.ExpectedEntityRevision = ExpectedAnimalRevision;
+    Receipt.ResultingEntityRevision = ExpectedAnimalRevision + 1;
+    Receipt.ExpectedRelatedEntityRevision = Pen->Revision;
+    Receipt.ResultingRelatedEntityRevision = Pen->Revision + 1;
+    Receipt.DefinitionId = Animal->AnimalDefinitionId;
+    Receipt.RequestedOutputUnits = TotalUnits;
+    Receipt.OutputItemIds = CreatedItems;
+
+    Animal->bSlaughtered = true;
+    Animal->Health = 0.0f;
+    Animal->SlaughterOperationId = OperationId;
+    Animal->SlaughterOutputItemIds = CreatedItems;
+    Animal->PenId.Invalidate();
+    ++Animal->Revision;
+    Animal->ActionReceipts.Add(Receipt);
+
+    Pen->AnimalIds.Remove(AnimalId);
+    ++Pen->Revision;
+    OutItemIds = MoveTemp(CreatedItems);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::GetAnimalPen(
+    const FGuid& PenId, FWorldAnimalPenState& OutPen) const
+{
+    const FWorldAnimalPenState* Found = AnimalPens.Find(PenId);
+    if (!Found)
+        return false;
+    OutPen = *Found;
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& FieldCell)
 {
     if (FieldCells.Contains(FieldCell.Cell) ||
