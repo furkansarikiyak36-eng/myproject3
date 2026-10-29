@@ -22,7 +22,7 @@ Branch: `work/phase-3-4-closure`
 - Raid threat state now responds to signals, but physical raider actor/spawn and complete countermeasure flow remain open.
 - Player movement receives carry/slope/weather/snow penalties, but walking does not consume the exact same route-edge path-cost model used for navigation/cargo.
 - P5.2 has bounded voxel excavation and grounded-support clearance, not full cellar/trench/cistern/embankment and unsupported-room collapse systems.
-- P11/P12 remain deferred until after the demo foundation; P10 geometry remains frozen until upstream mechanics close.
+- P7.2/P7.3 remain code-written/unverified; map zone boundaries and marker placement need PIE review, and the current prototype has only the six authored discovery markers. P11/P12 remain deferred until after the demo foundation; P10 geometry remains frozen until upstream mechanics close.
 
 ## Next
 Continue remaining blind-codeable Phase 1–10 items, each with focused authored tests and status evidence. Do not report compiled/tested until the user performs the later batch build/test; PIE and demo validation follow that batch.
