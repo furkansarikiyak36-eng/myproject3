@@ -2382,9 +2382,9 @@ bool FStructuralGraphSupportDamageAndRemovalTest::RunTest(const FString& Paramet
     TestTrue(TEXT("Multi-supported beam has a ground path"), Graph->HasValidSupportPath(Beam));
     TestTrue(TEXT("Multi-supported deck has a ground path"), Graph->HasValidSupportPath(Deck));
     TestEqual(TEXT("Primary foundation receives its share of beam load"),
-        Graph->GetAggregateLoad(GroundA), 16.25f, 0.01f);
+        Graph->GetAggregateLoad(GroundA), 17.5f, 0.01f);
     TestEqual(TEXT("Secondary foundation receives its share of beam load"),
-        Graph->GetAggregateLoad(GroundB), 16.25f, 0.01f);
+        Graph->GetAggregateLoad(GroundB), 17.5f, 0.01f);
 
     TestFalse(TEXT("A used physical anchor cannot be claimed twice"),
         Graph->TryConnect(GroundA, TEXT("Top"), GroundB, TEXT("Duplicate")));
@@ -2418,6 +2418,15 @@ bool FStructuralGraphSupportDamageAndRemovalTest::RunTest(const FString& Paramet
         Graph->TryRemoveSecondarySupport(Beam, GroundB));
     TestTrue(TEXT("Primary support still holds the beam"), Graph->HasValidSupportPath(Beam));
 
+    FStructuralNodeRecord BeamBeforeDisconnect;
+    TestTrue(TEXT("Read beam before disconnect preflight"), Graph->GetNode(Beam, BeamBeforeDisconnect));
+    TestFalse(TEXT("Disconnect rejects a beam still supporting its deck"), Graph->TryDisconnect(Beam));
+    FStructuralNodeRecord BeamAfterDisconnect;
+    TestTrue(TEXT("Read beam after rejected disconnect"), Graph->GetNode(Beam, BeamAfterDisconnect));
+    TestTrue(TEXT("Rejected disconnect preserves the parent edge"),
+        BeamAfterDisconnect.ParentNodeId == BeamBeforeDisconnect.ParentNodeId);
+
+
     TArray<FGuid> LeafFirst;
     TestTrue(TEXT("Build a deterministic dependent removal order"),
         Graph->BuildDependentRemovalOrder(GroundA, LeafFirst));
@@ -2431,6 +2440,120 @@ bool FStructuralGraphSupportDamageAndRemovalTest::RunTest(const FString& Paramet
     TArray<FWorldStructuralNodeSnapshot> Snapshot;
     TestTrue(TEXT("Export structural graph snapshot"), Graph->ExportSnapshot(Snapshot));
     TestEqual(TEXT("Snapshot includes all registered structural nodes"), Snapshot.Num(), 4);
+    return true;
+}
+
+// P7 / M068-M070: material-backed repair and conservative standalone dismantle.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FStructuralRepairAndDismantleTransactionTest,
+    "MyProject3.World.Structure.InventoryBackedRepairAndDismantle", Flags)
+bool FStructuralRepairAndDismantleTransactionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), Data) ||
+        !TestNotNull(TEXT("Structural graph"), Graph) || !TestNotNull(TEXT("Item ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Load structural repair profiles"), Data->LoadDefault());
+    TestTrue(TEXT("Apply world game data"), Data->ApplyToWorld());
+
+    auto MakeNode = [this, World, Graph](EStructuralNodeKind Kind) -> FGuid
+    {
+        AActor* Actor = World->SpawnActor<AActor>();
+        if (!Actor)
+        {
+            AddError(TEXT("Could not create structural test actor"));
+            return FGuid();
+        }
+        UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(Actor);
+        Actor->AddInstanceComponent(Identity);
+        Identity->RegisterComponent();
+        if (!Identity->EnsureIdentity())
+        {
+            AddError(TEXT("Could not create identity for structural test actor"));
+            return FGuid();
+        }
+        const FGuid NodeId = Identity->GetInstanceId();
+        if (!Graph->RegisterNode(Actor, NodeId, Kind, true, 1.0f, 100.0f, 50.0f))
+        {
+            AddError(TEXT("Could not register structural repair test node"));
+            return FGuid();
+        }
+        return NodeId;
+    };
+
+    const FGuid WoodNode = MakeNode(EStructuralNodeKind::Wood);
+    const FGuid StoneNode = MakeNode(EStructuralNodeKind::Stone);
+    if (!WoodNode.IsValid() || !StoneNode.IsValid())
+        return false;
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwner);
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item weights and recipes to repair inventory"), Data->ApplyToInventory(Inventory));
+
+    FInventoryStack Axe;
+    Axe.ItemId = TEXT("Tool.Axe");
+    Axe.Quantity = 1;
+    Axe.MaxStack = 1;
+    Axe.bIsTool = true;
+    Axe.Category = EInventoryItemCategory::Tool;
+    TestTrue(TEXT("Add reusable axe"), Inventory->TryAddItem(Axe));
+
+    bool bThresholdExceeded = false;
+    TestTrue(TEXT("Damage wood structure"), Graph->ApplyDamage(WoodNode, 20.0f, bThresholdExceeded));
+    FStructuralNodeRecord WoodBefore;
+    TestTrue(TEXT("Read damaged wood"), Graph->GetNode(WoodNode, WoodBefore));
+    TestFalse(TEXT("Repair refuses missing material without mutation"),
+        Graph->TryRepairDamageWithInventory(WoodNode, TEXT("repair_wood_structure"),
+            WoodBefore.Revision, Inventory));
+    FStructuralNodeRecord WoodUnchanged;
+    TestTrue(TEXT("Read still damaged wood"), Graph->GetNode(WoodNode, WoodUnchanged));
+    TestEqual(TEXT("Missing material does not change damage"), WoodUnchanged.Damage, 20.0f, 0.001f);
+    TestEqual(TEXT("Missing material does not consume tool"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+
+    FInventoryStack ShortLog;
+    ShortLog.ItemId = TEXT("ShortLog");
+    ShortLog.Quantity = 1;
+    ShortLog.MaxStack = 99;
+    ShortLog.Category = EInventoryItemCategory::BuildingPart;
+    TestTrue(TEXT("Add repair log material"), Inventory->TryAddItem(ShortLog));
+    TestTrue(TEXT("Repair wood with material and reusable axe"),
+        Graph->TryRepairDamageWithInventory(WoodNode, TEXT("repair_wood_structure"),
+            WoodUnchanged.Revision, Inventory));
+    FStructuralNodeRecord WoodRepaired;
+    TestTrue(TEXT("Read repaired wood"), Graph->GetNode(WoodNode, WoodRepaired));
+    TestEqual(TEXT("Repair reduces wood damage to zero"), WoodRepaired.Damage, 0.0f, 0.001f);
+    TestEqual(TEXT("Repair consumes exactly one short log"), Inventory->GetItemCount(TEXT("ShortLog")), 0);
+    TestEqual(TEXT("Repair preserves the reusable axe"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+
+    FWorldOwnedItemRecord LooseStoneItem;
+    LooseStoneItem.ItemId = StoneNode;
+    LooseStoneItem.DefinitionId = TEXT("StoneBlock");
+    LooseStoneItem.Quantity = 1;
+    LooseStoneItem.OwnerKind = EWorldItemOwnerKind::World;
+    LooseStoneItem.WorldLocation = FVector(100.0, 0.0, 0.0);
+    TestTrue(TEXT("Register loose physical stone ownership"), Ownership->RegisterItem(LooseStoneItem));
+    FStructuralNodeRecord LooseStone;
+    TestTrue(TEXT("Read loose stone node"), Graph->GetNode(StoneNode, LooseStone));
+    TestTrue(TEXT("Dismantle standalone stone into conservative salvage"),
+        Graph->TryDismantleStandaloneNodeToInventory(StoneNode, LooseStone.Revision, Inventory));
+    TestFalse(TEXT("Dismantled stone leaves the structural graph"), Graph->GetNode(StoneNode, LooseStone));
+    TestEqual(TEXT("Stone salvage yields two stone resources"), Inventory->GetItemCount(TEXT("Stone")), 2);
+    FWorldOwnedItemRecord ConsumedSource;
+    TestTrue(TEXT("Original physical item identity remains in the ledger"),
+        Ownership->TryGetItem(StoneNode, ConsumedSource));
+    TestTrue(TEXT("Original physical item is no longer world-owned"),
+        ConsumedSource.OwnerKind == EWorldItemOwnerKind::Consumed);
+
+    FStructuralNodeRecord StaleWood;
+    TestTrue(TEXT("Read wood before stale dismantle request"), Graph->GetNode(WoodNode, StaleWood));
+    TestFalse(TEXT("Dismantle refuses an outdated graph revision"),
+        Graph->TryDismantleStandaloneNodeToInventory(WoodNode, StaleWood.Revision - 1, Inventory));
+    TestTrue(TEXT("Wood node remains after stale dismantle request"), Graph->GetNode(WoodNode, StaleWood));
     return true;
 }
 

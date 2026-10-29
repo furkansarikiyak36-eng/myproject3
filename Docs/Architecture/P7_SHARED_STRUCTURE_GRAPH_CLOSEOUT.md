@@ -1,42 +1,32 @@
 # P7 — Shared Structural Graph Workstream Closeout
 
 **Canonical scope:** M059–M070, as mapped by `ARCHITECTURE_14_PHASE_ROADMAP.md`.  
-**Status:** graph-foundation blind-code pass closed; full physical construction and engine acceptance are not claimed.
+**Status:** logical graph, data-driven repair and safe standalone salvage improved; physical assembly and Unreal acceptance remain open.
 
-## Implemented source contracts reviewed
+## Source work completed
 
-- One world-local graph owns structural node identity, primary connections, anchor occupancy, support links, damage and revision state.
-- Ground support is resolved through explicit primary and secondary support links; mesh overlap is not treated as a connection.
-- Aggregate loads are calculated across support paths and checked against configured node capacities.
-- Secondary supports can share load; support paths remain valid if one support is damaged and another remains healthy.
-- Damage is clamped to the configured threshold; repair reduces the same authoritative damage value.
-- Dependent removal ordering is deterministic and leaf-first for primary dependent chains.
-- Graph snapshots include actor identity, material kind, parent/anchor data, secondary supports, load, support, damage and revision.
-- A secondary-support removal now preflights the remaining support path and aggregate loads. A rejected removal restores the prior support list and does not advance revisions.
+- Primary and secondary support edges now check anchor occupancy on both the parent/support and child endpoints. A node with dependents cannot be reparented through the low-level graph API.
+- Disconnecting a node preflights dependent support paths and rejects any operation that would leave a dependent without its last healthy support.
+- Leaf-first removal planning includes dependents linked through secondary supports, not just primary-parent edges.
+- `structure_repairs.json` defines wood, stone and stick repairs with target kind, consumed material, reusable tool, repair amount and conservative salvage output.
+- `TryRepairDamageWithInventory` validates node kind/revision/damage, material count and tool presence, then consumes the material and repairs the same authoritative graph damage value. The tool remains reusable.
+- `TryDismantleStandaloneNodeToInventory` consumes the physical item's ledger identity and returns authored salvage only for a standalone node without parent links, secondary supports or dependents. Connected pieces are rejected instead of being removed with stale anchor/graph references.
+- Automation source covers missing-material failure, resource-backed repair, tool preservation, standalone salvage, stale revisions, support-preserving disconnect, load distribution and snapshot export.
+- Stone-piece authoring has distinct enum slots for wall, door/window frame, wall opening, floor/roof, ramp/stair, bridge/walkway, gate/fence/railing and defensive wall variants. Those slots require appropriate physical meshes/anchors in Blueprint content; the enum does not claim geometry is already authored.
 
-## Automation coverage authored
+## Remaining physical construction work (not fully closed)
 
-`MyProject3.World.Structure.SupportDamageAndRemovalContracts` covers grounded foundations, mixed-material graph nodes, primary and secondary support, load distribution, occupied-anchor rejection, invalid self-support, damage thresholds, repair, failed support removal, deterministic removal order and graph snapshot export.
-
-## Scope still explicitly outside this blind-code closeout
-
-The current graph is a logical authority, not a complete construction catalogue or physical transaction layer. The following require further domain actor/asset/integration work and must not be reported as complete merely because graph links can represent them:
-
-- M064: door, window and wall-opening piece variants and their removal behavior.
-- M065: floor, roof, ramp and stair physical variants and placement constraints.
-- M066: bridge, rope crossing and elevated walkway physical variants, span and traversal acceptance.
-- M067: gate, fence, railing and defensive-wall physical variants.
-- M068/M069: inventory-backed repair material consumption, dismantle/salvage output and atomic actor/graph/ownership transactions.
-- M070: end-to-end pickup prevention/authorization in every physical actor adapter.
-- Cross-domain actor destruction/collapse and physical restore are not proven by the graph unit contracts.
-
-These remain follow-up implementation/engine acceptance work; do not silently mark the canonical registry verified.
+- M064: actual wall-opening/door/window geometry and actor-facing placement/removal rules.
+- M065: authored floors, roofs, ramps and stairs with measured support/span constraints.
+- M066: bridges, rope crossings and elevated walkways with multi-anchor reservations and traversability/capacity acceptance.
+- M067: authored gate, fence, railing and defensive-wall geometry and raid/traversal integration.
+- Connected-piece dismantle with alternate-support promotion, actor-local anchor synchronization, material recovery and leaf-first physical collapse transactions.
+- Repair/salvage integration through every connected log/stone/stick actor adapter.
+- Full physical-world save/restore acceptance.
 
 ## Verification boundary
 
-- [x] Static source review of graph APIs and invariants.
-- [x] Graph support-removal failure path made non-destructive.
-- [x] Automation acceptance source authored.
+- [x] Static source contracts/data and automation test source authored.
 - [ ] Unreal Engine 5.8 build/UHT and Editor automation execution — not run here.
-- [ ] Physical actor/mesh/collision, PIE collapse, repair/salvage and save/load acceptance — deferred.
+- [ ] Mesh/collision, connected collapse, cross-material anchors, repair/salvage and save/load PIE acceptance — pending.
 - [ ] Do not merge to `main` until the local engine validation gate is green.
