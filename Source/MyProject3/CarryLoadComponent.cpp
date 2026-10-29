@@ -239,17 +239,35 @@ float UCarryLoadComponent::GetCarriedMassKg() const
 
 float UCarryLoadComponent::GetSpeedMultiplier() const
 {
+    if (!FMath::IsFinite(MaxCarryMassKg) || MaxCarryMassKg <= 0.0f ||
+        !FMath::IsFinite(MinSpeedMultiplier) || MinSpeedMultiplier <= 0.0f || MinSpeedMultiplier > 1.0f)
+        return FMath::Clamp(MinSpeedMultiplier, 0.05f, 1.0f);
     const float Ratio = FMath::Clamp(GetCarriedMassKg() / MaxCarryMassKg, 0.0f, 1.0f);
     return FMath::Lerp(1.0f, MinSpeedMultiplier, Ratio);
+}
+
+bool UCarryLoadComponent::SetTraversalEnvironmentMultiplier(float Multiplier)
+{
+    if (!FMath::IsFinite(Multiplier) || Multiplier < 0.2f || Multiplier > 1.5f)
+        return false;
+    if (!FMath::IsNearlyEqual(TraversalEnvironmentMultiplier, Multiplier, 0.005f))
+    {
+        TraversalEnvironmentMultiplier = Multiplier;
+        ApplyMovementSpeed();
+    }
+    return true;
 }
 
 void UCarryLoadComponent::ApplyMovementSpeed()
 {
     ACharacter* Character = Cast<ACharacter>(GetOwner());
     UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
-    if (!Movement || BaseWalkSpeed <= 0.0f)
+    if (!Movement || !FMath::IsFinite(BaseWalkSpeed) || BaseWalkSpeed <= 0.0f ||
+        !FMath::IsFinite(TraversalEnvironmentMultiplier))
         return;
-    Movement->MaxWalkSpeed = BaseWalkSpeed * GetSpeedMultiplier();
+    const float CombinedMultiplier =
+        GetSpeedMultiplier() * FMath::Clamp(TraversalEnvironmentMultiplier, 0.2f, 1.5f);
+    Movement->MaxWalkSpeed = BaseWalkSpeed * FMath::Clamp(CombinedMultiplier, 0.05f, 1.5f);
 }
 
 TArray<AActor*> UCarryLoadComponent::GetCarriedPieces() const
