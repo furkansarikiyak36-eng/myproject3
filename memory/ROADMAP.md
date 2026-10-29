@@ -17,7 +17,7 @@ Most errors in unbuilt code are names that do not exist (group-a had 16). So:
    every new `.h` needs `#include "X.generated.h"` as its last include.
 3. Survival steps take the step's **end** time (`AdvanceSurvivalStep(Delta, EndTime)`).
 4. A new saved field: add it to the struct, to the restore validation, and a save schema migration step
-   (`WorldSaveCoordinatorSubsystem.cpp`, current schema 25 on `game/p00-adopt-group-a`; retain migrations from v22, v23 and v24).
+   (`WorldSaveCoordinatorSubsystem.cpp`, current schema 26 on `game/p00-adopt-group-a`; retain migrations from v22, v23, v24 and v25).
 5. Keep a change small and in one place; do not refactor files you are not changing.
 6. **Write the test with the code** (in `Tests/GameWorldTests.cpp`), even though you cannot run it.
    Name: `MyProject3.World.<Area>.<What>`.
@@ -90,9 +90,9 @@ Everything below is backend only: no input or HUD for the player unless stated. 
 | group-a piece | Task | Fit | Build on top (our work) |
 |---|---|---|---|
 | Item freshness (`CreatedAtWorldTimeSeconds`), consumable `FreshnessDurationSeconds`, `SpoiledEnergyFraction` | P2.4 | partly: time only | Storage modifiers: cellar, smoke rack, drying, heat, damp |
-| `TryConsumeFoodItem` (kcal + thirst relief from an item) | P2.1 | fits | Dirty/boiled water items; dirty water → illness |
-| `TryBeginRest` (fatigue/stamina recovery on the shared clock) | P2.2 | fits | Sleep place quality (cold ground vs bed), night |
-| Conditions `Injury, Illness, Poisoning` with duration, damage, treatment item | P2.5 | fits | Triggers: dirty water, spoiled food, toxic rain, falls, animals |
+| `TryConsumeFoodItem` (kcal + thirst relief from an item) + `TryFillWaterFromCreek` | P2.1 | code-written partial: dirty-water consume/illness + fired-pot creek fill into owned inventory item, idempotent output receipt; I key in VerticalSlice_C | boil via heat/production station, player consumption input/UI, build/PIE test |
+| `TryBeginRest` (fatigue/stamina recovery on the shared clock) + character movement adapter | P2.2 | code-written partial: fatigue reduces walk speed; sprint requires stamina/fatigue thresholds; Run/Chop/Dig/Build/Carry gates; VerticalSlice_C chop preflight | player sleep/rest input, work-speed/tool-duration coupling and in-game tuning |
+| Conditions `Injury, Illness, Poisoning` with duration, damage, treatment item | P2.5 | code-written partial: dirty water, spoiled food and prolonged wet-cold trigger configured illness; `Injury.Fall`/`Injury.AnimalBite` definitions exist | fall/animal-attack and toxic-rain trigger wiring; player HUD feedback |
 | Equipment slots `Head, Body, Hands, Legs, Feet`, clothing insulation, water resistance, capabilities | P2.6 | fits | Hide clothing recipe (#15); wetness (P2.3) uses water resistance |
 | Shelter protection separate from clothing | P3.2 | partly: still line traces | Enclosure from the structural graph, plaster closes gaps |
 | Fuel item definitions, `TryAddFuelItem` (item → burn seconds, receipts) | P3.1 | fits | Wet wood burns worse, charcoal item, player input on the fire |
@@ -287,6 +287,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 ## Progress log
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
+- 2026-10-29 · P2.1/P2.2/P2.3/P2.5 (partial) · code-written · `TryFillWaterFromCreek` with Pot.Fired, dirty-water output/receipt, v26 save migration, fatigue walk/sprint/action gates, creek wetness and wet-cold illness; tests authored (`605ee55`, `f1c41a0`, scene wiring `fd706f7`) · **unbuilt/unrun**
 - 2026-10-29 · P6.4 · code-written · wildlife identity, capture receipt, capacity/species-gated pen, atomic meat/hide/bone outputs, pen save/migration v25, lifecycle test authored (`40e2ba3` and `3546219`) · **unbuilt**
 - 2026-10-29 · P6.1/P6.2/P6.3 (part) · code-written · field-cell actions/snapshot, planting month and crop-data wiring, fertility/weed/mulch growth, seed-return output, schema v23/v24 and automation coverage authored (`2ca2ede`, `e258f59`) · **unbuilt**
 - 2026-10-29 · P0.5 · code-written · demo scenario selects game-data transformation ID instead of separate editable recipe payload; status updated (`7ef5c47`) · **unbuilt**
