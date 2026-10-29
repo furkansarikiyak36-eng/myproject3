@@ -6,6 +6,8 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "ShelterSensorComponent.h"
+#include "WorldGameDataSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WildlifeActor.h"
 #include "WorldObjectIdentityComponent.h"
@@ -670,6 +672,24 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
         Seed.OwnerId != ExpectedInventoryOwnerId || Seed.DefinitionId != Definition->SeedDefinitionId ||
         Seed.Quantity != 1 || Seed.Revision >= MAX_int64 - 1)
         return false;
+
+    // Seeds that a discovery explicitly unlocks stay gated at the authoritative
+    // planting transaction too; possession of a spoofed/raw seed record is not
+    // enough to bypass the player's knowledge ledger.
+    const UWorldGameDataSubsystem* GameData =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (GameData && GameData->IsApplied() &&
+        GameData->IsDiscoveryGatedDefinition(Definition->SeedDefinitionId))
+    {
+        const AActor* InventoryActor = Inventory->GetOwner();
+        const UShelterSensorComponent* Shelter =
+            InventoryActor ? InventoryActor->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        const UWorldSurvivalSubsystem* Survival =
+            GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+        if (!Shelter || !Shelter->SurvivalEntityId.IsValid() || !Survival ||
+            !Survival->IsDefinitionUnlocked(Shelter->SurvivalEntityId, Definition->SeedDefinitionId))
+            return false;
+    }
 
     FWorldCropState Crop;
     Crop.CropId = FGuid::NewGuid();
