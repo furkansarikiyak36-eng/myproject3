@@ -163,6 +163,11 @@ public:
         int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner,
         FName NewDefinitionId, FWorldOwnedItemRecord& OutRecord);
 
+    /** Atomically changes a processed definition and its physical world location. */
+    bool TryUpdateItemDefinitionAndLocation(const FGuid& OperationId, const FGuid& ItemId,
+        int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner, FName NewDefinitionId,
+        const FVector& NewWorldLocation, FWorldOwnedItemRecord& OutRecord);
+
     UFUNCTION(BlueprintPure, Category="World|Items")
     bool TryGetItem(const FGuid& ItemId, FWorldOwnedItemRecord& OutRecord) const;
 
