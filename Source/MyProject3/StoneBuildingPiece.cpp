@@ -1339,5 +1339,7 @@ void AStoneBuildingPiece::EnsureAutomaticAnchors()
     }
     if (PieceType == EStonePieceType::RopeCrossingAnchor &&
         FindAnchorIndex(TEXT("RopeSocket")) == INDEX_NONE)
-        AddCustomAnchor(TEXT("RopeSocket"), TEXT("Rope"), FTransform(Top), true, true);
+        // Keep a character capsule outside the pole/crossbar collision at the rope end.
+        AddCustomAnchor(TEXT("RopeSocket"), TEXT("Rope"),
+            FTransform(Top + FVector(0.0, 60.0, 0.0)), true, true);
 }

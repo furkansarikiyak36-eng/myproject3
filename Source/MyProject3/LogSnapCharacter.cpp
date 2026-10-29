@@ -17,6 +17,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
 #include "Engine/Engine.h"
+#include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
@@ -24,6 +25,7 @@
 #include "LogCarryComponent.h"
 #include "InventoryCraftingComponent.h"
 #include "CarryLoadComponent.h"
+#include "StoneBuildingPiece.h"
 #include "Math/RotationMatrix.h"
 
 ALogSnapCharacter::ALogSnapCharacter()
@@ -197,7 +199,7 @@ void ALogSnapCharacter::BeginPlay()
     ApplyBlockoutMaterials();
 
     const FString Controls =
-        TEXT("WASD move | Mouse look | E pick/place/use | N dig bounded voxel terrain | Q throw | RMB placement mode | F1 all building keys | F9 choose farm action | F10 work soil | P plant or harvest");
+        TEXT("WASD move | Mouse look | E pick/place/use | J traverse/cancel rope | R rotate held piece | N dig bounded voxel terrain | Q throw | RMB placement mode | F1 all building keys | F9 choose farm action | F10 work soil | P plant or harvest");
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(
@@ -243,6 +245,7 @@ void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCo
     PlayerInputComponent->BindAxisKey(EKeys::MouseY, this, &ALogSnapCharacter::LookUp);
     PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &ALogSnapCharacter::HandleJumpPressed);
     PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Released, this, &ALogSnapCharacter::HandleJumpReleased);
+    PlayerInputComponent->BindKey(EKeys::J, IE_Pressed, this, &ALogSnapCharacter::HandleRopeTraversalPressed);
 
     if (LogCarry)
     {
@@ -319,6 +322,100 @@ void ALogSnapCharacter::HandleJumpReleased()
     StopJumping();
 }
 
+void ALogSnapCharacter::HandleRopeTraversalPressed()
+{
+    if (bRopeTraversalActive)
+    {
+        EndRopeTraversal(true);
+        return;
+    }
+
+    UWorld* World = GetWorld();
+    UCharacterMovementComponent* Movement = GetCharacterMovement();
+    if (!World || !Movement || !FMath::IsFinite(RopeInteractionRangeCm) ||
+        RopeInteractionRangeCm <= 0.0f || !FMath::IsFinite(RopeTraversalSpeedCmPerSecond) ||
+        RopeTraversalSpeedCmPerSecond <= 0.0f || !FMath::IsFinite(RopeBaseTravelerWeightKg) ||
+        RopeBaseTravelerWeightKg <= 0.0f)
+        return;
+
+    const float CarriedMassKg = IsValid(CarryLoad)
+        ? FMath::Max(0.0f, CarryLoad->GetCarriedMassKg()) : 0.0f;
+    const float TravelerWeightKg = RopeBaseTravelerWeightKg + CarriedMassKg;
+    AStoneBuildingPiece* BestEndpoint = nullptr;
+    float BestDistance = RopeInteractionRangeCm;
+    for (TActorIterator<AStoneBuildingPiece> It(World); It; ++It)
+    {
+        AStoneBuildingPiece* Candidate = *It;
+        if (!IsValid(Candidate) ||
+            Candidate->PieceType != EStonePieceType::RopeCrossingAnchor ||
+            !IsValid(Candidate->GetRopeOtherEnd()) ||
+            !Candidate->CanBeginRopeTraversal(TravelerWeightKg))
+            continue;
+
+        FStructuralAnchorView Socket;
+        if (!Candidate->GetStructuralAnchor(TEXT("RopeSocket"), Socket))
+            continue;
+        const float Distance = FVector::Distance(
+            GetActorLocation(), Candidate->GetAnchorWorldTransform(TEXT("RopeSocket")).GetLocation());
+        if (FMath::IsFinite(Distance) && Distance <= BestDistance)
+        {
+            BestDistance = Distance;
+            BestEndpoint = Candidate;
+        }
+    }
+
+    if (!BestEndpoint)
+        return;
+
+    AStoneBuildingPiece* OtherEnd = BestEndpoint->GetRopeOtherEnd();
+    if (!IsValid(OtherEnd))
+        return;
+
+    const FVector Start = BestEndpoint->GetAnchorWorldTransform(TEXT("RopeSocket")).GetLocation();
+    const FVector End = OtherEnd->GetAnchorWorldTransform(TEXT("RopeSocket")).GetLocation();
+    const float Span = FVector::Distance(Start, End);
+    const float Duration = Span / RopeTraversalSpeedCmPerSecond;
+    if (!FMath::IsFinite(Duration) || Duration <= 0.0f)
+        return;
+
+    FGuid Ticket;
+    if (!BestEndpoint->TryBeginRopeTraversal(this, TravelerWeightKg, Ticket) || !Ticket.IsValid())
+        return;
+
+    ActiveRopeEndpoint = BestEndpoint;
+    ActiveRopeOtherEnd = OtherEnd;
+    ActiveRopeTraversalId = Ticket;
+    RopeTraversalStartLocation = Start;
+    RopeTraversalEndLocation = End;
+    RopeTraversalElapsedSeconds = 0.0f;
+    RopeTraversalDurationSeconds = Duration;
+    RopePreviousMovementMode = static_cast<uint8>(Movement->MovementMode);
+    RopePreviousCustomMovementMode = Movement->CustomMovementMode;
+    Movement->StopMovementImmediately();
+    Movement->DisableMovement();
+    bRopeTraversalActive = true;
+}
+
+void ALogSnapCharacter::EndRopeTraversal(bool bCancelTicket)
+{
+    if (bCancelTicket && ActiveRopeTraversalId.IsValid() && ActiveRopeEndpoint.IsValid())
+        ActiveRopeEndpoint->CancelRopeTraversal(ActiveRopeTraversalId);
+
+    ActiveRopeTraversalId.Invalidate();
+    ActiveRopeEndpoint.Reset();
+    ActiveRopeOtherEnd.Reset();
+    RopeTraversalElapsedSeconds = 0.0f;
+    RopeTraversalDurationSeconds = 0.0f;
+    bRopeTraversalActive = false;
+
+    if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+    {
+        Movement->StopMovementImmediately();
+        Movement->SetMovementMode(
+            static_cast<EMovementMode>(RopePreviousMovementMode), RopePreviousCustomMovementMode);
+    }
+}
+
 void ALogSnapCharacter::PlayAxeSwing()
 {
     if (!AxePivot)
@@ -361,6 +458,30 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
             bAxeSwingActive = false;
             AxePivot->SetRelativeRotation(AxePivotBaseRotation);
         }
+    }
+
+    if (bRopeTraversalActive)
+    {
+        AStoneBuildingPiece* Endpoint = ActiveRopeEndpoint.Get();
+        if (!IsValid(Endpoint) || !ActiveRopeTraversalId.IsValid() ||
+            !FMath::IsFinite(DeltaSeconds) || DeltaSeconds < 0.0f)
+        {
+            EndRopeTraversal(true);
+            return;
+        }
+
+        RopeTraversalElapsedSeconds += DeltaSeconds;
+        const float Alpha = RopeTraversalDurationSeconds > 0.0f
+            ? FMath::Clamp(RopeTraversalElapsedSeconds / RopeTraversalDurationSeconds, 0.0f, 1.0f)
+            : 1.0f;
+        if (!Endpoint->AdvanceRopeTraversal(ActiveRopeTraversalId, Alpha))
+        {
+            EndRopeTraversal(true);
+            return;
+        }
+        if (Alpha >= 1.0f)
+            EndRopeTraversal(false);
+        return;
     }
 
     const APlayerController* PlayerController = Cast<APlayerController>(Controller);

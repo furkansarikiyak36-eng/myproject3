@@ -138,6 +138,9 @@ public:
     bool TryConnectRopeTo(AStoneBuildingPiece* TargetPiece, FName OwnAnchorId, FName TargetAnchorId);
 
     UFUNCTION(BlueprintPure, Category="Structure|Traversal")
+    AStoneBuildingPiece* GetRopeOtherEnd() const { return RopeOtherEnd.Get(); }
+
+    UFUNCTION(BlueprintPure, Category="Structure|Traversal")
     bool CanBeginRopeTraversal(float WeightKg) const;
 
     /** Starts deterministic rope movement; callers advance Alpha from 0 to 1 each movement update. */

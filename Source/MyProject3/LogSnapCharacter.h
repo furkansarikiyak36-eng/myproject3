@@ -5,6 +5,7 @@
 #include "LogSnapCharacter.generated.h"
 
 class UCameraComponent;
+class AStoneBuildingPiece;
 class USceneComponent;
 class UStaticMeshComponent;
 class ULogCarryComponent;
@@ -89,6 +90,27 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Terrain")
     TObjectPtr<UTerrainDigToolComponent> TerrainDigTool;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Character|Traversal", meta=(ClampMin="50.0"))
+    float RopeInteractionRangeCm = 180.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Character|Traversal", meta=(ClampMin="25.0"))
+    float RopeTraversalSpeedCmPerSecond = 250.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Character|Traversal", meta=(ClampMin="1.0"))
+    float RopeBaseTravelerWeightKg = 75.0f;
+
+    UPROPERTY(Transient, BlueprintReadOnly, Category="Character|Traversal")
+    TWeakObjectPtr<AStoneBuildingPiece> ActiveRopeEndpoint;
+
+    UPROPERTY(Transient, BlueprintReadOnly, Category="Character|Traversal")
+    TWeakObjectPtr<AStoneBuildingPiece> ActiveRopeOtherEnd;
+
+    UPROPERTY(Transient, BlueprintReadOnly, Category="Character|Traversal")
+    FGuid ActiveRopeTraversalId;
+
+    UPROPERTY(Transient, BlueprintReadOnly, Category="Character|Traversal")
+    bool bRopeTraversalActive = false;
+
 protected:
     /** Camera offset that eases out height jumps from steps, logs and rocks. */
     float StepSmoothingOffset = 0.0f;
@@ -115,6 +137,15 @@ protected:
     void LookUp(float Value);
     void HandleJumpPressed();
     void HandleJumpReleased();
+    void HandleRopeTraversalPressed();
+    void EndRopeTraversal(bool bCancelTicket);
+
+    FVector RopeTraversalStartLocation = FVector::ZeroVector;
+    FVector RopeTraversalEndLocation = FVector::ZeroVector;
+    float RopeTraversalElapsedSeconds = 0.0f;
+    float RopeTraversalDurationSeconds = 0.0f;
+    uint8 RopePreviousMovementMode = 1;
+    uint8 RopePreviousCustomMovementMode = 0;
 
 public:
     /** Called by the active vertical-slice chopping handler on every mouse swing. */
