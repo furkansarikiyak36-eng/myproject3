@@ -2678,6 +2678,7 @@ bool FAgricultureConsumesInputsAndCollectsProductsTest::RunTest(const FString& P
     Definition.SeedDefinitionId = TEXT("Test.Seed");
     Definition.HarvestDefinitionId = TEXT("Test.CropOutput");
     Definition.HarvestUnits = 2;
+    Definition.SeedReturnUnits = 1;
     Definition.SecondsPerStage = 10.0;
     Definition.MinimumPlantMoisture = 0.2f;
     TestTrue(TEXT("Register crop recipe"), Agriculture->RegisterCropDefinition(Definition));
@@ -2705,6 +2706,33 @@ bool FAgricultureConsumesInputsAndCollectsProductsTest::RunTest(const FString& P
         FIntVector(1, 2, 0), 0.8f, CropRetryId));
     TestEqual(TEXT("Plant retry returns same crop ID"), CropRetryId, CropId);
     TestEqual(TEXT("Plant retry does not consume extra seed"), Ownership->GetTrackedItemCount(), 2);
+
+    TestTrue(TEXT("Prepared field and crop can advance to maturity"), Agriculture->AdvanceAgricultureStep(3600.0));
+    FWorldCropState MatureCrop;
+    TestTrue(TEXT("Read crop after growing step"), Agriculture->GetCrop(CropId, MatureCrop));
+    TestEqual(TEXT("Crop reaches mature stage"), MatureCrop.Stage, ECropGrowthStage::Mature);
+    const FGuid HarvestOperationId = FGuid::NewGuid();
+    TArray<FGuid> HarvestOutputIds;
+    TestTrue(TEXT("Harvest returns produce and seed outputs"), Agriculture->TryHarvestCrop(
+        HarvestOperationId, CropId, MatureCrop.Revision, HarvestOutputIds));
+    TestEqual(TEXT("Harvest outputs include two produce and one returned seed"), HarvestOutputIds.Num(), 3);
+    int32 ProduceCount = 0;
+    int32 ReturnedSeedCount = 0;
+    for (const FGuid& OutputId : HarvestOutputIds)
+    {
+        FWorldOwnedItemRecord Output;
+        TestTrue(TEXT("Harvest output exists in ownership ledger"), Ownership->TryGetItem(OutputId, Output));
+        TestEqual(TEXT("Harvest output is world-owned"), Output.OwnerKind, EWorldItemOwnerKind::World);
+        ProduceCount += Output.DefinitionId == TEXT("Test.CropOutput") ? 1 : 0;
+        ReturnedSeedCount += Output.DefinitionId == TEXT("Test.Seed") ? 1 : 0;
+    }
+    TestEqual(TEXT("Configured produce units returned"), ProduceCount, 2);
+    TestEqual(TEXT("Configured seed units returned"), ReturnedSeedCount, 1);
+    TArray<FGuid> HarvestRetryIds;
+    TestTrue(TEXT("Harvest retry returns the same item IDs"), Agriculture->TryHarvestCrop(
+        HarvestOperationId, CropId, MatureCrop.Revision, HarvestRetryIds));
+    TestTrue(TEXT("Harvest retry does not duplicate any output"), HarvestRetryIds == HarvestOutputIds);
+    TestEqual(TEXT("Harvest outputs are only registered once"), Ownership->GetTrackedItemCount(), 5);
 
     FWorldAnimalState Animal;
     Animal.AnimalId = FGuid::NewGuid();
@@ -2746,13 +2774,14 @@ bool FAgricultureConsumesInputsAndCollectsProductsTest::RunTest(const FString& P
         Agriculture->TryCollectAnimalProducts(CollectOperationId, Animal.AnimalId,
             Fed.Revision, ProductRetry));
     TestTrue(TEXT("Product IDs are unchanged"), ProductRetry == ProductIds);
-    TestEqual(TEXT("No duplicate product created"), Ownership->GetTrackedItemCount(), 3);
+    TestEqual(TEXT("No duplicate product created"), Ownership->GetTrackedItemCount(), 6);
 
     TArray<FWorldCropState> Crops;
     TArray<FWorldAnimalState> Animals;
-    Agriculture->ExportSnapshot(Crops, Animals);
-    TestTrue(TEXT("Agriculture transaction receipts restore with owned items"),
-        Agriculture->RestoreSnapshot(Crops, Animals));
+    TArray<FWorldFieldCellState> Fields;
+    Agriculture->ExportSnapshot(Crops, Animals, Fields);
+    TestTrue(TEXT("Agriculture transaction receipts and field cells restore with owned items"),
+        Agriculture->RestoreSnapshot(Crops, Animals, Fields));
     TArray<FGuid> ProductAfterRestore;
     TestTrue(TEXT("Collection retry remains idempotent after restore"),
         Agriculture->TryCollectAnimalProducts(CollectOperationId, Animal.AnimalId,
