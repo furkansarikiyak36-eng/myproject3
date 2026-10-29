@@ -141,6 +141,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterRecipe(const FWorldProductionRecipe& Recipe);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterStation(const FWorldProductionStation& Station);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
+    /** Takes stock out of a station (into a player's hands). Job inputs already left the stock when the job was queued. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryTakeStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
     /** Converts one loose, world-owned physical log into one station stock unit. OperationId must be reused for retries. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
     /** Ingests a uniquely owned ledger-only world resource; rejects items with a physical actor adapter. */

@@ -44,6 +44,8 @@ public:
  bool RestoreSnapshot(const FGuid& InInventoryOwnerId, const TArray<FInventoryStack>& Snapshot,
   FName InQuickAccessItemId);
  FGuid GetInventoryOwnerId() const { return InventoryOwnerId; }
+ /** True if all these stacks fit (weight and slots). */
+ bool CanAddItems(const TArray<FInventoryStack>& Additions) const { return HasCapacityFor(Additions); }
 private:
  int32 FindRecipeIndex(FName RecipeId) const;
  bool HasCapacityFor(const TArray<FInventoryStack>& Additions) const;

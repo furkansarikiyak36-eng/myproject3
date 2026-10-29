@@ -42,9 +42,9 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P3.2 shelter enclosure | Kısmi | roof/wall cover by line traces, counting only structurally placed pieces (loose logs no longer count) [S]; a closed shelter keeps fire heat (`ShelterHeatRetention`, test) | per-gap heat loss from the graph; plaster closing gaps (P3.3); the sensor change has no automated test (needs placed log actors) |
 | P3.3 clay plaster | Yok | — | plaster item, wall state, closes gaps |
 | P3.4 charcoal pit | Yok | generic production station [S] | the station and recipe |
-| P4.1 gatherables | Kısmi | trees, logs, branches/sticks, stones [S] | flint, fibre, bone/antler, hide, reed, clay, resin, ochre, shell/tooth/feather |
+| P4.1 gatherables | Kısmi | trees, logs, sticks, stones [S]; `AGatherableResourceActor`: any data item, tool rule, units that grow back on the world clock, food as ledger items (test) | placing the spots in VerticalSlice_C per zone; bone/hide/antler come from hunting (P6.4); player input |
 | P4.2 item transformations | Var | every E transformation is data: hand ones become inventory crafting recipes, station ones production recipes (station tools go in and come back) | hand-crafted items are plain stacks, not ledger items (eating needs ledger items) |
-| P4.3 stations | Kısmi | production station records and jobs [S] | the 6 station actors |
+| P4.3 stations | Kısmi | `AProductionStationActor` for every station in stations.json: deposit, start (fire / charcoal-hot fire rule), collect, take; `TryTakeStock` in production; kiln test | station meshes and placing them; the fire is checked only at the start of a job; player input |
 | P4.4 tool requirements | Kısmi | hand recipes need their tools (not used up; CanCraft now checks them, it ignored them before); station recipes need the tool in the station | the log axe and the dig tool strength are not tied to tool items yet |
 | P5.1 layers → items | Kısmi | yield rules material + depth layer → item, units per m³ [A]; voxel prototype [S] | our layers: soil, clay, sand, stone, flint, ochre |
 | P5.2 cellar, trench, collapse | Yok | dig refused near grounded structures [A] | collapse of unsupported rooms; cellar/trench/cistern/embankment |

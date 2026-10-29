@@ -14,6 +14,8 @@
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "GatherableResourceActor.h"
+#include "ProductionStationActor.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
 #include "HAL/FileManager.h"
@@ -764,6 +766,128 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Two flakes"), Inventory->GetItemCount(TEXT("FlintFlake")), 2);
     TestEqual(TEXT("One flint used"), Inventory->GetItemCount(TEXT("Flint")), 1);
     TestEqual(TEXT("Hammer stone kept"), Inventory->GetItemCount(TEXT("HammerStone")), 1);
+    return true;
+}
+
+// P4.1: a gather spot needs its tool, empties, and grows back on the world clock.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGatherableResourceTest,
+    "MyProject3.World.Gather.ToolEmptiesAndRefills", Flags)
+bool FGatherableResourceTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(6, 0.0));
+    UWorldGameDataSubsystem* Data = World->GetSubsystem<UWorldGameDataSubsystem>();
+    TestTrue(TEXT("Game data (item weights)"), Data && Data->LoadDefault() && Data->ApplyToWorld());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+
+    AGatherableResourceActor* Reeds = World->SpawnActor<AGatherableResourceActor>();
+    if (!TestNotNull(TEXT("Reed bed"), Reeds))
+        return false;
+    Reeds->ItemDefinitionId = TEXT("Reed");
+    Reeds->RequiredToolId = TEXT("FlintFlake");
+    Reeds->UnitsPerGather = 2;
+    Reeds->MaxUnits = 3;
+    Reeds->RefillSecondsPerUnit = Day;
+
+    int32 Got = 0;
+    TestFalse(TEXT("No flake, no reeds"), Reeds->TryGather(Inventory, Got));
+    FInventoryStack Flake;
+    Flake.ItemId = TEXT("FlintFlake");
+    TestTrue(TEXT("Flake in hand"), Inventory->TryAddItem(Flake));
+    TestEqual(TEXT("Starts full"), Reeds->GetAvailableUnits(), 3);
+    TestTrue(TEXT("Cut reeds"), Reeds->TryGather(Inventory, Got));
+    TestEqual(TEXT("Two at a time"), Got, 2);
+    TestTrue(TEXT("Cut the rest"), Reeds->TryGather(Inventory, Got));
+    TestEqual(TEXT("Only one was left"), Got, 1);
+    TestFalse(TEXT("Empty"), Reeds->TryGather(Inventory, Got));
+    TestEqual(TEXT("Three reeds"), Inventory->GetItemCount(TEXT("Reed")), 3);
+    TestEqual(TEXT("Flake kept"), Inventory->GetItemCount(TEXT("FlintFlake")), 1);
+
+    TestTrue(TEXT("A day and a half"), Clock->AdvanceSimulation(1.5 * Day));
+    TestEqual(TEXT("One grew back"), Reeds->GetAvailableUnits(), 1);
+    TestTrue(TEXT("Another day"), Clock->AdvanceSimulation(Day));
+    TestEqual(TEXT("Two grew back"), Reeds->GetAvailableUnits(), 2);
+
+    // Food comes out as ledger items so it can be eaten.
+    AGatherableResourceActor* Bush = World->SpawnActor<AGatherableResourceActor>();
+    Bush->ItemDefinitionId = TEXT("Berries");
+    Bush->bGiveLedgerItems = true;
+    Bush->UnitsPerGather = 2;
+    TestTrue(TEXT("Pick berries"), Bush->TryGather(Inventory, Got));
+    TArray<FInventoryStack> Items;
+    FGuid OwnerActor, InventoryId;
+    FName Quick;
+    Inventory->ExportSnapshot(OwnerActor, InventoryId, Items, Quick);
+    int32 LedgerBerries = 0;
+    for (const FInventoryStack& Stack : Items)
+    {
+        FWorldOwnedItemRecord Record;
+        if (Stack.ItemId == TEXT("Berries") && Stack.OwnedWorldItemId.IsValid() && Ownership->TryGetItem(Stack.OwnedWorldItemId, Record))
+            LedgerBerries += Record.OwnerKind == EWorldItemOwnerKind::Inventory ? 1 : 0;
+    }
+    TestEqual(TEXT("Two berries in the ledger"), LedgerBerries, 2);
+    return true;
+}
+
+// P4.3: a pit kiln fires a pot only next to a charcoal-hot fire; inputs are used up, outputs collected.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProductionStationTest,
+    "MyProject3.World.Station.KilnNeedsHotFire", Flags)
+bool FProductionStationTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production))
+        return false;
+    TestTrue(TEXT("Data"), Data->LoadDefault() && Data->ApplyToWorld());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    FInventoryStack Pot;
+    Pot.ItemId = TEXT("Pot.Raw");
+    TestTrue(TEXT("Raw pot in hand"), Inventory->TryAddItem(Pot));
+
+    AProductionStationActor* Kiln = World->SpawnActor<AProductionStationActor>();
+    if (!TestNotNull(TEXT("Kiln"), Kiln))
+        return false;
+    Kiln->StationDataId = TEXT("pit_kiln");
+    TestTrue(TEXT("Kiln registered"), Kiln->EnsureRegistered());
+    TestTrue(TEXT("Pot into the kiln"), Kiln->TryDeposit(Inventory, TEXT("Pot.Raw"), 1));
+    TestEqual(TEXT("Pot left the hands"), Inventory->GetItemCount(TEXT("Pot.Raw")), 0);
+
+    FGuid Job;
+    TestFalse(TEXT("No fire, no firing"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
+
+    AActor* FireActor = World->SpawnActor<AActor>();
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor);
+    FireActor->SetRootComponent(Fire);
+    Fire->RegisterComponent();
+    FireActor->SetActorLocation(Kiln->GetActorLocation() + FVector(100.0, 0.0, 0.0));
+    TestTrue(TEXT("Wood fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.0f));
+    TestFalse(TEXT("A wood fire is not hot enough"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
+    TestTrue(TEXT("Charcoal fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
+    TestTrue(TEXT("Firing starts"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
+    TestEqual(TEXT("The raw pot is used"), Kiln->GetStockCount(TEXT("Pot.Raw")), 0);
+
+    for (int32 Hour = 0; Hour < 4; ++Hour)
+        TestTrue(TEXT("Kiln hour"), Production->AdvanceProductionStep(3600.0));
+    TestEqual(TEXT("Collect"), Kiln->CollectFinishedJobs(), 1);
+    TestEqual(TEXT("A fired pot"), Kiln->GetStockCount(TEXT("Pot.Fired")), 1);
+    TestTrue(TEXT("Take it"), Kiln->TryTake(Inventory, TEXT("Pot.Fired"), 1));
+    TestEqual(TEXT("Fired pot in hand"), Inventory->GetItemCount(TEXT("Pot.Fired")), 1);
+    TestFalse(TEXT("Nothing more to take"), Kiln->TryTake(Inventory, TEXT("Pot.Fired"), 1));
     return true;
 }
 

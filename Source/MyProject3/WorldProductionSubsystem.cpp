@@ -1183,3 +1183,18 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
     Stations = MoveTemp(NewStations);
     return true;
 }
+
+bool UWorldProductionSubsystem::TryTakeStock(
+    const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision)
+{
+    FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station || Station->Revision != ExpectedRevision || Station->Revision == MAX_int64 ||
+        ItemId.IsNone() || Quantity <= 0)
+        return false;
+    const int32 Existing = Station->Stock.FindRef(ItemId);
+    if (Existing < Quantity)
+        return false;
+    Existing == Quantity ? (void)Station->Stock.Remove(ItemId) : (void)Station->Stock.Add(ItemId, Existing - Quantity);
+    ++Station->Revision;
+    return true;
+}
