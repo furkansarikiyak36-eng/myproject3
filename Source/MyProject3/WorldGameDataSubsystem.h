@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldCalendar.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldClimateSubsystem.h"
 #include "WorldGameDataSubsystem.generated.h"
 
@@ -67,6 +68,19 @@ struct FGameDataStation
     /** Needs a charcoal-hot fire (pottery). */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") bool bNeedsHotFire = false;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") float SpoilageRate = 1.0f;
+};
+
+/** Item costs, reusable tools, field delta and labor effort for a player field action. */
+USTRUCT(BlueprintType)
+struct FGameDataFieldAction
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") EWorldFieldActionKind Action = EWorldFieldActionKind::Clear;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FGameDataItemAmount> Inputs;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FName> RequiredTools;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") float Amount = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") double LaborSeconds = 300.0;
 };
 
 /** Authored ecological region; one index is the stable crop/discovery zone id. */
@@ -171,6 +185,7 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
+    const TArray<FGameDataFieldAction>& GetFieldActions() const { return FieldActions; }
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
     bool IsDiscoveryGatedDefinition(FName DefinitionId) const;
@@ -191,6 +206,7 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
+    TArray<FGameDataFieldAction> FieldActions;
     TArray<FGameDataZone> Zones;
     TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataWorldEvent> WorldEvents;
