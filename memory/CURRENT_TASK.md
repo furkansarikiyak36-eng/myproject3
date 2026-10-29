@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit `PLAN_STATUS.md` for stale v25 references and verify summary counts; then begin P3.1 wet-fuel/fire behavior using current heat and fuel APIs. Do not run build/tests until batch validation.
+Check `VerticalSliceCWorldActor.cpp` and other bootstrap/world actor sources for every heat-source construction and whether `GameData->ApplyToHeatSource` is called. If absent, wire one canonical method so data-defined Firewood/Firewood.Wet/Charcoal fuel records apply to placed sources; then add data-backed player fire refuelling/ignition. P3.2 enclosure heat-gap remains after fuel interaction.
