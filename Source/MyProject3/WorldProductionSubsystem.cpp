@@ -1,4 +1,5 @@
 #include "WorldProductionSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -596,6 +597,13 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
     }
 
     const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
+    if (!Recipe.RequiredUnlockId.IsNone())
+    {
+        const UWorldSurvivalSubsystem* Survival =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        if (!Survival || !Survival->IsContentUnlocked(Recipe.RequiredUnlockId))
+            return false;
+    }
     if (!Recipe.RequiredStationTag.IsNone() &&
         Recipe.RequiredStationTag != Station->StationTag)
     {
