@@ -191,6 +191,8 @@ bool UWorldClimateSubsystem::AdvanceClimateStep(double DeltaSeconds, double Targ
     const bool bPrecipitating = IsWet(Next.Weather);
     const bool bSnowing = Next.Weather == EWorldWeatherState::Snow ||
         (Next.Weather == EWorldWeatherState::Storm && Temperature <= 0.0f);
+    if (bPrecipitating && !bSnowing)
+        Next.RainfallIndex += static_cast<double>(Next.Severity) * Hours;
     if (bSnowing)
         Next.SnowDepthCm += SnowfallCmPerHour * Next.Severity * Hours;
     float Melted = 0.0f;
@@ -231,6 +233,7 @@ bool UWorldClimateSubsystem::RestoreSnapshot(const FWorldClimateSnapshot& Snapsh
         !FMath::IsFinite(Snapshot.Severity) || Snapshot.Severity < 0.0f || Snapshot.Severity > 1.0f ||
         !FMath::IsFinite(Snapshot.TemperatureCelsius) ||
         !FMath::IsFinite(Snapshot.SnowDepthCm) || Snapshot.SnowDepthCm < 0.0f ||
+        !FMath::IsFinite(Snapshot.RainfallIndex) || Snapshot.RainfallIndex < 0.0 ||
         !FMath::IsFinite(Snapshot.GroundWetness) || Snapshot.GroundWetness < 0.0f || Snapshot.GroundWetness > 1.0f ||
         static_cast<uint8>(Snapshot.Weather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
         (Snapshot.bInitialized && Snapshot.WeatherDayIndex < 0))

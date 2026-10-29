@@ -41,6 +41,8 @@ struct FWorldClimateSnapshot
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Climate") float SnowDepthCm = 0.0f;
     /** 0 = dry ground, 1 = soaked ground / mud. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Climate") float GroundWetness = 0.0f;
+    /** Running total of rain (severity x hours); cisterns collect from its growth (P5.2). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Climate") double RainfallIndex = 0.0;
 };
 
 /**
@@ -90,6 +92,7 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Climate") float GetTemperatureCelsius() const { return State.TemperatureCelsius; }
     UFUNCTION(BlueprintPure, Category="World|Climate") float GetSnowDepthCm() const { return State.SnowDepthCm; }
     UFUNCTION(BlueprintPure, Category="World|Climate") float GetGroundWetness() const { return State.GroundWetness; }
+    UFUNCTION(BlueprintPure, Category="World|Climate") double GetRainfallIndex() const { return State.RainfallIndex; }
 
     /** Air temperature of a month at an hour of the day (no weather effect). */
     UFUNCTION(BlueprintPure, Category="World|Climate") float GetBaseTemperature(int32 Month, float HourOfDay) const;

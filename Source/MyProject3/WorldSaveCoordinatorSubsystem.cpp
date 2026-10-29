@@ -1029,6 +1029,11 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // bCountered flag. Old saves have no chain history; chains restart from now.
         Candidate->SchemaVersion = 30;
     }
+    if (Candidate->SchemaVersion == 30)
+    {
+        // Schema v31 adds the climate rainfall index (cisterns). Old saves start it at 0.
+        Candidate->SchemaVersion = 31;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 

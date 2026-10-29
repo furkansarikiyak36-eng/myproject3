@@ -25,6 +25,7 @@
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WallCoatingComponent.h"
+#include "EarthworkActor.h"
 #include "StoneBuildingPiece.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
@@ -2200,6 +2201,125 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
     TestNotNull(TEXT("Bird product profile"), Bird);
     if (Bird)
         TestEqual(TEXT("Bird feathers use the authored collection batch"), Bird->ProductUnitsPerCollection, 2);
+// P5.2: dug terrain gets a purpose. A roofed cellar is a cool store and caves in without a
+// support; a cistern collects rain; a trench must be a dug line.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEarthworkPurposesTest,
+    "MyProject3.World.Dig.CellarCisternTrenchAndCollapse", Flags)
+bool FEarthworkPurposesTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldTerrainStateSubsystem* Terrain = World ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    UWorldStorageSubsystem* Storage = World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Storage"), Storage) || !TestNotNull(TEXT("Graph"), Graph))
+        return false;
+    TestTrue(TEXT("Data"), Data->LoadDefault() && Data->ApplyToWorld());
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(21, 0.0));
+    TestTrue(TEXT("Climate"), Climate->InitializeClimate());
+
+    auto Dig = [&](int32 X, int32 Y, int32 Layer)
+    {
+        FWorldTerrainCellState Cell;
+        return Terrain->TryApplyCellEdit(FGuid::NewGuid(), FIntVector(X, Y, Layer), Layer,
+            ETerrainCellEdit::Excavate, TEXT("Soil"), 0, Cell);
+    };
+    auto DigRoom = [&](int32 OX, int32 OY)
+    {
+        bool bAll = true;
+        for (int32 X = OX; X < OX + 2; ++X)
+            for (int32 Y = OY; Y < OY + 2; ++Y)
+                for (int32 Layer = 0; Layer <= 1; ++Layer)
+                    bAll &= Dig(X, Y, Layer);
+        return bAll;
+    };
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("Cube"), Cube))
+        return false;
+    auto Roof = [&](const FVector& Over)
+    {
+        const FTransform T(FRotator::ZeroRotator, Over + FVector(0.0, 0.0, 250.0), FVector(4.0, 4.0, 0.3));
+        AStoneBuildingPiece* Slab = World->SpawnActorDeferred<AStoneBuildingPiece>(AStoneBuildingPiece::StaticClass(), T);
+        Slab->bStartsPlaced = true;
+        Slab->FinishSpawning(T);
+        Slab->Mesh->SetStaticMesh(Cube);
+    };
+    auto MakeEarthwork = [&](EEarthworkPurpose Purpose, FIntPoint Origin, FIntPoint Size, const FVector& Location)
+    {
+        AEarthworkActor* Work = World->SpawnActor<AEarthworkActor>(AEarthworkActor::StaticClass(), FTransform(Location));
+        Work->Purpose = Purpose;
+        Work->OriginCell = Origin;
+        Work->SizeCells = Size;
+        Work->DepthLayer = 1;
+        return Work;
+    };
+
+    // An unroofed pit is not a cellar.
+    TestTrue(TEXT("Dig room A"), DigRoom(0, 0));
+    AEarthworkActor* OpenPit = MakeEarthwork(EEarthworkPurpose::Cellar, FIntPoint(0, 0), FIntPoint(2, 2), FVector(100.0, 100.0, 0.0));
+    TestFalse(TEXT("No roof, no cellar"), OpenPit->Validate());
+
+    // Roofed: a cool store.
+    Roof(FVector(100.0, 100.0, 0.0));
+    TestTrue(TEXT("Roofed cellar"), OpenPit->Validate());
+    FWorldStorageContainerRecord Record;
+    TestTrue(TEXT("Cellar storage"), Storage->GetStorage(OpenPit->GetStorageId(), Record));
+    TestEqual(TEXT("Food keeps longer"), Record.SpoilageRateMultiplier, 0.4f, 0.001f);
+
+    // No post near it: the 2x2 room caves in.
+    TestTrue(TEXT("Unsupported cellar collapses"), OpenPit->CheckStability());
+    TestTrue(TEXT("Collapsed"), OpenPit->IsCollapsed());
+    FWorldTerrainCellState Filled;
+    TestTrue(TEXT("Cell read"), Terrain->TryGetCell(FIntVector(0, 0, 1), Filled));
+    TestFalse(TEXT("The room is filled back in"), Filled.bExcavated);
+    TestTrue(TEXT("Storage read"), Storage->GetStorage(OpenPit->GetStorageId(), Record));
+    TestFalse(TEXT("Its storage is out of reach"), Record.bAvailable);
+
+    // A second cellar with a ground-supported post next to it stands.
+    TestTrue(TEXT("Dig room B"), DigRoom(10, 0));
+    Roof(FVector(1100.0, 100.0, 0.0));
+    AEarthworkActor* Supported = MakeEarthwork(EEarthworkPurpose::Cellar, FIntPoint(10, 0), FIntPoint(2, 2), FVector(1100.0, 100.0, 0.0));
+    AActor* Post = World->SpawnActor<AActor>();
+    USceneComponent* PostRoot = NewObject<USceneComponent>(Post);
+    Post->SetRootComponent(PostRoot);
+    PostRoot->RegisterComponent();
+    Post->SetActorLocation(FVector(1150.0, 100.0, 0.0));
+    UWorldObjectIdentityComponent* PostIdentity = NewObject<UWorldObjectIdentityComponent>(Post);
+    Post->AddInstanceComponent(PostIdentity);
+    PostIdentity->RegisterComponent();
+    PostIdentity->EnsureIdentity();
+    TestTrue(TEXT("Post in the graph"), Graph->RegisterNode(Post, FGuid::NewGuid(), EStructuralNodeKind::Wood, true, 0.0f, 10000.0f, 100.0f));
+    TestTrue(TEXT("Supported cellar is valid"), Supported->Validate());
+    TestFalse(TEXT("Supported cellar stands"), Supported->CheckStability());
+
+    // A cistern collects rain.
+    TestTrue(TEXT("Dig cistern"), DigRoom(20, 0));
+    AEarthworkActor* Cistern = MakeEarthwork(EEarthworkPurpose::Cistern, FIntPoint(20, 0), FIntPoint(2, 2), FVector(2100.0, 100.0, 0.0));
+    TestTrue(TEXT("Cistern valid"), Cistern->Validate());
+    FWorldClimateSnapshot Rain = Climate->ExportSnapshot();
+    Rain.Weather = EWorldWeatherState::Rain;
+    Rain.Severity = 1.0f;
+    TestTrue(TEXT("Force rain"), Climate->RestoreSnapshot(Rain));
+    for (int32 Hour = 1; Hour <= 3; ++Hour)
+        TestTrue(TEXT("Rain hour"), Climate->AdvanceClimateStep(3600.0, Hour * 3600.0));
+    TestEqual(TEXT("Three rain hours fill six units"), Cistern->GetCisternWaterUnits(), 6);
+    AActor* Owner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Draw two"), Cistern->TryDrawWater(Inventory, 2));
+    TestEqual(TEXT("Water in hand"), Inventory->GetItemCount(TEXT("Water.Dirty")), 2);
+    TestEqual(TEXT("Four left"), Cistern->GetCisternWaterUnits(), 4);
+
+    // A trench is a dug line, not a pit.
+    for (int32 X = 30; X < 33; ++X)
+        TestTrue(TEXT("Dig trench cell"), Dig(X, 0, 0));
+    TestTrue(TEXT("Line trench"), MakeEarthwork(EEarthworkPurpose::Trench, FIntPoint(30, 0), FIntPoint(3, 1), FVector(3100.0, 0.0, 0.0))->Validate());
+    TestFalse(TEXT("A square is not a trench"), MakeEarthwork(EEarthworkPurpose::Trench, FIntPoint(0, 0), FIntPoint(2, 2), FVector::ZeroVector)->Validate());
     return true;
 }
 

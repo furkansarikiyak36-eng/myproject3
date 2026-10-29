@@ -27,7 +27,8 @@ Started: 2026-10-30 · Branch: `game/p00-adopt-group-a` (single working branch)
 3. [x] Phase 2 closed (all P2 Var; existing code + tests verified, no new code needed).
 4. [x] Phase 3 closed (128/128): firewood under a roof stays dry.
 5. [x] Phase 4 closed (129/129): produced food/water become ledger items.
-6. [ ] Phase 5 ... 9: per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
+6. [x] Phase 5 closed (130/130; Tick stability check unbuilt).
+7. [ ] Phase 6 ... 9: blind-coded on other accounts (list in chat 2026-10-30), batch build/fix here per phase. per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
 Side lines p06/p07 hold a second farming API: do not merge; port only data files (zones, routes, discoveries,
 animals) if phase 6/7 needs them.
 
@@ -42,4 +43,4 @@ animals) if phase 6/7 needs them.
 - p00 merge commit: tree = integration, memory notes kept from p00.
 
 ### Next step
-Phase 5: read PLAN_STATUS rows P5.x, close the gaps, build + test.
+Other accounts: Phase 6-9 blind list. Here: build + test (Tick check, ChatGPT's P6 commits aed5e0a/18fa3c1).
