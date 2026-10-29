@@ -36,7 +36,7 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 - A bounded excavation transaction snapshots logical terrain, voxel density/receipts and the item ledger; it rolls them back together if physical dig, logical commit or resource registration fails. Rollback failure faults the coordinator rather than silently continuing.
 - Successful yields have unique item IDs under the canonical ownership ledger and a terrain receipt containing the voxel identity/revisions, removed volume, yield rule and output IDs.
 - Generic ledger-only world resources can be ingested into recipe-addressable station stock. The source item transitions from World to Transformed once; stock capacity and already reserved recipe outputs are preflighted; retries return the same stock key. Physical log actors use their domain-specific intake instead.
-- Save schema v17 adds terrain resource receipts; schema v18 adds generic production intake receipts; schema v19 versions the additional durable survival, heat-fuel, log-cut and raid-pulse receipt data.
+- Save schema v17 adds terrain resource receipts; schema v18 adds generic production intake receipts; schema v19 versions durable survival, heat-fuel, log-cut and raid-pulse receipt data; schema v20 explicitly captures SaveGame properties on actor components, including heat-source fuel and refuel receipts. Legacy saves with no component payload retain the current level component state rather than invent missing history.
 
 **Remaining acceptance:** verify the bounded dig and resource yield in UE, verify collision/seams and physical item presentation, and execute the save → dig → save → load → retry path.
 
@@ -80,9 +80,9 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 
 - Heat sources accept data-driven fuel definitions and expose an item-backed refuel path.
 - Refuelling requires a uniquely owned inventory item with a matching definition and stack. Capacity is checked first; the item is consumed through ownership and inventory snapshots; a durable receipt prevents duplicate refuelling and cross-fire operation-ID reuse.
-- Failed rollback marks the world coordinator faulted.
+- Failed rollback marks the world coordinator faulted. Component SaveGame properties are now captured, validated against the same actor/component identity set, and restored explicitly. The fixed-step coordinator also snapshots each registered heat source's fuel and lit state; a rejected later domain step rolls those values back with survival state.
 
-**Remaining acceptance:** prove the complete fuel stock → fire heat output → shelter/clothing/wetness/region exposure → health chain in UE and confirm component receipt persistence through actor/world save restore.
+**Remaining acceptance:** prove the complete fuel stock → fire heat output → shelter/clothing/wetness/region exposure → health chain in UE and execute save/load round-trips for fuel receipts.
 
 ### P1 — Subnautica: durable discovery base
 
@@ -110,6 +110,7 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 - `MyProject3.Survival.RestUsesSharedClockAndIdempotentReceipt`
 - `MyProject3.Survival.FoodConsumesOwnedItemAndUsesSharedClockFreshness`
 - `MyProject3.Survival.HeatSourceConsumesFuelItemOnce`
+- `MyProject3.Survival.HeatFuelAndIgnitionRollbackWithFailedWorldStep`
 - `MyProject3.Production.ResourceIntakeFeedsRecipeAndOutputDoesNotDuplicate`
 - `MyProject3.Threat.DamagePulseClaimIsIdempotentAcrossRestore`
 - `MyProject3.Wood.CutProgressOperationIDDoesNotAdvanceTwice`
