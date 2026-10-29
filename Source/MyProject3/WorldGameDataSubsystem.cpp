@@ -518,6 +518,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Discovery.RevealRadiusCm = static_cast<float>(NumberField(Entry, TEXT("reveal_radius_cm"), 300.0));
         Discovery.RewardItemId = NameField(Entry, TEXT("reward_item"));
         Discovery.RewardQuantity = static_cast<int32>(NumberField(Entry, TEXT("reward_qty"), 0.0));
+        Discovery.bRewardUniqueItems = BoolField(Entry, TEXT("reward_unique"));
 
         auto ReadNameArray = [&Entry](const TCHAR* FieldName, TArray<FName>& OutNames) -> bool
         {
@@ -557,6 +558,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             DistanceSquared > FMath::Square(static_cast<double>(Zone->RadiusCm)) ||
             Discovery.RewardQuantity < 0 || Discovery.RewardQuantity > 64 ||
             (Discovery.RewardItemId.IsNone() != (Discovery.RewardQuantity == 0)) ||
+            (Discovery.bRewardUniqueItems && Discovery.RewardItemId.IsNone()) ||
             (!Discovery.RewardItemId.IsNone() &&
                 (!NewItems.Contains(Discovery.RewardItemId) || NewItems.FindChecked(Discovery.RewardItemId).bConsumable)))
             return Fail(FString::Printf(TEXT("Bad or duplicate discovery %s"), *Discovery.Id.ToString()));
