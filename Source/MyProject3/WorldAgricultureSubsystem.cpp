@@ -327,7 +327,9 @@ bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefiniti
     if (Definition.FoundInZone < 0 || Definition.FoundInZone > 4 ||
         Definition.CropDefinitionId.IsNone() || Definition.SeedDefinitionId.IsNone() ||
         Definition.HarvestDefinitionId.IsNone() || Definition.HarvestUnits <= 0 ||
-        Definition.HarvestUnits > 64 || !FMath::IsFinite(Definition.SecondsPerStage) ||
+        Definition.HarvestUnits > 64 || Definition.SeedReturnUnits < 0 ||
+        Definition.SeedReturnUnits > 64 || Definition.HarvestUnits + Definition.SeedReturnUnits > 64 ||
+        !FMath::IsFinite(Definition.SecondsPerStage) ||
         Definition.SecondsPerStage <= 0.0 ||
         !FMath::IsFinite(Definition.MinimumPlantMoisture) ||
         Definition.MinimumPlantMoisture < 0.0f || Definition.MinimumPlantMoisture > 1.0f ||
@@ -419,6 +421,8 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
     Crop.Revision = 1;
     Crop.PlantOperationId = OperationId;
     Crop.SeedItemId = SeedItemId;
+    Crop.SeedDefinitionId = Definition->SeedDefinitionId;
+    Crop.SeedReturnUnits = Definition->SeedReturnUnits;
     Crop.SeedInventoryOwnerId = ExpectedInventoryOwnerId;
     Crop.SeedItemExpectedRevision = ExpectedSeedItemRevision;
     Crop.HarvestDefinitionId = Definition->HarvestDefinitionId;
@@ -470,17 +474,21 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     if (!Crop || Crop->Revision != ExpectedCropRevision ||
         Crop->Revision >= MAX_int64 - 1 || Crop->Stage != ECropGrowthStage::Mature ||
         Crop->HarvestDefinitionId.IsNone() || Crop->HarvestUnits <= 0 ||
-        Crop->HarvestUnits > 64 || Crop->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
+        Crop->HarvestUnits > 64 || Crop->SeedReturnUnits < 0 || Crop->SeedReturnUnits > 64 ||
+        Crop->HarvestUnits + Crop->SeedReturnUnits > 64 ||
+        (Crop->SeedReturnUnits > 0 && Crop->SeedDefinitionId.IsNone()) ||
+        Crop->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
         return false;
 
     FWorldFieldCellState* FieldForHarvest = FieldCells.Find(Crop->PlotCell);
     if (FieldForHarvest && FieldForHarvest->Revision >= MAX_int64 - 1)
         return false;
 
+    const int32 TotalOutputUnits = Crop->HarvestUnits + Crop->SeedReturnUnits;
     TArray<FName> Definitions;
     TArray<FVector> Locations;
-    Definitions.Reserve(Crop->HarvestUnits);
-    Locations.Reserve(Crop->HarvestUnits);
+    Definitions.Reserve(TotalOutputUnits);
+    Locations.Reserve(TotalOutputUnits);
     const FVector PlotOrigin(
         static_cast<double>(Crop->PlotCell.X) * 100.0,
         static_cast<double>(Crop->PlotCell.Y) * 100.0,
@@ -489,6 +497,12 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     {
         Definitions.Add(Crop->HarvestDefinitionId);
         Locations.Add(PlotOrigin + FVector(static_cast<double>(Index) * 25.0, 0.0, 10.0));
+    }
+    for (int32 Index = 0; Index < Crop->SeedReturnUnits; ++Index)
+    {
+        Definitions.Add(Crop->SeedDefinitionId);
+        Locations.Add(PlotOrigin + FVector(
+            static_cast<double>(Crop->HarvestUnits + Index) * 25.0, 0.0, 10.0));
     }
 
     TArray<FGuid> CreatedItems;
@@ -502,7 +516,7 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     Receipt.ExpectedEntityRevision = ExpectedCropRevision;
     Receipt.ResultingEntityRevision = ExpectedCropRevision + 1;
     Receipt.DefinitionId = Crop->HarvestDefinitionId;
-    Receipt.RequestedOutputUnits = Crop->HarvestUnits;
+    Receipt.RequestedOutputUnits = TotalOutputUnits;
     Receipt.OutputItemIds = CreatedItems;
 
     if (FieldForHarvest)
@@ -656,7 +670,10 @@ bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
     if (Crop.HarvestOperationId.IsValid() &&
         (Crop.Stage != ECropGrowthStage::Harvested || Crop.HarvestExpectedRevision <= 0 ||
          Crop.HarvestDefinitionId.IsNone() || Crop.HarvestUnits <= 0 ||
-         Crop.HarvestOutputItemIds.Num() != Crop.HarvestUnits))
+         Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
+        (Crop.SeedReturnUnits > 0 && Crop.SeedDefinitionId.IsNone()) ||
+        Crop.HarvestOutputItemIds.Num() != Crop.HarvestUnits + Crop.SeedReturnUnits))
         return false;
 
     TSet<FGuid> SeenOperations;
@@ -971,10 +988,13 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             C.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
             (C.PlantOperationId.IsValid() &&
                 (!C.SeedItemId.IsValid() || !C.SeedInventoryOwnerId.IsValid() || C.SeedItemExpectedRevision <= 0)) ||
+            C.SeedReturnUnits < 0 || C.SeedReturnUnits > 64 ||
+            C.HarvestUnits + C.SeedReturnUnits > 64 ||
+            (C.SeedReturnUnits > 0 && C.SeedDefinitionId.IsNone()) ||
             (C.HarvestOperationId.IsValid() &&
                 (C.Stage != ECropGrowthStage::Harvested || C.HarvestExpectedRevision <= 0 ||
-                 C.HarvestDefinitionId.IsNone() || C.HarvestUnits <= 0 || C.HarvestUnits > 64 ||
-                 C.HarvestOutputItemIds.Num() != C.HarvestUnits)) ||
+                 C.HarvestDefinitionId.IsNone() || C.HarvestUnits <= 0 ||
+                 C.HarvestOutputItemIds.Num() != C.HarvestUnits + C.SeedReturnUnits)) ||
             NewCrops.Contains(C.CropId)) return false;
         const bool bHasPlantReceipt = C.PlantOperationId.IsValid() &&
             C.ActionReceipts.ContainsByPredicate([&C](const FWorldAgricultureActionReceipt& Receipt)
@@ -1037,7 +1057,7 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                     Receipt.ExpectedEntityRevision != Crop.HarvestExpectedRevision ||
                     Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
                     Receipt.DefinitionId != Crop.HarvestDefinitionId ||
-                    Receipt.RequestedOutputUnits != Crop.HarvestUnits ||
+                    Receipt.RequestedOutputUnits != Crop.HarvestUnits + Crop.SeedReturnUnits ||
                     Receipt.OutputItemIds != Crop.HarvestOutputItemIds ||
                     Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits ||
                     Receipt.OutputItemIds.IsEmpty())
