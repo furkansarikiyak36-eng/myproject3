@@ -8,6 +8,7 @@
 #include "WorldClimateSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldStorageSubsystem.h"
@@ -1468,6 +1469,100 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     Marker->Tick(1.0f);
     TestEqual(TEXT("Repeating marker tick cannot duplicate seed reward"),
         Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFieldActionConsumesConfiguredInputsAndChargesLaborTest,
+    "MyProject3.World.Farming.FieldActionsConsumeInputsAndChargeLabor", Flags)
+bool FFieldActionConsumesConfiguredInputsAndChargesLaborTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+
+    TestTrue(TEXT("Load field action definitions"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply field action definitions to agriculture"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared world clock"), Clock->InitializeClock(65431));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(0.0, 0.0, 0.0);
+    TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Inventory owner actor"), InventoryOwner))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryOwner, TEXT("FieldActionTestInventory"));
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Backfill configured item weights"), GameData->ApplyToInventory(Inventory));
+
+    auto AddStack = [this, Inventory, GameData](FName ItemId, int32 Quantity, EInventoryItemCategory Category)
+    {
+        const FGameDataItem* Definition = GameData->GetItems().Find(ItemId);
+        if (!Definition || Quantity <= 0)
+            return false;
+        FInventoryStack Stack;
+        Stack.ItemId = ItemId;
+        Stack.Quantity = Quantity;
+        Stack.Category = Category;
+        Stack.MaxStack = Category == EInventoryItemCategory::Tool ? 1 : 99;
+        Stack.bIsTool = Category == EInventoryItemCategory::Tool;
+        return Inventory->TryAddItem(Stack);
+    };
+
+    TestTrue(TEXT("Provide reusable axe"), AddStack(TEXT("Tool.Axe"), 1, EInventoryItemCategory::Tool));
+    TestTrue(TEXT("Provide four sticks"), AddStack(TEXT("Stick"), 4, EInventoryItemCategory::Resource));
+    TestTrue(TEXT("Provide one rope"), AddStack(TEXT("Rope"), 1, EInventoryItemCategory::Resource));
+
+    FWorldFieldCellState OutCell;
+    const FIntVector Cell(12, -4, 0);
+    const FGuid ClearOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Clear a field with an axe"),
+        Agriculture->TryApplyFieldActionWithInventory(ClearOperation, Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Clear, 0, OutCell));
+    TestTrue(TEXT("Cell is cleared"), OutCell.bCleared);
+    TestEqual(TEXT("Cell revision increments"), OutCell.Revision, int64(1));
+    TestEqual(TEXT("Reusable axe is not consumed"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+
+    FWorldSurvivalProfile AfterClear;
+    TestTrue(TEXT("Read profile after field work"), Survival->GetProfile(Profile.EntityId, AfterClear));
+    const float KcalAfterClear = AfterClear.PendingActivityKcal;
+    const float StaminaAfterClear = AfterClear.Stamina;
+    TestTrue(TEXT("Field work charges activity energy"), KcalAfterClear > 0.0f);
+    TestTrue(TEXT("Field work drains stamina"), StaminaAfterClear < 100.0f);
+
+    FWorldFieldCellState RetryCell;
+    TestTrue(TEXT("Same operation ID returns its committed result"),
+        Agriculture->TryApplyFieldActionWithInventory(ClearOperation, Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Clear, 0, RetryCell));
+    FWorldSurvivalProfile AfterRetry;
+    TestTrue(TEXT("Read profile after retry"), Survival->GetProfile(Profile.EntityId, AfterRetry));
+    TestEqual(TEXT("Retry does not charge activity twice"), AfterRetry.PendingActivityKcal, KcalAfterClear);
+    TestEqual(TEXT("Retry does not drain stamina twice"), AfterRetry.Stamina, StaminaAfterClear);
+
+    const FGuid FenceOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Fence a cleared cell with configured material costs"),
+        Agriculture->TryApplyFieldActionWithInventory(FenceOperation, Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Fence, 1, OutCell));
+    TestTrue(TEXT("Cell is fenced"), OutCell.bFenced);
+    TestEqual(TEXT("Fence operation advances field revision"), OutCell.Revision, int64(2));
+    TestEqual(TEXT("Fence consumes its four sticks"), Inventory->GetItemCount(TEXT("Stick")), 0);
+    TestEqual(TEXT("Fence consumes its rope"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestEqual(TEXT("Reusable axe remains available after both actions"),
+        Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
     return true;
 }
 
