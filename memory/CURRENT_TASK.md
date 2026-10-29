@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add focused backend tests for dry firewood→wet and wet firewood→dry around an active heat source; check any API concerns in the new O handler and adjust the docs/status rows for P3.1. P3.2 shelter opening heat loss remains to do. Do not compile yet.
+Add a scoped-world regression test with two world-owned dry Firewood items and one inventory-owned control: rain changes only world items to Firewood.Wet; then clear weather plus an active nearby fire dries only the nearby item back to Firewood. Assert BaseDefinitionId remains dry-fuel and revisions advance. No test execution.
