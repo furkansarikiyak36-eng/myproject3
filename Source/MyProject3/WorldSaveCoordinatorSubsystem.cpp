@@ -750,12 +750,28 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // baseline at the saved world time rather than guessing historical ages.
         const double BaselineTime = FMath::IsFinite(Candidate->Clock.SimulationTimeSeconds)
             ? FMath::Max(0.0, Candidate->Clock.SimulationTimeSeconds) : 0.0;
-        for (FWorldOwnedItemRecord& Item : Candidate->Items)
+        auto MigrateCreatedAt = [BaselineTime](FWorldOwnedItemRecord& Item)
         {
             if (!FMath::IsFinite(Item.CreatedAtWorldTimeSeconds) ||
                 Item.CreatedAtWorldTimeSeconds < 0.0)
             {
                 Item.CreatedAtWorldTimeSeconds = BaselineTime;
+            }
+        };
+        for (FWorldOwnedItemRecord& Item : Candidate->Items)
+            MigrateCreatedAt(Item);
+        for (FWorldItemTransferReceipt& Receipt : Candidate->ItemTransferReceipts)
+            MigrateCreatedAt(Receipt.ResultRecord);
+        for (FWorldItemSplitReceipt& Receipt : Candidate->ItemSplitReceipts)
+            for (FWorldOwnedItemRecord& ResultItem : Receipt.ResultRecords)
+                MigrateCreatedAt(ResultItem);
+        for (FWorldProductionStation& Station : Candidate->ProductionStations)
+        {
+            for (FWorldProductionMaterializationReceipt& Receipt : Station.MaterializationReceipts)
+            {
+                // The ownership record is the source of truth. Its timestamp was
+                // migrated above; no second age is invented in the station receipt.
+                (void)Receipt;
             }
         }
         Candidate->SchemaVersion = 16;
