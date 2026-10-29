@@ -74,6 +74,15 @@ bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& S
     return true;
 }
 
+bool UWorldProductionSubsystem::AddStockForPlayer(
+    const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision,
+    const FGuid& PlayerEntityId)
+{
+    if (!IsDefinitionAvailableForPlayer(ItemId, PlayerEntityId))
+        return false;
+    return AddStock(StationId, ItemId, Quantity, ExpectedRevision);
+}
+
 bool UWorldProductionSubsystem::AddStock(
     const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision)
 {
@@ -702,11 +711,10 @@ bool UWorldProductionSubsystem::TryEnqueueJobForPlayer(
     return TryEnqueueJobInternal(OperationId, StationId, RecipeId, ExpectedStationRevision, OutJobId);
 }
 
-bool UWorldProductionSubsystem::IsRecipeAvailableForPlayer(
-    FName RecipeId, const FGuid& PlayerEntityId) const
+bool UWorldProductionSubsystem::IsDefinitionAvailableForPlayer(
+    FName DefinitionId, const FGuid& PlayerEntityId) const
 {
-    const int32 RecipeIndex = FindRecipe(RecipeId);
-    if (!Recipes.IsValidIndex(RecipeIndex))
+    if (DefinitionId.IsNone())
         return false;
 
     UWorld* World = GetWorld();
@@ -714,32 +722,36 @@ bool UWorldProductionSubsystem::IsRecipeAvailableForPlayer(
         World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     if (!GameData || !GameData->IsLoaded())
     {
-        // Keep hand-authored/system-only production test worlds usable, but do
-        // not authorize a player-bound request while progression data is absent.
+        // System-only test/setup worlds may use ungated definitions without data.
+        // A player-bound request fails closed until data and the profile are present.
         return !PlayerEntityId.IsValid();
     }
+    if (!GameData->IsDefinitionUnlockRequired(DefinitionId))
+        return true;
+    if (!PlayerEntityId.IsValid())
+        return false;
+
+    const UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    FWorldSurvivalProfile Profile;
+    return Survival && Survival->GetProfile(PlayerEntityId, Profile) &&
+        Survival->IsDefinitionUnlocked(PlayerEntityId, DefinitionId);
+}
+
+bool UWorldProductionSubsystem::IsRecipeAvailableForPlayer(
+    FName RecipeId, const FGuid& PlayerEntityId) const
+{
+    const int32 RecipeIndex = FindRecipe(RecipeId);
+    if (!Recipes.IsValidIndex(RecipeIndex) ||
+        !IsDefinitionAvailableForPlayer(RecipeId, PlayerEntityId))
+        return false;
 
     const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
-    auto IsAvailable = [GameData, World, &PlayerEntityId](FName DefinitionId)
-    {
-        if (!GameData->IsDefinitionUnlockRequired(DefinitionId))
-            return true;
-        if (!PlayerEntityId.IsValid())
-            return false;
-        const UWorldSurvivalSubsystem* Survival =
-            World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
-        FWorldSurvivalProfile Profile;
-        return Survival && Survival->GetProfile(PlayerEntityId, Profile) &&
-            Survival->IsDefinitionUnlocked(PlayerEntityId, DefinitionId);
-    };
-
-    if (!IsAvailable(Recipe.RecipeId))
-        return false;
     for (const FProductionIngredient& Input : Recipe.Inputs)
-        if (!IsAvailable(Input.ItemId))
+        if (!IsDefinitionAvailableForPlayer(Input.ItemId, PlayerEntityId))
             return false;
     for (const FProductionIngredient& Output : Recipe.Outputs)
-        if (!IsAvailable(Output.ItemId))
+        if (!IsDefinitionAvailableForPlayer(Output.ItemId, PlayerEntityId))
             return false;
     return true;
 }
@@ -1256,6 +1268,15 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
     Recipes = MoveTemp(NewRecipes);
     Stations = MoveTemp(NewStations);
     return true;
+}
+
+bool UWorldProductionSubsystem::TryTakeStockForPlayer(
+    const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision,
+    const FGuid& PlayerEntityId)
+{
+    if (!IsDefinitionAvailableForPlayer(ItemId, PlayerEntityId))
+        return false;
+    return TryTakeStock(StationId, ItemId, Quantity, ExpectedRevision);
 }
 
 bool UWorldProductionSubsystem::TryTakeStock(
