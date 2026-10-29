@@ -791,6 +791,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     }
     if (Candidate->SchemaVersion == 18)
     {
+        // Schema v19 adds survival conditions, equipment-slot references and
+        // configured discovery unlock records. Legacy profiles have empty new
+        // arrays by default; unknown historical equipment is not invented.
+        Candidate->SchemaVersion = 19;
+    }
+    if (Candidate->SchemaVersion == 18)
+    {
         // Schema v19 adds durable survival-action, heat-fuel and incremental
         // log-cut receipts plus raid pulse indices. Legacy saves deserialize
         // these new receipt collections with their safe empty/default values;
