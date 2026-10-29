@@ -155,7 +155,7 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
     {
         if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
             Receipt.EntityId != Profile.EntityId ||
-            static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::RecordDiscovery) ||
+            static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::FillWaterFromCreek) ||
             Receipt.ExpectedProfileRevision <= 0 ||
             Receipt.ResultingProfileRevision != Receipt.ExpectedProfileRevision + 1 ||
             Receipt.ResultingProfileRevision > Profile.Revision)
@@ -213,6 +213,15 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
             if (Receipt.DiscoveryId.IsNone() || Receipt.RequestedLocation.ContainsNaN() ||
                 !FMath::IsFinite(Receipt.RequestedDiscoveryTimeSeconds) ||
                 Receipt.RequestedDiscoveryTimeSeconds < 0.0)
+                return false;
+            break;
+        case EWorldSurvivalActionKind::FillWaterFromCreek:
+            if (!Receipt.ItemId.IsValid() || !Receipt.ResultingItemId.IsValid() ||
+                Receipt.ItemId == Receipt.ResultingItemId ||
+                !Receipt.ExpectedItemOwnerId.IsValid() || Receipt.ExpectedItemRevision <= 0 ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision ||
+                Receipt.ItemDefinitionId != FName(TEXT("Pot.Fired")) ||
+                Receipt.RequestedLocation.ContainsNaN())
                 return false;
             break;
         default:
@@ -1827,7 +1836,8 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
             if (Receipt.Action == EWorldSurvivalActionKind::ConsumeFoodItem ||
                 Receipt.Action == EWorldSurvivalActionKind::TreatCondition ||
                 Receipt.Action == EWorldSurvivalActionKind::EquipItem ||
-                Receipt.Action == EWorldSurvivalActionKind::UnequipItem)
+                Receipt.Action == EWorldSurvivalActionKind::UnequipItem ||
+                Receipt.Action == EWorldSurvivalActionKind::FillWaterFromCreek)
                 bNeedsOwnershipValidation = true;
         }
         if (!P.EquippedItems.IsEmpty())
@@ -1892,13 +1902,22 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
                 if (Receipt.Action != EWorldSurvivalActionKind::ConsumeFoodItem &&
                     Receipt.Action != EWorldSurvivalActionKind::TreatCondition &&
                     Receipt.Action != EWorldSurvivalActionKind::EquipItem &&
-                    Receipt.Action != EWorldSurvivalActionKind::UnequipItem)
+                    Receipt.Action != EWorldSurvivalActionKind::UnequipItem &&
+                    Receipt.Action != EWorldSurvivalActionKind::FillWaterFromCreek)
                     continue;
                 FWorldOwnedItemRecord Item;
                 if (!Ownership->TryGetItem(Receipt.ItemId, Item) ||
                     Item.DefinitionId != Receipt.ItemDefinitionId ||
                     Item.Revision < Receipt.ResultingItemRevision)
                     return false;
+                if (Receipt.Action == EWorldSurvivalActionKind::FillWaterFromCreek)
+                {
+                    FWorldOwnedItemRecord Water;
+                    if (!Receipt.ResultingItemId.IsValid() ||
+                        !Ownership->TryGetItem(Receipt.ResultingItemId, Water) ||
+                        Water.BaseDefinitionId != FName(TEXT("Water.Dirty")))
+                        return false;
+                }
                 if ((Receipt.Action == EWorldSurvivalActionKind::ConsumeFoodItem ||
                      Receipt.Action == EWorldSurvivalActionKind::TreatCondition) &&
                     Item.OwnerKind != EWorldItemOwnerKind::Consumed)
