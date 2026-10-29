@@ -34,6 +34,9 @@ struct FWorldOperationLedgerEntry
  * mutation after successfully reserving the operation ID, then complete the
  * entry with the final result. This ledger does not itself make mutations
  * atomic. Save coordination rejects snapshots while an operation is Pending.
+ * Completed entries have no generic TTL: callers may forget one only after a
+ * durable domain receipt/watermark proves the result can be reconstructed. When
+ * capacity is exhausted, new operations fail closed instead of unsafe eviction.
  */
 UCLASS()
 class MYPROJECT3_API UWorldOperationLedgerSubsystem : public UWorldSubsystem
@@ -70,6 +73,14 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
     int32 GetEntryCount() const { return Entries.Num(); }
+
+    /** Number of completed receipts still retained; completed entries are never age-evicted. */
+    UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
+    int32 GetCompletedEntryCount() const;
+
+    /** Remaining ledger capacity. Zero means new operations fail closed. */
+    UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
+    int32 GetRemainingCapacity() const { return FMath::Max(0, MaxEntries - Entries.Num()); }
 
     UFUNCTION(BlueprintPure, Category = "Gameplay|Operation")
     bool HasPendingOperations() const;
