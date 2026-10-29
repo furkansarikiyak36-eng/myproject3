@@ -8,7 +8,7 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 Active branch: **`work/phase-3-4-closure`**, based on the historical `game/p00-adopt-group-a` + placement-kernel work.
 Historical test evidence: `bbc57b3` = 102/102 on the parent baseline; **it does not cover the current branch edits**.
 Plan: `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`; tasks `ROADMAP.md`; per-task status `PLAN_STATUS.md`.
-Current work: blind-code closure across Phases 1–10 (`CURRENT_TASK.md`). The active branch now includes event runtime/effects, route hazard persistence, signal-driven raids, material-gated repair, five data-backed ecological zones, six discovery markers, one-time generic rewards and discovery-gated hand/station recipes. Since 2026-10-29, code is authored without building; focused automation tests are authored but not run. One batch build/test/fix is deferred until the user can
+Current work: blind-code closure across Phases 1–10 (`CURRENT_TASK.md`). The active branch now includes event runtime/effects, route hazard persistence, signal-driven raids, material-gated repair, five data-backed ecological zones, six discovery markers, rollback-safe field-action costs, unique plantable crop-seed rewards and a P-key crop planting/mature-harvest loop on the primitive 3×3 plot. Since 2026-10-29, code is authored without building; focused automation tests are authored but not run. One batch build/test/fix is deferred until the user can
 run it locally; PIE and the demo scene follow after backend closure. P11/P12 are deferred until after the demo foundation.
 
 ## Branches
