@@ -434,6 +434,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
             Crop.SeedReturnUnits = static_cast<int32>(NumberField(Entry, TEXT("seed_return_units"), 1.0));
             Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
+            Crop.PlantLaborSeconds = NumberField(Entry, TEXT("plant_labor_seconds"), 600.0);
+            Crop.HarvestLaborSeconds = NumberField(Entry, TEXT("harvest_labor_seconds"), 450.0);
             Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
             if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months")))
                 for (const TSharedPtr<FJsonValue>& Month : *Months)
@@ -442,7 +444,11 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
                 Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
                 Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
                 Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
-                Crop.SecondsPerStage <= 0.0 || Crop.PlantMonths.Num() == 0)
+                !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage < 3600.0 ||
+                !FMath::IsFinite(Crop.PlantLaborSeconds) || Crop.PlantLaborSeconds < 1.0 ||
+                Crop.PlantLaborSeconds > 3600.0 ||
+                !FMath::IsFinite(Crop.HarvestLaborSeconds) || Crop.HarvestLaborSeconds < 1.0 ||
+                Crop.HarvestLaborSeconds > 3600.0 || Crop.PlantMonths.Num() == 0)
                 return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
             NewCrops.Add(Crop);
         }
@@ -875,6 +881,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         Definition.HarvestUnits = C.HarvestUnits;
         Definition.SeedReturnUnits = C.SeedReturnUnits;
         Definition.SecondsPerStage = C.SecondsPerStage;
+        Definition.PlantLaborSeconds = C.PlantLaborSeconds;
+        Definition.HarvestLaborSeconds = C.HarvestLaborSeconds;
         Definition.PlantMonths = C.PlantMonths;
         Definition.FoundInZone = C.FoundInZone;
         if (!Agriculture->RegisterCropDefinition(Definition))
