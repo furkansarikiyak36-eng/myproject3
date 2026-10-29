@@ -198,6 +198,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="GameData|Zones") bool CanEnterZone(const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const;
     /** Validates access gates and records this zone's discovery once at the current world time. */
     UFUNCTION(BlueprintCallable, Category="GameData|Zones") bool TryRecordZoneEntry(const FGuid& OperationId, const FGuid& PlayerEntityId, FName ZoneId, FVector EntryLocation, FString& OutReason);
+    /** True when at least one discovery is configured to unlock this recipe/item/action ID. */
+    UFUNCTION(BlueprintPure, Category="GameData|Discoveries") bool IsDefinitionUnlockRequired(FName DefinitionId) const;
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
