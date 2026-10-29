@@ -9,7 +9,11 @@ struct FThreatRaidRecord;
 class UWorldThreatDirectorSubsystem;
 class UWorldStructuralGraphSubsystem;
 
-/** Optional world-facing adapter. The configured pawn class must provide its own AI controller/behavior. */
+/**
+ * Fixed-step raid/damage adapter. The default pawn follows NavMesh paths;
+ * custom pawn classes must implement their own navigation toward the authored
+ * objective because damage pulses are gated on physical target proximity.
+ */
 UCLASS()
 class MYPROJECT3_API UWorldRaidAdapterSubsystem : public UWorldSubsystem
 {
