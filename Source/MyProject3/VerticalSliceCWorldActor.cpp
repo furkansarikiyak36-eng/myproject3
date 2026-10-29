@@ -1028,7 +1028,10 @@ void AVerticalSliceCWorldActor::BeginPlay()
     // -StartHour=21 starts at night; -NoStartView keeps a camera set from the command line.
     FParse::Value(FCommandLine::Get(), TEXT("StartHour="), StartHour);
     Hours = StartHour;
-    if (UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
+    UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+    const UWorldClimateSubsystem* Climate =
+        GetWorld()->GetSubsystem<UWorldClimateSubsystem>();
+    if (Survival && (!Climate || !Climate->IsClimateInitialized()))
         Survival->SetWeather(EWorldWeatherState::Wind, 0.35f);
     for (TActorIterator<ADirectionalLight> It(GetWorld()); It; ++It)
     {
