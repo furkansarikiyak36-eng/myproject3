@@ -743,6 +743,23 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->TerrainReceipts.Reset();
         Candidate->SchemaVersion = 15;
     }
+    if (Candidate->SchemaVersion == 15)
+    {
+        // Schema v16 stores item creation time for shared-clock spoilage. Older
+        // saves did not capture item ages, so establish a conservative migration
+        // baseline at the saved world time rather than guessing historical ages.
+        const double BaselineTime = FMath::IsFinite(Candidate->Clock.SimulationTimeSeconds)
+            ? FMath::Max(0.0, Candidate->Clock.SimulationTimeSeconds) : 0.0;
+        for (FWorldOwnedItemRecord& Item : Candidate->Items)
+        {
+            if (!FMath::IsFinite(Item.CreatedAtWorldTimeSeconds) ||
+                Item.CreatedAtWorldTimeSeconds < 0.0)
+            {
+                Item.CreatedAtWorldTimeSeconds = BaselineTime;
+            }
+        }
+        Candidate->SchemaVersion = 16;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
