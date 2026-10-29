@@ -31,6 +31,10 @@ struct FWorldNaturalEventInstance
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events", meta=(ClampMin="0", ClampMax="1")) float Severity = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") int64 TriggerDayIndex = -1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") int64 Revision = 1;
+    /** One-shot world effects (hail, injury/exposure, structure damage) execute exactly once on activation. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") bool bOnsetEffectApplied = false;
+    /** Continuous effects are claimed once per committed fixed-step tick. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") int64 LastAppliedEffectTickIndex = -1;
 };
 
 /** Complete deterministic event state; included in the world-save manifest and fixed-step rollback. */
@@ -104,5 +108,7 @@ private:
     UWorldGameDataSubsystem* GetGameData() const;
     bool IsValidSnapshot(const FWorldEventDirectorSnapshot& Snapshot) const;
     bool EvaluateTrigger(const struct FGameDataWorldEvent& Definition, float& OutSeverity) const;
+    bool ApplyActiveEventEffects(double DeltaSeconds, double TargetTimeSeconds, int64 TargetTickIndex);
+    bool ApplyConditionEffect(const FGameDataWorldEvent& Definition, const FWorldNaturalEventInstance& Instance);
     void ApplyActiveEventWeather() const;
 };
