@@ -59,7 +59,7 @@ bool ARopeLineActor::TrySendAlong(AActor* Piece)
 {
     if (!IsValid(Piece) || !GetWorld() || !IsZipline() ||
         !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f ||
-        !FMath::IsFinite(MaxLoadMassKg) || MaxLoadMassKg <= 0.0f ||
+        !FMath::IsFinite(MaxLoadMassKg) || MaxLoadMassKg < 1.0f || MaxLoadMassKg > 100000.0f ||
         !FMath::IsFinite(SlidingFrictionCoefficient) ||
         SlidingFrictionCoefficient < 0.0f || SlidingFrictionCoefficient > 1.0f ||
         Riders.ContainsByPredicate([Piece](const FRider& Rider) { return Rider.Piece.Get() == Piece; }))
@@ -141,7 +141,7 @@ void ARopeLineActor::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
     if (Riders.IsEmpty() || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0f ||
         !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f ||
-        !FMath::IsFinite(MaxLoadMassKg) || MaxLoadMassKg <= 0.0f ||
+        !FMath::IsFinite(MaxLoadMassKg) || MaxLoadMassKg < 1.0f || MaxLoadMassKg > 100000.0f ||
         !FMath::IsFinite(SlidingFrictionCoefficient) ||
         SlidingFrictionCoefficient < 0.0f || SlidingFrictionCoefficient > 1.0f)
         return;
