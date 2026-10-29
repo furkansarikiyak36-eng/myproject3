@@ -121,6 +121,7 @@ private:
     int32 SelectedFieldActionIndex = INDEX_NONE;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UStaticMeshComponent>> FarmPlotTiles;
+    TArray<FLinearColor> FarmPlotColours;
     int32 ChopSwingCount = 0;
     int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
