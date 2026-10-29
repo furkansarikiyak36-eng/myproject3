@@ -490,14 +490,38 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
 bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
 {
     if (!Crop.CropId.IsValid() || Crop.CropDefinitionId.IsNone() ||
+        static_cast<uint8>(Crop.Stage) > static_cast<uint8>(ECropGrowthStage::Harvested) ||
         !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
         !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
         !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
-        Crop.Revision <= 0 || Crops.Contains(Crop.CropId) ||
+        Crop.Revision <= 0 || Crop.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+        MaxOperationReceiptsPerEntity <= 0 || Crops.Contains(Crop.CropId) ||
         MaxCrops <= 0 || Crops.Num() >= MaxCrops)
     {
         return false;
     }
+
+    if (Crop.PlantOperationId.IsValid() &&
+        (!Crop.SeedItemId.IsValid() || !Crop.SeedInventoryOwnerId.IsValid() ||
+         Crop.SeedItemExpectedRevision <= 0))
+        return false;
+    if (Crop.HarvestOperationId.IsValid() &&
+        (Crop.Stage != ECropGrowthStage::Harvested || Crop.HarvestExpectedRevision <= 0 ||
+         Crop.HarvestDefinitionId.IsNone() || Crop.HarvestUnits <= 0 ||
+         Crop.HarvestOutputItemIds.Num() != Crop.HarvestUnits))
+        return false;
+
+    TSet<FGuid> SeenOperations;
+    for (const FWorldAgricultureActionReceipt& Receipt : Crop.ActionReceipts)
+    {
+        if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
+            Receipt.EntityId != Crop.CropId ||
+            (Receipt.Action != EWorldAgricultureActionKind::PlantCrop &&
+             Receipt.Action != EWorldAgricultureActionKind::HarvestCrop))
+            return false;
+        SeenOperations.Add(Receipt.OperationId);
+    }
+
     Crops.Add(Crop.CropId, Crop);
     return true;
 }
@@ -508,10 +532,24 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
         !FMath::IsFinite(Animal.Hunger) || Animal.Hunger < 0.0f || Animal.Hunger > 100.0f ||
         !FMath::IsFinite(Animal.Health) || Animal.Health < 0.0f || Animal.Health > 100.0f ||
         Animal.ProductUnits < 0 || !FMath::IsFinite(Animal.ProductProgressSeconds) ||
-        Animal.ProductProgressSeconds < 0.0 || Animal.Revision <= 0 || Animals.Contains(Animal.AnimalId) ||
+        Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
+        Animal.Location.ContainsNaN() || Animal.Revision <= 0 ||
+        Animal.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+        MaxOperationReceiptsPerEntity <= 0 || Animals.Contains(Animal.AnimalId) ||
         MaxAnimals <= 0 || Animals.Num() >= MaxAnimals)
     {
         return false;
+    }
+
+    TSet<FGuid> SeenOperations;
+    for (const FWorldAgricultureActionReceipt& Receipt : Animal.ActionReceipts)
+    {
+        if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
+            Receipt.EntityId != Animal.AnimalId ||
+            (Receipt.Action != EWorldAgricultureActionKind::FeedAnimal &&
+             Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts))
+            return false;
+        SeenOperations.Add(Receipt.OperationId);
     }
     Animals.Add(Animal.AnimalId, Animal);
     return true;
@@ -521,7 +559,7 @@ bool UWorldAgricultureSubsystem::SetCropMoisture(
     const FGuid& CropId, float Moisture, int64 ExpectedRevision)
 {
     FWorldCropState* Crop = Crops.Find(CropId);
-    if (!Crop || Crop->Revision != ExpectedRevision || Crop->Revision == MAX_int64 ||
+    if (!Crop || Crop->Revision != ExpectedRevision || Crop->Revision >= MAX_int64 - 1 ||
         !FMath::IsFinite(Moisture) || Moisture < 0.0f || Moisture > 1.0f)
     {
         return false;
@@ -535,7 +573,7 @@ bool UWorldAgricultureSubsystem::FeedAnimal(
     const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision)
 {
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
-    if (!Animal || Animal->Revision != ExpectedRevision || Animal->Revision == MAX_int64 ||
+    if (!Animal || Animal->Revision != ExpectedRevision || Animal->Revision >= MAX_int64 - 1 ||
         !FMath::IsFinite(HungerReduction) || HungerReduction <= 0.0f)
     {
         return false;
@@ -557,8 +595,9 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         const FWorldCropState& Crop = Pair.Value;
-        if (Crop.Revision == MAX_int64 ||
-            !FMath::IsFinite(Crop.GrowthProgressSeconds) ||
+        if (Crop.Revision >= MAX_int64 - 1 ||
+            static_cast<uint8>(Crop.Stage) > static_cast<uint8>(ECropGrowthStage::Harvested) ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
             !FMath::IsFinite(Crop.GrowthProgressSeconds + DeltaSeconds))
             return false;
@@ -566,9 +605,10 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
     for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
     {
         const FWorldAnimalState& Animal = Pair.Value;
-        if (Animal.Revision == MAX_int64 ||
+        if (Animal.Revision >= MAX_int64 - 1 ||
             !FMath::IsFinite(Animal.ProductProgressSeconds) ||
-            Animal.ProductProgressSeconds < 0.0 ||
+            Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
+            Animal.Location.ContainsNaN() ||
             !FMath::IsFinite(Animal.ProductProgressSeconds + DeltaSeconds) ||
             (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
              !Animal.ProductDefinitionId.IsNone() &&
@@ -586,7 +626,8 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         FWorldCropState& Crop = Pair.Value;
-        if (Crop.Stage == ECropGrowthStage::Mature || Crop.Stage == ECropGrowthStage::Withered)
+        if (Crop.Stage == ECropGrowthStage::Mature || Crop.Stage == ECropGrowthStage::Withered ||
+            Crop.Stage == ECropGrowthStage::Harvested)
             continue;
         if (Crop.Moisture < MinimumGrowthMoisture)
         {
