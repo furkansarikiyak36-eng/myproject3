@@ -56,3 +56,15 @@ bool UWorldInfrastructureRouteLinkComponent::SetInfrastructureUsable(bool bUsabl
     bInfrastructureUsable = bUsable;
     return true;
 }
+
+
+bool UWorldInfrastructureRouteLinkComponent::HandleStructuralDamageChanged(
+    float Damage, float DamageThreshold)
+{
+    if (!bStructuralDamageControlsUsability ||
+        !FMath::IsFinite(Damage) || Damage < 0.0f ||
+        !FMath::IsFinite(DamageThreshold) || DamageThreshold <= 0.0f)
+        return false;
+
+    return SetInfrastructureUsable(Damage < DamageThreshold);
+}
