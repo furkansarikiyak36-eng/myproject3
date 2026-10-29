@@ -73,6 +73,22 @@ bool UWorldLogisticsRouteSubsystem::SetEdgeEnabled(FName FromNode, FName ToNode,
     return true;
 }
 
+bool UWorldLogisticsRouteSubsystem::SetInfrastructureBuilt(FName InfrastructureId, bool bBuilt)
+{
+    if (InfrastructureId.IsNone())
+        return false;
+
+    bool bMatched = false;
+    for (FLogisticsRouteEdge& Edge : Edges)
+    {
+        if (Edge.InfrastructureId != InfrastructureId)
+            continue;
+        Edge.bHasBuiltInfrastructure = bBuilt;
+        bMatched = true;
+    }
+    return bMatched;
+}
+
 bool UWorldLogisticsRouteSubsystem::RemoveNode(FName NodeId)
 {
     if (!Nodes.Remove(NodeId))
@@ -334,6 +350,78 @@ bool UWorldLogisticsRouteSubsystem::CalculatePathCost(
     }
 
     OutTotalCost = static_cast<float>(TotalCost);
+    return true;
+}
+
+void UWorldLogisticsRouteSubsystem::ExportSnapshot(
+    TArray<FLogisticsRouteNode>& OutNodes, TArray<FLogisticsRouteEdge>& OutEdges) const
+{
+    OutNodes.Reset();
+    OutEdges.Reset();
+    Nodes.GenerateValueArray(OutNodes);
+    OutEdges = Edges;
+    OutNodes.Sort([](const FLogisticsRouteNode& A, const FLogisticsRouteNode& B)
+    {
+        return A.NodeId.ToString() < B.NodeId.ToString();
+    });
+    OutEdges.Sort([](const FLogisticsRouteEdge& A, const FLogisticsRouteEdge& B)
+    {
+        if (A.FromNode != B.FromNode)
+            return A.FromNode.ToString() < B.FromNode.ToString();
+        return A.ToNode.ToString() < B.ToNode.ToString();
+    });
+}
+
+bool UWorldLogisticsRouteSubsystem::RestoreSnapshot(
+    const TArray<FLogisticsRouteNode>& NodeSnapshot,
+    const TArray<FLogisticsRouteEdge>& EdgeSnapshot)
+{
+    if (NodeSnapshot.Num() > MaxNodes || EdgeSnapshot.Num() > MaxEdges ||
+        MaxNodes < 1 || MaxNodes > 4096 || MaxEdges < 1 || MaxEdges > 16384)
+        return false;
+
+    TMap<FName, FLogisticsRouteNode> NewNodes;
+    for (const FLogisticsRouteNode& Node : NodeSnapshot)
+    {
+        if (Node.NodeId.IsNone() || !FMath::IsFinite(Node.Location.X) ||
+            !FMath::IsFinite(Node.Location.Y) || !FMath::IsFinite(Node.Location.Z) ||
+            NewNodes.Contains(Node.NodeId))
+            return false;
+        NewNodes.Add(Node.NodeId, Node);
+    }
+
+    TArray<FLogisticsRouteEdge> NewEdges;
+    TSet<FString> SeenPairs;
+    for (const FLogisticsRouteEdge& Edge : EdgeSnapshot)
+    {
+        const FString PairKey = Edge.FromNode.ToString() + TEXT("->") + Edge.ToNode.ToString();
+        if (Edge.FromNode.IsNone() || Edge.ToNode.IsNone() || Edge.FromNode == Edge.ToNode ||
+            !NewNodes.Contains(Edge.FromNode) || !NewNodes.Contains(Edge.ToNode) ||
+            SeenPairs.Contains(PairKey) ||
+            !FMath::IsFinite(Edge.Cost) || Edge.Cost < 0.0f ||
+            !FMath::IsFinite(Edge.SlopeRatio) || Edge.SlopeRatio < 0.0f || Edge.SlopeRatio > 10.0f ||
+            !FMath::IsFinite(Edge.SurfaceCostMultiplier) ||
+            Edge.SurfaceCostMultiplier < 0.01f || Edge.SurfaceCostMultiplier > 100.0f ||
+            !FMath::IsFinite(Edge.WeatherSensitivity) ||
+            Edge.WeatherSensitivity < 0.0f || Edge.WeatherSensitivity > 100.0f ||
+            !FMath::IsFinite(Edge.LoadSensitivity) ||
+            Edge.LoadSensitivity < 0.0f || Edge.LoadSensitivity > 100.0f ||
+            !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
+            Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f ||
+            (Edge.bRequiresInfrastructure && Edge.InfrastructureId.IsNone()))
+            return false;
+        SeenPairs.Add(PairKey);
+        NewEdges.Add(Edge);
+    }
+
+    NewEdges.Sort([](const FLogisticsRouteEdge& A, const FLogisticsRouteEdge& B)
+    {
+        if (A.FromNode != B.FromNode)
+            return A.FromNode.ToString() < B.FromNode.ToString();
+        return A.ToNode.ToString() < B.ToNode.ToString();
+    });
+    Nodes = MoveTemp(NewNodes);
+    Edges = MoveTemp(NewEdges);
     return true;
 }
 
