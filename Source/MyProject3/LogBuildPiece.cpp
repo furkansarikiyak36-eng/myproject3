@@ -609,9 +609,13 @@ bool ALogBuildPiece::TrySetAuthoredGeometryVariant(
     }
 
     FWorldOwnedItemRecord UpdatedItem = CurrentItem;
-    if (NewDefinition != CurrentItem.DefinitionId &&
-        !Ownership->TryUpdateItemDefinition(OperationId, CurrentItem.ItemId,
-            CurrentItem.Revision, CurrentItem.OwnerKind, NewDefinition, UpdatedItem))
+    const bool bDefinitionChanged = NewDefinition != CurrentItem.DefinitionId;
+    const bool bLocationChanged =
+        !CurrentItem.WorldLocation.Equals(NewTransform.GetLocation(), 0.001f);
+    if ((bDefinitionChanged || bLocationChanged) &&
+        !Ownership->TryUpdateItemDefinitionAndLocation(
+            OperationId, CurrentItem.ItemId, CurrentItem.Revision, CurrentItem.OwnerKind,
+            NewDefinition, NewTransform.GetLocation(), UpdatedItem))
     {
         SetPieceStaticMesh(PreviousMesh);
         SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
