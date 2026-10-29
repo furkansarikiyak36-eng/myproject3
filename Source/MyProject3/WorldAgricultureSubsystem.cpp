@@ -1023,6 +1023,8 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
         Animal.ProductUnits < 0 || !FMath::IsFinite(Animal.ProductProgressSeconds) ||
         Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
         Animal.Location.ContainsNaN() || Animal.Revision <= 0 ||
+        Animal.LifecycleState != EWorldAnimalLifecycleState::Managed ||
+        Animal.SourceWildlifeIdentityId.IsValid() || Animal.PenId.IsValid() ||
         Animal.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
         MaxOperationReceiptsPerEntity <= 0 || Animals.Contains(Animal.AnimalId) ||
         MaxAnimals <= 0 || Animals.Num() >= MaxAnimals)
@@ -1063,6 +1065,8 @@ bool UWorldAgricultureSubsystem::FeedAnimal(
 {
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
     if (!Animal || Animal->Revision != ExpectedRevision || Animal->Revision >= MAX_int64 - 1 ||
+        (Animal->LifecycleState != EWorldAnimalLifecycleState::Managed &&
+         Animal->LifecycleState != EWorldAnimalLifecycleState::Penned) ||
         !FMath::IsFinite(HungerReduction) || HungerReduction <= 0.0f)
     {
         return false;
