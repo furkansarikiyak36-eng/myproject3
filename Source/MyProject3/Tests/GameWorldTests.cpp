@@ -1549,8 +1549,11 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     TestTrue(TEXT("Discovered seed can now be planted through the ownership transaction"),
         Agriculture->TryPlantCrop(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
             InitialSeed.Revision, Inventory->GetInventoryOwnerId(), PlotCell, 0.5f, CropId));
+    FWorldCropState PlantedCrop;
     TestTrue(TEXT("Successful planting produces a crop record"),
-        Agriculture->GetCrop(CropId, /* OutCrop */ *new FWorldCropState()));
+        Agriculture->GetCrop(CropId, PlantedCrop));
+    TestTrue(TEXT("Planted crop records the expected seed definition"),
+        PlantedCrop.SeedDefinitionId == TEXT("Seed.Grain"));
     FWorldOwnedItemRecord ConsumedSeed;
     TestTrue(TEXT("Consumed seed remains traceable in the ledger"),
         Ownership->TryGetItem(InitialSeed.ItemId, ConsumedSeed));
