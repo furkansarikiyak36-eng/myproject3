@@ -378,12 +378,8 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
         World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     UWorldStructuralGraphSubsystem* StructuralGraph =
         World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    UWorldLogisticsRouteSubsystem* Routes =
-        World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
-    if (!World || !Data || !Agriculture || !StructuralGraph || !Routes)
+    if (!World || !Data || !Agriculture || !StructuralGraph)
         return false;
-
-    TArray<FGuid> ActiveFloodIds;
     for (FWorldNaturalEventInstance& Instance : State.Instances)
     {
         if (Instance.Phase != EWorldNaturalEventPhase::Active)
@@ -392,9 +388,6 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
             [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
         if (!Definition)
             return false;
-
-        if (Definition->Effect == TEXT("flooded_routes"))
-            ActiveFloodIds.Add(Instance.InstanceId);
 
         const bool bContinuous = Definition->Effect == TEXT("crop_moisture_loss");
         if (bContinuous && Instance.LastAppliedEffectTickIndex == TargetTickIndex)
@@ -441,8 +434,6 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
             return false;
         ++Instance.Revision;
     }
-    if (!Routes->ApplyActiveFloodEvents(ActiveFloodIds))
-        return false;
     return true;
 }
 
@@ -531,10 +522,30 @@ FString UWorldEventDirectorSubsystem::GetEventStatusText() const
 
 void UWorldEventDirectorSubsystem::PublishEventNotifications()
 {
+    // This hook runs only after the simulation tick commits. Route changes
+    // therefore cannot escape a rolled-back tick; route hazard claims are
+    // recomputed from the active event instances and are idempotent.
+    const UWorldGameDataSubsystem* Data = GetGameData();
+    UWorldLogisticsRouteSubsystem* Routes =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    TArray<FGuid> ActiveFloodIds;
+    if (Data && Routes)
+    {
+        for (const FWorldNaturalEventInstance& Instance : State.Instances)
+        {
+            if (Instance.Phase != EWorldNaturalEventPhase::Active)
+                continue;
+            const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+                [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+            if (Definition && Definition->Effect == TEXT("flooded_routes"))
+                ActiveFloodIds.Add(Instance.InstanceId);
+        }
+        Routes->ApplyActiveFloodEvents(ActiveFloodIds);
+    }
+
     if (!GEngine)
         return;
 
-    const UWorldGameDataSubsystem* Data = GetGameData();
     TSet<FGuid> LiveSignals;
     TSet<FGuid> LiveActive;
     for (const FWorldNaturalEventInstance& Instance : State.Instances)
