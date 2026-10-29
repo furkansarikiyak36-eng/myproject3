@@ -1625,6 +1625,50 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
             Source->AdvanceFuel(DeltaSeconds, Weather, WeatherSeverity);
     }
 
+    // Only world-exposed fuel changes definition. Inventory/storage fuel is
+    // protected from weather; current DefinitionId changes while BaseDefinitionId
+    // remains the original dry-fuel identity for save/history purposes.
+    if (UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr)
+    {
+        TArray<FWorldOwnedItemRecord> WorldItems;
+        Ownership->ExportSnapshot(WorldItems);
+        const bool bRainOrStorm = Weather == EWorldWeatherState::Rain ||
+            Weather == EWorldWeatherState::Storm;
+        for (const FWorldOwnedItemRecord& Item : WorldItems)
+        {
+            if (Item.OwnerKind != EWorldItemOwnerKind::World ||
+                Item.OwnerId.IsValid() || !Item.ItemId.IsValid() || Item.Revision <= 0)
+                continue;
+
+            FName DesiredDefinition = NAME_None;
+            if (bRainOrStorm && WeatherSeverity >= 0.2f &&
+                Item.DefinitionId == FName(TEXT("Firewood")))
+            {
+                DesiredDefinition = FName(TEXT("Firewood.Wet"));
+            }
+            else if (!bRainOrStorm && Item.DefinitionId == FName(TEXT("Firewood.Wet")))
+            {
+                const bool bNearDryingHeat = HeatSources.ContainsByPredicate(
+                    [&Item](const TWeakObjectPtr<UHeatSourceComponent>& Source)
+                    {
+                        return Source.IsValid() &&
+                            Source->GetHeatAt(Item.WorldLocation) >= 12.0f;
+                    });
+                if (bNearDryingHeat)
+                    DesiredDefinition = FName(TEXT("Firewood"));
+            }
+
+            if (!DesiredDefinition.IsNone())
+            {
+                FWorldOwnedItemRecord UpdatedItem;
+                Ownership->TryUpdateItemDefinition(
+                    FGuid::NewGuid(), Item.ItemId, Item.Revision,
+                    EWorldItemOwnerKind::World, DesiredDefinition, UpdatedItem);
+            }
+        }
+    }
+
     const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
     const double PreviousLogicalTimeSeconds = LogicalTimeSeconds - DeltaSeconds;
     if (!FMath::IsFinite(PreviousLogicalTimeSeconds) || PreviousLogicalTimeSeconds < 0.0)
