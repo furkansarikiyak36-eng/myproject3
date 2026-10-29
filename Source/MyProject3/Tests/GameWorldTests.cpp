@@ -1326,4 +1326,71 @@ bool FForestFireDamagesNearbyWoodStructuresTest::RunTest(const FString& Paramete
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWorldZonesAndDiscoveryContractsTest,
+    "MyProject3.World.Exploration.RegionsAndDiscoveryUnlocks", Flags)
+bool FWorldZonesAndDiscoveryContractsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Simulation clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+
+    TestTrue(TEXT("Load all region/discovery data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply world data and register discovery definitions"), GameData->ApplyToWorld());
+    TestEqual(TEXT("Exactly five ecological zones"), GameData->GetZones().Num(), 5);
+    TestEqual(TEXT("Six data-authored discoveries"), GameData->GetDiscoveries().Num(), 6);
+
+    const FGameDataZone* CreekZone =
+        GameData->FindZoneAtLocation(FVector(1150.0f, -950.0f, 25.0f));
+    TestNotNull(TEXT("Reed-bed position resolves to a zone"), CreekZone);
+    if (CreekZone)
+        TestTrue(TEXT("Reed-bed belongs to the creek bank"), CreekZone->Id == TEXT("Zone.RiverBank"));
+
+    const FGameDataZone* ForestZone =
+        GameData->FindZoneAtLocation(FVector(1750.0f, 950.0f, 0.0f));
+    TestNotNull(TEXT("Flint-outcrop position resolves to a zone"), ForestZone);
+    if (ForestZone)
+        TestTrue(TEXT("Flint outcrop belongs to high forest"), ForestZone->Id == TEXT("Zone.HighForest"));
+
+    TestTrue(TEXT("Points outside all zone radii have no region"),
+        GameData->FindZoneAtLocation(FVector(9000.0f, 9000.0f, 0.0f)) == nullptr);
+    const FGameDataZone* Valley = GameData->FindZone(TEXT("Zone.BaseValley"));
+    TestNotNull(TEXT("Zone lookup by stable ID"), Valley);
+    if (Valley)
+        TestEqual(TEXT("Base valley has stable index zero"), Valley->Index, 0);
+
+    for (const FGameDataCrop& Crop : GameData->GetCrops())
+    {
+        TestTrue(FString::Printf(TEXT("Crop %s references a registered zone index"), *Crop.Id.ToString()),
+            GameData->GetZones().ContainsByPredicate([&Crop](const FGameDataZone& Zone)
+            { return Zone.Index == Crop.FoundInZone; }));
+    }
+
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(90121));
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(930.0f, -690.0f, 0.0f);
+    TestTrue(TEXT("Register discovery test profile"), Survival->RegisterProfile(Profile));
+
+    FWorldSurvivalProfile CurrentProfile;
+    TestTrue(TEXT("Read discovery test profile"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
+    TestTrue(TEXT("Record grain-seed discovery through the existing transaction"),
+        Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId,
+            CurrentProfile.Revision, TEXT("Discovery.GrainSeeds"),
+            FVector(930.0f, -690.0f, 0.0f), Clock->GetSimulationTimeSeconds()));
+    TestTrue(TEXT("Discovery unlock is reflected in the survival ledger"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
+    TestTrue(TEXT("Discovery is recorded once"),
+        Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
+        { return Record.DiscoveryId == TEXT("Discovery.GrainSeeds"); }));
+    return true;
+}
+
 #endif
