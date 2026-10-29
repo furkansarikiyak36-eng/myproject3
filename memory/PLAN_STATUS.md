@@ -39,7 +39,7 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P2.5 disease/injury | Kısmi | conditions Injury/Illness/Poisoning, duration, damage, treatment item [A]; physical health [S]; triggers: dirty water (`ConditionOnConsumeId`), spoiled food (`ConditionWhenSpoiledId`) | triggers: toxic rain (P8), falls, animal attacks, long wet cold (P2.3) |
 | P2.6 clothing | Var [A] | slots Head/Body/Hands/Legs/Feet, insulation, water resistance, capabilities | (hide clothing recipe is P4) |
 | P3.1 fire fuel | Kısmi | fuel items with burn time and receipts [A]; per-fuel `HeatOutputMultiplier` mixed by burn time (wet wood 0.6, charcoal 1.5), `IsBurningHot` for firing clay; saved and rolled back; test | firewood turning wet in rain (item state), player input on the fire |
-| P3.2 shelter enclosure | Kısmi | roof/wall cover by line traces [S]; shelter protection separate from clothing [A] | heat loss from the structural graph |
+| P3.2 shelter enclosure | Kısmi | roof/wall cover by line traces, counting only structurally placed pieces (loose logs no longer count) [S]; a closed shelter keeps fire heat (`ShelterHeatRetention`, test) | per-gap heat loss from the graph; plaster closing gaps (P3.3); the sensor change has no automated test (needs placed log actors) |
 | P3.3 clay plaster | Yok | — | plaster item, wall state, closes gaps |
 | P3.4 charcoal pit | Yok | generic production station [S] | the station and recipe |
 | P4.1 gatherables | Kısmi | trees, logs, branches/sticks, stones [S] | flint, fibre, bone/antler, hide, reed, clay, resin, ochre, shell/tooth/feather |

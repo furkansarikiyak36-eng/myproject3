@@ -256,6 +256,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P3.2 (part) · tested · shelter keeps fire heat, sensor counts only placed pieces, 96/96
 - 2026-10-29 · P3.1 (part) · tested · fuel heat multiplier, wet wood / charcoal, IsBurningHot, 95/95
 - 2026-10-29 · P2.4 · tested · spoilage by storage + temperature, schema v22, 94/94
 - 2026-10-29 · P2.2 (part) · tested · rest quality from shelter/warmth/dryness, 93/93

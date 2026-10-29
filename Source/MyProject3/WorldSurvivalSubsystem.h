@@ -216,6 +216,8 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float AmbientTemperatureCelsius = 8.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float ClothingWarmthCelsius = 15.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float ShelterWarmthCelsius = 8.0f;
+    /** A closed shelter keeps a fire's heat: fire heat x (1 + this x shelter protection) (P3.2). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature", meta=(ClampMin="0", ClampMax="3")) float ShelterHeatRetention = 0.5f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float WetnessPenaltyCelsius = 10.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float ComfortTemperatureCelsius = 18.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float HypothermiaThresholdCelsius = 35.0f;

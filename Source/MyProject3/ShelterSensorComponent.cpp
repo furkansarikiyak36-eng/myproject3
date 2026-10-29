@@ -20,7 +20,10 @@ namespace
         if (!World->LineTraceSingleByChannel(Hit, From, To, ECC_Visibility, Params))
             return false;
         const AActor* Actor = Hit.GetActor();
-        return Cast<IStructuralPieceInterface>(Actor) != nullptr || Cast<AConstructionOpeningActor>(Actor) != nullptr;
+        // Only built pieces shelter: a loose log lying around is not a wall or a roof.
+        if (const IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
+            return Piece->IsStructurallyPlaced();
+        return Cast<AConstructionOpeningActor>(Actor) != nullptr;
     }
 }
 

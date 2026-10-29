@@ -1242,7 +1242,9 @@ float UWorldSurvivalSubsystem::ComputeFeltTemperature(const FWorldSurvivalProfil
 {
     const float Air = AmbientTemperatureCelsius + GetWeatherTemperatureDelta();
     const float WindChill = GetWindChill() * (1.0f - Profile.ShelterProtection);
-    return Air - WindChill + GetHeatAt(Profile.Location) +
+    const float FireHeat = GetHeatAt(Profile.Location) *
+        (1.0f + FMath::Clamp(ShelterHeatRetention, 0.0f, 3.0f) * FMath::Clamp(Profile.ShelterProtection, 0.0f, 1.0f));
+    return Air - WindChill + FireHeat +
         Profile.ClothingInsulation * ClothingWarmthCelsius +
         Profile.ShelterProtection * ShelterWarmthCelsius -
         Profile.Wetness * WetnessPenaltyCelsius;

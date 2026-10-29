@@ -606,4 +606,42 @@ bool FFuelKindsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// P3.2: a fire warms more inside a closed shelter than in the open.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FShelterKeepsFireHeatTest,
+    "MyProject3.World.Fire.ShelterKeepsFireHeat", Flags)
+bool FShelterKeepsFireHeatTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival"), Survival))
+        return false;
+    Survival->AmbientTemperatureCelsius = -5.0f;
+    Survival->SetWeather(EWorldWeatherState::Clear, 0.0f);
+
+    AActor* FireActor = World->SpawnActor<AActor>();
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor);
+    FireActor->SetRootComponent(Fire);
+    Fire->RegisterComponent();
+    TestTrue(TEXT("Fuel"), Fire->AddFuel(3600.0f));
+    TestTrue(TEXT("Light"), Fire->Ignite());
+
+    FWorldSurvivalProfile Open;
+    Open.Location = Fire->GetComponentLocation() + FVector(150.0, 0.0, 0.0);
+    FWorldSurvivalProfile Inside = Open;
+    Inside.ShelterProtection = 1.0f;
+    FWorldSurvivalProfile InsideNoFire = Inside;
+    InsideNoFire.Location = FVector(100000.0, 0.0, 0.0);
+
+    const float FireHeat = Survival->GetHeatAt(Open.Location);
+    TestTrue(TEXT("The fire warms"), FireHeat > 1.0f);
+    const float OpenFelt = Survival->ComputeFeltTemperature(Open);
+    const float InsideFelt = Survival->ComputeFeltTemperature(Inside);
+    const float ShelterOnly = Survival->ComputeFeltTemperature(InsideNoFire) - (Survival->AmbientTemperatureCelsius);
+    TestEqual(TEXT("Inside = open + shelter warmth + kept fire heat"),
+        InsideFelt - OpenFelt, Survival->ShelterWarmthCelsius + Survival->ShelterHeatRetention * FireHeat, 0.01f);
+    TestTrue(TEXT("Fire indoors beats shelter alone"), InsideFelt - Survival->AmbientTemperatureCelsius > ShelterOnly + FireHeat);
+    return true;
+}
+
 #endif
