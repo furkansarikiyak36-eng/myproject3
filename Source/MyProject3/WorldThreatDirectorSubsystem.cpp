@@ -125,10 +125,10 @@ bool UWorldThreatDirectorSubsystem::CalculateRaidPressureAndTarget(
     HeatSignals.Sort([](const TPair<FVector, TPair<float, float>>& A,
         const TPair<FVector, TPair<float, float>>& B)
     {
-        if (!FMath::IsNearlyEqual(A.Key.X, B.Key.X)) return A.Key.X < B.Key.X;
-        if (!FMath::IsNearlyEqual(A.Key.Y, B.Key.Y)) return A.Key.Y < B.Key.Y;
-        if (!FMath::IsNearlyEqual(A.Key.Z, B.Key.Z)) return A.Key.Z < B.Key.Z;
-        if (!FMath::IsNearlyEqual(A.Value.Key, B.Value.Key)) return A.Value.Key < B.Value.Key;
+        if (A.Key.X != B.Key.X) return A.Key.X < B.Key.X;
+        if (A.Key.Y != B.Key.Y) return A.Key.Y < B.Key.Y;
+        if (A.Key.Z != B.Key.Z) return A.Key.Z < B.Key.Z;
+        if (A.Value.Key != B.Value.Key) return A.Value.Key < B.Value.Key;
         return A.Value.Value < B.Value.Value;
     });
     for (const TPair<FVector, TPair<float, float>>& Signal : HeatSignals)
@@ -211,9 +211,9 @@ bool UWorldThreatDirectorSubsystem::CalculateRaidPressureAndTarget(
     // and item records above are canonicalized before the aggregate is consumed.
     Candidates.Sort([](const FThreatTargetCandidate& A, const FThreatTargetCandidate& B)
     {
-        if (!FMath::IsNearlyEqual(A.Location.X, B.Location.X)) return A.Location.X < B.Location.X;
-        if (!FMath::IsNearlyEqual(A.Location.Y, B.Location.Y)) return A.Location.Y < B.Location.Y;
-        if (!FMath::IsNearlyEqual(A.Location.Z, B.Location.Z)) return A.Location.Z < B.Location.Z;
+        if (A.Location.X != B.Location.X) return A.Location.X < B.Location.X;
+        if (A.Location.Y != B.Location.Y) return A.Location.Y < B.Location.Y;
+        if (A.Location.Z != B.Location.Z) return A.Location.Z < B.Location.Z;
         return A.Weight < B.Weight;
     });
 
