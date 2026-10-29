@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add the regression inside `FShelterCoverTest`: a rotated empty door frame in front of the sensor must not increase WallCover; a structurally placed wall behind that frame should still be found by retracing. Keep the existing roof assertions. Then update P3.2 status and docs.
+Update P3.2 status to reflect the shelter measurement fix and test; note that it tests sensor cover only, while heat-loss balance/PIE remains unverified. Update roadmap + codebase. Then continue to P4 station interaction/tool strength link.
