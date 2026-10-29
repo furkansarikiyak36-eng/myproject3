@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add station-use input helpers to VerticalSlice_C header/cpp: E start/collect, F deposit one missing recipe input/tool from generic non-ledger stacks, R take one stock item. Use nearest station within 300 cm and game-data transformation IDs; show clear feedback when no station, fire missing, job started/collected or ingredient deposited.
+Implement nearest station query and E/F/R handlers in `VerticalSliceCWorldActor.cpp`, add station/data/production includes and bind keys in `SetupPlayer`; ensure F won't deposit unique ledger-owned stacks and only deposits recipe inputs/tools for the nearby station.
