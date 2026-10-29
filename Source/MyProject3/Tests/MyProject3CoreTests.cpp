@@ -3926,4 +3926,63 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCreekWetColdExposureIllnessTest,
+    "MyProject3.Survival.CreekWetColdExposureCanCauseConfiguredIllness", TestFlags)
+bool FCreekWetColdExposureIllnessTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+    TestTrue(TEXT("Initialize shared world clock"), Clock->InitializeClock(8126, 1000.0));
+
+    FWorldSurvivalConditionDefinition Cold;
+    Cold.DefinitionId = TEXT("Illness.Cold");
+    Cold.Kind = EWorldSurvivalConditionKind::Illness;
+    Cold.HealthLossPerHour = 0.5f;
+    Cold.FatiguePerHour = 2.0f;
+    Cold.StaminaLossPerHour = 3.0f;
+    Cold.DurationSeconds = 72.0 * 3600.0;
+    TestTrue(TEXT("Register configured cold illness"), Survival->RegisterConditionDefinition(Cold));
+
+    Survival->AmbientTemperatureCelsius = -20.0f;
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector::ZeroVector;
+    Profile.CoreTemperatureCelsius = 37.0f;
+    Profile.Wetness = 0.0f;
+    Profile.ClothingInsulation = 0.0f;
+    Profile.ShelterProtection = 0.0f;
+    TestTrue(TEXT("Register exposed player profile"), Survival->RegisterProfile(Profile));
+
+    TestTrue(TEXT("Creek exposure increases wetness"),
+        Survival->ApplyWetnessExposure(Profile.EntityId, 1.0f));
+    FWorldSurvivalProfile WetProfile;
+    TestTrue(TEXT("Read wet profile"), Survival->GetProfile(Profile.EntityId, WetProfile));
+    TestTrue(TEXT("Player is soaked"), WetProfile.Wetness >= 0.99f);
+
+    TestTrue(TEXT("Advance shared clock by one cold hour"), Clock->AdvanceSimulation(3600.0));
+    const double LogicalTime = Clock->GetSimulationTimeSeconds();
+    TestTrue(TEXT("Cold/wet state accepts one-hour step"),
+        Survival->CanAdvanceSurvivalStep(3600.0, LogicalTime));
+    TestTrue(TEXT("Advance wet-cold survival exposure"),
+        Survival->AdvanceSurvivalStep(3600.0, LogicalTime));
+
+    FWorldSurvivalProfile AfterExposure;
+    TestTrue(TEXT("Read profile after cold exposure"), Survival->GetProfile(Profile.EntityId, AfterExposure));
+    TestTrue(TEXT("Core temperature responds to severe cold"),
+        AfterExposure.CoreTemperatureCelsius <= 36.0f);
+    TestTrue(TEXT("Prolonged wet-cold exposure adds configured illness"),
+        AfterExposure.Conditions.ContainsByPredicate([](const FWorldSurvivalConditionState& Condition)
+        {
+            return Condition.DefinitionId == FName(TEXT("Illness.Cold"));
+        }));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
