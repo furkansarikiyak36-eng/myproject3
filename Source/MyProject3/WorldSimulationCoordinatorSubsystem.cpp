@@ -12,6 +12,7 @@
 #include "WorldStorageSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -139,11 +140,13 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorld* World = GetWorld();
     UWorldItemOwnershipSubsystem* Ownership =
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* StructuralGraph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
     UWorldStorageSubsystem* Storage =
         World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
     UWorldOperationLedgerSubsystem* OperationLedger =
         World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
-    if (!Ownership || !Storage || !OperationLedger) return false;
+    if (!Ownership || !Storage || !OperationLedger || !StructuralGraph) return false;
 
     const FWorldSimulationClockSnapshot BeforeClock = Clock->ExportSnapshot();
     const FWorldClimateSnapshot BeforeClimate = bClimate ? Climate->ExportSnapshot() : FWorldClimateSnapshot();
@@ -151,7 +154,12 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     const FWorldEventDirectorSnapshot BeforeEvents = Events->ExportSnapshot();
     TArray<FWorldCropState> BeforeCrops;
     TArray<FWorldAnimalState> BeforeAnimals;
-    Agriculture->ExportSnapshot(BeforeCrops, BeforeAnimals);
+    TArray<FWorldFieldCellState> BeforeFieldCells;
+    TArray<FWorldAnimalPenState> BeforeAnimalPens;
+    Agriculture->ExportSnapshot(BeforeCrops, BeforeAnimals, BeforeFieldCells, BeforeAnimalPens);
+    TArray<FWorldStructuralNodeSnapshot> BeforeStructuralNodes;
+    if (!StructuralGraph->ExportSnapshot(BeforeStructuralNodes))
+        return false;
     TArray<FWorldSurvivalProfile> BeforeProfiles;
     TArray<FWorldDiscoveryRecord> BeforeDiscoveries;
     EWorldWeatherState BeforeWeather = EWorldWeatherState::Clear;
@@ -195,7 +203,9 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         // logical survival profile. Restore those too or a rejected tick would
         // consume fuel despite the world clock and other domains rolling back.
         bRollbackSucceeded = Survival->RestoreHeatSourceRuntimeState(BeforeHeatSources) && bRollbackSucceeded;
-        bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
+        bRollbackSucceeded = Agriculture->RestoreSnapshot(
+            BeforeCrops, BeforeAnimals, BeforeFieldCells, BeforeAnimalPens) && bRollbackSucceeded;
+        bRollbackSucceeded = StructuralGraph->RestoreSnapshot(BeforeStructuralNodes) && bRollbackSucceeded;
         bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
         bRollbackSucceeded = Events->RestoreSnapshot(BeforeEvents) && bRollbackSucceeded;
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
