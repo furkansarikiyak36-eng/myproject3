@@ -1066,6 +1066,22 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Register a second player profile"), Survival->RegisterProfile(OtherProfile));
     TestFalse(TEXT("One player's discovery does not open a zone for another player"),
         Data->CanEnterZone(OtherProfile.EntityId, TEXT("Zone.3"), AccessReason));
+    TestTrue(TEXT("Second player records their own camp discovery"),
+        Data->TryRecordZoneEntry(FGuid::NewGuid(), OtherProfile.EntityId,
+            TEXT("Zone.0"), OtherProfile.Location, AccessReason));
+    TestTrue(TEXT("Second player receives their own grain-seed unlock"),
+        Survival->IsDefinitionUnlocked(OtherProfile.EntityId, TEXT("Seed.Grain")));
+    TestFalse(TEXT("Second player cannot skip their own creek discovery"),
+        Data->TryRecordZoneEntry(FGuid::NewGuid(), OtherProfile.EntityId,
+            TEXT("Zone.2"), OtherProfile.Location, AccessReason));
+    TestTrue(TEXT("Second player records their own creek discovery"),
+        Data->TryRecordZoneEntry(FGuid::NewGuid(), OtherProfile.EntityId,
+            TEXT("Zone.1"), OtherProfile.Location, AccessReason));
+    TestTrue(TEXT("Second player can then record high-forest discovery"),
+        Data->TryRecordZoneEntry(FGuid::NewGuid(), OtherProfile.EntityId,
+            TEXT("Zone.2"), OtherProfile.Location, AccessReason));
+    TestTrue(TEXT("Second player receives their own root-seed unlock"),
+        Survival->IsDefinitionUnlocked(OtherProfile.EntityId, TEXT("Seed.Root")));
     TestTrue(TEXT("Record lake/swamp discovery after entering Zone 3"), RecordZoneEntry(TEXT("Zone.3")));
 
     TestFalse(TEXT("Mountain pass requires cold-protection clothing in July"),
@@ -1146,6 +1162,21 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Exact zone-entry retry replays success after the season closes"),
         Data->TryRecordZoneEntry(MountainEntryOperationId, Profile.EntityId,
             TEXT("Zone.4"), Profile.Location, AccessReason));
+
+    TArray<FWorldSurvivalProfile> SavedProfiles;
+    TArray<FWorldDiscoveryRecord> SavedDiscoveries;
+    EWorldWeatherState SavedWeather = EWorldWeatherState::Clear;
+    float SavedSeverity = 0.0f;
+    Survival->ExportSnapshot(SavedProfiles, SavedDiscoveries, SavedWeather, SavedSeverity);
+    TestTrue(TEXT("Same discovery may be saved once per player"),
+        SavedDiscoveries.ContainsByPredicate([&OtherProfile](const FWorldDiscoveryRecord& Record)
+            { return Record.DiscoveryId == TEXT("Discovery.Zone0.Camp") && Record.EntityId == OtherProfile.EntityId; }));
+    TestTrue(TEXT("Restore snapshot containing independent player discovery chains"),
+        Survival->RestoreSnapshot(SavedProfiles, SavedDiscoveries, SavedWeather, SavedSeverity));
+    TestTrue(TEXT("Second player's unlocks survive snapshot restore"),
+        Survival->IsDefinitionUnlocked(OtherProfile.EntityId, TEXT("Seed.Root")));
+    TestTrue(TEXT("First player's mountain unlock survives snapshot restore"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Infrastructure.ForwardCamp")));
     return true;
 }
 
