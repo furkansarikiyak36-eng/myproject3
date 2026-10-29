@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `InventoryCraftingComponent.h` and `Config/GameData/items.json`/transformations to find the exact reusable-container and dirty/boiled-water definitions. Then implement a container-gated creek fill action through the authoritative inventory/item ledger; add survival tests for creek wetness and cold-illness.
+Inspect the current item rows for container and water items, then read `InventoryCraftingComponent.cpp` implementation of `TryAddItem`, `BeginPlay`, and owned-item handling before defining a fill transaction. Update checkpoint after each read.
