@@ -1079,6 +1079,15 @@ float UWorldSurvivalSubsystem::GetActivityKcalPerHour(ESurvivalActivity Activity
     }
 }
 
+float UWorldSurvivalSubsystem::GetWorkEffectiveness(const FGuid& EntityId) const
+{
+    const FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile)
+        return 1.0f;
+    return FMath::Lerp(1.0f, 0.5f,
+        FMath::Clamp(Profile->Fatigue / 100.0f, 0.0f, 1.0f));
+}
+
 bool UWorldSurvivalSubsystem::RecordActivity(
     const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg)
 {
@@ -1088,6 +1097,17 @@ bool UWorldSurvivalSubsystem::RecordActivity(
         !InRange(CarriedMassKg, 0.0f, 1000.0f) || Profile->Revision >= MAX_int64 - 1)
     {
         return false;
+    }
+
+    // A rest interval freezes the player's work/movement loop. Keep the
+    // domain gate here too, so a direct tool call cannot work through rest.
+    if (Profile->RestUntilTimeSeconds > 0.0)
+    {
+        const UWorldSimulationClockSubsystem* Clock =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+        if (!Clock || !Clock->IsClockInitialized() ||
+            Profile->RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds())
+            return false;
     }
 
     // Player adapters call this before a costly action. Sprinting stops earlier
