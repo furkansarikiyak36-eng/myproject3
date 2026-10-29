@@ -62,7 +62,7 @@ bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& S
         Station.StorageCapacityUnits <= 0 || Station.Revision <= 0 ||
         Stations.Contains(Station.StationId) || MaxStations <= 0 || Stations.Num() >= MaxStations ||
         !Station.Jobs.IsEmpty() || !Station.PhysicalIntakeReceipts.IsEmpty() ||
-        !Station.EnqueueReceipts.IsEmpty() || !Station.CollectReceipts.IsEmpty() ||
+        !Station.ItemIntakeReceipts.IsEmpty() || !Station.EnqueueReceipts.IsEmpty() || !Station.CollectReceipts.IsEmpty() ||
         !Station.MaterializationReceipts.IsEmpty())
         return false;
     for (const TPair<FName, int32>& Pair : Station.Stock)
@@ -94,6 +94,130 @@ bool UWorldProductionSubsystem::AddStock(
     if (CountStockUnits(Proposed) + Reserved > Station->StorageCapacityUnits) return false;
     Station->Stock = MoveTemp(Proposed);
     ++Station->Revision;
+    return true;
+}
+
+bool UWorldProductionSubsystem::TryIngestWorldOwnedItem(
+    FGuid StationId, FGuid OperationId, FGuid ItemId,
+    int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId)
+{
+    OutStockItemId = NAME_None;
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!World || !Ownership || !StationId.IsValid() || !OperationId.IsValid() ||
+        !ItemId.IsValid() || ExpectedItemRevision <= 0 || ExpectedItemRevision >= MAX_int64 - 1 ||
+        ExpectedStationRevision <= 0 || ExpectedStationRevision >= MAX_int64 - 1)
+        return false;
+
+    // Cross-command idempotency: operation IDs cannot be reused between stock
+    // intake, physical-log intake, queueing, collection or materialization.
+    for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
+    {
+        for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Pair.Value.PhysicalIntakeReceipts)
+        {
+            if (Receipt.OperationId == OperationId || Receipt.SourceItemId == ItemId)
+                return false;
+        }
+        for (const FWorldProductionItemIntakeReceipt& Receipt : Pair.Value.ItemIntakeReceipts)
+        {
+            if (Receipt.OperationId != OperationId)
+            {
+                if (Receipt.SourceItemId == ItemId)
+                    return false;
+                continue;
+            }
+            if (Pair.Key != StationId || Receipt.SourceItemId != ItemId ||
+                Receipt.ExpectedItemRevision != ExpectedItemRevision ||
+                Receipt.ExpectedStationRevision != ExpectedStationRevision)
+                return false;
+            OutStockItemId = Receipt.StockItemId;
+            return !OutStockItemId.IsNone();
+        }
+        for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionCollectReceipt& Receipt : Pair.Value.CollectReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionMaterializationReceipt& Receipt : Pair.Value.MaterializationReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+    }
+
+    FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station || Station->Revision != ExpectedStationRevision ||
+        Station->Revision >= MAX_int64 - 1)
+        return false;
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(ItemId, Item) || Item.ItemId != ItemId ||
+        Item.OwnerKind != EWorldItemOwnerKind::World || Item.OwnerId.IsValid() ||
+        Item.Revision != ExpectedItemRevision || Item.Revision >= MAX_int64 - 1 ||
+        Item.Quantity != 1 || Item.DefinitionId.IsNone() ||
+        !Item.MeshVariantSetId.IsNone())
+        return false;
+
+    // This API is for ledger-backed resources with no separate physical actor.
+    // Logs and other actor-backed pieces must use their domain-specific intake.
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Candidate = *It;
+        if (!IsValid(Candidate) || Candidate->IsActorBeingDestroyed())
+            continue;
+        UWorldObjectIdentityComponent* Identity =
+            Candidate->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (Identity && Identity->HasValidIdentity() && Identity->GetInstanceId() == ItemId)
+            return false;
+    }
+
+    const FName StockItemId = Item.DefinitionId;
+    const int32 CurrentQuantity = Station->Stock.FindRef(StockItemId);
+    if (CurrentQuantity < 0 || CurrentQuantity == MAX_int32)
+        return false;
+    TMap<FName, int32> ProposedStock = Station->Stock;
+    ProposedStock.Add(StockItemId, CurrentQuantity + 1);
+    const int64 ProposedUnits = CountStockUnits(ProposedStock);
+    if (ProposedUnits == MAX_int64)
+        return false;
+
+    int64 ReservedOutputUnits = 0;
+    for (const FWorldProductionJob& Job : Station->Jobs)
+    {
+        if (Job.State != EProductionJobState::Queued && Job.State != EProductionJobState::Running)
+            continue;
+        const int32 RecipeIndex = FindRecipe(Job.RecipeId);
+        if (!Recipes.IsValidIndex(RecipeIndex))
+            return false;
+        for (const FProductionIngredient& Output : Recipes[RecipeIndex].Outputs)
+        {
+            if (Output.Quantity <= 0 || ReservedOutputUnits > MAX_int64 - Output.Quantity)
+                return false;
+            ReservedOutputUnits += Output.Quantity;
+        }
+    }
+    if (ProposedUnits > Station->StorageCapacityUnits ||
+        ReservedOutputUnits > Station->StorageCapacityUnits - ProposedUnits)
+        return false;
+
+    // Everything that can reject the request has been checked before ownership
+    // mutation. After the transfer succeeds, stock and its durable receipt are
+    // committed without a further validation branch.
+    FWorldOwnedItemRecord TransformedItem;
+    if (!Ownership->TryTransferItem(OperationId, ItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::World, EWorldItemOwnerKind::Transformed,
+        FGuid(), Item.WorldLocation, TransformedItem))
+        return false;
+
+    FWorldProductionItemIntakeReceipt& Receipt = Station->ItemIntakeReceipts.AddDefaulted_GetRef();
+    Receipt.OperationId = OperationId;
+    Receipt.SourceItemId = ItemId;
+    Receipt.ExpectedItemRevision = ExpectedItemRevision;
+    Receipt.ExpectedStationRevision = ExpectedStationRevision;
+    Receipt.SourceDefinitionId = Item.DefinitionId;
+    Receipt.StockItemId = StockItemId;
+    Receipt.ResultingItemRevision = TransformedItem.Revision;
+    Receipt.ResultingStationRevision = ExpectedStationRevision + 1;
+    Station->Stock = MoveTemp(ProposedStock);
+    ++Station->Revision;
+    OutStockItemId = StockItemId;
     return true;
 }
 
