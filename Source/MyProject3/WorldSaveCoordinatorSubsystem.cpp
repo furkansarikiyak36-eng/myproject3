@@ -21,6 +21,10 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WallCoatingComponent.h"
+#include "LogBuildPiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 #include "Components/ActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -390,7 +394,7 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
                     return false;
                 CurrentComponentNames.Add(Component->GetFName());
             }
-            if (CurrentComponentNames.Num() != State.ComponentSaveGameData.Num())
+            if (State.ComponentSaveGameData.Num() > CurrentComponentNames.Num())
                 return false;
 
             TSet<FName> SavedComponentNames;
@@ -416,6 +420,20 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
                     return false;
 
                 SavedComponentNames.Add(ComponentState.ComponentName);
+            }
+
+            // Additive P3.3 migration: older saves did not capture the newly added
+            // non-primitive WallCoating component. Leave that component at its
+            // validated default; every other unmatched component still fails closed.
+            for (UActorComponent* Component : CurrentComponents)
+            {
+                if (!IsValid(Component) || SavedComponentNames.Contains(Component->GetFName()))
+                    continue;
+                const bool bSupportedWallPiece = (*Found)->IsA<ALogBuildPiece>() ||
+                    (*Found)->IsA<AStoneBuildingPiece>() || (*Found)->IsA<AStickPrimitivePiece>();
+                if (!bSupportedWallPiece || Component->GetFName() != TEXT("WallCoating") ||
+                    !Component->IsA<UWallCoatingComponent>())
+                    return false;
             }
         }
 
