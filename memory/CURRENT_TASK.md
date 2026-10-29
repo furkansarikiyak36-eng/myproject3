@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update the station integration-test helper so `HalfLog` is category `BuildingPart`, while Wedge/Chisel stay `Tool`; then perform source-only P4.3 audit and update status docs. No build/run.
+Finish P4.3 source audit, update `PLAN_STATUS.md`, `ROADMAP.md` and `CODEBASE.md` to say prototype station interaction (F2/F3/F4) is code-written/unbuilt and no station actors are placed in VerticalSlice_C. Then start P4.4 by examining item schema and the existing axe/dig action points, deciding how authored tool strength can gate those interactions without interfering with physical carry/build logic.
