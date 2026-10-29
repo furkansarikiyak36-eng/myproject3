@@ -1908,10 +1908,54 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                 Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
                 Receipt.ResultingEntityRevision > Field.Revision ||
                 !FMath::IsFinite(Receipt.WorkAmount) || Receipt.WorkAmount <= 0.0f ||
-                Receipt.InputItemId.IsValid() || !Receipt.OutputItemIds.IsEmpty())
+                Receipt.DefinitionId.IsNone() || Receipt.InputItemId.IsValid() ||
+                Receipt.ExpectedInventoryOwnerId.IsValid() || Receipt.ExpectedItemRevision != 0 ||
+                Receipt.ResultingItemRevision != 0 || Receipt.RelatedEntityId.IsValid() ||
+                Receipt.ExpectedRelatedEntityRevision != 0 || Receipt.ResultingRelatedEntityRevision != 0 ||
+                !Receipt.OutputItemIds.IsEmpty())
                 return false;
             SeenOperationIds.Add(Receipt.OperationId);
         }
+    }
+
+    for (const TPair<FGuid, FWorldAnimalPenState>& Pair : NewPens)
+    {
+        const FWorldAnimalPenState& Pen = Pair.Value;
+        int32 BuildReceiptCount = 0;
+        for (const FWorldAgricultureActionReceipt& Receipt : Pen.ActionReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || SeenOperationIds.Contains(Receipt.OperationId) ||
+                Receipt.EntityId != Pen.PenId ||
+                Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
+                Receipt.ResultingEntityRevision > Pen.Revision ||
+                Receipt.InputItemId.IsValid() || Receipt.ExpectedItemRevision != 0 ||
+                Receipt.ResultingItemRevision != 0 || !Receipt.OutputItemIds.IsEmpty() ||
+                Receipt.RelatedEntityId.IsValid() ||
+                Receipt.ExpectedRelatedEntityRevision != 0 || Receipt.ResultingRelatedEntityRevision != 0)
+                return false;
+
+            if (Receipt.Action == EWorldAgricultureActionKind::BuildAnimalPen)
+            {
+                ++BuildReceiptCount;
+                if (Receipt.ExpectedEntityRevision != 0 || Receipt.ResultingEntityRevision != 1 ||
+                    Receipt.DefinitionId != TEXT("AnimalPen") ||
+                    !Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    Receipt.WorkAmount != static_cast<float>(Pen.Capacity))
+                    return false;
+            }
+            else if (Receipt.Action == EWorldAgricultureActionKind::SetAnimalPenGate)
+            {
+                if (Receipt.ExpectedEntityRevision <= 0 || Receipt.DefinitionId != TEXT("Gate") ||
+                    (Receipt.WorkAmount != 0.0f && Receipt.WorkAmount != 1.0f) ||
+                    Receipt.ExpectedInventoryOwnerId.IsValid())
+                    return false;
+            }
+            else
+                return false;
+            SeenOperationIds.Add(Receipt.OperationId);
+        }
+        if (BuildReceiptCount != 1)
+            return false;
     }
 
     for (const TPair<FGuid, FWorldCropState>& Pair : NewCrops)
@@ -1934,6 +1978,37 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             const FWorldCropState* Crop = NewCrops.Find(Field.PlantedCropId);
             if (!Crop || Crop->PlotCell != Field.Cell ||
                 Crop->Stage == ECropGrowthStage::Withered || Crop->Stage == ECropGrowthStage::Harvested)
+                return false;
+        }
+    }
+
+    for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
+    {
+        const FWorldAnimalState& Animal = Pair.Value;
+        if (Animal.PenId.IsValid())
+        {
+            const FWorldAnimalPenState* Pen = NewPens.Find(Animal.PenId);
+            if (!Pen || !Pen->AnimalIds.Contains(Animal.AnimalId) || Animal.bSlaughtered)
+                return false;
+        }
+        else if (!Animal.bSlaughtered && Animal.ActionReceipts.ContainsByPredicate(
+            [&Animal](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.Action == EWorldAgricultureActionKind::AssignAnimalToPen;
+            }))
+            return false;
+
+        if (Animal.bSlaughtered)
+        {
+            const FWorldAgricultureActionReceipt* SlaughterReceipt =
+                Animal.ActionReceipts.FindByPredicate([&Animal](const FWorldAgricultureActionReceipt& Receipt)
+                {
+                    return Receipt.Action == EWorldAgricultureActionKind::SlaughterAnimal &&
+                        Receipt.OperationId == Animal.SlaughterOperationId;
+                });
+            const FWorldAnimalPenState* FormerPen =
+                SlaughterReceipt ? NewPens.Find(SlaughterReceipt->RelatedEntityId) : nullptr;
+            if (!FormerPen || FormerPen->AnimalIds.Contains(Animal.AnimalId))
                 return false;
         }
     }
@@ -1961,9 +2036,15 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
         }
         for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
         {
-            for (const FWorldAgricultureActionReceipt& Receipt : Pair.Value.ActionReceipts)
+            const FWorldAnimalState& Animal = Pair.Value;
+            if (Animal.CaptureOperationId.IsValid() && !Exists(Animal.CaptureToolItemId))
+                return false;
+            for (const FGuid& ItemId : Animal.SlaughterOutputItemIds)
+                if (!Exists(ItemId)) return false;
+            for (const FWorldAgricultureActionReceipt& Receipt : Animal.ActionReceipts)
             {
-                if (Receipt.Action == EWorldAgricultureActionKind::FeedAnimal &&
+                if ((Receipt.Action == EWorldAgricultureActionKind::FeedAnimal ||
+                     Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal) &&
                     !Exists(Receipt.InputItemId))
                     return false;
                 for (const FGuid& ItemId : Receipt.OutputItemIds)
@@ -1975,5 +2056,6 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
     FieldCells = MoveTemp(NewFieldCells);
+    AnimalPens = MoveTemp(NewPens);
     return true;
 }
