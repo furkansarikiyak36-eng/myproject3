@@ -59,4 +59,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Next: inspect `CutOpening`, `TieRope`, `DismantlePiece`, and `ThrowHeldPiece` contracts, then wire the shared activity gate to successful direct actions without charging UI/preview toggles or failed operations. Add targeted preflight coverage if feasible.
+Next: source-audit the `LogBuildToolsComponent.cpp` patch (method signatures, direct-action cost placement, fuel ownership invariants), add focused tests for shared preflight if feasible, then update PLAN_STATUS/ROADMAP/CODEBASE and checkpoint. All new build-tool changes are authored but unbuilt/unrun.
