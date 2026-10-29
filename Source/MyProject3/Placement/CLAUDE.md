@@ -1,3 +1,5 @@
+> **FROZEN UNTIL P10:** Do not add mitre cuts, new NotchCradle sockets, cross-joint geometry, or new snap modes. Open items are tracked in `memory/modules/carry.md`: mirrored wall diagonals clip at crossings; 7 joinery meshes need authored NotchCradle sockets; deck-path behavior remains unverified. P10 owns these physical-assembly changes.
+
 # Placement kernel — guide for Claude
 
 One kernel decides where any piece goes and commits it all or nothing. Plan: `Docs/Architecture/GLOBAL_SNAP_SYSTEM_PLAN.md`.
