@@ -145,7 +145,8 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
 bool ReconcilePhysicalActorSnapshotsWithItems(
     const TArray<FWorldPhysicalActorSnapshot>& PhysicalActors,
     TArray<FWorldOwnedItemRecord>& Items,
-    const TArray<FWorldStorageContainerRecord>& Storages)
+    const TArray<FWorldStorageContainerRecord>& Storages,
+    const TArray<FWorldCarryComponentSnapshot>& CarrySnapshots)
 {
     TMap<FGuid, int32> ItemIndices;
     for (int32 Index = 0; Index < Items.Num(); ++Index)
@@ -170,7 +171,14 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
             {
                 return Storage.StorageId == Item.OwnerId;
             });
-        if ((!bWorldOwned && !bStorageOwned) || Item.Quantity != 1 ||
+        const bool bHeldOwned = Item.OwnerKind == EWorldItemOwnerKind::Held &&
+            Item.OwnerId.IsValid() &&
+            ActorState.LifecycleState == EWorldObjectLifecycleState::Held &&
+            CarrySnapshots.ContainsByPredicate([&Item](const FWorldCarryComponentSnapshot& Carry)
+            {
+                return Carry.HeldItemId == Item.ItemId && Carry.CarryOwnerId == Item.OwnerId;
+            });
+        if ((!bWorldOwned && !bStorageOwned && !bHeldOwned) || Item.Quantity != 1 ||
             Item.DefinitionId != ActorState.DefinitionId)
         {
             UE_LOG(LogTemp, Warning,
@@ -484,12 +492,19 @@ bool ValidateSnapshotPayloadPreflight(UWorld* World, const UWorldSimulationSaveG
         if (!Item.ItemId.IsValid() || ItemsById.Contains(Item.ItemId) ||
             Item.DefinitionId.IsNone() || Item.Quantity < 1 || Item.Revision < 1 ||
             static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-            Item.OwnerKind == EWorldItemOwnerKind::Held ||
             (bNeedsOwnerId && !Item.OwnerId.IsValid()) || Item.WorldLocation.ContainsNaN())
         {
             return false;
         }
         ItemsById.Add(Item.ItemId, Item);
+    }
+
+    if (!ValidateCarryComponentSnapshots(
+        Snapshot.Items, Snapshot.PhysicalActors, Snapshot.CarryComponents))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World load refused because held-item ownership has no unique matching carry snapshot."));
+        return false;
     }
 
     TSet<FGuid> OperationIds;
@@ -1400,22 +1415,40 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     OutSave->Threat = Threat->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts, OutSave->ItemSplitReceipts);
     OperationLedger->ExportSnapshot(OutSave->OperationLedgerEntries);
-    // Held actor/carry-component state is not yet part of this manifest. Refuse
-    // a lossy save rather than restoring an item to an orphaned Held owner.
-    for (const FWorldOwnedItemRecord& Item : OutSave->Items)
+    if (!CaptureCarryComponentSnapshots(World, OutSave->CarryComponents))
     {
-        if (Item.OwnerKind == EWorldItemOwnerKind::Held)
+        UE_LOG(LogTemp, Warning,
+            TEXT("World save refused because held-item/carry-component state could not be captured consistently."));
+        return false;
+    }
+    if (!ValidateCarryComponentSnapshots(
+        OutSave->Items, OutSave->PhysicalActors, OutSave->CarryComponents))
+    {
+        // PhysicalActors is captured below. Validate identity/ownership now,
+        // then repeat after the full actor manifest has been captured.
+        for (const FWorldOwnedItemRecord& Item : OutSave->Items)
         {
-            UE_LOG(LogTemp, Warning, TEXT("World save refused while item %s is held; drop or store it first."),
-                *Item.ItemId.ToString());
-            return false;
+            if (Item.OwnerKind == EWorldItemOwnerKind::Held &&
+                !OutSave->CarryComponents.ContainsByPredicate([&Item](const FWorldCarryComponentSnapshot& Carry)
+                {
+                    return Carry.HeldItemId == Item.ItemId && Carry.CarryOwnerId == Item.OwnerId;
+                }))
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("World save refused: held item %s has no matching carry component."),
+                    *Item.ItemId.ToString());
+                return false;
+            }
         }
     }
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors) ||
         !ValidatePhysicalActorSnapshotSet(World, OutSave->PhysicalActors) ||
+        !ValidateCarryComponentSnapshots(
+            OutSave->Items, OutSave->PhysicalActors, OutSave->CarryComponents) ||
         !ReconcilePhysicalActorSnapshotsWithItems(
-            OutSave->PhysicalActors, OutSave->Items, OutSave->StorageContainers))
+            OutSave->PhysicalActors, OutSave->Items, OutSave->StorageContainers,
+            OutSave->CarryComponents))
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor state could not be reconciled with item ownership."));
         return false;
@@ -1498,8 +1531,11 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         return false;
     }
     TArray<FWorldOwnedItemRecord> ValidatedPhysicalItems = Snapshot->Items;
-    if (!ReconcilePhysicalActorSnapshotsWithItems(
-        Snapshot->PhysicalActors, ValidatedPhysicalItems, Snapshot->StorageContainers))
+    if (!ValidateCarryComponentSnapshots(
+            Snapshot->Items, Snapshot->PhysicalActors, Snapshot->CarryComponents) ||
+        !ReconcilePhysicalActorSnapshotsWithItems(
+            Snapshot->PhysicalActors, ValidatedPhysicalItems, Snapshot->StorageContainers,
+            Snapshot->CarryComponents))
         return false;
 
     // Durable saves must never restore a half-finished operation. Runtime rollback
@@ -1513,6 +1549,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     // Suppress ordinary EndPlay ownership transfers while reconciling the actor
     // set. The snapshot's ledgers are authoritative and will be restored directly.
     TGuardValue<bool> ApplyingSnapshotGuard(bApplyingSnapshot, true);
+    ClearCarryComponentsForSnapshotRestore(World);
 
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
@@ -1588,6 +1625,12 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
 
     if (!Cargo->RestoreSnapshot(Snapshot->Cargo)) return false;
     if (!Threat->RestoreSnapshot(Snapshot->Threat)) return false;
+    if (!RestoreCarryComponentSnapshots(World, Snapshot->CarryComponents))
+    {
+        UE_LOG(LogTemp, Warning,
+            TEXT("World load failed while restoring held-item/carry-component relationships."));
+        return false;
+    }
     return true;
 }
 
@@ -1721,6 +1764,14 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
             }
         }
         Candidate->SchemaVersion = 17;
+    }
+
+    if (Candidate->SchemaVersion == 17)
+    {
+        // Schema v18 adds explicit carry-component/held-item relationships.
+        // Schema v17 capture already refused Held items, so this can be empty.
+        Candidate->CarryComponents.Reset();
+        Candidate->SchemaVersion = 18;
     }
 
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
