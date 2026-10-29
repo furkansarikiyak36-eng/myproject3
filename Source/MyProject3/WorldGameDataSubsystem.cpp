@@ -286,13 +286,17 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Crop.SeedItemId = NameField(Entry, TEXT("seed"));
             Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
             Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
+            Crop.SeedReturnUnits = static_cast<int32>(NumberField(Entry, TEXT("seed_return_units"), 1.0));
             Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
             Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
             if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months")))
                 for (const TSharedPtr<FJsonValue>& Month : *Months)
                     Crop.PlantMonths.Add(static_cast<int32>(Month->AsNumber()));
             if (Crop.Id.IsNone() || !HasItem(Crop.SeedItemId) || !HasItem(Crop.HarvestItemId) ||
-                Crop.HarvestUnits <= 0 || Crop.SecondsPerStage <= 0.0 || Crop.PlantMonths.Num() == 0)
+                Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
+                Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
+                Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
+                Crop.SecondsPerStage <= 0.0 || Crop.PlantMonths.Num() == 0)
                 return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
             NewCrops.Add(Crop);
         }
