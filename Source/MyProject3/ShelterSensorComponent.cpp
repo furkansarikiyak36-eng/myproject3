@@ -18,25 +18,25 @@ namespace
         if (!World)
             return false;
 
-        TArray<FHitResult> Hits;
         FCollisionQueryParams Params(SCENE_QUERY_STAT(ShelterProbe), false, Ignore);
-        if (!World->LineTraceMultiByChannel(Hits, From, To, ECC_Visibility, Params))
-            return false;
-
-        for (const FHitResult& Hit : Hits)
+        // Empty/open doorway frames intentionally block Visibility for aiming,
+        // but they are not weather cover. Ignore non-cover hits and trace again
+        // so a real wall farther along the same ray can still count.
+        for (int32 Attempt = 0; Attempt < 32; ++Attempt)
         {
-            const AActor* Actor = Hit.GetActor();
-            if (!IsValid(Actor))
-                continue;
+            FHitResult Hit;
+            if (!World->LineTraceSingleByChannel(Hit, From, To, ECC_Visibility, Params))
+                return false;
 
-            // The frame of an empty door/gate is only an interaction target,
-            // not a wall. A built, closed panel provides cover; an open panel
-            // must not count. Continue through ignored hits so a real wall
-            // behind the opening can still shelter the point.
+            AActor* Actor = Hit.GetActor();
+            if (!IsValid(Actor))
+                return false;
+
             if (const AConstructionOpeningActor* Opening = Cast<AConstructionOpeningActor>(Actor))
             {
                 if (Opening->HasPanel() && !Opening->IsOpen())
                     return true;
+                Params.AddIgnoredActor(Actor);
                 continue;
             }
 
@@ -46,6 +46,8 @@ namespace
                 if (Piece->IsStructurallyPlaced())
                     return true;
             }
+
+            Params.AddIgnoredActor(Actor);
         }
         return false;
     }
