@@ -92,7 +92,7 @@
       "prerequisites": [],
       "required_equipment": [],
       "unlocks": [
-        "Leather"
+        "cure_hide"
       ],
       "reward_item": "Rope",
       "reward_qty": 1
