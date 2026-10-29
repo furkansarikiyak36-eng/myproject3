@@ -137,7 +137,7 @@ bool UWorldAgricultureSubsystem::RegisterFieldActionDefinition(
         static_cast<uint8>(Definition.Action) > static_cast<uint8>(EWorldFieldActionKind::Fence) ||
         !FMath::IsFinite(Definition.Amount) || Definition.Amount < 0.0f || Definition.Amount > 1.0f ||
         !FMath::IsFinite(Definition.LaborSeconds) || Definition.LaborSeconds < 1.0 ||
-        Definition.LaborSeconds > 7200.0 ||
+        Definition.LaborSeconds > 3600.0 ||
         MaxFieldActionDefinitions < 1 || MaxFieldActionDefinitions > 16)
         return false;
 
