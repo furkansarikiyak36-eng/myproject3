@@ -79,7 +79,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing test conventions; current branch already contains `FWaterFillAndWetColdExposureTest` near the end with fill, retry, and wet-cold assertions).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing `FCreekWaterFillWithReusablePotTest` covers missing vessel, dirty-water output, reusable pot unchanged, retry, and profile snapshot restore; `FCreekWetColdExposureIllnessTest` also exists. Both are source-only/unrun).
+- `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I/O key bindings already include I=FillCreekWater and O=RefuelFire; fill traces none, it checks `IsInCreek`, finds a unique `Pot.Fired`, then calls the survival transaction and displays feedback).
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: scenario recipe selection resolves from game data).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
@@ -143,4 +144,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit existing `FWaterFillAndWetColdExposureTest` assertions against the fill implementation and snapshot rules. Fix any test/source contract mismatches, then wire player interaction in VerticalSlice_C only when carrying a `Pot.Fired` in inventory and standing in the creek. Keep unbuilt; do not add duplicate tests.
+The existing test and I-key interaction were already present on the current branch, so do not duplicate them. Audit whether the active player pawn actually has `UInventoryCraftingComponent`; inspect the character/bootstrap/gamemode setup and test the fill transaction's inventory-capacity preflight. If the pawn is missing inventory by default, attach the component through the existing character setup, not a parallel inventory system.
