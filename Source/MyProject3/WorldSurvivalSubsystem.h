@@ -274,6 +274,8 @@ public:
         double LogicalTimeSeconds);
     UFUNCTION(BlueprintPure, Category="World|Exploration")
     bool IsDefinitionUnlocked(const FGuid& EntityId, FName DefinitionId) const;
+    UFUNCTION(BlueprintPure, Category="World|Survival|Equipment")
+    bool HasEquippedCapability(const FGuid& EntityId, FName CapabilityId) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetActivityKcalPerHour(ESurvivalActivity Activity) const;
     /** The single felt-temperature function every system reads. */
     UFUNCTION(BlueprintPure, Category="World|Survival") float ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const;
