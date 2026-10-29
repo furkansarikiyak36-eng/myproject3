@@ -1108,6 +1108,27 @@ bool UWorldProductionSubsystem::RestoreSnapshot(
             ProductionOperationIds.Add(Receipt.OperationId);
             IntakeSourceItemIds.Add(Receipt.SourceItemId);
         }
+        for (const FWorldProductionItemIntakeReceipt& Receipt : S.ItemIntakeReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || !Receipt.SourceItemId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 || Receipt.ExpectedItemRevision >= MAX_int64 - 1 ||
+                Receipt.ExpectedStationRevision <= 0 || Receipt.ExpectedStationRevision >= MAX_int64 - 1 ||
+                Receipt.SourceDefinitionId.IsNone() || Receipt.StockItemId != Receipt.SourceDefinitionId ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ResultingStationRevision != Receipt.ExpectedStationRevision + 1 ||
+                ProductionOperationIds.Contains(Receipt.OperationId) ||
+                IntakeSourceItemIds.Contains(Receipt.SourceItemId))
+                return false;
+
+            UWorldItemOwnershipSubsystem* Ownership =
+                GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+            FWorldOwnedItemRecord SourceItem;
+            if (!Ownership || !Ownership->TryGetItem(Receipt.SourceItemId, SourceItem))
+                return false;
+
+            ProductionOperationIds.Add(Receipt.OperationId);
+            IntakeSourceItemIds.Add(Receipt.SourceItemId);
+        }
         for (const FWorldProductionEnqueueReceipt& Receipt : S.EnqueueReceipts)
         {
             if (!Receipt.OperationId.IsValid() || Receipt.RecipeId.IsNone() ||
