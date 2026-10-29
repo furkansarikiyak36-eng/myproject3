@@ -64,7 +64,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Config/GameData/conditions.json` (existing `Illness.Cold`, `Illness.DirtyWater`, `Injury.Fall`, and `Injury.AnimalBite` definitions are available for environment triggers).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (declared public environmental `ApplyWetnessExposure`).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (bounded additive environmental wetness; wet-cold illness requires Wetness≥0.8, felt temperature sufficiently cold, and core temperature≤36°C).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added `MyProject3.Survival.FallImpactAppliesConfiguredInjuryOnce`: 800 cm/s does nothing; 1300 cm/s deals physical damage and adds one registered `Injury.Fall` condition; source only/unrun).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added fall-impact regression and `MyProject3.Survival.HostileBiteAppliesInjuryAndRespectsCooldown`: a first close-range bite damages health/adds `Injury.AnimalBite`; second same-moment bite is rejected without revision/damage duplication. Both are authored/unrun).
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (player location update now detects `IsInCreek` and adds 0.12 wetness each survival update while wading).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
@@ -159,4 +159,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `MyProject3.Survival.HostileBiteAppliesInjuryAndRespectsCooldown` test by spawning ALogSnapCharacter and AWildlifeActor, registering `Injury.AnimalBite`, invoking TryBiteTarget twice without advancing time, and checking the second call causes no extra damage/condition. Then update PLAN_STATUS for P2.1–P2.5 and current test evidence.
+Update `PLAN_STATUS.md` summary and P2 rows for movement fatigue/sprint gates, creek fill/dirty-water condition, creek wetness + cold illness, and fall/hostile-bite triggers. Preserve `Kısmi` status where player drinking/rest UI, build, or PIE remains. Add current unbuilt test notes to `ROADMAP.md` and `CODEBASE.md`.
