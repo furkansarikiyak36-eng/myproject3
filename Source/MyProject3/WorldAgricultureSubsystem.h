@@ -36,6 +36,16 @@ struct FWorldAnimalState
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals") int64 Revision = 1;
 };
 
+/** Authored, asset-independent crop output contract. Physical plant/soil visuals are separate adapters. */
+USTRUCT(BlueprintType)
+struct FWorldCropYieldRule
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Yield") FName CropDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Yield") FName HarvestItemDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Yield", meta=(ClampMin="1", ClampMax="100000")) int32 YieldUnits = 1;
+};
+
 /** Bounded logical crop/animal lifecycle; visuals and physical actors are adapters. */
 UCLASS()
 class MYPROJECT3_API UWorldAgricultureSubsystem : public UWorldSubsystem
@@ -59,9 +69,15 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float HeatwaveGrowthMultiplier = 0.6f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float HungerPerHour = 5.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float ProductHungerLimit = 55.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Yield") TArray<FWorldCropYieldRule> CropYieldRules;
 
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool RegisterCrop(const FWorldCropState& Crop);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool RegisterAnimal(const FWorldAnimalState& Animal);
+    UFUNCTION(BlueprintPure, Category="World|Farm") bool IsCropDefinitionConfigured(FName CropDefinitionId) const;
+    UFUNCTION(BlueprintPure, Category="World|Farm") bool IsPlotCellOccupied(FIntVector PlotCell) const;
+    UFUNCTION(BlueprintPure, Category="World|Farm") bool GetCropYield(FName CropDefinitionId, FName& OutItemDefinitionId, int32& OutYieldUnits) const;
+    UFUNCTION(BlueprintCallable, Category="World|Farm") bool TryHarvestCrop(
+        const FGuid& CropId, int64 ExpectedRevision, FName& OutItemDefinitionId, int32& OutYieldUnits);
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool SetCropMoisture(const FGuid& CropId, float Moisture, int64 ExpectedRevision);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool FeedAnimal(const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision);
     UFUNCTION(BlueprintPure, Category="World|Simulation") bool CanAdvanceAgricultureStep(double DeltaSeconds) const;
