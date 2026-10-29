@@ -22,6 +22,8 @@
 #include "CarryLoadComponent.h"
 #include "WorldClimateSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "Engine/World.h"
 #include "Math/RotationMatrix.h"
 
 ALogSnapCharacter::ALogSnapCharacter()
@@ -282,6 +284,12 @@ void ALogSnapCharacter::HandleJumpReleased()
     StopJumping();
 }
 
+void ALogSnapCharacter::SetSurvivalEntityId(const FGuid& EntityId)
+{
+    SurvivalEntityId = EntityId;
+    TraversalActivitySeconds = 0.0f;
+}
+
 bool ALogSnapCharacter::FindWalkingRoute(
     FName StartNode, FName GoalNode, TArray<FName>& OutPath, float& OutTotalCost) const
 {
@@ -344,12 +352,118 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
     {
         return PlayerController->IsInputKeyDown(Key) ? 1.0f : 0.0f;
     };
-    MoveForward(KeyValue(EKeys::W) - KeyValue(EKeys::S));
-    MoveRight(KeyValue(EKeys::D) - KeyValue(EKeys::A));
+    const float ForwardInput = KeyValue(EKeys::W) - KeyValue(EKeys::S);
+    const float RightInput = KeyValue(EKeys::D) - KeyValue(EKeys::A);
+    const bool bHasMovementInput = !FMath::IsNearlyZero(ForwardInput) || !FMath::IsNearlyZero(RightInput);
+    const bool bSprintRequested = PlayerController->IsInputKeyDown(EKeys::LeftShift);
+    MoveForward(ForwardInput);
+    MoveRight(RightInput);
+
+    // P7.1: physical slope and the climate's snow/wetness/weather feed one
+    // multiplier, combined by CarryLoadComponent with the existing mass penalty.
+    UCharacterMovementComponent* Movement = GetCharacterMovement();
+    UWorld* World = GetWorld();
+    const UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    const UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+
+    float SlopeRatio = 0.0f;
+    float UphillAlignment = 0.0f;
+    if (Movement && Movement->IsMovingOnGround() && World)
+    {
+        FHitResult GroundHit;
+        FCollisionQueryParams QueryParams(FName(TEXT("TraversalGroundProbe")), false, this);
+        const FVector TraceStart = GetActorLocation() + FVector(0.0f, 0.0f, 24.0f);
+        const FVector TraceEnd = GetActorLocation() - FVector(0.0f, 0.0f, 140.0f);
+        if (World->LineTraceSingleByChannel(
+            GroundHit, TraceStart, TraceEnd, ECC_Visibility, QueryParams))
+        {
+            const FVector Normal = GroundHit.ImpactNormal.GetSafeNormal();
+            if (Normal.Z > 0.1f && FMath::IsFinite(Normal.Z))
+            {
+                SlopeRatio = FMath::Sqrt(FMath::Max(0.0f, 1.0f - Normal.Z * Normal.Z)) /
+                    FMath::Max(Normal.Z, 0.1f);
+                const FVector UphillDirection =
+                    FVector::VectorPlaneProject(FVector::UpVector, Normal).GetSafeNormal2D();
+                const FVector MoveDirection = GetLastMovementInputVector().GetSafeNormal2D();
+                UphillAlignment = FMath::Clamp(
+                    FVector::DotProduct(MoveDirection, UphillDirection), -1.0f, 1.0f);
+            }
+        }
+    }
+    SlopeRatio = FMath::Clamp(FMath::IsFinite(SlopeRatio) ? SlopeRatio : 0.0f, 0.0f, 10.0f);
+
+    float Snow01 = 0.0f;
+    float GroundWetness = 0.0f;
+    float WeatherSeverity = 0.0f;
+    EWorldWeatherState Weather = EWorldWeatherState::Clear;
+    if (Climate && Climate->IsClimateInitialized())
+    {
+        Snow01 = FMath::Clamp(Climate->GetSnowDepthCm() / 120.0f, 0.0f, 1.0f);
+        GroundWetness = FMath::Clamp(Climate->GetGroundWetness(), 0.0f, 1.0f);
+        WeatherSeverity = FMath::Clamp(Climate->GetWeatherSeverity(), 0.0f, 1.0f);
+        Weather = Climate->GetWeather();
+    }
+
+    float WeatherSlowdown = 0.0f;
+    float WeatherEffort = 0.0f;
+    switch (Weather)
+    {
+    case EWorldWeatherState::Rain:     WeatherSlowdown = 0.05f; WeatherEffort = 0.10f; break;
+    case EWorldWeatherState::Wind:     WeatherSlowdown = 0.10f; WeatherEffort = 0.15f; break;
+    case EWorldWeatherState::Snow:     WeatherSlowdown = 0.16f; WeatherEffort = 0.30f; break;
+    case EWorldWeatherState::Storm:    WeatherSlowdown = 0.20f; WeatherEffort = 0.40f; break;
+    case EWorldWeatherState::Heatwave: WeatherSlowdown = 0.04f; WeatherEffort = 0.15f; break;
+    case EWorldWeatherState::Clear:
+    default: break;
+    }
+
+    const float UphillAlignmentPositive = FMath::Max(0.0f, UphillAlignment);
+    const float SlopeSpeedMultiplier = 1.0f /
+        (1.0f + UphillAlignmentPositive * SlopeRatio * 0.55f);
+    const float SnowSpeedMultiplier = 1.0f - Snow01 * 0.35f;
+    const float WetGroundSpeedMultiplier = 1.0f - GroundWetness * 0.20f;
+    const float WeatherSpeedMultiplier = 1.0f - WeatherSlowdown * WeatherSeverity;
+    const float SprintMultiplier = bSprintRequested && bHasMovementInput ? 1.35f : 1.0f;
+    const float EnvironmentSpeedMultiplier = FMath::Clamp(
+        SlopeSpeedMultiplier * SnowSpeedMultiplier * WetGroundSpeedMultiplier *
+        WeatherSpeedMultiplier * SprintMultiplier, 0.2f, 1.5f);
+    if (CarryLoad)
+        CarryLoad->SetTraversalEnvironmentMultiplier(EnvironmentSpeedMultiplier);
+
+    // Activity costs are reported in one-second chunks to the existing survival
+    // profile. Terrain work affects effort, not the shared world-clock rate.
+    if (Survival && SurvivalEntityId.IsValid() && Movement && bHasMovementInput &&
+        Movement->Velocity.SizeSquared2D() > 625.0f)
+    {
+        TraversalActivitySeconds = FMath::Min(TraversalActivitySeconds + DeltaSeconds, 5.0f);
+        const float SlopeEffortMultiplier =
+            1.0f + UphillAlignmentPositive * SlopeRatio * 0.60f;
+        const float SurfaceEffortMultiplier =
+            1.0f + Snow01 * 0.45f + GroundWetness * 0.25f;
+        const float WeatherEffortMultiplier =
+            1.0f + WeatherEffort * WeatherSeverity;
+        const float WorkMultiplier = FMath::Clamp(
+            SlopeEffortMultiplier * SurfaceEffortMultiplier * WeatherEffortMultiplier, 1.0f, 5.0f);
+        const ESurvivalActivity Activity =
+            bSprintRequested ? ESurvivalActivity::Run : ESurvivalActivity::Walk;
+        const float CarriedMassKg = CarryLoad ? CarryLoad->GetCarriedMassKg() : 0.0f;
+        while (TraversalActivitySeconds >= 1.0f)
+        {
+            if (Survival->RecordActivity(
+                SurvivalEntityId, Activity, 1.0f, CarriedMassKg, WorkMultiplier))
+                TraversalActivitySeconds -= 1.0f;
+            else
+            {
+                TraversalActivitySeconds = 0.0f;
+                break;
+            }
+        }
+    }
 
     // Step-ups onto logs and rocks move the capsule in one frame; the camera
     // follows smoothly instead of snapping.
-    const UCharacterMovementComponent* Movement = GetCharacterMovement();
     const float GroundZ = GetActorLocation().Z;
     if (Movement && Movement->IsMovingOnGround() && bHasLastGroundZ)
     {
