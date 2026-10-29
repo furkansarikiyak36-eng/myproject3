@@ -139,7 +139,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     const FWorldThreatDirectorSnapshot BeforeThreat = Threat->ExportSnapshot();
     TArray<FWorldCropState> BeforeCrops;
     TArray<FWorldAnimalState> BeforeAnimals;
-    Agriculture->ExportSnapshot(BeforeCrops, BeforeAnimals);
+    TArray<FWorldFieldCellState> BeforeFieldCells;
+    Agriculture->ExportSnapshot(BeforeCrops, BeforeAnimals, BeforeFieldCells);
     TArray<FWorldSurvivalProfile> BeforeProfiles;
     TArray<FWorldDiscoveryRecord> BeforeDiscoveries;
     EWorldWeatherState BeforeWeather = EWorldWeatherState::Clear;
@@ -183,7 +184,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         // logical survival profile. Restore those too or a rejected tick would
         // consume fuel despite the world clock and other domains rolling back.
         bRollbackSucceeded = Survival->RestoreHeatSourceRuntimeState(BeforeHeatSources) && bRollbackSucceeded;
-        bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
+        bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals, BeforeFieldCells) && bRollbackSucceeded;
         bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
         if (!bRollbackSucceeded)
