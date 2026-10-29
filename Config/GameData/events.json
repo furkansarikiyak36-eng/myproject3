@@ -1,0 +1,191 @@
+{
+  "_about": "Natural event schedule definitions. Actual effects remain owned by the climate, terrain, survival and structural systems.",
+  "events": [
+    {
+      "id": "Event.Frost",
+      "name": "Don riski",
+      "effect": "Hazard.Frost",
+      "warning_s": 180,
+      "duration_s": 1800,
+      "cooldown_s": 3600,
+      "min_interval_s": 18000,
+      "max_interval_s": 36000,
+      "chance": 0.3,
+      "months": [
+        1,
+        2,
+        3,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "id": "Event.Hail",
+      "name": "Dolu",
+      "effect": "Hazard.Hail",
+      "warning_s": 120,
+      "duration_s": 900,
+      "cooldown_s": 3600,
+      "min_interval_s": 21600,
+      "max_interval_s": 43200,
+      "chance": 0.18,
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "id": "Event.Drought",
+      "name": "Kuraklık",
+      "effect": "Hazard.Drought",
+      "warning_s": 300,
+      "duration_s": 14400,
+      "cooldown_s": 7200,
+      "min_interval_s": 43200,
+      "max_interval_s": 86400,
+      "chance": 0.2,
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "id": "Event.Storm",
+      "name": "Şiddetli fırtına",
+      "effect": "Hazard.Storm",
+      "warning_s": 240,
+      "duration_s": 2400,
+      "cooldown_s": 3600,
+      "min_interval_s": 18000,
+      "max_interval_s": 43200,
+      "chance": 0.28,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "id": "Event.Flood",
+      "name": "Sel",
+      "effect": "Hazard.Flood",
+      "trigger_after": "Event.Storm",
+      "warning_s": 240,
+      "duration_s": 3600,
+      "cooldown_s": 7200,
+      "min_interval_s": 900,
+      "max_interval_s": 7200,
+      "chance": 0.5,
+      "months": [
+        3,
+        4,
+        5,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "id": "Event.Wildfire",
+      "name": "Orman yangını",
+      "effect": "Hazard.Wildfire",
+      "trigger_after": "Event.Drought",
+      "warning_s": 300,
+      "duration_s": 3600,
+      "cooldown_s": 7200,
+      "min_interval_s": 1800,
+      "max_interval_s": 10800,
+      "chance": 0.35,
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "id": "Event.ToxicRain",
+      "name": "Zehirli yağmur",
+      "effect": "Hazard.ToxicRain",
+      "trigger_after": "Event.Storm",
+      "warning_s": 300,
+      "duration_s": 1800,
+      "cooldown_s": 7200,
+      "min_interval_s": 3600,
+      "max_interval_s": 14400,
+      "chance": 0.1,
+      "months": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "id": "Event.Epidemic",
+      "name": "Salgın",
+      "effect": "Hazard.Epidemic",
+      "trigger_after": "Event.Flood",
+      "warning_s": 600,
+      "duration_s": 21600,
+      "cooldown_s": 14400,
+      "min_interval_s": 3600,
+      "max_interval_s": 14400,
+      "chance": 0.25,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "id": "Event.Fog",
+      "name": "Yoğun sis",
+      "effect": "Hazard.Fog",
+      "warning_s": 120,
+      "duration_s": 1800,
+      "cooldown_s": 3600,
+      "min_interval_s": 14400,
+      "max_interval_s": 28800,
+      "chance": 0.35,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        9,
+        10,
+        11,
+        12
+      ]
+    }
+  ]
+}
