@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect `LogCarryComponent::BindDefaultInput` for E/F/R key collisions; then audit `VerticalSliceCWorldActor.cpp` station-handler snippets and `ProductionStationActor::TryTake` for source consistency. Fix key conflicts or test assumptions before changing P4.3 status.
+Move station controls from E/F/R to unoccupied F2/F3/F4 (F2 start/collect, F3 deposit, F4 take) in `VerticalSliceCWorldActor::SetupPlayer`, and update all on-screen station help strings. Preserve E=carry interact, F=process aimed piece and R=rotate held piece.
