@@ -5,6 +5,8 @@ ChatGPT, Antigravity IDE. Read this folder instead of analysing the whole repo.
 
 ## At the start of a session
 
+0. Read `CURRENT_TASK.md`. If a task is `open`, continue it from "Next step" and save
+   after every step (its rules). Skip the rest of this list unless the task needs it.
 1. Read `STATE.md` (one page: where the project is now).
 2. Read the newest files in `sessions/` (what the last sessions did).
 3. Check what changed since then: `git log --oneline --since=<date of the newest session>`.
@@ -55,6 +57,7 @@ Branch: feature/simple-intent · Commits: 7de76ff, eaf6d8d
 | File | What |
 |---|---|
 | `STATE.md` | Current state: branches, what works, what is open. |
+| `CURRENT_TASK.md` | Checkpoint of the task in progress; saved after every step so a new session resumes. |
 | `ROADMAP.md` | Ordered tasks of the game plan, honest status, how to continue. |
 | `CODEBASE.md` | Living analysis: every area, its files, status and gap vs the plan. |
 | `CODE_INDEX.md` | Generated list of every C++ file, type, enum, UFUNCTION (`tools/memory_code_index.py`). |
