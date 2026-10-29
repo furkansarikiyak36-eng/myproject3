@@ -9,6 +9,7 @@
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
+#include "WorldRaidTargetComponent.h"
 
 namespace
 {
@@ -52,6 +53,14 @@ UWorldStructuralGraphSubsystem* UWorldRaidAdapterSubsystem::GetStructuralGraph()
     return World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
 }
 
+bool UWorldRaidAdapterSubsystem::HasActiveRaidPawns() const
+{
+    for (const TWeakObjectPtr<APawn>& Pawn : ActiveRaidPawns)
+        if (Pawn.IsValid())
+            return true;
+    return false;
+}
+
 bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetTimeSeconds) const
 {
     UWorld* World = GetWorld();
@@ -68,6 +77,8 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
         !FMath::IsFinite(SpawnHeightOffset) || SpawnHeightOffset < 0.0f ||
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
         !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
+        RaidWaveSize < 1 || RaidWaveSize > 12 ||
+        !FMath::IsFinite(SpawnDistanceFromTargetCm) || SpawnDistanceFromTargetCm < 0.0f ||
         !Graph)
     {
         return false;
@@ -210,9 +221,53 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
 bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
     const FThreatRaidRecord& Raid, FGuid& OutNodeId, FVector& OutLocation) const
 {
+    UWorld* World = GetWorld();
     UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
-    if (!Graph)
+    if (!World || !Graph || Raid.TargetLocation.ContainsNaN())
         return false;
+
+    // Prefer an authored settlement/core marker. Priority is explicit; equal
+    // priorities resolve by distance to the raid's designated target, then by
+    // stable actor/component path so map iteration order cannot select a target.
+    bool bHasAuthoredTarget = false;
+    int32 BestTargetPriority = MIN_int32;
+    double BestTargetDistanceSquared = TNumericLimits<double>::Max();
+    FString BestTargetKey;
+    FVector DesiredLocation = Raid.TargetLocation;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!IsValid(Actor))
+            continue;
+        TArray<UWorldRaidTargetComponent*> TargetComponents;
+        Actor->GetComponents<UWorldRaidTargetComponent>(TargetComponents);
+        for (UWorldRaidTargetComponent* Component : TargetComponents)
+        {
+            if (!IsValid(Component) || !Component->bRaidTargetEnabled)
+                continue;
+            const FVector CandidateLocation = Component->GetRaidTargetLocation();
+            if (CandidateLocation.ContainsNaN())
+                continue;
+            const double DistanceSquared =
+                FVector::DistSquared(CandidateLocation, Raid.TargetLocation);
+            if (!FMath::IsFinite(DistanceSquared))
+                continue;
+            const FString CandidateKey = Actor->GetPathName() + TEXT(".") +
+                Component->GetName();
+            if (!bHasAuthoredTarget ||
+                Component->TargetPriority > BestTargetPriority ||
+                (Component->TargetPriority == BestTargetPriority &&
+                 (DistanceSquared < BestTargetDistanceSquared ||
+                  (DistanceSquared == BestTargetDistanceSquared && CandidateKey < BestTargetKey))))
+            {
+                bHasAuthoredTarget = true;
+                BestTargetPriority = Component->TargetPriority;
+                BestTargetDistanceSquared = DistanceSquared;
+                BestTargetKey = CandidateKey;
+                DesiredLocation = CandidateLocation;
+            }
+        }
+    }
 
     TArray<FGuid> Candidates = DefenseTargetNodeIds;
     if (Candidates.IsEmpty())
@@ -228,12 +283,12 @@ bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
     bool bFound = false;
     double BestDistanceSquared = TNumericLimits<double>::Max();
     FString BestIdKey;
+    FVector BestNodeLocation = DesiredLocation;
     for (const FGuid& CandidateId : Candidates)
     {
         FStructuralNodeRecord Node;
         if (!CandidateId.IsValid() || !Graph->GetNode(CandidateId, Node))
             continue;
-
         AActor* Actor = Node.Actor.Get();
         if (!IsValid(Actor))
             continue;
@@ -241,10 +296,9 @@ bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
         const FVector Location = Actor->GetActorLocation();
         if (Location.ContainsNaN())
             continue;
-        const double DistanceSquared = FVector::DistSquared(Location, Raid.TargetLocation);
+        const double DistanceSquared = FVector::DistSquared(Location, DesiredLocation);
         if (!FMath::IsFinite(DistanceSquared))
             continue;
-
         const FString CandidateKey = CandidateId.ToString();
         if (!bFound || DistanceSquared < BestDistanceSquared ||
             (DistanceSquared == BestDistanceSquared && CandidateKey < BestIdKey))
@@ -253,10 +307,14 @@ bool UWorldRaidAdapterSubsystem::ResolvePrimaryTargetNode(
             BestDistanceSquared = DistanceSquared;
             BestIdKey = CandidateKey;
             OutNodeId = CandidateId;
-            OutLocation = Location;
+            BestNodeLocation = Location;
         }
     }
-    return bFound;
+
+    if (!bFound)
+        return false;
+    OutLocation = bHasAuthoredTarget ? DesiredLocation : BestNodeLocation;
+    return true;
 }
 
 bool UWorldRaidAdapterSubsystem::BuildDamageTargetList(
@@ -271,7 +329,7 @@ bool UWorldRaidAdapterSubsystem::BuildDamageTargetList(
     {
         FGuid TargetNodeId;
         FVector TargetLocation;
-        if (MaterializedRaidId == Raid.RaidId && ActiveRaidPawn.IsValid() &&
+        if (MaterializedRaidId == Raid.RaidId && HasActiveRaidPawns() &&
             MaterializedTargetNodeId.IsValid())
         {
             FStructuralNodeRecord ExistingTarget;
@@ -324,7 +382,9 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         !Threat->IsDirectorInitialized() || !Clock->IsClockInitialized() ||
         !FMath::IsFinite(SpawnHeightOffset) || SpawnHeightOffset < 0.0f ||
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
-        !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0)
+        !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
+        RaidWaveSize < 1 || RaidWaveSize > 12 ||
+        !FMath::IsFinite(SpawnDistanceFromTargetCm) || SpawnDistanceFromTargetCm < 0.0f)
     {
         return false;
     }
@@ -332,9 +392,10 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     FThreatRaidRecord Raid;
     if (!Threat->GetCurrentRaid(Raid) || IsTerminalRaidState(Raid.State))
     {
-        if (ActiveRaidPawn.IsValid() && !ActiveRaidPawn->Destroy())
-            return false;
-        ActiveRaidPawn.Reset();
+        for (const TWeakObjectPtr<APawn>& Pawn : ActiveRaidPawns)
+            if (Pawn.IsValid() && !Pawn->Destroy())
+                return false;
+        ActiveRaidPawns.Reset();
         MaterializedRaidId.Invalidate();
         MaterializedTargetNodeId.Invalidate();
         NextDamageTimeSeconds = 0.0;
@@ -356,17 +417,22 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
 
     const bool bSameRaid = MaterializedRaidId.IsValid() &&
         MaterializedRaidId == Raid.RaidId;
-    if ((Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active) &&
-        (!bSameRaid || !ActiveRaidPawn.IsValid()))
+    ActiveRaidPawns.RemoveAll([](const TWeakObjectPtr<APawn>& Pawn)
     {
-        // The pawn is a transient visual adapter and is recreated from the
-        // authoritative raid record after load. Do not orphan a pawn belonging
-        // to the raid that was active before a successful snapshot restore.
-        if (!bSameRaid && ActiveRaidPawn.IsValid())
+        return !Pawn.IsValid();
+    });
+    const bool bNeedsWave = Raid.State == EThreatRaidState::Warning ||
+        Raid.State == EThreatRaidState::Active;
+    if (bNeedsWave && (!bSameRaid || ActiveRaidPawns.Num() < RaidWaveSize))
+    {
+        // Materialized pawns are transient visuals. Recreate them from the
+        // authoritative raid record after load; destroy previous raid actors first.
+        if (!bSameRaid)
         {
-            if (!ActiveRaidPawn->Destroy())
-                return false;
-            ActiveRaidPawn.Reset();
+            for (const TWeakObjectPtr<APawn>& Pawn : ActiveRaidPawns)
+                if (Pawn.IsValid() && !Pawn->Destroy())
+                    return false;
+            ActiveRaidPawns.Reset();
             MaterializedRaidId.Invalidate();
             MaterializedTargetNodeId.Invalidate();
         }
@@ -375,30 +441,51 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
             return false;
 
-        FVector BaseLocation = Raid.TargetLocation;
+        FVector TargetLocation = Raid.TargetLocation;
         FGuid TargetNodeId;
-        FVector TargetLocation;
-        if (ResolvePrimaryTargetNode(Raid, TargetNodeId, TargetLocation))
+        FVector ResolvedTargetLocation;
+        if (ResolvePrimaryTargetNode(Raid, TargetNodeId, ResolvedTargetLocation))
         {
-            BaseLocation = TargetLocation;
+            TargetLocation = ResolvedTargetLocation;
             MaterializedTargetNodeId = TargetNodeId;
         }
         else
         {
             MaterializedTargetNodeId.Invalidate();
         }
-
-        const FVector SpawnLocation = BaseLocation + FVector(0.0f, 0.0f, SpawnHeightOffset);
-        FActorSpawnParameters Params;
-        Params.SpawnCollisionHandlingOverride =
-            ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-        APawn* Spawned = World->SpawnActor<APawn>(
-            RaidPawnClass, SpawnLocation, FRotator::ZeroRotator, Params);
-        if (!Spawned)
+        if (TargetLocation.ContainsNaN())
             return false;
 
-        Spawned->SpawnDefaultController();
-        ActiveRaidPawn = Spawned;
+        // Stable raid-ID-based radial placement avoids spawning every raider
+        // inside the objective. NavMesh movement is visual; attack pulses stay
+        // deterministic and are committed by the fixed-step adapter below.
+        const double RaidAngleOffset = FMath::DegreesToRadians(
+            static_cast<double>(Raid.RaidId.A % 360u));
+        const int32 StartingCount = ActiveRaidPawns.Num();
+        for (int32 RaidIndex = StartingCount; RaidIndex < RaidWaveSize; ++RaidIndex)
+        {
+            const double Angle = RaidAngleOffset +
+                (2.0 * PI * static_cast<double>(RaidIndex) / static_cast<double>(RaidWaveSize));
+            const FVector ApproachDirection(
+                static_cast<float>(FMath::Cos(Angle)),
+                static_cast<float>(FMath::Sin(Angle)), 0.0f);
+            const FVector SpawnLocation = TargetLocation +
+                ApproachDirection * SpawnDistanceFromTargetCm +
+                FVector(0.0f, 0.0f, SpawnHeightOffset);
+            FActorSpawnParameters Params;
+            Params.SpawnCollisionHandlingOverride =
+                ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+            APawn* Spawned = World->SpawnActor<APawn>(
+                RaidPawnClass, SpawnLocation, FRotator::ZeroRotator, Params);
+            if (!Spawned)
+                return false;
+
+            Spawned->SpawnDefaultController();
+            if (ARaidPlaceholderPawn* Placeholder = Cast<ARaidPlaceholderPawn>(Spawned))
+                Placeholder->SetRaidTargetLocation(TargetLocation);
+            ActiveRaidPawns.Add(Spawned);
+        }
+
         MaterializedRaidId = Raid.RaidId;
         if (!bSameRaid || !FMath::IsFinite(NextDamageTimeSeconds) ||
             NextDamageTimeSeconds <= 0.0)
