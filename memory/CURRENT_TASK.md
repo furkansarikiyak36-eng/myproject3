@@ -47,6 +47,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - After every repository step, update Findings/Changes and Next step here.
 
 ### Read
+- `memory/ROADMAP.md` (current task dependencies, phase descriptions and progress log read for next P2 batch).
 - `memory/CURRENT_TASK.md` (checkpoint only).
 - `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
 - `memory/CODE_INDEX.md` (raw unit index; used to identify code file names).
@@ -121,4 +122,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-`CODEBASE.md` now records the current crop, animal, and schema-v25 save interfaces and marks the new edits unbuilt. Read the roadmap's current task dependencies and status fields, update the progress log, then work on P2 survival triggers via headers mapped in `CODE_INDEX.md`. Do not build until the batch validation stage.
+Update the roadmap progress log for the newly authored P0.5/P6.1/P6.4 code, correct schema references to v25 and mark P10 frozen as the current user decision says. Then read `memory/CODE_INDEX.md` for player interaction/action and survival entry points and implement P2.1 creek interaction/water container, P2.2 fatigue action gates and P2.3 wet-cold illness triggers using exact current signatures. Keep every edit in the checkpoint; no build until the batch.
