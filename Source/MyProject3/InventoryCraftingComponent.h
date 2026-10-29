@@ -24,6 +24,8 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryAddItem(const FInventoryStack& Incoming);
  /** Moves one registered physical actor into this inventory and destroys its world representation after commit. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryStorePhysicalActor(AActor* WorldActor);
+ /** Removes the exact unique-item inventory reference without changing the world ownership ledger; transaction coordinators must commit/rollback both together. */
+ bool TryRemoveOwnedItemReference(const FGuid& ItemId, FInventoryStack& OutRemovedStack);
  /** Transfers a unique owned item from inventory into a storage ledger owner. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryMoveOwnedItemToStorage(FGuid ItemId, FGuid StorageId);
  /** Moves a stored unique item to this inventory without duplicating the ledger record. */
