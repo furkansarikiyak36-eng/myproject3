@@ -90,7 +90,19 @@ struct FGameDataZone
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName BarrierId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString BarrierDescription;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> PermanentSolutionIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> RequiredCapabilityIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> RequiredDiscoveryIds;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<int32> SeasonalMonths;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataDiscovery
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> PrerequisiteDiscoveryIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> RequiredEquipmentItemIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> UnlockedDefinitionIds;
 };
 
 USTRUCT(BlueprintType)
@@ -188,6 +200,9 @@ public:
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
     const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
     const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
+    const TArray<FGameDataDiscovery>& GetDiscoveryDefinitions() const { return GameDiscoveries; }
+    /** Evaluates season, required clothing capabilities and prerequisite discoveries for a zone. */
+    UFUNCTION(BlueprintPure, Category="GameData|Zones") bool CanEnterZone(const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const;
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
@@ -206,13 +221,14 @@ private:
     TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataRouteNode> RouteNodes;
     TArray<FGameDataRouteEdge> RouteEdges;
+    TArray<FGameDataDiscovery> GameDiscoveries;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 
     // Kept as parsed JSON pieces that map 1:1 to existing definition structs.
     struct FConsumable { FName ItemId; float Kcal = 0; float Thirst = 0; double FreshnessSeconds = 0; float SpoiledFraction = 0; FName Condition; FName SpoiledCondition; float Severity = 0.5f; };
     struct FFuel { FName ItemId; float BurnSeconds = 0; float Heat = 1; };
-    struct FEquipment { FName ItemId; FName Slot; float Insulation = 0; float WaterResistance = 0; };
+    struct FEquipment { FName ItemId; FName Slot; float Insulation = 0; float WaterResistance = 0; TArray<FName> GrantedCapabilities; };
     struct FCondition { FName Id; FName Kind; float HealthLossPerHour = 0; float FatiguePerHour = 0; float StaminaLossPerHour = 0; double DurationSeconds = 0; FName Treatment; float TreatmentRecovery = 0; };
     struct FLayer { FName Material; FName ItemId; int32 MinLayer = 0; int32 MaxLayer = 0; float UnitsPerCubicMetre = 1; };
     TArray<FConsumable> Consumables;
