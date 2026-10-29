@@ -501,6 +501,41 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             }
         }
 
+        const TArray<TSharedPtr<FJsonValue>>* RequiredCapabilities = ArrayField(Entry, TEXT("required_capabilities"));
+        TSet<FName> SeenRequiredCapabilities;
+        if (RequiredCapabilities)
+        {
+            for (const TSharedPtr<FJsonValue>& CapabilityValue : *RequiredCapabilities)
+            {
+                const FName CapabilityId(*CapabilityValue->AsString());
+                const bool bKnownCapability = NewEquipment.ContainsByPredicate(
+                    [CapabilityId](const FEquipment& Equipment)
+                    {
+                        return Equipment.GrantedCapabilities.Contains(CapabilityId);
+                    });
+                if (CapabilityId.IsNone() || SeenRequiredCapabilities.Contains(CapabilityId) || !bKnownCapability)
+                    return Fail(FString::Printf(TEXT("Zone %s has an unknown/repeated capability"),
+                        *Zone.Id.ToString()));
+                SeenRequiredCapabilities.Add(CapabilityId);
+                Zone.RequiredCapabilityIds.Add(CapabilityId);
+            }
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* RequiredDiscoveries = ArrayField(Entry, TEXT("required_discovery_ids"));
+        TSet<FName> SeenRequiredDiscoveries;
+        if (RequiredDiscoveries)
+        {
+            for (const TSharedPtr<FJsonValue>& DiscoveryValue : *RequiredDiscoveries)
+            {
+                const FName DiscoveryId(*DiscoveryValue->AsString());
+                if (DiscoveryId.IsNone() || SeenRequiredDiscoveries.Contains(DiscoveryId))
+                    return Fail(FString::Printf(TEXT("Zone %s has an invalid/repeated discovery gate"),
+                        *Zone.Id.ToString()));
+                SeenRequiredDiscoveries.Add(DiscoveryId);
+                Zone.RequiredDiscoveryIds.Add(DiscoveryId);
+            }
+        }
+
         if (Zone.Id.IsNone() || SeenZoneIds.Contains(Zone.Id) ||
             Zone.Name.IsEmpty() || Zone.BarrierId.IsNone() || SeenZoneNumbers.Contains(Zone.Number) ||
             (Zone.Number == 4 && Zone.SeasonalMonths.IsEmpty()))
@@ -662,6 +697,16 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 
         SeenDiscoveryIds.Add(Discovery.DiscoveryId);
         NewDiscoveries.Add(Discovery);
+    }
+
+    for (const FGameDataZone& Zone : NewZones)
+    {
+        for (const FName RequiredDiscoveryId : Zone.RequiredDiscoveryIds)
+        {
+            if (!SeenDiscoveryIds.Contains(RequiredDiscoveryId))
+                return Fail(FString::Printf(TEXT("Zone %s requires an unknown discovery %s"),
+                    *Zone.Id.ToString(), *RequiredDiscoveryId.ToString()));
+        }
     }
 
     FWorldCalendarConfig NewCalendar;
