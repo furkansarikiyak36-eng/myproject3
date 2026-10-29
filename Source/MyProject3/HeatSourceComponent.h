@@ -59,7 +59,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Threat", meta=(ClampMin="0.0", ClampMax="10.0"))
     float RaidLightSignature = 1.0f;
 
-    /** Smoke signature: wet fuel may use a higher value than charcoal in its authored fuel definition. */
+    /** Baseline smoke signature; the current fuel blend scales this in the raid model. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Threat", meta=(ClampMin="0.0", ClampMax="10.0"))
     float RaidSmokeSignature = 0.65f;
 
