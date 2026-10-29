@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Read `ProductionStationActor.h` (SHA ee75beb71a704117925a06e5b22896ad3c9120b3): it still exposes an id-less `TryStartRecipe(RecipeId, OutJobId)` alongside `TryStartRecipeForPlayer` and `TryStartRecipeForInventory`, so Blueprints can call the ungated API unless the implementation fails closed internally.
 - Searched repository code for `TryStartRecipe` using the GitHub code-search connector; it returned no results, so that index/search surface cannot identify old station callers. Continue by inspecting production/station interfaces and use a local source call-site audit once files are available.
 - Read the `MarkFilled()` body in `BuildPlanActor.cpp`: it sets `bFilled` even for a null piece, hides that slot's ghost, and calls `Complete()` at full slot count. The automated plan test can therefore use null occupants to test route-state semantics separately from placement physics.
 - Additional `BuildPlanActor.cpp` read (around `GetFilledCount`): completeness is explicitly the count of `Slot.bFilled`, so the plan test can fill slot state without inventing per-log physics. Route activation should be asserted only after the final `MarkFilled` triggers `Complete()`.
