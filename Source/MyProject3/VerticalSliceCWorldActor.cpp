@@ -2242,7 +2242,12 @@ void AVerticalSliceCWorldActor::ApplyFieldActionInput()
         return;
 
     if (!GameData->GetFieldActions().IsValidIndex(SelectedFieldActionIndex))
-        SelectedFieldActionIndex = 0;
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+                TEXT("Press F9 to choose a field action, then F10 to apply it to a soil tile."));
+        return;
+    }
     const FGameDataFieldAction& Action = GameData->GetFieldActions()[SelectedFieldActionIndex];
 
     FIntVector FieldCell = FIntVector::ZeroValue;
