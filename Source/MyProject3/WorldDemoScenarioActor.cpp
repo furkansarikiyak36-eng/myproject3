@@ -1,4 +1,5 @@
 #include "WorldDemoScenarioActor.h"
+#include "WorldGameDataSubsystem.h"
 
 #include "Engine/World.h"
 #include "WorldAgricultureSubsystem.h"
@@ -32,11 +33,12 @@ bool AWorldDemoScenarioActor::InitializeScenario()
     UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
     UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
     UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
+    UWorldGameDataSubsystem* GameData = World->GetSubsystem<UWorldGameDataSubsystem>();
     UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
 
     if ((bRegisterStorehouse && !Storage) || (bRegisterSettlementRoutes && !Routes) ||
         (bRegisterLogicalTestCrop && !Agriculture) ||
-        (bRegisterConfiguredProduction && !Production) ||
+        (bRegisterConfiguredProduction && (!Production || !GameData)) ||
         (bSetDemoWeather && !Survival))
     {
         ScenarioStatus = TEXT("Blocked: one or more required world subsystems are unavailable.");
@@ -57,9 +59,7 @@ bool AWorldDemoScenarioActor::InitializeScenario()
             (!FMath::IsFinite(DemoWeatherSeverity) || DemoWeatherSeverity < 0.0f || DemoWeatherSeverity > 1.0f)) ||
         (bRegisterConfiguredProduction &&
             (!ProductionStationId.IsValid() || ProductionStationTag.IsNone() || ProductionCapacity <= 0 ||
-             ConfiguredRecipe.RecipeId.IsNone() || ConfiguredRecipe.Inputs.IsEmpty() ||
-             ConfiguredRecipe.Outputs.IsEmpty() || !FMath::IsFinite(ConfiguredRecipe.DurationSeconds) ||
-             ConfiguredRecipe.DurationSeconds <= 0.0)))
+             ConfiguredRecipe.RecipeId.IsNone())))
     {
         ScenarioStatus = TEXT("Blocked: invalid scenario configuration.");
         bScenarioReady = false;
@@ -162,12 +162,67 @@ bool AWorldDemoScenarioActor::EnsureCrop(UWorldAgricultureSubsystem* Agriculture
 
 bool AWorldDemoScenarioActor::EnsureProduction(UWorldProductionSubsystem* Production) const
 {
+    // Game data is the source of truth. This scenario option may select a recipe
+    // by ID, but may not author a parallel set of ingredients/outputs in the level.
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    const FGameDataTransformation* DataRecipe =
+        GameData ? GameData->FindTransformation(ConfiguredRecipe.RecipeId) : nullptr;
+    if (!Production || !GameData || !GameData->IsApplied() || !DataRecipe ||
+        DataRecipe->bPhysical || DataRecipe->Inputs.IsEmpty() || DataRecipe->Outputs.IsEmpty() ||
+        DataRecipe->Where != ProductionStationTag)
+    {
+        return false;
+    }
+
+    FWorldProductionRecipe Recipe;
+    Recipe.RecipeId = DataRecipe->Id;
+    Recipe.RequiredStationTag = DataRecipe->Where;
+    Recipe.DurationSeconds = FMath::Max(1.0, DataRecipe->DurationSeconds);
+    auto Ingredient = [](FName ItemId, int32 Quantity)
+    {
+        FProductionIngredient Result;
+        Result.ItemId = ItemId;
+        Result.Quantity = Quantity;
+        return Result;
+    };
+    for (const FGameDataItemAmount& Amount : DataRecipe->Inputs)
+        Recipe.Inputs.Add(Ingredient(Amount.ItemId, Amount.Quantity));
+    for (const FGameDataItemAmount& Amount : DataRecipe->Outputs)
+        Recipe.Outputs.Add(Ingredient(Amount.ItemId, Amount.Quantity));
+
+    // Validate the referenced data recipe before mutating the station registry.
     TArray<FWorldProductionStation> Stations;
     TArray<FWorldProductionRecipe> Recipes;
     Production->ExportSnapshot(Stations, Recipes);
 
+    const FWorldProductionRecipe* ExistingRecipe = Recipes.FindByPredicate(
+        [&Recipe](const FWorldProductionRecipe& Existing) { return Existing.RecipeId == Recipe.RecipeId; });
+    if (ExistingRecipe)
+    {
+        const auto IngredientsMatch = [](const TArray<FProductionIngredient>& A,
+            const TArray<FProductionIngredient>& B)
+        {
+            if (A.Num() != B.Num()) return false;
+            for (int32 Index = 0; Index < A.Num(); ++Index)
+            {
+                if (A[Index].ItemId != B[Index].ItemId || A[Index].Quantity != B[Index].Quantity)
+                    return false;
+            }
+            return true;
+        };
+        if (ExistingRecipe->RequiredStationTag != Recipe.RequiredStationTag ||
+            !FMath::IsNearlyEqual(ExistingRecipe->DurationSeconds, Recipe.DurationSeconds, 0.001) ||
+            !IngredientsMatch(ExistingRecipe->Inputs, Recipe.Inputs) ||
+            !IngredientsMatch(ExistingRecipe->Outputs, Recipe.Outputs))
+        {
+            return false;
+        }
+    }
+
     const FWorldProductionStation* ExistingStation = Stations.FindByPredicate(
-        [this](const FWorldProductionStation& S) { return S.StationId == ProductionStationId; });
+        [this](const FWorldProductionStation& Station) { return Station.StationId == ProductionStationId; });
     if (ExistingStation)
     {
         if (ExistingStation->StationTag != ProductionStationTag ||
@@ -188,41 +243,7 @@ bool AWorldDemoScenarioActor::EnsureProduction(UWorldProductionSubsystem* Produc
         }
     }
 
-    FWorldProductionRecipe Recipe = ConfiguredRecipe;
-    if (Recipe.RequiredStationTag.IsNone())
-    {
-        Recipe.RequiredStationTag = ProductionStationTag;
-    }
-    else if (Recipe.RequiredStationTag != ProductionStationTag)
-    {
-        // A recipe that targets a different station type would be registered
-        // successfully but could never run at this configured demo station.
-        return false;
-    }
-
-    const FWorldProductionRecipe* ExistingRecipe = Recipes.FindByPredicate(
-        [&Recipe](const FWorldProductionRecipe& R) { return R.RecipeId == Recipe.RecipeId; });
-    if (ExistingRecipe)
-    {
-        // Do not silently mutate a recipe restored from save. Compare ingredient
-        // identities and quantities, not just array lengths.
-        const auto IngredientsMatch = [](const TArray<FProductionIngredient>& A,
-            const TArray<FProductionIngredient>& B)
-        {
-            if (A.Num() != B.Num()) return false;
-            for (int32 Index = 0; Index < A.Num(); ++Index)
-            {
-                if (A[Index].ItemId != B[Index].ItemId ||
-                    A[Index].Quantity != B[Index].Quantity) return false;
-            }
-            return true;
-        };
-
-        return ExistingRecipe->DurationSeconds == Recipe.DurationSeconds &&
-            ExistingRecipe->RequiredStationTag == Recipe.RequiredStationTag &&
-            IngredientsMatch(ExistingRecipe->Inputs, Recipe.Inputs) &&
-            IngredientsMatch(ExistingRecipe->Outputs, Recipe.Outputs);
-    }
-
-    return Production->RegisterRecipe(Recipe);
+    // Normally ApplyToWorld has already registered this recipe. If not, register
+    // only the exact recipe materialized from transformations.json above.
+    return ExistingRecipe != nullptr || Production->RegisterRecipe(Recipe);
 }
