@@ -3,6 +3,7 @@
 #include "MaterialConnectionSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "WallCoatingComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "WorldObjectIdentityComponent.h"
@@ -14,6 +15,7 @@ AStoneBuildingPiece::AStoneBuildingPiece()
     PrimaryActorTick.bCanEverTick = false;
 
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StoneMesh"));
+    WallCoating = CreateDefaultSubobject<UWallCoatingComponent>(TEXT("WallCoating"));
     SetRootComponent(Mesh);
     StructuralIdentity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
     Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
