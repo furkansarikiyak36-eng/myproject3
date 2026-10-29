@@ -5,6 +5,38 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     ETerrainCellEdit Edit, FName MaterialId, int64 ExpectedRevision,
     FWorldTerrainCellState& OutState)
 {
+    return TryApplyCellEditInternal(OperationId, Cell, DepthLayer, Edit, MaterialId,
+        ExpectedRevision, false, OutState);
+}
+
+const FWorldTerrainResourceYieldRule* UWorldTerrainStateSubsystem::FindResourceYieldRule(
+    const FWorldTerrainCellState& Cell) const
+{
+    const FWorldTerrainResourceYieldRule* Found = nullptr;
+    for (const FWorldTerrainResourceYieldRule& Rule : ResourceYieldRules)
+    {
+        if (Rule.ResourceDefinitionId.IsNone() ||
+            Rule.MinDepthLayer < 0 || Rule.MaxDepthLayer < Rule.MinDepthLayer ||
+            Rule.InitialDepositUnitsPerCell <= 0 || Rule.YieldUnitsPerExcavation <= 0 ||
+            Rule.InitialDepositUnitsPerCell > 1000000 || Rule.YieldUnitsPerExcavation > 1000000)
+            continue;
+
+        const bool bMatches = Cell.bResourceDepositInitialized
+            ? Rule.ResourceDefinitionId == Cell.ResourceDefinitionId
+            : (!Rule.SourceMaterialId.IsNone() && Rule.SourceMaterialId == Cell.MaterialId &&
+               Cell.DepthLayer >= Rule.MinDepthLayer && Cell.DepthLayer <= Rule.MaxDepthLayer);
+        if (!bMatches) continue;
+        if (Found) return nullptr; // duplicate matching rules are ambiguous: fail closed
+        Found = &Rule;
+    }
+    return Found;
+}
+
+bool UWorldTerrainStateSubsystem::TryApplyCellEditInternal(
+    const FGuid& OperationId, const FIntVector& Cell, int32 DepthLayer,
+    ETerrainCellEdit Edit, FName MaterialId, int64 ExpectedRevision,
+    bool bYieldAware, FWorldTerrainCellState& OutState)
+{
     if (!OperationId.IsValid() ||
         static_cast<uint8>(Edit) > static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial))
         return false;
@@ -16,7 +48,7 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     {
         if (Receipt->Cell != Cell || Receipt->RequestedDepthLayer != DepthLayer ||
             Receipt->RequestedEdit != Edit || Receipt->RequestedMaterialId != MaterialId ||
-            Receipt->ExpectedRevision != ExpectedRevision)
+            Receipt->ExpectedRevision != ExpectedRevision || Receipt->bYieldAware != bYieldAware)
             return false;
         OutState = Receipt->ResultState;
         return true;
@@ -44,6 +76,13 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     {
         return false;
     }
+    // Resource-bearing cells may only be excavated through the yield-aware
+    // API so a logical terrain edit cannot silently delete a deposit without
+    // producing its authoritative item-stack result.
+    if (Edit == ETerrainCellEdit::Excavate && Existing && !bYieldAware &&
+        ((Existing->bResourceDepositInitialized && Existing->RemainingResourceUnits > 0) ||
+         FindResourceYieldRule(*Existing) != nullptr))
+        return false;
     if (Edit == ETerrainCellEdit::Fill && (!Existing || !Existing->bExcavated))
     {
         return false;
@@ -81,8 +120,145 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     Receipt.RequestedEdit = Edit;
     Receipt.RequestedMaterialId = MaterialId;
     Receipt.ExpectedRevision = ExpectedRevision;
+    Receipt.bYieldAware = bYieldAware;
     Receipts.Add(OperationId, Receipt);
     OutState = Updated;
+    return true;
+}
+
+bool UWorldTerrainStateSubsystem::TryExcavateCellWithYield(
+    const FGuid& OperationId, const FIntVector& Cell, int32 DepthLayer,
+    int64 ExpectedRevision, FVector ResourceWorldLocation,
+    FWorldTerrainCellState& OutState, FWorldOwnedItemRecord& OutResourceItem)
+{
+    OutState = FWorldTerrainCellState();
+    OutResourceItem = FWorldOwnedItemRecord();
+    if (!OperationId.IsValid() || ExpectedRevision <= 0 || ExpectedRevision == MAX_int64 ||
+        !FMath::IsFinite(ResourceWorldLocation.X) ||
+        !FMath::IsFinite(ResourceWorldLocation.Y) || !FMath::IsFinite(ResourceWorldLocation.Z))
+        return false;
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!Ownership) return false;
+
+    if (const FWorldTerrainOperationReceipt* ExistingReceipt = Receipts.Find(OperationId))
+    {
+        if (!ExistingReceipt->bYieldAware || ExistingReceipt->Cell != Cell ||
+            ExistingReceipt->RequestedDepthLayer != DepthLayer ||
+            ExistingReceipt->RequestedEdit != ETerrainCellEdit::Excavate ||
+            !ExistingReceipt->RequestedMaterialId.IsNone() ||
+            ExistingReceipt->ExpectedRevision != ExpectedRevision)
+            return false;
+        OutState = ExistingReceipt->ResultState;
+        if (ExistingReceipt->YieldedResourceUnits == 0)
+            return !ExistingReceipt->OutputWorldItemId.IsValid();
+        FWorldOwnedItemRecord ExistingOutput;
+        if (!ExistingReceipt->OutputWorldItemId.IsValid() ||
+            !Ownership->TryGetItem(ExistingReceipt->OutputWorldItemId, ExistingOutput) ||
+            ExistingOutput.OwnerKind != EWorldItemOwnerKind::World ||
+            ExistingOutput.DefinitionId != ExistingReceipt->YieldedResourceDefinitionId ||
+            ExistingOutput.Quantity != ExistingReceipt->YieldedResourceUnits)
+            return false;
+        OutResourceItem = ExistingOutput;
+        return true;
+    }
+
+    const FWorldTerrainCellState* Existing = Cells.Find(Cell);
+    if (!Existing || Existing->bExcavated || Existing->Revision != ExpectedRevision ||
+        Existing->Revision == MAX_int64 ||
+        DepthLayer < 0 || DepthLayer >= MaxEditableDepthLayers ||
+        DepthLayer >= MaxDepthPerCell ||
+        (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(DepthLayer)) ||
+        Existing->DepthLayer != DepthLayer)
+        return false;
+
+    const FWorldTerrainResourceYieldRule* Rule = FindResourceYieldRule(*Existing);
+    if (!Rule || Rule->SourceMaterialId.IsNone() ||
+        Rule->ResourceDefinitionId.IsNone() ||
+        Rule->MinDepthLayer < 0 || Rule->MaxDepthLayer < Rule->MinDepthLayer ||
+        Rule->InitialDepositUnitsPerCell <= 0 || Rule->InitialDepositUnitsPerCell > 1000000 ||
+        Rule->YieldUnitsPerExcavation <= 0 || Rule->YieldUnitsPerExcavation > 1000000 ||
+        (!Existing->bResourceDepositInitialized &&
+         (Existing->MaterialId != Rule->SourceMaterialId ||
+          DepthLayer < Rule->MinDepthLayer || DepthLayer > Rule->MaxDepthLayer)) ||
+        (Existing->bResourceDepositInitialized &&
+         (Existing->ResourceDefinitionId != Rule->ResourceDefinitionId ||
+          Existing->RemainingResourceUnits < 0)))
+        return false;
+
+    const TMap<FIntVector, FWorldTerrainCellState> BeforeCells = Cells;
+    const TMap<FGuid, FWorldTerrainOperationReceipt> BeforeReceipts = Receipts;
+    FWorldTerrainCellState ResourceState = *Existing;
+    if (!ResourceState.bResourceDepositInitialized)
+    {
+        ResourceState.bResourceDepositInitialized = true;
+        ResourceState.ResourceDefinitionId = Rule->ResourceDefinitionId;
+        ResourceState.RemainingResourceUnits = Rule->InitialDepositUnitsPerCell;
+    }
+
+    const int32 YieldUnits = FMath::Min(
+        Rule->YieldUnitsPerExcavation, ResourceState.RemainingResourceUnits);
+    ResourceState.RemainingResourceUnits -= YieldUnits;
+
+    FWorldTerrainCellState EditedState;
+    if (!TryApplyCellEditInternal(OperationId, Cell, DepthLayer, ETerrainCellEdit::Excavate,
+        NAME_None, ExpectedRevision, true, EditedState))
+        return false;
+
+    FWorldTerrainCellState* CommittedCell = Cells.Find(Cell);
+    FWorldTerrainOperationReceipt* CommittedReceipt = Receipts.Find(OperationId);
+    if (!CommittedCell || !CommittedReceipt)
+    {
+        Cells = BeforeCells;
+        Receipts = BeforeReceipts;
+        return false;
+    }
+    ResourceState.bExcavated = true;
+    ResourceState.Cell = Cell;
+    ResourceState.DepthLayer = DepthLayer;
+    ResourceState.Revision = EditedState.Revision;
+    *CommittedCell = ResourceState;
+    CommittedReceipt->ResultState = ResourceState;
+    CommittedReceipt->YieldedResourceDefinitionId = Rule->ResourceDefinitionId;
+    CommittedReceipt->YieldedResourceUnits = YieldUnits;
+
+    if (YieldUnits > 0)
+    {
+        FWorldOwnedItemRecord Output;
+        bool bUniqueId = false;
+        for (int32 Attempt = 0; Attempt < 8 && !bUniqueId; ++Attempt)
+        {
+            const FGuid CandidateId = FGuid::NewGuid();
+            FWorldOwnedItemRecord ExistingItem;
+            if (CandidateId.IsValid() && !Ownership->TryGetItem(CandidateId, ExistingItem))
+            {
+                Output.ItemId = CandidateId;
+                bUniqueId = true;
+            }
+        }
+        if (!bUniqueId)
+        {
+            Cells = BeforeCells;
+            Receipts = BeforeReceipts;
+            return false;
+        }
+        Output.DefinitionId = Rule->ResourceDefinitionId;
+        Output.BaseDefinitionId = Rule->ResourceDefinitionId;
+        Output.Quantity = YieldUnits;
+        Output.OwnerKind = EWorldItemOwnerKind::World;
+        Output.WorldLocation = ResourceWorldLocation;
+        Output.Revision = 1;
+        if (!Ownership->RegisterItem(Output))
+        {
+            Cells = BeforeCells;
+            Receipts = BeforeReceipts;
+            return false;
+        }
+        CommittedReceipt->OutputWorldItemId = Output.ItemId;
+        OutResourceItem = Output;
+    }
+    OutState = ResourceState;
     return true;
 }
 
