@@ -815,6 +815,12 @@ bool UWorldGameDataSubsystem::CanEnterZone(
         OutReason = TEXT("Zone access requires the simulation clock and survival subsystem.");
         return false;
     }
+    FWorldSurvivalProfile PlayerProfile;
+    if (!Survival->GetProfile(PlayerEntityId, PlayerProfile))
+    {
+        OutReason = TEXT("Zone access requires a registered player survival profile.");
+        return false;
+    }
 
     if (!Zone->SeasonalMonths.IsEmpty())
     {
