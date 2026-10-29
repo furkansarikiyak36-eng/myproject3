@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read exact `TryUpdateItemDefinition` API/receipt semantics from `WorldItemOwnershipSubsystem.h/.cpp`, then inspect heat-fuel registration to see whether wet-fuel multipliers already come from item data. Implement world rain wetting as a bounded owner/revision transaction to `Firewood.Wet`, not a parallel status flag.
+Read `TryUpdateItemDefinition` internals and the `FHeatFuelDefinition`/`TryAddFuelItem` contract; verify owner-state changes and definition state are compatible. Then design rain exposure to convert only accessible dry Firewood items owned by World or Inventory into Firewood.Wet, honoring outside/shelter location and weather severity.
