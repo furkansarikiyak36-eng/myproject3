@@ -14,6 +14,9 @@
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldDiscoveryMarkerActor.h"
+#include "LogSnapCharacter.h"
+#include "ShelterSensorComponent.h"
 #include "WorldEventDirectorSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "LogContainerActor.h"
@@ -1398,6 +1401,72 @@ bool FWorldZonesAndDiscoveryContractsTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Discovery is recorded once"),
         Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
         { return Record.DiscoveryId == TEXT("Discovery.GrainSeeds"); }));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDiscoveryMarkerGrantsRewardAtomicallyTest,
+    "MyProject3.World.Exploration.MarkerRecordsUnlockAndGrantsRewardOnce", Flags)
+bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival))
+        return false;
+
+    TestTrue(TEXT("Load game data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply zones/discoveries and recipe gates"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(90123));
+
+    const FVector Location(930.0f, -690.0f, 100.0f);
+    APlayerController* Controller = World->SpawnActor<APlayerController>(
+        APlayerController::StaticClass(), FTransform::Identity);
+    ALogSnapCharacter* Pawn = World->SpawnActor<ALogSnapCharacter>(
+        ALogSnapCharacter::StaticClass(), Location, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Player controller"), Controller) ||
+        !TestNotNull(TEXT("Player character"), Pawn))
+        return false;
+    Controller->Possess(Pawn);
+
+    UShelterSensorComponent* Shelter =
+        Pawn->FindComponentByClass<UShelterSensorComponent>();
+    UInventoryCraftingComponent* Inventory =
+        Pawn->FindComponentByClass<UInventoryCraftingComponent>();
+    if (!TestNotNull(TEXT("Player shelter profile link"), Shelter) ||
+        !TestNotNull(TEXT("Player inventory"), Inventory))
+        return false;
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = Location;
+    TestTrue(TEXT("Register player survival profile"), Survival->RegisterProfile(Profile));
+    Shelter->SurvivalEntityId = Profile.EntityId;
+
+    AWorldDiscoveryMarkerActor* Marker = World->SpawnActor<AWorldDiscoveryMarkerActor>(
+        AWorldDiscoveryMarkerActor::StaticClass(), Location, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Discovery marker"), Marker))
+        return false;
+    Marker->DiscoveryId = TEXT("Discovery.GrainSeeds");
+    Marker->DisplayName = TEXT("Grain seeds");
+    Marker->RevealRadiusCm = 300.0f;
+    Marker->RewardItemId = TEXT("Seed.Grain");
+    Marker->RewardQuantity = 2;
+
+    Marker->Tick(1.0f);
+    TestTrue(TEXT("Marker records the configured discovery"),
+        Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
+        { return Record.DiscoveryId == TEXT("Discovery.GrainSeeds"); }));
+    TestTrue(TEXT("Discovery unlock is available through the survival ledger"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
+    TestEqual(TEXT("Two seed items are granted"), Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
+
+    Marker->Tick(1.0f);
+    TestEqual(TEXT("Repeating marker tick cannot duplicate seed reward"),
+        Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
     return true;
 }
 
