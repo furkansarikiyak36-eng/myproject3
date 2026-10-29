@@ -605,18 +605,42 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
 bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId, FGuid SupportNodeId)
 {
     FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
-    if (!Child || Child->Revision == MAX_int64)
+    FStructuralNodeRecord* Support = Nodes.Find(SupportNodeId);
+    if (!Child || !Support || Child->Revision == MAX_int64 ||
+        Support->Revision == MAX_int64)
         return false;
+
+    const TArray<FStructuralSupportLink> PreviousSupports = Child->SecondarySupports;
     const int32 Removed = Child->SecondarySupports.RemoveAll(
         [&SupportNodeId](const FStructuralSupportLink& Link) { return Link.SupportNodeId == SupportNodeId; });
     if (Removed == 0)
         return false;
-    ++Child->Revision;
-    if (FStructuralNodeRecord* Support = Nodes.Find(SupportNodeId))
+
+    // Removing a brace is not allowed to leave a still-registered piece
+    // unsupported or overload any remaining support. The caller must first
+    // detach/remove the dependent piece through the explicit removal path.
+    if (!HasValidSupportPath(ChildNodeId))
     {
-        if (Support->Revision < MAX_int64)
-            ++Support->Revision;
+        Child->SecondarySupports = PreviousSupports;
+        return false;
     }
+
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        TSet<FGuid> Visiting;
+        bool bLoadValid = true;
+        const float Aggregate = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid);
+        if (!bLoadValid || Aggregate > Pair.Value.MaxSupportedLoad)
+        {
+            Child = Nodes.Find(ChildNodeId);
+            if (Child)
+                Child->SecondarySupports = PreviousSupports;
+            return false;
+        }
+    }
+
+    ++Child->Revision;
+    ++Support->Revision;
     return true;
 }
 

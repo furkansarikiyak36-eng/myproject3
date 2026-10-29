@@ -2327,6 +2327,113 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
     return true;
 }
 
+// P7 / M059-M070: canonical structural graph contracts are tested independently
+// of mesh presentation; physical piece coverage remains a separate acceptance gate.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FStructuralGraphSupportDamageAndRemovalTest,
+    "MyProject3.World.Structure.SupportDamageAndRemovalContracts", Flags)
+bool FStructuralGraphSupportDamageAndRemovalTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldStructuralGraphSubsystem* Graph = World
+        ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Structural graph"), Graph))
+        return false;
+
+    auto MakeNode = [this, World, Graph](EStructuralNodeKind Kind, bool bGround,
+        float Load, float Capacity, float DamageThreshold) -> FGuid
+    {
+        AActor* Actor = World->SpawnActor<AActor>();
+        if (!Actor)
+        {
+            AddError(TEXT("Could not spawn structural test actor"));
+            return FGuid();
+        }
+        UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(Actor);
+        Actor->AddInstanceComponent(Identity);
+        Identity->RegisterComponent();
+        if (!Identity->EnsureIdentity())
+        {
+            AddError(TEXT("Could not assign structural test actor identity"));
+            return FGuid();
+        }
+        const FGuid NodeId = FGuid::NewGuid();
+        if (!Graph->RegisterNode(Actor, NodeId, Kind, bGround, Load, Capacity, DamageThreshold))
+        {
+            AddError(TEXT("Could not register structural test node"));
+            return FGuid();
+        }
+        return NodeId;
+    };
+
+    const FGuid GroundA = MakeNode(EStructuralNodeKind::Foundation, true, 10.0f, 100.0f, 100.0f);
+    const FGuid GroundB = MakeNode(EStructuralNodeKind::Foundation, true, 10.0f, 100.0f, 100.0f);
+    const FGuid Beam = MakeNode(EStructuralNodeKind::Wood, false, 10.0f, 100.0f, 50.0f);
+    const FGuid Deck = MakeNode(EStructuralNodeKind::Stone, false, 5.0f, 100.0f, 50.0f);
+    if (!GroundA.IsValid() || !GroundB.IsValid() || !Beam.IsValid() || !Deck.IsValid())
+        return false;
+
+    TestTrue(TEXT("Connect beam to grounded foundation"),
+        Graph->TryConnect(GroundA, TEXT("Top"), Beam, TEXT("Bottom")));
+    TestTrue(TEXT("Connect deck to beam"),
+        Graph->TryConnect(Beam, TEXT("Deck"), Deck, TEXT("Underside")));
+    TestTrue(TEXT("Add a second independent support under the beam"),
+        Graph->TryAddSecondarySupport(Beam, GroundB, TEXT("Top"), TEXT("Brace")));
+    TestTrue(TEXT("Multi-supported beam has a ground path"), Graph->HasValidSupportPath(Beam));
+    TestTrue(TEXT("Multi-supported deck has a ground path"), Graph->HasValidSupportPath(Deck));
+    TestEqual(TEXT("Primary foundation receives its share of beam load"),
+        Graph->GetAggregateLoad(GroundA), 17.5f, 0.01f);
+    TestEqual(TEXT("Secondary foundation receives its share of beam load"),
+        Graph->GetAggregateLoad(GroundB), 12.5f, 0.01f);
+
+    TestFalse(TEXT("A used physical anchor cannot be claimed twice"),
+        Graph->TryConnect(GroundA, TEXT("Top"), Deck, TEXT("Duplicate")));
+    TestFalse(TEXT("A node cannot support itself"),
+        Graph->TryAddSecondarySupport(Beam, Beam, TEXT("Self"), TEXT("Self")));
+
+    bool bThresholdExceeded = false;
+    TestTrue(TEXT("Damage can be applied to a support"),
+        Graph->ApplyDamage(GroundA, 100.0f, bThresholdExceeded));
+    TestTrue(TEXT("Damage threshold is reported"), bThresholdExceeded);
+    TestTrue(TEXT("The beam remains supported by its alternate foundation"),
+        Graph->HasValidSupportPath(Beam));
+    TestTrue(TEXT("The deck remains supported through the beam"),
+        Graph->HasValidSupportPath(Deck));
+
+    FStructuralNodeRecord BeamBefore;
+    TestTrue(TEXT("Read beam before invalid brace removal"), Graph->GetNode(Beam, BeamBefore));
+    TestFalse(TEXT("Cannot remove the only remaining healthy support"),
+        Graph->TryRemoveSecondarySupport(Beam, GroundB));
+    FStructuralNodeRecord BeamAfter;
+    TestTrue(TEXT("Read beam after rejected brace removal"), Graph->GetNode(Beam, BeamAfter));
+    TestEqual(TEXT("Rejected brace removal preserves the support list"),
+        BeamAfter.SecondarySupports.Num(), BeamBefore.SecondarySupports.Num());
+    TestTrue(TEXT("Rejected brace removal preserves the healthy path"),
+        Graph->HasValidSupportPath(Beam));
+
+    TestTrue(TEXT("Repair restores the damaged foundation"),
+        Graph->RepairDamage(GroundA, 100.0f));
+    TestTrue(TEXT("Repair restores its support path"), Graph->HasValidSupportPath(GroundA));
+    TestTrue(TEXT("Brace can now be removed safely"),
+        Graph->TryRemoveSecondarySupport(Beam, GroundB));
+    TestTrue(TEXT("Primary support still holds the beam"), Graph->HasValidSupportPath(Beam));
+
+    TArray<FGuid> LeafFirst;
+    TestTrue(TEXT("Build a deterministic dependent removal order"),
+        Graph->BuildDependentRemovalOrder(GroundA, LeafFirst));
+    TestEqual(TEXT("Removal order contains deck, beam and foundation"), LeafFirst.Num(), 3);
+    if (LeafFirst.Num() == 3)
+    {
+        TestTrue(TEXT("Leaf is removed before its parent"),
+            LeafFirst[0] == Deck && LeafFirst[1] == Beam && LeafFirst[2] == GroundA);
+    }
+
+    TArray<FWorldStructuralNodeSnapshot> Snapshot;
+    TestTrue(TEXT("Export structural graph snapshot"), Graph->ExportSnapshot(Snapshot));
+    TestEqual(TEXT("Snapshot includes all registered structural nodes"), Snapshot.Num(), 4);
+    return true;
+}
+
 // P5.2: dug terrain gets a purpose. A roofed cellar is a cool store and caves in without a
 // support; a cistern collects rain; a trench must be a dug line.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEarthworkPurposesTest,
