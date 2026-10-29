@@ -36,6 +36,13 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryRemoveItem(FName ItemId, int32 Quantity);
  /** Consumes an unowned stack and applies its authored nutrition/water effect to a survival profile. */
  UFUNCTION(BlueprintCallable, Category="Inventory|Consumable") bool TryConsumeFood(FName ItemId, FGuid SurvivalEntityId, int32 Quantity = 1);
+ UFUNCTION(BlueprintCallable, Category="Inventory|Medical") bool TryUseMedicalItem(FName ItemId, FGuid SurvivalEntityId, int32 Quantity = 1);
+ /** Consumes configured seeds and registers a crop in an unoccupied logical plot cell. */
+ UFUNCTION(BlueprintCallable, Category="Inventory|Farm") bool TryPlantSeed(
+     FName SeedItemId, FIntVector PlotCell, float InitialMoisture, double SecondsPerStage, FGuid& OutCropId);
+ UFUNCTION(BlueprintCallable, Category="Inventory|Farm") bool TryWaterCrop(
+     FName WaterItemId, FGuid CropId, int64 ExpectedCropRevision, int32 Quantity = 1);
+ UFUNCTION(BlueprintCallable, Category="Inventory|Farm") bool TryHarvestCrop(FGuid CropId, int64 ExpectedCropRevision);
  /** Consumes authored feed from this inventory and applies its effect to one animal. */
  UFUNCTION(BlueprintCallable, Category="Inventory|Animals") bool TryFeedAnimal(FName ItemId, FGuid AnimalId, int32 Quantity = 1);
  /** Consumes authored fuel items into the heat source's single burn-time counter. */
@@ -63,6 +70,7 @@ private:
  const FInventoryItemDefinition* FindItemDefinition(FName ItemId) const;
  int32 GetConfiguredWeightGrams(FName ItemId) const;
  bool BuildRemovalPreview(FName ItemId, int32 Quantity, TArray<FInventoryStack>& OutItems) const;
+ bool BuildAdditionPreview(const TArray<FInventoryStack>& Additions, TArray<FInventoryStack>& OutItems) const;
  bool CalculateClothingInsulation(const TArray<FInventoryStack>& SourceItems, float& OutInsulation) const;
  bool HasCapacityFor(const TArray<FInventoryStack>& Additions) const;
  UPROPERTY(VisibleAnywhere, SaveGame, Category="Inventory") FGuid InventoryOwnerId;
