@@ -222,7 +222,7 @@ private:
     struct FFuel { FName ItemId; float BurnSeconds = 0; float Heat = 1; };
     struct FEquipment { FName ItemId; FName Slot; float Insulation = 0; float WaterResistance = 0; };
     struct FCondition { FName Id; FName Kind; float HealthLossPerHour = 0; float FatiguePerHour = 0; float StaminaLossPerHour = 0; double DurationSeconds = 0; FName Treatment; float TreatmentRecovery = 0; };
-    struct FLayer { FName Material; FName ItemId; int32 MinLayer = 0; int32 MaxLayer = 0; float UnitsPerCubicMetre = 1; };
+    struct FLayer { FName Material; FName ItemId; int32 MinLayer = 0; int32 MaxLayer = 0; float UnitsPerCubicMetre = 1; TArray<FName> Regions; int32 GeologyWeight = 1; };
     TArray<FConsumable> Consumables;
     TArray<FFuel> Fuels;
     TArray<FEquipment> Equipment;
