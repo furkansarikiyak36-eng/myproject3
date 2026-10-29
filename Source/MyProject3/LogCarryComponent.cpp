@@ -1445,7 +1445,10 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
     if (Load && !Load->RegisterCarried(Item))
     {
         if (Log)
+        {
             HeldPiece = nullptr;
+            Log->SetHeldState(false);
+        }
         else
         {
             HeldMaterialPiece = nullptr;
