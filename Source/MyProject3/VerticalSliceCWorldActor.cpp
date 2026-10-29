@@ -24,6 +24,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 
 #include "Components/DirectionalLightComponent.h"
@@ -1135,6 +1136,18 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& FillWaterBinding = InputComponent->BindKey(
                 EKeys::I, IE_Pressed, this, &AVerticalSliceCWorldActor::FillCreekWaterInput);
             FillWaterBinding.bConsumeInput = false;
+            FInputKeyBinding& DrinkWaterBinding = InputComponent->BindKey(
+                EKeys::K, IE_Pressed, this, &AVerticalSliceCWorldActor::DrinkWaterInput);
+            DrinkWaterBinding.bConsumeInput = false;
+            FInputKeyBinding& BoilWaterBinding = InputComponent->BindKey(
+                EKeys::B, IE_Pressed, this, &AVerticalSliceCWorldActor::BoilWaterInput);
+            BoilWaterBinding.bConsumeInput = false;
+            FInputKeyBinding& RestBinding = InputComponent->BindKey(
+                EKeys::P, IE_Pressed, this, &AVerticalSliceCWorldActor::RestInput);
+            RestBinding.bConsumeInput = false;
+            FInputKeyBinding& SurvivalStatusBinding = InputComponent->BindKey(
+                EKeys::V, IE_Pressed, this, &AVerticalSliceCWorldActor::ShowSurvivalStatusInput);
+            SurvivalStatusBinding.bConsumeInput = false;
             FInputKeyBinding& RefuelBinding = InputComponent->BindKey(
                 EKeys::O, IE_Pressed, this, &AVerticalSliceCWorldActor::RefuelFireInput);
             RefuelBinding.bConsumeInput = false;
@@ -1570,6 +1583,263 @@ void AVerticalSliceCWorldActor::FillCreekWaterInput()
             TEXT("You need a fired clay pot (Pot.Fired) to collect creek water."));
 }
 
+void AVerticalSliceCWorldActor::DrinkWaterInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !Ownership || !Survival || !PlayerSurvivalId.IsValid())
+        return;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    FWorldSurvivalProfile Profile;
+    if (!InventoryOwnerId.IsValid() || !Survival->GetProfile(PlayerSurvivalId, Profile))
+        return;
+
+    // Drink safe water first. Dirty creek water still relieves thirst but the
+    // shared consumable definition applies its configured illness condition.
+    const FName WaterDefinitions[] = {
+        FName(TEXT("Water.Boiled")), FName(TEXT("Water.Dirty"))
+    };
+    for (const FName WaterDefinitionId : WaterDefinitions)
+    {
+        for (const FInventoryStack& Stack : Inventory->Items)
+        {
+            if (Stack.ItemId != WaterDefinitionId || !Stack.OwnedWorldItemId.IsValid() ||
+                Stack.Quantity != 1 || Stack.MaxStack != 1)
+                continue;
+
+            FWorldOwnedItemRecord Item;
+            if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Item) ||
+                Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                Item.OwnerId != InventoryOwnerId || Item.DefinitionId != WaterDefinitionId ||
+                Item.Quantity != 1)
+                continue;
+
+            const bool bConsumed = Survival->TryConsumeFoodItem(
+                FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision,
+                Item.ItemId, Item.Revision, InventoryOwnerId);
+            if (GEngine)
+            {
+                const FColor Color = bConsumed
+                    ? (WaterDefinitionId == FName(TEXT("Water.Boiled")) ? FColor::Green : FColor::Orange)
+                    : FColor::Red;
+                const TCHAR* Message = bConsumed
+                    ? (WaterDefinitionId == FName(TEXT("Water.Boiled"))
+                        ? TEXT("Drank boiled water. Thirst relieved.")
+                        : TEXT("Drank dirty creek water. Thirst eased, illness risk increased."))
+                    : TEXT("Could not drink water: its ownership or survival state changed.");
+                GEngine->AddOnScreenDebugMessage(9202, 3.5f, Color, Message);
+            }
+            return;
+        }
+    }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(9202, 3.0f, FColor::Silver,
+            TEXT("No owned water. Fill a fired pot at the creek (I), boil it by a fire (B), then drink (K)."));
+}
+
+void AVerticalSliceCWorldActor::BoilWaterInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !Ownership || !Survival ||
+        !Clock || !Clock->IsClockInitialized() || !GameData || !GameData->IsApplied() ||
+        !PlayerSurvivalId.IsValid())
+        return;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    FWorldSurvivalProfile Profile;
+    if (!InventoryOwnerId.IsValid() || !Survival->GetProfile(PlayerSurvivalId, Profile))
+        return;
+
+    FWorldOwnedItemRecord Pot;
+    bool bHasPot = false;
+    for (const FInventoryStack& Stack : Inventory->Items)
+    {
+        if (Stack.ItemId != FName(TEXT("Pot.Fired")) || !Stack.OwnedWorldItemId.IsValid() ||
+            Stack.Quantity != 1 || Stack.MaxStack != 1)
+            continue;
+        if (Ownership->TryGetItem(Stack.OwnedWorldItemId, Pot) &&
+            Pot.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            Pot.OwnerId == InventoryOwnerId && Pot.DefinitionId == FName(TEXT("Pot.Fired")) &&
+            Pot.Quantity == 1)
+        {
+            bHasPot = true;
+            break;
+        }
+    }
+    if (!bHasPot)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(9203, 3.0f, FColor::Orange,
+                TEXT("Boiling water requires your ledger-owned fired clay pot (Pot.Fired)."));
+        return;
+    }
+
+    const FName WaterDefinitions[] = {
+        FName(TEXT("Water.Boiling")), FName(TEXT("Water.Dirty"))
+    };
+    for (const FName WaterDefinitionId : WaterDefinitions)
+    {
+        for (const FInventoryStack& Stack : Inventory->Items)
+        {
+            if (Stack.ItemId != WaterDefinitionId || !Stack.OwnedWorldItemId.IsValid() ||
+                Stack.Quantity != 1 || Stack.MaxStack != 1)
+                continue;
+
+            FWorldOwnedItemRecord Water;
+            if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Water) ||
+                Water.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                Water.OwnerId != InventoryOwnerId ||
+                Water.DefinitionId != WaterDefinitionId || Water.Quantity != 1)
+                continue;
+
+            // Do not ask the transaction to finish a job that cannot have
+            // completed yet. Its receipt remains the authority for start time.
+            if (WaterDefinitionId == FName(TEXT("Water.Boiling")))
+            {
+                const FWorldSurvivalActionReceipt* Start = Profile.ActionReceipts.FindByPredicate(
+                    [&Water, &Pot, &InventoryOwnerId](const FWorldSurvivalActionReceipt& Receipt)
+                    {
+                        return Receipt.Action == EWorldSurvivalActionKind::BoilWater &&
+                            Receipt.ItemId == Water.ItemId && Receipt.RelatedItemId == Pot.ItemId &&
+                            Receipt.ExpectedItemOwnerId == InventoryOwnerId &&
+                            Receipt.ItemDefinitionId == FName(TEXT("Water.Dirty")) &&
+                            Receipt.ResultingItemDefinitionId == FName(TEXT("Water.Boiling"));
+                    });
+                if (!Start)
+                {
+                    if (GEngine)
+                        GEngine->AddOnScreenDebugMessage(9203, 3.0f, FColor::Red,
+                            TEXT("This water has no valid boiling-start receipt. Refill the pot from the creek."));
+                    return;
+                }
+                const FGameDataTransformation* Recipe =
+                    GameData->FindTransformation(FName(TEXT("boil_water")));
+                const double Duration = Recipe ? Recipe->DurationSeconds : Start->RequestedDurationSeconds;
+                const double Remaining = Start->RequestedStartTimeSeconds + Duration -
+                    Clock->GetSimulationTimeSeconds();
+                if (Remaining > 0.001)
+                {
+                    if (GEngine)
+                        GEngine->AddOnScreenDebugMessage(9203, 3.0f, FColor(255, 210, 100),
+                            FString::Printf(TEXT("Water is boiling. %.1f game minutes remain."),
+                                Remaining / 60.0));
+                    return;
+                }
+            }
+
+            bool bStarted = false;
+            const bool bSucceeded = Survival->TryBoilWaterAtFire(
+                FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision,
+                Water.ItemId, Water.Revision, Pot.ItemId, Pot.Revision,
+                InventoryOwnerId, bStarted);
+            if (GEngine)
+            {
+                const TCHAR* Message = bSucceeded
+                    ? (bStarted
+                        ? TEXT("Boiling started. Keep the pot near a lit fire and wait before pressing B again.")
+                        : TEXT("Water is boiled. Press K to drink it."))
+                    : TEXT("Boiling needs dirty water or a waiting boiling item, a fired pot and a nearby lit fire.");
+                GEngine->AddOnScreenDebugMessage(9203, 4.0f,
+                    bSucceeded ? FColor::Green : FColor::Orange, Message);
+            }
+            return;
+        }
+    }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(9203, 3.0f, FColor::Silver,
+            TEXT("No owned dirty or boiling water. Fill your fired pot at the creek first (I)."));
+}
+
+void AVerticalSliceCWorldActor::RestInput()
+{
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!World || !Survival || !Clock || !Clock->IsClockInitialized() || !PlayerSurvivalId.IsValid())
+        return;
+
+    FWorldSurvivalProfile Profile;
+    if (!Survival->GetProfile(PlayerSurvivalId, Profile))
+        return;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (Profile.RestUntilTimeSeconds > Now)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(9204, 2.5f, FColor::Silver,
+                TEXT("You are already resting. Movement is disabled until the rest interval ends."));
+        return;
+    }
+
+    if (Survival->TryBeginRest(FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision, 1800.0))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(9204, 4.0f, FColor(150, 220, 255),
+                TEXT("Rest started for 30 game minutes. Warm, dry shelter improves recovery."));
+    }
+    else if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(9204, 3.0f, FColor::Orange,
+            TEXT("Rest could not start. Wait for the current action to finish and try again."));
+    }
+}
+
+void AVerticalSliceCWorldActor::ShowSurvivalStatusInput()
+{
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    FWorldSurvivalProfile Profile;
+    if (!Survival || !PlayerSurvivalId.IsValid() ||
+        !Survival->GetProfile(PlayerSurvivalId, Profile))
+        return;
+
+    FString Conditions = TEXT("none");
+    if (!Profile.Conditions.IsEmpty())
+    {
+        Conditions.Empty();
+        for (int32 Index = 0; Index < Profile.Conditions.Num(); ++Index)
+        {
+            if (Index > 0)
+                Conditions += TEXT(", ");
+            Conditions += Profile.Conditions[Index].DefinitionId.ToString();
+        }
+    }
+    const bool bResting = Clock && Clock->IsClockInitialized() &&
+        Profile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds();
+    const FString Status = FString::Printf(
+        TEXT("SURVIVAL | HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s"),
+        Profile.Health, Profile.Thirst, Profile.Stamina, Profile.Fatigue,
+        Profile.Wetness * 100.0f, Profile.CoreTemperatureCelsius,
+        bResting ? TEXT("yes") : TEXT("no"), *Conditions);
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(9205, 6.0f, FColor::Cyan, Status);
+}
+
 void AVerticalSliceCWorldActor::ChopInput()
 {
     UWorld* World = GetWorld();
@@ -1723,6 +1993,6 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     {
         bIntroShown = true;
         GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor(230, 210, 160),
-            TEXT("The camp is abandoned. The cabin has no door and no roof, the bridge is gone, and the nights are cold. A helper waits by the fire. (F1: controls, LMB: chop, J: helper)"));
+            TEXT("The camp is abandoned. The cabin has no door and no roof, the bridge is gone, and the nights are cold. Controls: LMB chop, I fill pot, B boil, K drink, P rest, V status, O refuel fire, J helper."));
     }
 }
