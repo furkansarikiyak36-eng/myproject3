@@ -99,8 +99,9 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Scenario|Production", meta=(ClampMin="1"))
     int32 ProductionCapacity = 64;
 
+    /** Selects an existing non-physical production transformation from Config/GameData/transformations.json. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Demo|Scenario|Production")
-    FWorldProductionRecipe ConfiguredRecipe;
+    FName ProductionRecipeId = NAME_None;
 
 private:
     UPROPERTY(Transient)
