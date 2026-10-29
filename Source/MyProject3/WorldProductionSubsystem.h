@@ -140,9 +140,17 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterRecipe(const FWorldProductionRecipe& Recipe);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterStation(const FWorldProductionStation& Station);
-    UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
+    /** Native setup/rollback primitive; deliberately not exposed to Blueprint callers. */
+    bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
+    /** Player-bound stock ingress used by station interactions; discovery-gated items require the player's knowledge. */
+    UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool AddStockForPlayer(
+        const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision, const FGuid& PlayerEntityId);
     /** Takes stock out of a station (into a player's hands). Job inputs already left the stock when the job was queued. */
-    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryTakeStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
+    /** Native setup/rollback primitive; deliberately not exposed to Blueprint callers. */
+    bool TryTakeStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
+    /** Player-bound stock egress used by station interactions; discovery-gated items require the player's knowledge. */
+    UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool TryTakeStockForPlayer(
+        const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision, const FGuid& PlayerEntityId);
     /** Converts one loose, world-owned physical log into one station stock unit. OperationId must be reused for retries. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
     /** Ingests a uniquely owned ledger-only world resource; rejects items with a physical actor adapter. */
@@ -173,6 +181,7 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") TArray<FWorldProductionRecipe> Recipes;
     int32 FindRecipe(FName RecipeId) const;
     int64 CountStockUnits(const TMap<FName, int32>& Stock) const;
+    bool IsDefinitionAvailableForPlayer(FName DefinitionId, const FGuid& PlayerEntityId) const;
     bool IsRecipeAvailableForPlayer(FName RecipeId, const FGuid& PlayerEntityId) const;
     bool TryEnqueueJobInternal(FGuid OperationId, FGuid StationId, FName RecipeId,
         int64 ExpectedStationRevision, FGuid& OutJobId);
