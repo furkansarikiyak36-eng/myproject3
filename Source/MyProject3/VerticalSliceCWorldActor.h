@@ -10,6 +10,7 @@ class AHarvestableTreeActor;
 class AHelperCompanionActor;
 class ALogBuildPiece;
 class AProductionStationActor;
+class AWorldDiscoveryMarkerActor;
 class UHierarchicalInstancedStaticMeshComponent;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -113,6 +114,8 @@ private:
     bool bBuilt = false;
     bool bInputBound = false;
     bool bStarterToolsGranted = false;
+    bool bDiscoveryMarkersSpawned = false;
+    bool bGatherableZonesAssigned = false;
     int32 ChopSwingCount = 0;
     int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
@@ -152,6 +155,8 @@ private:
 
     void SetupPlayer();
     void EnsureStarterTools();
+    void EnsureDiscoveryMarkers();
+    void AssignGatherableZones();
     void ChopInput();
     void GatherInput();
     void FillCreekWaterInput();
