@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `memory/ROADMAP.md`: schema v26, the P2.1/P2.2/P2.3 partial code-written state, and an unbuilt progress log row. Then audit `PLAN_STATUS.md` for stale schema v25 references and continue P3.1.
+Audit `PLAN_STATUS.md` for stale v25 references and verify summary counts; then begin P3.1 wet-fuel/fire behavior using current heat and fuel APIs. Do not run build/tests until batch validation.
