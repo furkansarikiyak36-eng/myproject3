@@ -59,4 +59,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Next: inspect all direct `UPlacementKernelSubsystem::CommitPlacement` calls in `LogCarryComponent`/`LogBuildToolsComponent` and decide which physical placement paths bypass `CommitHeldSolution`; wire the same preflight only where necessary. Then run a complete source-only consistency scan; keep P2 rows Kısmi until batch build/tests/PIE. Remaining direct LogBuildTools actions must stay explicitly open.
+Next: inspect `CutOpening`, `TieRope`, `DismantlePiece`, and `ThrowHeldPiece` contracts, then wire the shared activity gate to successful direct actions without charging UI/preview toggles or failed operations. Add targeted preflight coverage if feasible.
