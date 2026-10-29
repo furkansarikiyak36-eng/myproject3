@@ -147,6 +147,7 @@ private:
     bool CommitStacked(ALogBuildPiece* Log, ALogBuildPiece* Lower, const FVector& AimPoint, float CarryYaw);
 
     void SetupPlayer();
+    void UpdateZoneDiscoveries();
     void ChopInput();
     void UpdateSun();
 };
