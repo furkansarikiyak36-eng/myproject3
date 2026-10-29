@@ -3440,6 +3440,8 @@ bool FSurvivalEquipmentConditionsAndDiscoveryTest::RunTest(const FString& Parame
         FMath::IsNearlyEqual(EquippedProfile.ClothingInsulation, 0.6f, 0.001f));
     TestTrue(TEXT("Water resistance derives from the equipped item"),
         FMath::IsNearlyEqual(EquippedProfile.ClothingWaterResistance, 0.5f, 0.001f));
+    TestTrue(TEXT("Equipped capability unlocks its traversal context"),
+        Survival->HasEquippedCapability(Profile.EntityId, TEXT("Region.Cold")));
     TestTrue(TEXT("Equip retry is idempotent"), Survival->TryEquipItem(
         EquipOperation, Profile.EntityId, Profile.Revision, CoatId, 1, InventoryOwnerId));
 
@@ -3519,6 +3521,8 @@ bool FSurvivalEquipmentConditionsAndDiscoveryTest::RunTest(const FString& Parame
         FMath::IsNearlyEqual(Unequipped.ClothingInsulation, 0.0f, 0.001f));
     TestTrue(TEXT("Discovery stays unlocked after equipment changes"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Region.DeepCave")));
+    TestFalse(TEXT("Unequipping removes the equipment-gated traversal capability"),
+        Survival->HasEquippedCapability(Profile.EntityId, TEXT("Region.Cold")));
 
     TArray<FWorldSurvivalProfile> Profiles;
     TArray<FWorldDiscoveryRecord> Discoveries;
