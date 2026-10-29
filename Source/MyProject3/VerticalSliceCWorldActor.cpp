@@ -1197,7 +1197,10 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
         const APlayerController* Controller = GetWorld()->GetFirstPlayerController();
         if (Survival && Controller && Controller->GetPawn())
         {
-            Survival->UpdateLocation(PlayerSurvivalId, Controller->GetPawn()->GetActorLocation());
+            const FVector PlayerLocation = Controller->GetPawn()->GetActorLocation();
+            Survival->UpdateLocation(PlayerSurvivalId, PlayerLocation);
+            if (IsInCreek(PlayerLocation))
+                Survival->ApplyWetnessExposure(PlayerSurvivalId, 0.12f);
             const bool bNight = Hours < 6.0f || Hours > 19.5f;
             Survival->SetWeather(bNight ? EWorldWeatherState::Snow : EWorldWeatherState::Wind, bNight ? 0.5f : 0.35f);
         }
