@@ -51,9 +51,10 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
 ### Changes
 - Implemented receipt-backed inventory-owned water processing transitions and added schema v27 migration.
+- Source audit verified rest blocks jump, while finding missing survival action hooks on the building/carry components; this is the next code gap.
 - Bound player M/F5/F6/F7 interactions for drink, boil, rest and survival status; water tests now cover the complete source-level loop.
 - Added fatigue work-effectiveness API, active-rest action gate, scaling for tree chop/log cut/dig/repair, plus tests for rest/work scaling and warm-shelter drying.
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Update `PLAN_STATUS.md`, `ROADMAP.md` and `CODEBASE.md` to reflect the current Phase 2 code and schema v27. Keep P2 rows Kısmi until batch build/automation and PIE validation; do not call new tests passed. Then perform a source-only consistency audit (method counts, bindings, migration chain, JSON validity) and record any remaining Phase 2 gaps.
+Add a safe action gate/cost hook to the central log placement/carry commit path(s) so rest blocks construction interactions and successful strenuous placements consume authored activity stamina; add a focused source-level automation test if the component API can be exercised. Then synchronize any remaining status/roadmap inaccuracies and run a source-only audit; all new code/tests remain unbuilt/unrun.
