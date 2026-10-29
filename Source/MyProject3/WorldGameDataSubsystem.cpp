@@ -503,6 +503,19 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         }
     }
 
+    // Inventories on the player or level may have begun play before this
+    // bootstrap loaded game data. Backfill their weights and hand recipes now.
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!IsValid(Actor))
+            continue;
+        UInventoryCraftingComponent* Inventory = Actor->FindComponentByClass<UInventoryCraftingComponent>();
+        if (IsValid(Inventory) && !ApplyToInventory(Inventory))
+            return Fail(FString::Printf(TEXT("Inventory %s refused game-data weights/recipes"),
+                *GetNameSafe(Inventory)));
+    }
+
     bApplied = true;
     return true;
 }
@@ -552,7 +565,36 @@ bool UWorldGameDataSubsystem::ApplyToInventory(UInventoryCraftingComponent* Inve
         Recipe.Output = MakeStack(T.Outputs[0]);
         for (int32 Index = 1; Index < T.Outputs.Num(); ++Index)
             Recipe.Byproducts.Add(MakeStack(T.Outputs[Index]));
-        bAll = Inventory->RegisterRecipe(Recipe) && bAll;
+        const FCraftingRecipe* ExistingRecipe = Inventory->Recipes.FindByPredicate(
+            [&Recipe](const FCraftingRecipe& Existing) { return Existing.RecipeId == Recipe.RecipeId; });
+        if (!ExistingRecipe)
+        {
+            bAll = Inventory->RegisterRecipe(Recipe) && bAll;
+            continue;
+        }
+
+        // Applying game data to an inventory that began play before the loader
+        // must be safe to repeat. An authored duplicate ID is acceptable only
+        // when it is exactly the same recipe contract; do not silently override it.
+        auto SameStack = [](const FInventoryStack& A, const FInventoryStack& B)
+        {
+            return A.ItemId == B.ItemId && A.Quantity == B.Quantity &&
+                A.Category == B.Category && A.MaxStack == B.MaxStack &&
+                A.bIsTool == B.bIsTool && A.OwnedWorldItemId == B.OwnedWorldItemId;
+        };
+        bool bSameRecipe = ExistingRecipe->bEnabled == Recipe.bEnabled &&
+            ExistingRecipe->Ingredients.Num() == Recipe.Ingredients.Num() &&
+            ExistingRecipe->Byproducts.Num() == Recipe.Byproducts.Num() &&
+            SameStack(ExistingRecipe->Output, Recipe.Output);
+        for (int32 Index = 0; bSameRecipe && Index < Recipe.Ingredients.Num(); ++Index)
+        {
+            const FRecipeIngredient& A = ExistingRecipe->Ingredients[Index];
+            const FRecipeIngredient& B = Recipe.Ingredients[Index];
+            bSameRecipe = A.ItemId == B.ItemId && A.Quantity == B.Quantity && A.bConsume == B.bConsume;
+        }
+        for (int32 Index = 0; bSameRecipe && Index < Recipe.Byproducts.Num(); ++Index)
+            bSameRecipe = SameStack(ExistingRecipe->Byproducts[Index], Recipe.Byproducts[Index]);
+        bAll = bSameRecipe && bAll;
     }
     return bAll;
 }
