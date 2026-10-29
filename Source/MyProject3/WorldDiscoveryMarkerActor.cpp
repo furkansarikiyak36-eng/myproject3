@@ -154,7 +154,9 @@ bool AWorldDiscoveryMarkerActor::TryCommitDiscovery()
         RewardStack.Quantity = RewardQuantity;
         RewardStack.Category = EInventoryItemCategory::Resource;
         RewardStack.MaxStack = 99;
-        if (!Inventory->CanAddItems({ RewardStack }))
+        TArray<FInventoryStack> IncomingReward;
+        IncomingReward.Add(RewardStack);
+        if (!Inventory->CanAddItems(IncomingReward))
             return false;
     }
     else if (!RewardItemId.IsNone() || RewardQuantity != 0)
