@@ -1,0 +1,122 @@
+{
+  "_about": "Data contracts for P1.3/P8.1. Runtime scheduling and world effects are implemented by the natural-event director; values are design defaults, not balance claims.",
+  "events": [
+    {
+      "id": "Event.Snowstorm",
+      "name": "Kar fırtınası",
+      "trigger": "weather.snow",
+      "signal": "warning",
+      "effect": "exposure",
+      "warning_h": 0.5,
+      "duration_h": 8,
+      "min_severity": 0.65,
+      "max_severity": 1.0,
+      "counter_item": "Clothing.WinterCoat",
+      "counter_qty": 1
+    },
+    {
+      "id": "Event.HeavyRain",
+      "name": "Şiddetli yağmur",
+      "trigger": "weather.rain",
+      "signal": "warning",
+      "effect": "wetness",
+      "warning_h": 0.25,
+      "duration_h": 6,
+      "min_severity": 0.7,
+      "max_severity": 1.0,
+      "counter_item": "Roof.Thatch",
+      "counter_qty": 1
+    },
+    {
+      "id": "Event.Flood",
+      "name": "Taşkın",
+      "trigger": "ground_wetness",
+      "signal": "warning",
+      "effect": "flooded_routes",
+      "warning_h": 1,
+      "duration_h": 12,
+      "min_severity": 0.8,
+      "max_severity": 1.0,
+      "counter_item": "Sandbag",
+      "counter_qty": 3
+    },
+    {
+      "id": "Event.Avalanche",
+      "name": "Çığ",
+      "trigger": "snow_depth",
+      "signal": "warning",
+      "effect": "structure_damage",
+      "warning_h": 0.25,
+      "duration_h": 1,
+      "min_severity": 0.8,
+      "max_severity": 1.0,
+      "counter_item": "TrailMarker",
+      "counter_qty": 1
+    },
+    {
+      "id": "Event.Hail",
+      "name": "Dolu",
+      "trigger": "weather.storm",
+      "signal": "warning",
+      "effect": "crop_damage",
+      "warning_h": 0.1,
+      "duration_h": 1,
+      "min_severity": 0.75,
+      "max_severity": 1.0,
+      "counter_item": "Roof.Thatch",
+      "counter_qty": 1
+    },
+    {
+      "id": "Event.Drought",
+      "name": "Kuraklık",
+      "trigger": "ground_wetness",
+      "signal": "notice",
+      "effect": "crop_moisture_loss",
+      "warning_h": 24,
+      "duration_h": 120,
+      "min_severity": 0.0,
+      "max_severity": 0.15,
+      "counter_item": "Water.Boiled",
+      "counter_qty": 1
+    },
+    {
+      "id": "Event.ForestFire",
+      "name": "Orman yangını",
+      "trigger": "weather.heatwave",
+      "signal": "warning",
+      "effect": "fire_spread",
+      "warning_h": 0.5,
+      "duration_h": 8,
+      "min_severity": 0.8,
+      "max_severity": 1.0,
+      "counter_item": "Water.Boiled",
+      "counter_qty": 3
+    },
+    {
+      "id": "Event.ToxicRain",
+      "name": "Zehirli yağmur",
+      "trigger": "weather.rain",
+      "signal": "warning",
+      "effect": "illness_exposure",
+      "warning_h": 0.5,
+      "duration_h": 4,
+      "min_severity": 0.9,
+      "max_severity": 1.0,
+      "counter_item": "Clothing.WinterCoat",
+      "counter_qty": 1
+    },
+    {
+      "id": "Event.Epidemic",
+      "name": "Salgın",
+      "trigger": "world.condition_pressure",
+      "signal": "notice",
+      "effect": "illness_spread",
+      "warning_h": 24,
+      "duration_h": 168,
+      "min_severity": 0.6,
+      "max_severity": 1.0,
+      "counter_item": "Water.Boiled",
+      "counter_qty": 1
+    }
+  ]
+}
