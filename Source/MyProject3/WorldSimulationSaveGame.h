@@ -160,7 +160,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 24;
+    static constexpr int32 CurrentSchemaVersion = 25;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     /** Schema v21: weather of the day, snow depth, ground wetness. */
@@ -178,6 +178,9 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldAnimalState> Animals;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldFieldCellState> FieldCells;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldAnimalPenState> AnimalPens;
+    /** Schema v25: authored route nodes/edges and built-infrastructure cost state. */
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FLogisticsRouteNode> RouteNodes;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FLogisticsRouteEdge> RouteEdges;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldSurvivalProfile> SurvivalProfiles;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldDiscoveryRecord> Discoveries;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") EWorldWeatherState Weather = EWorldWeatherState::Clear;
