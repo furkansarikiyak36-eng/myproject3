@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- 2026-10-29 · Read `Source/MyProject3/LogBuildToolsComponent.cpp` (SHA 918d232e2a5aa9fb3077fd0f4580ee91281dfdb6): `CommitHeldSolution`, plan-slot fill, dismantle, and rope creation exist, but no explicit point identifies a completed crossing as `Infrastructure.CreekBridge`; individual log placements cannot safely auto-enable a bridge route.
 - Field state now tracks clear/till, fertility, weeds, mulch, moisture, planted crop, last-crop/repeat count and revision-bound receipts. These are logical contracts; field visuals/tools/player controls are not wired.
 - Ekim requires a prepared field, current permitted month, field-owned moisture threshold, fertility/weed limits and a unique seed item whose ownership/revision is valid. Harvest creates harvest items plus configured seed-return items and applies a stronger fertility cost for repeated crop cycles.
 - crops.json defines Crop.Grain, Crop.Root and Crop.Legume; plant months, seed return and soil parameters are validated and registered in agriculture. These tuning values are placeholders, not balance-approved values.
@@ -58,4 +59,4 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - No Unreal build, automation test or PIE run has been executed for this branch.
 
 ## Next step
-Next, connect a real completed-bridge/route-build event to `UWorldInfrastructureRouteLinkComponent`, migrate any station Blueprint/UI caller to `TryStartRecipeForInventory`/`TryStartRecipeForPlayer`, finish remaining field/animal interaction adapters and the 15-step farm chain, then add the headless whole-world year simulation. Zones 3/4 placement and the New Valley scene remain last. Continue to avoid builds until the batch gate; before it, re-audit P6/P7 snapshot invariants and regenerate `CODE_INDEX.md` locally.
+Inspect `ABuildPlanActor` completion slots and placement commit events to find a safe explicit crossing-completion hook; connect it to `UWorldInfrastructureRouteLinkComponent` without inferring completion from one log. Then migrate any station Blueprint/UI caller to `TryStartRecipeForInventory`/`TryStartRecipeForPlayer`, finish remaining field/animal interaction adapters and the 15-step farm chain, then add the headless whole-world year simulation. Zones 3/4 placement and the New Valley scene remain last. Continue to avoid builds until the batch gate; before it, re-audit P6/P7 snapshot invariants and regenerate `CODE_INDEX.md` locally.
