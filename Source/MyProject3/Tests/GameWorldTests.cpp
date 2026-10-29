@@ -15,6 +15,8 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
+#include "WallCoatingComponent.h"
+#include "StoneBuildingPiece.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
 #include "VoxelTerrainChunkComponent.h"
@@ -1045,7 +1047,8 @@ bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
 
     TestTrue(TEXT("Event preflight"), Events->CanAdvanceEventStep(60.0, 60.0, 1));
     TestTrue(TEXT("Advance into signal phase"), Events->AdvanceEventStep(60.0, 60.0, 1));
-    const FWorldNaturalEventInstance* Signal = Events->GetEventInstances().FindByPredicate(
+    const TArray<FWorldNaturalEventInstance> SignalInstances = Events->GetEventInstances();
+    const FWorldNaturalEventInstance* Signal = SignalInstances.FindByPredicate(
         [](const FWorldNaturalEventInstance& Instance)
         { return Instance.DefinitionId == TEXT("Event.Snowstorm"); });
     TestNotNull(TEXT("Snowstorm signal exists"), Signal);
@@ -1072,6 +1075,58 @@ bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
             [](const FWorldNaturalEventInstance& Instance)
             { return Instance.DefinitionId == TEXT("Event.Snowstorm") &&
                 Instance.Phase == EWorldNaturalEventPhase::Active; }));
+    return true;
+}
+
+
+// P3.3: plaster is a persistent, idempotent operation on an already placed structure.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWallCoatingConsumesPlasterAndSealsGapsTest,
+    "MyProject3.World.Shelter.PlastersPlacedPieceIdempotently", Flags)
+bool FWallCoatingConsumesPlasterAndSealsGapsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    if (!TestNotNull(TEXT("World"), World))
+        return false;
+
+    AStoneBuildingPiece* Piece = World->SpawnActorDeferred<AStoneBuildingPiece>(
+        AStoneBuildingPiece::StaticClass(), FTransform::Identity);
+    if (!TestNotNull(TEXT("Deferred wall piece"), Piece))
+        return false;
+    Piece->bStartsPlaced = true;
+    Piece->FinishSpawning(FTransform::Identity);
+    UWallCoatingComponent* Coating = Piece->FindComponentByClass<UWallCoatingComponent>();
+    if (!TestNotNull(TEXT("Wall coating component"), Coating))
+        return false;
+    TestFalse(TEXT("Uncoated wall does not seal gaps"), Coating->ProvidesShelterSeal());
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner"), InventoryOwner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwner);
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    FInventoryStack Plaster;
+    Plaster.ItemId = TEXT("Plaster");
+    Plaster.Quantity = 2;
+    TestTrue(TEXT("Add plaster stack"), Inventory->TryAddItem(Plaster));
+
+    float CoatingLevel = 0.0f;
+    const FGuid Operation = FGuid::NewGuid();
+    TestTrue(TEXT("Apply first plaster unit"), Coating->TryApplyPlaster(Operation, Inventory, 1, 1, CoatingLevel));
+    TestEqual(TEXT("First unit gives 25 percent coating"), CoatingLevel, 0.25f);
+    TestEqual(TEXT("One unit consumed"), Inventory->GetItemCount(TEXT("Plaster")), 1);
+    TestFalse(TEXT("Partial coating does not seal gaps yet"), Coating->ProvidesShelterSeal());
+
+    float RetryLevel = 0.0f;
+    TestTrue(TEXT("Same operation is idempotent"), Coating->TryApplyPlaster(Operation, Inventory, 1, 1, RetryLevel));
+    TestEqual(TEXT("Retry does not consume another unit"), Inventory->GetItemCount(TEXT("Plaster")), 1);
+    TestEqual(TEXT("Retry returns the recorded result"), RetryLevel, 0.25f);
+
+    TestTrue(TEXT("Apply second plaster unit"), Coating->TryApplyPlaster(FGuid::NewGuid(), Inventory, 1, 2, CoatingLevel));
+    TestTrue(TEXT("Half coating seals small shelter gaps"), Coating->ProvidesShelterSeal());
+    TestFalse(TEXT("Stale revision refuses more plaster"), Coating->TryApplyPlaster(FGuid::NewGuid(), Inventory, 1, 2, CoatingLevel));
+    TestEqual(TEXT("Stale request leaves inventory intact"), Inventory->GetItemCount(TEXT("Plaster")), 0);
     return true;
 }
 
