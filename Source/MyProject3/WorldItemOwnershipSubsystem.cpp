@@ -284,6 +284,69 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     return true;
 }
 
+bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinitionAndLocation(
+    const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedRevision,
+    EWorldItemOwnerKind ExpectedOwner, FName NewDefinitionId,
+    const FVector& NewWorldLocation, FWorldOwnedItemRecord& OutRecord)
+{
+    if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
+        (ExpectedOwner != EWorldItemOwnerKind::World &&
+         ExpectedOwner != EWorldItemOwnerKind::Held) ||
+        NewDefinitionId.IsNone() || !FMath::IsFinite(NewWorldLocation.X) ||
+        !FMath::IsFinite(NewWorldLocation.Y) || !FMath::IsFinite(NewWorldLocation.Z))
+        return false;
+
+    if (SplitReceipts.Contains(OperationId))
+        return false;
+
+    if (const FWorldItemTransferReceipt* Receipt = Receipts.Find(OperationId))
+    {
+        if (!Receipt->bDefinitionChange || Receipt->ItemId != ItemId ||
+            Receipt->ExpectedRevision != ExpectedRevision ||
+            Receipt->ExpectedOwner != ExpectedOwner ||
+            Receipt->RequestedDefinitionId != NewDefinitionId ||
+            !Receipt->RequestedWorldLocation.Equals(NewWorldLocation, 0.001f))
+            return false;
+        OutRecord = Receipt->ResultRecord;
+        return true;
+    }
+
+    FWorldOwnedItemRecord* Item = Items.Find(ItemId);
+    if (!Item || Item->Revision != ExpectedRevision || Item->OwnerKind != ExpectedOwner ||
+        Item->Revision == MAX_int64 ||
+        (Item->DefinitionId == NewDefinitionId &&
+         Item->WorldLocation.Equals(NewWorldLocation, 0.001f)) ||
+        !EnsureReceiptCapacity(false))
+        return false;
+
+    if (Item->BaseDefinitionId.IsNone())
+        Item->BaseDefinitionId = Item->DefinitionId;
+
+    // Definition and location are one ledger mutation: a processed piece must
+    // never advertise new geometry while retaining its previous cut position.
+    Item->DefinitionId = NewDefinitionId;
+    Item->WorldLocation = NewWorldLocation;
+    ++Item->Revision;
+
+    FWorldItemTransferReceipt Receipt;
+    Receipt.Sequence = NextReceiptSequence++;
+    Receipt.OperationId = OperationId;
+    Receipt.ItemId = ItemId;
+    Receipt.ResultingRevision = Item->Revision;
+    Receipt.ResultingOwner = Item->OwnerKind;
+    Receipt.ResultRecord = *Item;
+    Receipt.ExpectedRevision = ExpectedRevision;
+    Receipt.ExpectedOwner = ExpectedOwner;
+    Receipt.RequestedOwner = Item->OwnerKind;
+    Receipt.RequestedOwnerId = Item->OwnerId;
+    Receipt.RequestedWorldLocation = NewWorldLocation;
+    Receipt.bDefinitionChange = true;
+    Receipt.RequestedDefinitionId = NewDefinitionId;
+    Receipts.Add(OperationId, Receipt);
+    OutRecord = *Item;
+    return true;
+}
+
 bool UWorldItemOwnershipSubsystem::TryConsumeItem(
     const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedRevision,
     EWorldItemOwnerKind ExpectedOwner)
