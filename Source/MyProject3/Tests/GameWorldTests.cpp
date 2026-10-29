@@ -784,6 +784,24 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
         Data->GetZones().FilterByPredicate([](const FGameDataZone& Z) { return Z.Number >= 0 && Z.Number <= 4; }).Num());
     TestTrue(TEXT("Route graph loaded into the world"), Routes->GetNodeCount() == Data->GetRouteNodes().Num() &&
         Routes->GetEdgeCount() == Data->GetRouteEdges().Num());
+
+    const FGameDataRouteNode* CampDiscoveryAnchor = Data->GetRouteNodes().FindByPredicate(
+        [](const FGameDataRouteNode& Node) { return Node.NodeId == TEXT("Route.Camp"); });
+    TestNotNull(TEXT("Camp route anchor"), CampDiscoveryAnchor);
+    if (CampDiscoveryAnchor)
+    {
+        TestTrue(TEXT("Camp anchor triggers the camp discovery"),
+            CampDiscoveryAnchor->DiscoveryId == TEXT("Discovery.Zone0.Camp"));
+        TestTrue(TEXT("Camp discovery radius is bounded"),
+            CampDiscoveryAnchor->DiscoveryRadiusCm > 0.0f &&
+            CampDiscoveryAnchor->DiscoveryRadiusCm <= 5000.0f);
+    }
+    const FGameDataRouteNode* LookoutDiscoveryAnchor = Data->GetRouteNodes().FindByPredicate(
+        [](const FGameDataRouteNode& Node) { return Node.NodeId == TEXT("Route.HighForest.Lookout"); });
+    TestNotNull(TEXT("High-forest lookout anchor"), LookoutDiscoveryAnchor);
+    if (LookoutDiscoveryAnchor)
+        TestTrue(TEXT("Lookout triggers high-forest knowledge"),
+            LookoutDiscoveryAnchor->DiscoveryId == TEXT("Discovery.Zone2.HighForest"));
     const FGameDataZone* CreekZone = Data->GetZones().FindByPredicate(
         [](const FGameDataZone& Z) { return Z.Id == TEXT("Zone.1"); });
     TestNotNull(TEXT("Creek zone catalog entry"), CreekZone);
