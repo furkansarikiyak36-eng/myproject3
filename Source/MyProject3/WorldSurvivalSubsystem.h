@@ -124,6 +124,7 @@ struct FWorldSurvivalActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName DiscoveryId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") EWorldEquipmentSlot EquipmentSlot = EWorldEquipmentSlot::Body;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double ConditionEndTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts", meta=(ClampMin="0", ClampMax="1")) float ConditionSeverity = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FVector RequestedLocation = FVector::ZeroVector;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedDiscoveryTimeSeconds = 0.0;
 };
@@ -293,6 +294,7 @@ private:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquippedItemsPerProfile = 5;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration", meta=(ClampMin="1", ClampMax="4096")) int32 MaxDiscoveryDefinitions = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") TArray<FWorldDiscoveryDefinition> DiscoveryDefinitions;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration", meta=(ClampMin="1", ClampMax="16384")) int32 MaxDiscoveryRecords = 4096;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Receipts", meta=(ClampMin="1", ClampMax="8192")) int32 MaxDiscoveryReceiptsPerProfile = 512;
 
     bool IsValidProfile(const FWorldSurvivalProfile& Profile) const;
