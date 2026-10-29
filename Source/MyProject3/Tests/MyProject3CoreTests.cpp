@@ -4307,7 +4307,15 @@ bool FProductionStationActorInteractionTest::RunTest(const FString& Parameters)
     if (!TestNotNull(TEXT("Workbench station actor"), Station))
         return false;
     Station->StationDataId = TEXT("workbench_log");
+    TestTrue(TEXT("Non-fire workbench has no fire requirement"), Station->HasRequiredFire());
     TestTrue(TEXT("Register station after data application"), Station->EnsureRegistered());
+
+    AProductionStationActor* InvalidStation = World->SpawnActor<AProductionStationActor>(
+        AProductionStationActor::StaticClass(), FTransform(FVector(300.0f, 0.0f, 0.0f)), SpawnParameters);
+    if (!TestNotNull(TEXT("Invalid station actor"), InvalidStation))
+        return false;
+    InvalidStation->StationDataId = TEXT("station_typo_not_in_data");
+    TestFalse(TEXT("Unknown station definition cannot bypass fire rules"), InvalidStation->HasRequiredFire());
     TestTrue(TEXT("Deposit half log input"), Station->TryDeposit(Inventory, TEXT("HalfLog"), 1));
     TestTrue(TEXT("Deposit wedge tool"), Station->TryDeposit(Inventory, TEXT("Tool.Wedge"), 1));
     TestTrue(TEXT("Deposit chisel tool"), Station->TryDeposit(Inventory, TEXT("Tool.Chisel"), 1));
