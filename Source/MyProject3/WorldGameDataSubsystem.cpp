@@ -709,8 +709,20 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 
     for (const FGameDataRouteNode& Node : NewRouteNodes)
     {
-        if (!Node.DiscoveryId.IsNone() && !SeenDiscoveryIds.Contains(Node.DiscoveryId))
+        if (Node.DiscoveryId.IsNone())
+            continue;
+
+        if (!SeenDiscoveryIds.Contains(Node.DiscoveryId))
             return Fail(FString::Printf(TEXT("Route node %s references unknown discovery %s"),
+                *Node.NodeId.ToString(), *Node.DiscoveryId.ToString()));
+
+        const FGameDataZone* NodeZone = NewZones.FindByPredicate([&Node](const FGameDataZone& Zone)
+        {
+            return Zone.Id == Node.ZoneId;
+        });
+        if (!NodeZone || NodeZone->DiscoveryId != Node.DiscoveryId)
+            return Fail(FString::Printf(
+                TEXT("Route node %s discovery %s must match its zone's discovery"),
                 *Node.NodeId.ToString(), *Node.DiscoveryId.ToString()));
     }
 
