@@ -558,13 +558,16 @@ bool UWorldAgricultureSubsystem::TryFeedAnimal(
     }
 
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    FWorldAnimalPenState* Pen = Animal && Animal->PenId.IsValid()
+        ? AnimalPens.Find(Animal->PenId) : nullptr;
     UWorldItemOwnershipSubsystem* Ownership =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UInventoryCraftingComponent* Inventory = nullptr;
     FWorldOwnedItemRecord FeedItem;
-    if (!Animal || !Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+    if (!Animal || !Pen || !Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
         Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
-        Animal->Health <= 0.0f || Animal->FeedDefinitionId.IsNone() ||
+        Animal->Health <= 0.0f || !Animal->bCaptured || Animal->bSlaughtered ||
+        !Pen->bGateClosed || !Pen->AnimalIds.Contains(AnimalId) || Animal->FeedDefinitionId.IsNone() ||
         Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
         !Ownership->TryGetItem(FeedItemId, FeedItem) ||
         FeedItem.Revision != ExpectedFeedItemRevision || FeedItem.Revision >= MAX_int64 - 1 ||
@@ -614,8 +617,12 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
     }
 
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
-    if (!Animal || Animal->Revision != ExpectedAnimalRevision ||
+    FWorldAnimalPenState* Pen = Animal && Animal->PenId.IsValid()
+        ? AnimalPens.Find(Animal->PenId) : nullptr;
+    if (!Animal || !Pen || Animal->Revision != ExpectedAnimalRevision ||
         Animal->Revision >= MAX_int64 - 1 || Animal->Health <= 0.0f ||
+        !Animal->bCaptured || Animal->bSlaughtered || !Pen->bGateClosed ||
+        !Pen->AnimalIds.Contains(AnimalId) ||
         Animal->ProductDefinitionId.IsNone() || Animal->ProductUnits <= 0 ||
         Animal->ProductUnits > 64 ||
         Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
@@ -1221,26 +1228,75 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
         !FMath::IsFinite(Animal.Hunger) || Animal.Hunger < 0.0f || Animal.Hunger > 100.0f ||
         !FMath::IsFinite(Animal.Health) || Animal.Health < 0.0f || Animal.Health > 100.0f ||
         Animal.ProductUnits < 0 || !FMath::IsFinite(Animal.ProductProgressSeconds) ||
-        Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
+        !FMath::IsFinite(Animal.ProductIntervalSeconds) || Animal.ProductIntervalSeconds < 3600.0 ||
+        Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= Animal.ProductIntervalSeconds ||
+        Animal.ProductUnitsPerInterval <= 0 || Animal.ProductUnitsPerInterval > 64 ||
         Animal.Location.ContainsNaN() || Animal.Revision <= 0 ||
         Animal.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
-        MaxOperationReceiptsPerEntity <= 0 || Animals.Contains(Animal.AnimalId) ||
-        MaxAnimals <= 0 || Animals.Num() >= MaxAnimals)
-    {
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256 ||
+        Animals.Contains(Animal.AnimalId) || MaxAnimals <= 0 || Animals.Num() >= MaxAnimals)
         return false;
+
+    FWorldAnimalState NewAnimal = Animal;
+    if (const FWorldAnimalDefinition* Definition = FindAnimalDefinition(Animal.AnimalDefinitionId))
+    {
+        if ((!Animal.FeedDefinitionId.IsNone() && Animal.FeedDefinitionId != Definition->FeedDefinitionId) ||
+            (!Animal.ProductDefinitionId.IsNone() && Animal.ProductDefinitionId != Definition->ProductDefinitionId))
+            return false;
+        NewAnimal.FeedDefinitionId = Definition->FeedDefinitionId;
+        NewAnimal.ProductDefinitionId = Definition->ProductDefinitionId;
+        NewAnimal.ProductIntervalSeconds = Definition->ProductIntervalSeconds;
+        NewAnimal.ProductUnitsPerInterval = Definition->ProductUnitsPerInterval;
+        if (NewAnimal.ProductProgressSeconds >= NewAnimal.ProductIntervalSeconds)
+            return false;
     }
 
+    if ((NewAnimal.bCaptured &&
+         (!NewAnimal.CaptureOperationId.IsValid() || !NewAnimal.CaptureToolItemId.IsValid() ||
+          !NewAnimal.CaptureInventoryOwnerId.IsValid() || NewAnimal.CaptureToolExpectedRevision <= 0)) ||
+        (!NewAnimal.bCaptured &&
+         (NewAnimal.CaptureOperationId.IsValid() || NewAnimal.CaptureToolItemId.IsValid() ||
+          NewAnimal.CaptureInventoryOwnerId.IsValid() || NewAnimal.CaptureToolExpectedRevision != 0)) ||
+        (NewAnimal.PenId.IsValid() && (!NewAnimal.bCaptured || NewAnimal.bSlaughtered)) ||
+        (NewAnimal.bSlaughtered &&
+         (!NewAnimal.bCaptured || NewAnimal.Health != 0.0f || NewAnimal.PenId.IsValid() ||
+          !NewAnimal.SlaughterOperationId.IsValid() || NewAnimal.SlaughterOutputItemIds.IsEmpty())) ||
+        (!NewAnimal.bSlaughtered &&
+         (NewAnimal.SlaughterOperationId.IsValid() || !NewAnimal.SlaughterOutputItemIds.IsEmpty())))
+        return false;
+
     TSet<FGuid> SeenOperations;
-    for (const FWorldAgricultureActionReceipt& Receipt : Animal.ActionReceipts)
+    for (const FWorldAgricultureActionReceipt& Receipt : NewAnimal.ActionReceipts)
     {
         if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
-            Receipt.EntityId != Animal.AnimalId ||
+            FindActionReceipt(Receipt.OperationId) || Receipt.EntityId != NewAnimal.AnimalId ||
+            Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
+            Receipt.ResultingEntityRevision > NewAnimal.Revision ||
             (Receipt.Action != EWorldAgricultureActionKind::FeedAnimal &&
-             Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts))
+             Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts &&
+             Receipt.Action != EWorldAgricultureActionKind::CaptureAnimal &&
+             Receipt.Action != EWorldAgricultureActionKind::AssignAnimalToPen &&
+             Receipt.Action != EWorldAgricultureActionKind::SlaughterAnimal))
             return false;
         SeenOperations.Add(Receipt.OperationId);
     }
-    Animals.Add(Animal.AnimalId, Animal);
+
+    if (NewAnimal.bCaptured &&
+        !NewAnimal.ActionReceipts.ContainsByPredicate([&NewAnimal](const FWorldAgricultureActionReceipt& Receipt)
+        {
+            return Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal &&
+                Receipt.OperationId == NewAnimal.CaptureOperationId;
+        }))
+        return false;
+    if (NewAnimal.bSlaughtered &&
+        !NewAnimal.ActionReceipts.ContainsByPredicate([&NewAnimal](const FWorldAgricultureActionReceipt& Receipt)
+        {
+            return Receipt.Action == EWorldAgricultureActionKind::SlaughterAnimal &&
+                Receipt.OperationId == NewAnimal.SlaughterOperationId;
+        }))
+        return false;
+
+    Animals.Add(NewAnimal.AnimalId, MoveTemp(NewAnimal));
     return true;
 }
 
@@ -1315,13 +1371,30 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
         const FWorldAnimalState& Animal = Pair.Value;
         if (Animal.Revision >= MAX_int64 - 1 ||
             !FMath::IsFinite(Animal.ProductProgressSeconds) ||
-            Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
-            Animal.Location.ContainsNaN() ||
+            !FMath::IsFinite(Animal.ProductIntervalSeconds) || Animal.ProductIntervalSeconds < 3600.0 ||
+            Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= Animal.ProductIntervalSeconds ||
+            Animal.ProductUnitsPerInterval <= 0 || Animal.ProductUnitsPerInterval > 64 ||
             !FMath::IsFinite(Animal.ProductProgressSeconds + DeltaSeconds) ||
-            (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
-             !Animal.ProductDefinitionId.IsNone() &&
-             Animal.ProductProgressSeconds + DeltaSeconds >= 3600.0 &&
-             Animal.ProductUnits == MAX_int32))
+            Animal.Location.ContainsNaN())
+            return false;
+
+        if (!Animal.bSlaughtered && Animal.bCaptured && Animal.Health > 0.0f &&
+            Animal.Hunger <= ProductHungerLimit && !Animal.ProductDefinitionId.IsNone())
+        {
+            const double TotalProductTime = Animal.ProductProgressSeconds + DeltaSeconds;
+            const int64 Intervals = static_cast<int64>(FMath::FloorToDouble(TotalProductTime / Animal.ProductIntervalSeconds));
+            if (Intervals > 0 &&
+                (Intervals > MAX_int32 / Animal.ProductUnitsPerInterval ||
+                 Animal.ProductUnits > MAX_int32 - Intervals * Animal.ProductUnitsPerInterval))
+                return false;
+        }
+    }
+    for (const TPair<FGuid, FWorldAnimalPenState>& Pair : AnimalPens)
+    {
+        const FWorldAnimalPenState& Pen = Pair.Value;
+        if (!Pen.PenId.IsValid() || Pen.Revision >= MAX_int64 - 1 ||
+            Pen.Location.ContainsNaN() || Pen.Capacity < 1 || Pen.Capacity > 4 ||
+            Pen.AnimalIds.Num() > Pen.Capacity || Pen.ActionReceipts.Num() > MaxOperationReceiptsPerEntity)
             return false;
     }
     return true;
@@ -1373,18 +1446,27 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
     for (TPair<FGuid, FWorldAnimalState>& Pair : Animals)
     {
         FWorldAnimalState& Animal = Pair.Value;
+        if (Animal.bSlaughtered || !Animal.bCaptured)
+            continue;
+
         Animal.Hunger = FMath::Clamp(Animal.Hunger + HungerPerHour *
             static_cast<float>(DeltaSeconds / 3600.0), 0.0f, 100.0f);
         if (Animal.Hunger >= 80.0f)
             Animal.Health = FMath::Max(0.0f, Animal.Health - static_cast<float>(DeltaSeconds / 3600.0) * 2.0f);
+
         if (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
-            !Animal.ProductDefinitionId.IsNone())
+            !Animal.ProductDefinitionId.IsNone() && Animal.PenId.IsValid())
         {
-            Animal.ProductProgressSeconds += DeltaSeconds;
-            while (Animal.ProductProgressSeconds >= 3600.0 && Animal.ProductUnits < MAX_int32)
+            const FWorldAnimalPenState* Pen = AnimalPens.Find(Animal.PenId);
+            if (Pen && Pen->bGateClosed && Pen->AnimalIds.Contains(Animal.AnimalId))
             {
-                Animal.ProductProgressSeconds -= 3600.0;
-                ++Animal.ProductUnits;
+                Animal.ProductProgressSeconds += DeltaSeconds;
+                while (Animal.ProductProgressSeconds >= Animal.ProductIntervalSeconds &&
+                    Animal.ProductUnits <= MAX_int32 - Animal.ProductUnitsPerInterval)
+                {
+                    Animal.ProductProgressSeconds -= Animal.ProductIntervalSeconds;
+                    Animal.ProductUnits += Animal.ProductUnitsPerInterval;
+                }
             }
         }
         ++Animal.Revision;
