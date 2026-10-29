@@ -17,7 +17,9 @@
       "barrier_id": "Barrier.None",
       "barrier_description": "No major regional barrier.",
       "permanent_solution_ids": [],
-      "seasonal_months": []
+      "seasonal_months": [],
+      "required_capabilities": [],
+      "required_discovery_ids": []
     },
     {
       "id": "Zone.1",
@@ -38,7 +40,9 @@
         "Infrastructure.CreekBridge",
         "Infrastructure.SteppingStones"
       ],
-      "seasonal_months": []
+      "seasonal_months": [],
+      "required_capabilities": [],
+      "required_discovery_ids": []
     },
     {
       "id": "Zone.2",
@@ -59,7 +63,9 @@
         "Infrastructure.HillSteps",
         "Infrastructure.RopeLine"
       ],
-      "seasonal_months": []
+      "seasonal_months": [],
+      "required_capabilities": [],
+      "required_discovery_ids": []
     },
     {
       "id": "Zone.3",
@@ -79,7 +85,11 @@
         "Infrastructure.Boardwalk",
         "Infrastructure.Raft"
       ],
-      "seasonal_months": []
+      "seasonal_months": [],
+      "required_capabilities": [],
+      "required_discovery_ids": [
+        "Discovery.HighForestResin"
+      ]
     },
     {
       "id": "Zone.4",
@@ -102,6 +112,12 @@
         6,
         7,
         8
+      ],
+      "required_capabilities": [
+        "Capability.ColdProtection"
+      ],
+      "required_discovery_ids": [
+        "Discovery.HighForestResin"
       ]
     }
   ]
