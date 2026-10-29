@@ -19,12 +19,38 @@ UHeatSourceComponent::UHeatSourceComponent()
 void UHeatSourceComponent::BeginPlay()
 {
     Super::BeginPlay();
+
+    // Fuel refuelling is a ledger-backed action. Give dynamically spawned fire
+    // actors stable identity before they are offered as persistent heat sources.
+    AActor* OwningActor = GetOwner();
+    if (IsValid(OwningActor))
+    {
+        UWorldObjectIdentityComponent* Identity =
+            OwningActor->FindComponentByClass<UWorldObjectIdentityComponent>();
+        if (!IsValid(Identity))
+        {
+            Identity = NewObject<UWorldObjectIdentityComponent>(
+                OwningActor, TEXT("WorldObjectIdentity"));
+            if (IsValid(Identity))
+            {
+                OwningActor->AddInstanceComponent(Identity);
+                Identity->RegisterComponent();
+            }
+        }
+        if (IsValid(Identity))
+        {
+            Identity->EnsureIdentity();
+            if (Identity->DefinitionId.IsNone())
+                Identity->SetDefinitionId(FName(TEXT("World.HeatSource")));
+        }
+    }
+
     if (UWorldSurvivalSubsystem* Survival =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr)
     {
         Survival->RegisterHeatSource(this);
     }
-    // Once the game data is applied to the world, every fire knows the fuels.
+    // Once game data is applied, every fire knows the authored fuel definitions.
     if (const UWorldGameDataSubsystem* GameData = GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr)
     {
         if (GameData->IsApplied())
