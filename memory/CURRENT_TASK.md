@@ -57,7 +57,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing automation-test names/fixtures scanned for game-data, survival, agriculture, production, save, route, threat, and structure coverage).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing automation-test conventions and representative farming/survival tests inspected).
+- `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
 
 ### Findings
@@ -65,7 +66,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`, so P0.5 should be resolved by making the game-data loader authoritative and not silently registering a parallel demo recipe.
 - `WorldGameDataSubsystem.cpp` already converts `transformations.json` to production and hand recipes. The remaining P0.5 gap is the scenario actor's optional parallel recipe path, not absence of the data pipeline.
 - `InventoryCraftingComponent.cpp` confirms unique physical items are consumed through the ownership ledger and non-consuming tools remain in inventory. Existing survival methods already implement owned-item consumption, conditions/treatment, activity stamina cost, wetness, rest quality, and temperature exposure; remaining gaps include environment/player triggers and UI/world wiring, not those bases.
-- `CODE_INDEX.md` is the authoritative filename/type map; survival API names are recorded. `WorldDemoScenarioActor.cpp` does not contain literal ingredient/output values; it registers a `ConfiguredRecipe` property. Inspect its header before deciding whether P0.5 is still open or the status note is stale.
+- Current production API can be checked against `FWorldProductionRecipe` and `FWorldProductionStation`; `WorldGameDataSubsystem` converts transformation JSON to these types, while the demo actor has an optional second editable recipe path. Use the exact fields from this header if validating it against data.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
 - Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
 
