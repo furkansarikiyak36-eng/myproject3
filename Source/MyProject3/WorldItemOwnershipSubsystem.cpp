@@ -6,7 +6,7 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
 {
     if (!Record.ItemId.IsValid() || Record.DefinitionId.IsNone() ||
         Record.Quantity <= 0 || Record.Revision <= 0 ||
-        static_cast<uint8>(Record.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+        static_cast<uint8>(Record.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
         Items.Contains(Record.ItemId) || MaxTrackedItems <= 0 ||
         Items.Num() >= MaxTrackedItems ||
         !FMath::IsFinite(Record.WorldLocation.X) ||
@@ -21,7 +21,8 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
     if ((Record.OwnerKind == EWorldItemOwnerKind::Held ||
          Record.OwnerKind == EWorldItemOwnerKind::Inventory ||
          Record.OwnerKind == EWorldItemOwnerKind::Storage ||
-         Record.OwnerKind == EWorldItemOwnerKind::InTransit) &&
+         Record.OwnerKind == EWorldItemOwnerKind::InTransit ||
+         Record.OwnerKind == EWorldItemOwnerKind::Equipped) &&
         !Record.OwnerId.IsValid())
     {
         return false;
@@ -47,8 +48,8 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     const FGuid& NewOwnerId, FVector NewWorldLocation, FWorldOwnedItemRecord& OutRecord)
 {
     if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
-        static_cast<uint8>(ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-        static_cast<uint8>(NewOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+        static_cast<uint8>(ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
+        static_cast<uint8>(NewOwner) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
         !FMath::IsFinite(NewWorldLocation.X) || !FMath::IsFinite(NewWorldLocation.Y) ||
         !FMath::IsFinite(NewWorldLocation.Z))
     {
@@ -85,7 +86,7 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
 
     const bool bRequiresOwnerId = NewOwner == EWorldItemOwnerKind::Held ||
         NewOwner == EWorldItemOwnerKind::Inventory || NewOwner == EWorldItemOwnerKind::Storage ||
-        NewOwner == EWorldItemOwnerKind::InTransit;
+        NewOwner == EWorldItemOwnerKind::InTransit || NewOwner == EWorldItemOwnerKind::Equipped;
     if (bRequiresOwnerId && !NewOwnerId.IsValid())
     {
         return false;
@@ -396,7 +397,7 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
     {
         if (!Item.ItemId.IsValid() || Item.DefinitionId.IsNone() || Item.Quantity <= 0 ||
             Item.Revision <= 0 ||
-            static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
             !FMath::IsFinite(Item.WorldLocation.X) ||
             !FMath::IsFinite(Item.WorldLocation.Y) ||
             !FMath::IsFinite(Item.WorldLocation.Z) ||
@@ -409,7 +410,8 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
         const bool bNeedsOwner = Item.OwnerKind == EWorldItemOwnerKind::Held ||
             Item.OwnerKind == EWorldItemOwnerKind::Inventory ||
             Item.OwnerKind == EWorldItemOwnerKind::Storage ||
-            Item.OwnerKind == EWorldItemOwnerKind::InTransit;
+            Item.OwnerKind == EWorldItemOwnerKind::InTransit ||
+            Item.OwnerKind == EWorldItemOwnerKind::Equipped;
         return !bNeedsOwner || Item.OwnerId.IsValid();
     };
 
@@ -432,9 +434,9 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
             !ProposedItems.Contains(Receipt.ItemId) || ProposedReceipts.Contains(Receipt.OperationId) ||
             Receipt.ExpectedRevision <= 0 || Receipt.ExpectedRevision >= MAX_int64 ||
             Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
-            static_cast<uint8>(Receipt.ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-            static_cast<uint8>(Receipt.RequestedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
-            static_cast<uint8>(Receipt.ResultingOwner) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
+            static_cast<uint8>(Receipt.ExpectedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
+            static_cast<uint8>(Receipt.RequestedOwner) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
+            static_cast<uint8>(Receipt.ResultingOwner) > static_cast<uint8>(EWorldItemOwnerKind::Equipped) ||
             !IsValidItem(Receipt.ResultRecord) || Receipt.ResultRecord.ItemId != Receipt.ItemId ||
             Receipt.ResultRecord.Revision != Receipt.ResultingRevision ||
             Receipt.ResultRecord.OwnerKind != Receipt.ResultingOwner ||
