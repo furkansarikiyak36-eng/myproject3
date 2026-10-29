@@ -13,6 +13,20 @@ class UWorldObjectIdentityComponent;
 enum class EWorldItemOwnerKind : uint8;
 struct FWorldOwnedItemRecord;
 
+/** A successful cut-progress request is replayed from this receipt, never applied twice. */
+USTRUCT(BlueprintType)
+struct FLogCutProgressReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") ELogCutAction Action = ELogCutAction::SplitHalf;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") float NormalizedWork = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") float ResultingProgress = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") EWorldOperationResultCode ResultCode = EWorldOperationResultCode::Success;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") FText ResultMessage;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Log Piece|Processing") TArray<FGuid> AffectedObjectIds;
+};
+
 UCLASS(Blueprintable)
 class MYPROJECT3_API ALogBuildPiece : public AActor, public IStructuralPieceInterface
 {
@@ -303,6 +317,12 @@ private:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true"))
     bool bHasActiveCutProgress = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true"))
+    TArray<FLogCutProgressReceipt> CutProgressReceipts;
+
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Log Piece|Processing", meta=(AllowPrivateAccess="true", ClampMin="1", ClampMax="1024"))
+    int32 MaxCutProgressReceipts = 128;
 
     UPROPERTY(Transient)
     bool bIsPlaced = false;
