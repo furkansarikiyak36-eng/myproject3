@@ -1117,12 +1117,18 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
         CurrentProfile.Revision, Tunic.ItemId, Tunic.Revision, Inventory->GetInventoryOwnerId()));
     TestTrue(TEXT("Tunic grants the cold-protection capability"),
         Survival->HasEquippedCapability(Profile.EntityId, TEXT("Capability.ColdProtection")));
-    TestTrue(TEXT("Mountain pass becomes enterable in summer with cold-protection clothing"),
+    TestFalse(TEXT("Cold protection alone is insufficient without terrain grip"),
         Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
+    TestTrue(TEXT("Reason identifies missing terrain grip"),
+        AccessReason.Contains(TEXT("Capability.TerrainGrip")));
 
     TestTrue(TEXT("Read profile before equipping boots"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
     TestTrue(TEXT("Equip owned hide boots"), Survival->TryEquipItem(FGuid::NewGuid(), Profile.EntityId,
         CurrentProfile.Revision, Boots.ItemId, Boots.Revision, Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Boots grant the terrain-grip capability"),
+        Survival->HasEquippedCapability(Profile.EntityId, TEXT("Capability.TerrainGrip")));
+    TestTrue(TEXT("Mountain pass becomes enterable in summer with both capabilities"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
     const FGuid MountainEntryOperationId = FGuid::NewGuid();
     TestTrue(TEXT("Record mountain-pass discovery with both required clothing items"),
         Data->TryRecordZoneEntry(MountainEntryOperationId, Profile.EntityId,
