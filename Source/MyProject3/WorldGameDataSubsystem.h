@@ -95,6 +95,8 @@ struct FGameDataWorldEvent
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Effect = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double WarningSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double DurationSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float TriggerMinimum = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float TriggerMaximum = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MinimumSeverity = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MaximumSeverity = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName CounterItemId = NAME_None;
