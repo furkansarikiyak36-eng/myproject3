@@ -152,15 +152,29 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool TryTakeStockForPlayer(
         const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision, const FGuid& PlayerEntityId);
     /** Converts one loose, world-owned physical log into one station stock unit. OperationId must be reused for retries. */
-    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
+    /** Native system wrapper; refuses knowledge-gated items when progression data is loaded. */
+    bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
+    UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool TryIngestWorldOwnedLogPieceForPlayer(
+        FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision,
+        int64 ExpectedStationRevision, const FGuid& PlayerEntityId, FName& OutStockItemId);
     /** Ingests a uniquely owned ledger-only world resource; rejects items with a physical actor adapter. */
-    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedItem(
+    /** Native system wrapper; refuses knowledge-gated items when progression data is loaded. */
+    bool TryIngestWorldOwnedItem(
         FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision,
         int64 ExpectedStationRevision, FName& OutStockItemId);
+    UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool TryIngestWorldOwnedItemForPlayer(
+        FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision,
+        int64 ExpectedStationRevision, const FGuid& PlayerEntityId, FName& OutStockItemId);
     /** Stable recipe key for physical resource stock; preserves the nominal mesh family when one is authored. */
     UFUNCTION(BlueprintPure, Category="World|Production") static FName MakePhysicalStockItemId(FName DefinitionId, FName MeshVariantSetId);
     /** Converts one aggregate stock unit into a real world-owned physical log. Callers must reuse OperationId for retries. */
-    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryMaterializeStockAsWorldLog(FGuid StationId, FGuid OperationId, FName StockItemId, FName DefinitionId, FName BaseDefinitionId, FName MeshVariantSetId, int64 ExpectedStationRevision, const FTransform& SpawnTransform, TSubclassOf<ALogBuildPiece> LogActorClass, FGuid& OutWorldItemId);
+    /** Native system wrapper; refuses knowledge-gated outputs when progression data is loaded. */
+    bool TryMaterializeStockAsWorldLog(FGuid StationId, FGuid OperationId, FName StockItemId, FName DefinitionId, FName BaseDefinitionId, FName MeshVariantSetId, int64 ExpectedStationRevision, const FTransform& SpawnTransform, TSubclassOf<ALogBuildPiece> LogActorClass, FGuid& OutWorldItemId);
+    UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool TryMaterializeStockAsWorldLogForPlayer(
+        FGuid StationId, FGuid OperationId, FName StockItemId, FName DefinitionId,
+        FName BaseDefinitionId, FName MeshVariantSetId, int64 ExpectedStationRevision,
+        const FTransform& SpawnTransform, TSubclassOf<ALogBuildPiece> LogActorClass,
+        const FGuid& PlayerEntityId, FGuid& OutWorldItemId);
     /** Retry-safe enqueue; caller must reuse OperationId when retrying the same request. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryEnqueueJob(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid& OutJobId);
     /** Player-bound enqueue. Any recipe/input/output listed in discovery unlocks is gated by the player's saved knowledge. */
