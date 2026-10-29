@@ -52,7 +52,7 @@ Exact per-task status (exists / partial / missing): `PLAN_STATUS.md`.
 ## What `group-a-code-closure` gives each task (if adopted, Q00)
 
 Checked 2026-10-29 from its headers. "Fits" = matches the plan; "partly" = a base, plan needs more.
-Everything below is backend only: no input or HUD for the player unless stated. Branch does not compile yet.
+Everything below is backend only: no input or HUD for the player unless stated. Builds and passes tests on `game/p00-adopt-group-a` (2026-10-29).
 
 | group-a piece | Task | Fit | Build on top (our work) |
 |---|---|---|---|
@@ -84,7 +84,7 @@ the 38 transformations as data, field chain, zones content, natural events and c
 
 ## Phase 0 — Preparation
 
-**P0.0 · Decide what to do with `group-a-code-closure`** — `blocked-user`
+**P0.0 · Decide what to do with `group-a-code-closure`** — `tested` (adopted on `game/p00-adopt-group-a`, 250ce13, 85/85; user said "kısmileri bitirelim")
 ChatGPT wrote +182 commits (~6.6k lines) on top of our base: fuel items, freshness, rest, conditions,
 equipment, discovery rewards, excavation → items → production, item-backed farming, route costs.
 It does not compile as pushed: 10 UHT errors + 6 C++ errors in 2 files (see `CODEBASE.md` Findings). Options: (a) fix its build, run the
@@ -256,4 +256,5 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P0.0 · tested · group-a adopted on game/p00-adopt-group-a, build fixed (16 errors), 85/85 tests, 250ce13
 - 2026-10-29 · design + roadmap written · — · commit after 85569c6

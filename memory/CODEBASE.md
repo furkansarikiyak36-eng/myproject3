@@ -11,7 +11,7 @@ This map describes **`feature/simple-intent`** only. Other code lines exist (che
 | Branch | Base | Ahead | Content | Engine state |
 |---|---|---|---|---|
 | `feature/simple-intent` | — | — | Placement kernel, contextual carry, this map | built, 68 tests pass (2026-10-27) |
-| `group-a-code-closure` | simple-intent @ `321e55a` | +182 (ChatGPT) | Fuel items, food freshness, rest, survival conditions + treatment, equipment/clothing, gated discovery rewards, region access by equipment, excavation → resource items → production, item-backed farming/feeding/harvest, terrain-aware routes, raid damage pulses, voxel save (schema v19), `TerrainDigToolComponent` | **does not compile**: 10 UHT + 6 C++ errors (Findings) |
+| `group-a-code-closure` | simple-intent @ `321e55a` | +182 (ChatGPT) | Fuel items, food freshness, rest, survival conditions + treatment, equipment/clothing, gated discovery rewards, region access by equipment, excavation → resource items → production, item-backed farming/feeding/harvest, terrain-aware routes, raid damage pulses, voxel save (schema v19), `TerrainDigToolComponent` | did not compile as pushed; fixed and tested on `game/p00-adopt-group-a` |
 | `fix/vertical-slice-b-core-loop` | `0bd92c9` (2026-10-27) | +342 | Older line **without** the placement kernel; has `RaidPlaceholderPawn`, `WorldRaidTargetComponent` | unknown |
 | `phase-03…phase-14-*-sequential` | `2610099` (2026-10-25) | +107 (phase-14) | Older line; phase-14 has `Docs/GameDesign/MYPROJECT3_GAMEPLAY_VISION_AND_PLAYER_PROGRESSION_TR.md` | unknown |
 | `main` | — | 3 commits not in simple-intent (memory + SOTF acceptance doc) | behind by 700 | — |
@@ -71,6 +71,7 @@ Plan = `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`, tasks = `ROADMAP.md`.
 
 ## Findings (newest first)
 
+- 2026-10-29 · `game/p00-adopt-group-a` (group-a + simple-intent): build fixed in 4 places, 4 tests fixed (survival step now takes the END time; guard test actor had no root; collision trace off the exact vertex). 85/85 pass (250ce13). This map still describes simple-intent rows; [A] rows in `PLAN_STATUS.md`.
 - 2026-10-29 · Quality of `group-a-code-closure`: careful backend in the house style (operation ids,
   revisions, idempotent receipts, rollback, save schema up to v20), 17 new core tests authored (48 → 65).
   But: written without a compiler (16 errors, fields used that do not exist); tests never ran;

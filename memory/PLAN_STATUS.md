@@ -1,13 +1,13 @@
 # Plan status: what exists, what is partial, what is missing
 
 Checked 2026-10-29 against `feature/simple-intent` (ours, builds, 68 tests) and
-`group-a-code-closure` (ChatGPT, does **not** compile yet). Task ids from `ROADMAP.md`.
+`group-a-code-closure` (ChatGPT). Both are now merged on `game/p00-adopt-group-a`: builds, 85/85 tests (2026-10-29). Task ids from `ROADMAP.md`.
 Update this file whenever a task changes state.
 
 - **Var / exists**: code covers the task's behaviour (backend). Still not played in PIE.
 - **Kısmi / partial**: a base exists; the "Missing" column is still to do.
 - **Yok / missing**: no code.
-- `[A]` = only in group-a (needs Q00), `[S]` = in our branch.
+- `[A]` = came from group-a, `[S]` = from our branch. Both exist on `game/p00-adopt-group-a`.
 - **Player** = input and HUD so the player can use it. Almost everything is missing this.
 
 ## Summary

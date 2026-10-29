@@ -26,7 +26,7 @@ Asked by the user: "kısmileri bitirelim" (2026-10-29)
 Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a` (from origin/group-a-code-closure + merge of feature/simple-intent)
 
 ### Plan (one commit per step; tick when tested)
-0. [ ] Adopt group-a: new branch, merge simple-intent, fix 10 UHT + 6 C++ errors, run all tests, fix failures.
+0. [x] Adopt group-a (250ce13, 85/85): new branch, merge simple-intent, fix 10 UHT + 6 C++ errors, run all tests, fix failures.
 1. [ ] P1.1 calendar (day/month/season/year from clock, days per month 5)
 2. [ ] P1.2 monthly climate, snow depth, ground wetness
 3. [ ] P2.1 water items (dirty/boiled), P2.2 sleep place, P2.4 spoilage modifiers, P2.5 condition triggers
@@ -46,7 +46,10 @@ Order may change; record why here.
 - —
 
 ### Changes
-- —
+- Branch game/p00-adopt-group-a created, merged simple-intent (8dc514c, DECISIONS conflict kept both).
+- Fixes: survival header private config lost BlueprintReadWrite; FBox IsValid() -> IsValid (field) x2; receipt ExpectedInventoryOwnerId -> ExpectedItemOwnerId (3 sites). Build: Succeeded.
+- Tests: 85 total, 81 pass, 4 fail: Survival.Body.ColdCoolsCoreAndBurnsCalories (line 680 'Advance one hour' false) and Survival.Heat.RainDrownsOpenFireButNotHearth (736-742) = OLD tests broken by group-a; Terrain.Voxel.BoundedDigChecksMaterialToolAndRevision (866 collision not published) and Terrain.Voxel.DigRejectsNearGroundedStructure (947-949 dig not refused) = new group-a tests.
+- Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 0: git switch -c game/p00-adopt-group-a origin/group-a-code-closure; merge feature/simple-intent; build.
+Step 1: P1.1 calendar. Read WorldSimulationClockSubsystem.h/.cpp, add day/month/season/year (5 days per month, start end of March year 1), tests.
