@@ -5,6 +5,9 @@
 #include "WorldClimateSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
+#include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Misc/Crc.h"
@@ -220,7 +223,7 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
             Instance.Phase = EWorldNaturalEventPhase::Active;
             ++Instance.Revision;
         }
-        if (Instance.Phase == EWorldNaturalEventPhase::Active &&
+        else if (Instance.Phase == EWorldNaturalEventPhase::Active &&
             TargetTimeSeconds >= Instance.EndsAtSeconds)
         {
             if (Instance.Revision >= MAX_int64 - 1)
@@ -229,6 +232,9 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
             ++Instance.Revision;
         }
     }
+
+    if (!ApplyActiveEventEffects(DeltaSeconds, TargetTimeSeconds, TargetTickIndex))
+        return false;
 
     // Retire old terminal history before admitting new events. Otherwise a
     // long-running world would eventually fill the history with completed
@@ -288,6 +294,146 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
     State.LastProcessedTickIndex = TargetTickIndex;
     State.LastProcessedTimeSeconds = TargetTimeSeconds;
     State.PreviousSnowDepthCm = Climate->GetSnowDepthCm();
+    return true;
+}
+
+bool UWorldEventDirectorSubsystem::ApplyConditionEffect(
+    const FGameDataWorldEvent& Definition, const FWorldNaturalEventInstance& Instance)
+{
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* Data = GetGameData();
+    if (!Survival || !Climate || !Data)
+        return false;
+
+    FName ConditionId = NAME_None;
+    if (Definition.Effect == TEXT("exposure"))
+        ConditionId = TEXT("Illness.Cold");
+    else if (Definition.Effect == TEXT("illness_exposure"))
+        ConditionId = TEXT("Illness.ToxicRain");
+    else if (Definition.Effect == TEXT("illness_spread"))
+        ConditionId = TEXT("Illness.Epidemic");
+    else
+        return true;
+
+    TArray<FWorldSurvivalProfile> Profiles;
+    TArray<FWorldDiscoveryRecord> Discoveries;
+    EWorldWeatherState IgnoredWeather = EWorldWeatherState::Clear;
+    float IgnoredSeverity = 0.0f;
+    Survival->ExportSnapshot(Profiles, Discoveries, IgnoredWeather, IgnoredSeverity);
+
+    for (const FWorldSurvivalProfile& Profile : Profiles)
+    {
+        if (!Profile.EntityId.IsValid() || Profile.Revision <= 0)
+            continue;
+
+        const bool bAlreadyHasCondition = Profile.Conditions.ContainsByPredicate(
+            [&ConditionId](const FWorldSurvivalConditionState& Condition)
+            { return Condition.DefinitionId == ConditionId; });
+        if (bAlreadyHasCondition)
+            continue;
+
+        float Protection = FMath::Clamp(Profile.ShelterProtection, 0.0f, 1.0f);
+        if (Definition.Effect == TEXT("exposure") && Protection >= 0.8f)
+            continue;
+        if (Definition.Effect == TEXT("illness_exposure") && Protection >= 0.75f)
+            continue;
+        if (Definition.Effect == TEXT("illness_spread") &&
+            Profile.Conditions.ContainsByPredicate([](const FWorldSurvivalConditionState& Condition)
+            {
+                return Condition.Kind == EWorldSurvivalConditionKind::Illness ||
+                    Condition.Kind == EWorldSurvivalConditionKind::Poisoning;
+            }))
+            continue;
+
+        const float EffectiveSeverity = FMath::Clamp(
+            Instance.Severity * (Definition.Effect == TEXT("illness_spread") ? 0.8f : 1.0f - Protection),
+            0.1f, 1.0f);
+        FGuid OperationId(
+            Instance.InstanceId.A ^ Profile.EntityId.A,
+            Instance.InstanceId.B ^ Profile.EntityId.B,
+            Instance.InstanceId.C ^ Profile.EntityId.C,
+            Instance.InstanceId.D ^ Profile.EntityId.D);
+        if (!OperationId.IsValid())
+            OperationId.A = 1;
+
+        // Each profile receipt is idempotent. A profile with a full condition
+        // receipt list is skipped without blocking the rest of the simulation.
+        Survival->TryApplyCondition(OperationId, Profile.EntityId, Profile.Revision,
+            ConditionId, EffectiveSeverity);
+    }
+    return true;
+}
+
+bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
+    double DeltaSeconds, double TargetTimeSeconds, int64 TargetTickIndex)
+{
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* Data = GetGameData();
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* StructuralGraph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!World || !Data || !Agriculture || !StructuralGraph)
+        return false;
+
+    for (FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+            [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+        if (!Definition)
+            return false;
+
+        const bool bContinuous = Definition->Effect == TEXT("crop_moisture_loss");
+        if (bContinuous && Instance.LastAppliedEffectTickIndex == TargetTickIndex)
+            continue;
+        if (!bContinuous && Instance.bOnsetEffectApplied)
+            continue;
+
+        if (Definition->Effect == TEXT("crop_moisture_loss") ||
+            Definition->Effect == TEXT("crop_damage"))
+        {
+            if (!Agriculture->ApplyEnvironmentalEffect(Definition->Effect, Instance.Severity,
+                bContinuous ? DeltaSeconds : 1.0))
+                return false;
+        }
+        else if (Definition->Effect == TEXT("structure_damage"))
+        {
+            TArray<FWorldStructuralNodeSnapshot> Nodes;
+            if (!StructuralGraph->ExportSnapshot(Nodes))
+                return false;
+            const float Damage = 8.0f * FMath::Clamp(Instance.Severity, 0.0f, 1.0f);
+            for (const FWorldStructuralNodeSnapshot& Node : Nodes)
+            {
+                if (!Node.NodeId.IsValid())
+                    return false;
+                bool bThresholdExceeded = false;
+                if (!StructuralGraph->ApplyDamage(Node.NodeId, Damage, bThresholdExceeded))
+                    return false;
+            }
+        }
+        else if (Definition->Effect == TEXT("exposure") ||
+                 Definition->Effect == TEXT("illness_exposure") ||
+                 Definition->Effect == TEXT("illness_spread"))
+        {
+            if (!ApplyConditionEffect(*Definition, Instance))
+                return false;
+        }
+        // Wetness is authored and applied by the climate subsystem itself.
+        // Flood-route closures and physical fire spread are owned by the
+        // logistics/fire adapters; they remain explicit effects in event data
+        // until those systems expose save-safe, reversible operations.
+        Instance.bOnsetEffectApplied = true;
+        Instance.LastAppliedEffectTickIndex = TargetTickIndex;
+        if (Instance.Revision >= MAX_int64 - 1)
+            return false;
+        ++Instance.Revision;
+    }
     return true;
 }
 
