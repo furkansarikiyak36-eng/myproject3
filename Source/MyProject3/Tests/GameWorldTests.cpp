@@ -1211,17 +1211,38 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     UWorld* World = TestWorld.World;
     UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
-    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production))
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production) ||
+        !TestNotNull(TEXT("Survival"), Survival) || !TestNotNull(TEXT("Clock"), Clock))
         return false;
     TestTrue(TEXT("Data"), Data->LoadDefault() && Data->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared world clock"), Clock->InitializeClock(401, 0.0));
+
+    FWorldSurvivalProfile PlayerProfile;
+    PlayerProfile.EntityId = FGuid::NewGuid();
+    TestTrue(TEXT("Register player progression profile"), Survival->RegisterProfile(PlayerProfile));
 
     AActor* Owner = World->SpawnActor<AActor>();
     UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
     Owner->AddInstanceComponent(Inventory);
     Inventory->RegisterComponent();
+    Inventory->SetProgressionEntityId(PlayerProfile.EntityId);
     FInventoryStack Pot;
     Pot.ItemId = TEXT("Pot.Raw");
     TestTrue(TEXT("Raw pot in hand"), Inventory->TryAddItem(Pot));
+    FInventoryStack Sand;
+    Sand.ItemId = TEXT("Sand");
+    Sand.Quantity = 2;
+    TestTrue(TEXT("Sand in hand"), Inventory->TryAddItem(Sand));
+    FInventoryStack Charcoal;
+    Charcoal.ItemId = TEXT("Charcoal");
+    TestTrue(TEXT("Charcoal in hand"), Inventory->TryAddItem(Charcoal));
+    FInventoryStack Basket;
+    Basket.ItemId = TEXT("Basket");
+    TestTrue(TEXT("Basket in hand"), Inventory->TryAddItem(Basket));
+    TestFalse(TEXT("Discovery-gated water filter craft is initially locked"),
+        Inventory->TryCraft(TEXT("make_filter")));
 
     AProductionStationActor* Kiln = World->SpawnActor<AProductionStationActor>();
     if (!TestNotNull(TEXT("Kiln"), Kiln))
@@ -1242,7 +1263,24 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Wood fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.0f));
     TestFalse(TEXT("A wood fire is not hot enough"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
     TestTrue(TEXT("Charcoal fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
-    TestTrue(TEXT("Firing starts"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
+    TestFalse(TEXT("Legacy id-less enqueue cannot bypass locked kiln recipe"),
+        Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
+    TestFalse(TEXT("Player cannot fire the pot before discovering the creek recipe"),
+        Kiln->TryStartRecipeForInventory(TEXT("fire_pot"), Inventory, Job));
+    FString AccessReason;
+    TestTrue(TEXT("Discover the camp"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), PlayerProfile.EntityId, TEXT("Zone.0"), FVector::ZeroVector, AccessReason));
+    TestTrue(TEXT("Discover the creek after the camp"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), PlayerProfile.EntityId, TEXT("Zone.1"), FVector::ZeroVector, AccessReason));
+    TestTrue(TEXT("Creek discovery unlocks the filter recipe"),
+        Inventory->IsDefinitionAvailableForProgression(TEXT("make_filter")));
+    TestTrue(TEXT("Craft filter after its discovery"), Inventory->TryCraft(TEXT("make_filter")));
+    TestEqual(TEXT("One water filter is crafted"), Inventory->GetItemCount(TEXT("Tool.Filter")), 1);
+
+    TestFalse(TEXT("Player cannot skip the charcoal-hot fire rule"),
+        Kiln->TryStartRecipeForInventory(TEXT("fire_pot"), Inventory, Job));
+    TestTrue(TEXT("Firing starts after discovery and fire requirement"),
+        Kiln->TryStartRecipeForInventory(TEXT("fire_pot"), Inventory, Job));
     TestEqual(TEXT("The raw pot is used"), Kiln->GetStockCount(TEXT("Pot.Raw")), 0);
 
     for (int32 Hour = 0; Hour < 4; ++Hour)
