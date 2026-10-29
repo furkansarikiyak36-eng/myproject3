@@ -799,6 +799,9 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read explorer after high-forest discovery"), Survival->GetProfile(Explorer.EntityId, Explorer));
     TestTrue(TEXT("Lake-swamp zone opens after high-forest discovery"),
         Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.3"), ZoneAccessReason));
+    TestTrue(TEXT("Record lake-swamp discovery after the high-forest prerequisite"), Survival->TryRecordConfiguredDiscovery(
+        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone3.LakeSwamp"),
+        FVector(900.0, 3000.0, 0.0), 0.0));
     TestFalse(TEXT("Mountain pass is seasonally closed in the starting month"),
         Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.4"), ZoneAccessReason));
     TestTrue(TEXT("Seasonal denial gives a reason"), ZoneAccessReason.Contains(TEXT("seasonally closed")));
