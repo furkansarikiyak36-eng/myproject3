@@ -26,7 +26,7 @@ Started: 2026-10-29 · ChatGPT
 
 ### Plan
 1. [x] Make the placement/carry contracts explicit; P0.2 documentation is committed.
-2. [todo] Implement missing data-driven natural-event rules and connect them to existing shared-clock orchestration without bypassing rollback semantics.
+2. [in-progress] Implement the natural-event runtime and connect it to existing shared-clock orchestration without bypassing rollback semantics. Event data loading/validation is now authored.
 3. [in-progress] Close safe backend-only gaps in survival, shelter/plaster, gathering/stations, farming/regions/routes/raids/repair/helper. Plaster/charcoal data-contract test is authored.
 4. [todo] Add focused automation tests for all changed contracts; author only, do not claim run.
 5. [todo] Reconcile remaining status docs and keep the session note current; batch build/test remains for local Unreal session.
@@ -34,7 +34,7 @@ Started: 2026-10-29 · ChatGPT
 ### Findings
 - This branch contains station placement, gatherable spawning and charcoal recipe/fire-pause changes authored earlier in this work session.
 - P0.2 is now documented in the placement guide and carry module note. Open geometry issues remain frozen until P10.
-- Added an automation test for the existing `mix_plaster` and `burn_charcoal` data contracts; it is authored but unrun.
-- `mix_plaster` has no persistent wall-coating behavior yet; natural-event runtime and date/event UI are still open.
+- Added `Config/GameData/events.json` with 9 natural-event contracts, a `FGameDataWorldEvent` data type, loader parsing/validation, and authored checks for the event data alongside plaster/charcoal contracts. Static JSON/reference sanity was checked in-tool; Unreal tests remain unrun.
+- `mix_plaster` has no persistent wall-coating behavior yet; natural-event runtime and date/event UI are still open. Event definitions are data only until the scheduler/effect lifecycle is implemented.
 - The status ledger was reconciled for P0.2/P3.3/P3.4, but broader task closure and one batch validation remain.
 - Current known baseline evidence does not cover these recent unbuilt changes. All new work stays `code-written / unbuilt-unrun`.
