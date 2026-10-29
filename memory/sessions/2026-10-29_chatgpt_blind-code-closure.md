@@ -26,3 +26,10 @@ Branch: `work/phase-3-4-closure`
 
 ## Next
 Continue remaining blind-codeable Phase 1–10 items, each with focused authored tests and status evidence. Do not report compiled/tested until the user performs the later batch build/test; PIE and demo validation follow that batch.
+
+## Additional blind-code closure — farming and crop interaction (2026-10-29)
+
+- Added seven data-authored field actions with item/tool/labor/field-delta configuration. The agriculture input transaction snapshots and rolls back field cells, crop/animal/pen state, ownership ledger, inventory and survival profile; tests cover required items, reusable tools, stamina/energy cost and idempotent retries. Unbuilt/unrun.
+- Added crop-specific planting and harvest labor, and a shared 3×3 farm-cell resolver. VerticalSlice_C's P interaction uses a discovered, unique owned seed to plant on a prepared field; mature crops harvest into the inventory rather than being left as inaccessible world items.
+- Harvest-to-inventory preflights item and ledger capacity; creates harvest/seed outputs as individually owned items; transfers ownership and adds inventory references; charges authored labor. On failure, crop/fertility, ownership, inventory and survival state roll back together. Replaying the same operation returns its previous output IDs only when they are still owned by the same inventory and does not charge twice.
+- Authored automation coverage includes an end-to-end discovery/seed-gate/plant transaction and FCropHarvestToInventoryChargesAuthoredLaborTest; no tests/build/PIE run on this branch.
