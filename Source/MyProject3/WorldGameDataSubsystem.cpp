@@ -465,6 +465,7 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         Definition.SeedDefinitionId = C.SeedItemId;
         Definition.HarvestDefinitionId = C.HarvestItemId;
         Definition.HarvestUnits = C.HarvestUnits;
+        Definition.SeedReturnUnits = C.SeedReturnUnits;
         Definition.SecondsPerStage = C.SecondsPerStage;
         Definition.PlantMonths = C.PlantMonths;
         Definition.FoundInZone = C.FoundInZone;
