@@ -121,7 +121,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WildlifeActor.cpp` (current spawning/tick/death behavior inspected).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed exact owned-item fields and owner kinds).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires an inventory owner ID, finite timestamps/location and capacity; fills `BaseDefinitionId`).
-- `Source/MyProject3/LogSnapCharacter.h` (added falling-state/peak-speed fields and public Blueprint-callable `ApplyFallImpact` entry point for the thresholded landing consequence).
+- `Source/MyProject3/LogSnapCharacter.h` (fall tracking fields and `ApplyFallImpact` entry point).
+- `Source/MyProject3/LogSnapCharacter.cpp` (tracks peak downward velocity while falling and applies a single consequence when movement exits falling; hard impacts ≥850 cm/s deal bounded physical damage and attempt receipt-backed `Injury.Fall` application via the shelter sensor profile).
 - `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival conditions exists).
 - `Source/MyProject3/WildlifeActor.h/.cpp` (Enemy already approaches the player and stops at ~150 cm, but there is no bite cooldown or attack/damage action; SmallAnimal capture state is present).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
@@ -155,4 +156,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement fall tracking in `LogSnapCharacter.cpp`: capture the largest downward speed while movement is falling, trigger `ApplyFallImpact` once on landing transition, and have that method deal bounded physical damage and apply `Injury.Fall` through the assigned survival profile.
+Implement rate-limited hostile bites in `WildlifeActor.cpp`: when an Enemy reaches the attack distance, apply physical hit damage and configured `Injury.AnimalBite` via the target's shelter sensor profile, then cooldown. Keep the health hit effective even if a condition definition/profile is unavailable.
