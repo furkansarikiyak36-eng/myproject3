@@ -35,6 +35,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter")
     TArray<FGuid> DefenseTargetNodeIds;
 
+    /** Number of visible raiders to materialize for a warning/active raid. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter|Wave", meta=(ClampMin="1", ClampMax="12"))
+    int32 RaidWaveSize = 3;
+
+    /** Deterministic radial offset from the target for each arriving raider. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter|Wave", meta=(ClampMin="0.0", ClampMax="20000.0"))
+    float SpawnDistanceFromTargetCm = 1800.0f;
+
     UFUNCTION(BlueprintCallable, Category="Threat|Adapter")
     bool AdvanceRaidWorldAdapter();
 
@@ -42,11 +50,11 @@ public:
     FGuid GetMaterializedRaidId() const { return MaterializedRaidId; }
 
     UFUNCTION(BlueprintPure, Category="Threat|Adapter")
-    bool IsRaidPawnMaterialized() const { return ActiveRaidPawn.IsValid(); }
+    bool IsRaidPawnMaterialized() const { return HasActiveRaidPawns(); }
 
 private:
     UPROPERTY(Transient)
-    TWeakObjectPtr<APawn> ActiveRaidPawn;
+    TArray<TWeakObjectPtr<APawn>> ActiveRaidPawns;
 
     UPROPERTY(Transient)
     FGuid MaterializedRaidId;
@@ -58,6 +66,7 @@ private:
     UPROPERTY(Transient)
     double NextDamageTimeSeconds = 0.0;
 
+    bool HasActiveRaidPawns() const;
     UWorldThreatDirectorSubsystem* GetThreatDirector() const;
     UWorldStructuralGraphSubsystem* GetStructuralGraph() const;
     bool ResolvePrimaryTargetNode(const FThreatRaidRecord& Raid, FGuid& OutNodeId, FVector& OutLocation) const;
