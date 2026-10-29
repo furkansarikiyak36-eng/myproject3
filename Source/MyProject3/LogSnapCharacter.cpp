@@ -20,6 +20,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "LogCarryComponent.h"
+#include "InventoryCraftingComponent.h"
 #include "CarryLoadComponent.h"
 #include "Math/RotationMatrix.h"
 
@@ -140,6 +141,7 @@ ALogSnapCharacter::ALogSnapCharacter()
         FVector(0.08f, 0.34f, 0.12f));
     AxePivotBaseRotation = AxePivot->GetRelativeRotation();
 
+    Inventory = CreateDefaultSubobject<UInventoryCraftingComponent>(TEXT("Inventory"));
     LogCarry = CreateDefaultSubobject<ULogCarryComponent>(TEXT("LogCarry"));
     CarryLoad = CreateDefaultSubobject<UCarryLoadComponent>(TEXT("CarryLoad"));
     BuildTools = CreateDefaultSubobject<ULogBuildToolsComponent>(TEXT("BuildTools"));
