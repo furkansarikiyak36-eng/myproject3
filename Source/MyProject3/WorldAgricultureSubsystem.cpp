@@ -880,7 +880,7 @@ bool UWorldAgricultureSubsystem::TrySetAnimalPenGate(
         return Existing->Action == EWorldAgricultureActionKind::SetAnimalPenGate &&
             Existing->EntityId == PenId && Existing->ExpectedEntityRevision == ExpectedPenRevision &&
             Existing->WorkAmount == (bClosed ? 1.0f : 0.0f) &&
-            ExistingPen && ExistingPen->bGateClosed == bClosed;
+            ExistingPen != nullptr;
     }
 
     FWorldAnimalPenState* Pen = AnimalPens.Find(PenId);
@@ -1378,7 +1378,10 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
             Animal.Location.ContainsNaN())
             return false;
 
+        const FWorldAnimalPenState* ProductPen = Animal.PenId.IsValid()
+            ? AnimalPens.Find(Animal.PenId) : nullptr;
         if (!Animal.bSlaughtered && Animal.bCaptured && Animal.Health > 0.0f &&
+            ProductPen && ProductPen->bGateClosed && ProductPen->AnimalIds.Contains(Animal.AnimalId) &&
             Animal.Hunger <= ProductHungerLimit && !Animal.ProductDefinitionId.IsNone())
         {
             const double TotalProductTime = Animal.ProductProgressSeconds + DeltaSeconds;
