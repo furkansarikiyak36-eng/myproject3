@@ -273,7 +273,7 @@ public:
     bool TryBoilWaterAtFire(const FGuid& OperationId, const FGuid& EntityId,
         int64 ExpectedProfileRevision, const FGuid& WaterItemId, int64 ExpectedWaterItemRevision,
         const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
-        const FGuid& ExpectedInventoryOwnerId);
+        const FGuid& ExpectedInventoryOwnerId, bool& bOutStarted);
     /** Begins a bounded rest interval on the common world clock; it does not create a second clock. */
     UFUNCTION(BlueprintCallable, Category="World|Survival")
     bool TryBeginRest(const FGuid& OperationId, const FGuid& EntityId,
