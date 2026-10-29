@@ -639,7 +639,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         }
     }
     Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
-    Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals);
+    Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals, OutSave->FieldCells);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
@@ -765,7 +765,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
 
     if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells, Snapshot->TerrainReceipts)) return false;
-    if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals)) return false;
+    if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals, Snapshot->FieldCells)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
     if (!Production->RestoreSnapshot(Snapshot->ProductionStations, Snapshot->ProductionRecipes)) return false;
@@ -929,6 +929,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Schema v22 adds storage spoilage rates and per-item spoilage age. The
         // defaults (rate 1, age 0 counted from creation) give the old behaviour.
         Candidate->SchemaVersion = 22;
+    }
+    if (Candidate->SchemaVersion == 22)
+    {
+        // Schema v23 persists prepared field cells and their idempotent action
+        // receipts. Older saves did not contain fields, so begin with empty soil.
+        Candidate->FieldCells.Reset();
+        Candidate->SchemaVersion = 23;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
