@@ -284,8 +284,7 @@ bool UWorldTerrainStateSubsystem::TryExcavateForResource(
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     if (!World || !Ownership || MaxOperationReceipts <= 0 ||
         Receipts.Num() >= MaxOperationReceipts ||
-        Ownership->MaxTrackedItems <= 0 ||
-        Ownership->GetTrackedItemCount() >= Ownership->MaxTrackedItems)
+        Ownership->MaxTrackedItems <= 0)
         return false;
 
     TArray<FWorldTerrainCellState> CellsBefore;
@@ -355,6 +354,11 @@ bool UWorldTerrainStateSubsystem::TryExcavateForResource(
         return false;
     }
     const int32 OutputUnits = static_cast<int32>(RawUnits);
+    if (OutputUnits > Ownership->MaxTrackedItems - Ownership->GetTrackedItemCount())
+    {
+        RollbackAll();
+        return false;
+    }
 
     TArray<FGuid> CreatedItemIds;
     CreatedItemIds.Reserve(OutputUnits);
