@@ -1308,11 +1308,14 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
     }
 
     if ((NewAnimal.bCaptured &&
-         (!NewAnimal.CaptureOperationId.IsValid() || !NewAnimal.CaptureToolItemId.IsValid() ||
-          !NewAnimal.CaptureInventoryOwnerId.IsValid() || NewAnimal.CaptureToolExpectedRevision <= 0)) ||
+         (!NewAnimal.CaptureOperationId.IsValid() || NewAnimal.CaptureToolDefinitionId.IsNone() ||
+          !NewAnimal.CaptureInventoryOwnerId.IsValid() ||
+          (NewAnimal.CaptureToolItemId.IsValid() && NewAnimal.CaptureToolExpectedRevision <= 0) ||
+          (!NewAnimal.CaptureToolItemId.IsValid() && NewAnimal.CaptureToolExpectedRevision != 0))) ||
         (!NewAnimal.bCaptured &&
          (NewAnimal.CaptureOperationId.IsValid() || NewAnimal.CaptureToolItemId.IsValid() ||
-          NewAnimal.CaptureInventoryOwnerId.IsValid() || NewAnimal.CaptureToolExpectedRevision != 0)) ||
+          !NewAnimal.CaptureToolDefinitionId.IsNone() || NewAnimal.CaptureInventoryOwnerId.IsValid() ||
+          NewAnimal.CaptureToolExpectedRevision != 0)) ||
         (NewAnimal.PenId.IsValid() && (!NewAnimal.bCaptured || NewAnimal.bSlaughtered)) ||
         (NewAnimal.bSlaughtered &&
          (!NewAnimal.bCaptured || NewAnimal.Health != 0.0f || NewAnimal.PenId.IsValid() ||
@@ -1680,11 +1683,14 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             A.ProductUnitsPerInterval <= 0 || A.ProductUnitsPerInterval > 64 ||
             A.Location.ContainsNaN() || A.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
             (A.bCaptured &&
-                (!A.CaptureOperationId.IsValid() || !A.CaptureToolItemId.IsValid() ||
-                 !A.CaptureInventoryOwnerId.IsValid() || A.CaptureToolExpectedRevision <= 0)) ||
+                (!A.CaptureOperationId.IsValid() || A.CaptureToolDefinitionId.IsNone() ||
+                 !A.CaptureInventoryOwnerId.IsValid() ||
+                 (A.CaptureToolItemId.IsValid() && A.CaptureToolExpectedRevision <= 0) ||
+                 (!A.CaptureToolItemId.IsValid() && A.CaptureToolExpectedRevision != 0))) ||
             (!A.bCaptured &&
                 (A.CaptureOperationId.IsValid() || A.CaptureToolItemId.IsValid() ||
-                 A.CaptureInventoryOwnerId.IsValid() || A.CaptureToolExpectedRevision != 0)) ||
+                 !A.CaptureToolDefinitionId.IsNone() || A.CaptureInventoryOwnerId.IsValid() ||
+                 A.CaptureToolExpectedRevision != 0)) ||
             (A.PenId.IsValid() && (!A.bCaptured || A.bSlaughtered)) ||
             (A.bSlaughtered &&
                 (!A.bCaptured || A.Health != 0.0f || A.PenId.IsValid() ||
@@ -1900,18 +1906,29 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             }
             else if (Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal)
             {
+                const FWorldAnimalDefinition* AnimalDefinition = FindAnimalDefinition(Animal.AnimalDefinitionId);
                 if (!Animal.bCaptured || Receipt.OperationId != Animal.CaptureOperationId ||
                     Receipt.InputItemId != Animal.CaptureToolItemId ||
                     Receipt.ExpectedInventoryOwnerId != Animal.CaptureInventoryOwnerId ||
                     Receipt.ExpectedItemRevision != Animal.CaptureToolExpectedRevision ||
                     Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision ||
                     Receipt.DefinitionId != Animal.AnimalDefinitionId ||
-                    !Receipt.InputItemId.IsValid() || !Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    Receipt.RequestedInputDefinitionId != Animal.CaptureToolDefinitionId ||
+                    Receipt.RequestedInputDefinitionId.IsNone() ||
+                    !Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    (AnimalDefinition && !AnimalDefinition->CaptureToolDefinitionIds.Contains(Receipt.RequestedInputDefinitionId)) ||
                     !Receipt.OutputItemIds.IsEmpty() || Receipt.RelatedEntityId.IsValid() ||
                     Receipt.ExpectedRelatedEntityRevision != 0 ||
                     Receipt.ResultingRelatedEntityRevision != 0)
                     return false;
-                bNeedsItemValidation = true;
+                if (Receipt.InputItemId.IsValid())
+                {
+                    if (Receipt.ExpectedItemRevision <= 0 || Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1)
+                        return false;
+                    bNeedsItemValidation = true;
+                }
+                else if (Receipt.ExpectedItemRevision != 0 || Receipt.ResultingItemRevision != 0)
+                    return false;
             }
             else if (Receipt.Action == EWorldAgricultureActionKind::AssignAnimalToPen)
             {
@@ -2096,14 +2113,15 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
         for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
         {
             const FWorldAnimalState& Animal = Pair.Value;
-            if (Animal.CaptureOperationId.IsValid() && !Exists(Animal.CaptureToolItemId))
+            if (Animal.CaptureOperationId.IsValid() && Animal.CaptureToolItemId.IsValid() &&
+                !Exists(Animal.CaptureToolItemId))
                 return false;
             for (const FGuid& ItemId : Animal.SlaughterOutputItemIds)
                 if (!Exists(ItemId)) return false;
             for (const FWorldAgricultureActionReceipt& Receipt : Animal.ActionReceipts)
             {
                 if ((Receipt.Action == EWorldAgricultureActionKind::FeedAnimal ||
-                     Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal) &&
+                     (Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal && Receipt.InputItemId.IsValid())) &&
                     !Exists(Receipt.InputItemId))
                     return false;
                 for (const FGuid& ItemId : Receipt.OutputItemIds)
