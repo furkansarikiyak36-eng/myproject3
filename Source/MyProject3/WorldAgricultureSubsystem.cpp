@@ -17,6 +17,116 @@ const FWorldCropDefinition* UWorldAgricultureSubsystem::FindCropDefinition(FName
     });
 }
 
+const FWorldFieldActionReceipt* UWorldAgricultureSubsystem::FindFieldActionReceipt(const FGuid& OperationId) const
+{
+    if (!OperationId.IsValid())
+        return nullptr;
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        const FWorldFieldActionReceipt* Found = Pair.Value.ActionReceipts.FindByPredicate(
+            [&OperationId](const FWorldFieldActionReceipt& Receipt) { return Receipt.OperationId == OperationId; });
+        if (Found)
+            return Found;
+    }
+    return nullptr;
+}
+
+bool UWorldAgricultureSubsystem::GetFieldCell(const FIntVector& Cell, FWorldFieldCellState& OutCell) const
+{
+    const FWorldFieldCellState* Found = FieldCells.Find(Cell);
+    if (!Found)
+        return false;
+    OutCell = *Found;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryApplyFieldAction(
+    const FGuid& OperationId, const FIntVector& Cell, EWorldFieldActionKind Action,
+    int64 ExpectedRevision, float Amount)
+{
+    if (!OperationId.IsValid() || ExpectedRevision < 0 ||
+        static_cast<uint8>(Action) > static_cast<uint8>(EWorldFieldActionKind::Fence) ||
+        !FMath::IsFinite(Amount) || Amount < 0.0f || Amount > 1.0f ||
+        MaxFieldCells <= 0 || MaxFieldCells > 65536 ||
+        MaxFieldActionReceiptsPerCell <= 0 || MaxFieldActionReceiptsPerCell > 512)
+        return false;
+
+    if (const FWorldFieldActionReceipt* ExistingReceipt = FindFieldActionReceipt(OperationId))
+    {
+        return ExistingReceipt->Cell == Cell && ExistingReceipt->Action == Action &&
+            ExistingReceipt->ExpectedRevision == ExpectedRevision &&
+            FMath::IsNearlyEqual(ExistingReceipt->Amount, Amount, 0.0001f);
+    }
+
+    FWorldFieldCellState* Existing = FieldCells.Find(Cell);
+    const int64 CurrentRevision = Existing ? Existing->Revision : 0;
+    if (CurrentRevision != ExpectedRevision || CurrentRevision >= MAX_int64 - 1 ||
+        (Existing && Existing->ActionReceipts.Num() >= MaxFieldActionReceiptsPerCell) ||
+        (!Existing && FieldCells.Num() >= MaxFieldCells))
+        return false;
+
+    const bool bNeedsAmount = Action == EWorldFieldActionKind::Fertilize ||
+        Action == EWorldFieldActionKind::Water || Action == EWorldFieldActionKind::Weed ||
+        Action == EWorldFieldActionKind::Mulch;
+    if (bNeedsAmount && Amount <= 0.0f)
+        return false;
+
+    FWorldFieldCellState Updated;
+    if (Existing)
+        Updated = *Existing;
+    else
+        Updated.Cell = Cell;
+
+    switch (Action)
+    {
+    case EWorldFieldActionKind::Clear:
+        Updated.bCleared = true;
+        Updated.WeedPressure = 0.0f;
+        break;
+    case EWorldFieldActionKind::Till:
+        if (!Updated.bCleared)
+            return false;
+        Updated.bTilled = true;
+        break;
+    case EWorldFieldActionKind::Fertilize:
+        if (!Updated.bCleared || !Updated.bTilled)
+            return false;
+        Updated.Fertility = FMath::Clamp(Updated.Fertility + Amount, 0.0f, 1.0f);
+        break;
+    case EWorldFieldActionKind::Water:
+        Updated.Moisture = FMath::Clamp(Updated.Moisture + Amount, 0.0f, 1.0f);
+        break;
+    case EWorldFieldActionKind::Weed:
+        if (!Updated.bCleared || !Updated.bTilled)
+            return false;
+        Updated.WeedPressure = FMath::Max(0.0f, Updated.WeedPressure - Amount);
+        break;
+    case EWorldFieldActionKind::Mulch:
+        if (!Updated.bCleared || !Updated.bTilled)
+            return false;
+        Updated.Mulch = FMath::Clamp(Updated.Mulch + Amount, 0.0f, 1.0f);
+        break;
+    case EWorldFieldActionKind::Fence:
+        Updated.bFenced = true;
+        break;
+    default:
+        return false;
+    }
+
+    Updated.Cell = Cell;
+    Updated.Revision = CurrentRevision + 1;
+    FWorldFieldActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Cell = Cell;
+    Receipt.Action = Action;
+    Receipt.ExpectedRevision = CurrentRevision;
+    Receipt.ResultingRevision = Updated.Revision;
+    Receipt.Amount = Amount;
+    Updated.ActionReceipts.Add(Receipt);
+    FieldCells.Add(Cell, MoveTemp(Updated));
+    return true;
+}
+
 const FWorldAgricultureActionReceipt*
 UWorldAgricultureSubsystem::FindActionReceipt(const FGuid& OperationId) const
 {
@@ -268,7 +378,12 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
             return false;
     }
 
-    if (InitialMoisture < Definition->MinimumPlantMoisture ||
+    const FWorldFieldCellState* Field = FieldCells.Find(PlotCell);
+    if (bRequirePreparedFieldForPlanting &&
+        (!Field || !Field->bCleared || !Field->bTilled || Field->Fertility <= 0.0f))
+        return false;
+    const float PlantMoisture = Field ? Field->Moisture : InitialMoisture;
+    if (PlantMoisture < Definition->MinimumPlantMoisture ||
         MaxCrops <= 0 || Crops.Num() >= MaxCrops ||
         MaxOperationReceiptsPerEntity <= 0 ||
         MaxOperationReceiptsPerEntity > 256)
@@ -299,7 +414,7 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
     Crop.CropDefinitionId = CropDefinitionId;
     Crop.PlotCell = PlotCell;
     Crop.Stage = ECropGrowthStage::Seed;
-    Crop.Moisture = InitialMoisture;
+    Crop.Moisture = PlantMoisture;
     Crop.SecondsPerStage = Definition->SecondsPerStage;
     Crop.Revision = 1;
     Crop.PlantOperationId = OperationId;
@@ -386,6 +501,18 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     Receipt.RequestedOutputUnits = Crop->HarvestUnits;
     Receipt.OutputItemIds = CreatedItems;
 
+    if (FWorldFieldCellState* Field = FieldCells.Find(Crop->PlotCell))
+    {
+        if (Field->Revision >= MAX_int64 - 1)
+        {
+            // The output registration is already committed. A field revision
+            // overflow must fail before output creation; keep this as a guard.
+            return false;
+        }
+        Field->Fertility = FMath::Max(0.0f, Field->Fertility - SoilExhaustionPerHarvest);
+        ++Field->HarvestCount;
+        ++Field->Revision;
+    }
     Crop->Stage = ECropGrowthStage::Harvested;
     Crop->HarvestOperationId = OperationId;
     Crop->HarvestExpectedRevision = ExpectedCropRevision;
@@ -610,11 +737,45 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
         !FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
-        MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(HungerPerHour) ||
+        MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(SoilExhaustionPerHarvest) ||
+        SoilExhaustionPerHarvest < 0.0f || SoilExhaustionPerHarvest > 1.0f ||
+        !FMath::IsFinite(FieldMoistureLossPerHour) || FieldMoistureLossPerHour < 0.0f ||
+        FieldMoistureLossPerHour > 1.0f || !FMath::IsFinite(WeedGrowthPerHour) ||
+        WeedGrowthPerHour < 0.0f || WeedGrowthPerHour > 1.0f ||
+        !FMath::IsFinite(MulchMoistureRetention) || MulchMoistureRetention < 0.0f ||
+        MulchMoistureRetention > 1.0f || MaxFieldCells <= 0 || MaxFieldCells > 65536 ||
+        MaxFieldActionReceiptsPerCell <= 0 || MaxFieldActionReceiptsPerCell > 512 ||
+        !FMath::IsFinite(HungerPerHour) ||
         HungerPerHour < 0.0f || !FMath::IsFinite(ProductHungerLimit) ||
         ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f)
         return false;
 
+    if (FieldCells.Num() > MaxFieldCells)
+        return false;
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        const FWorldFieldCellState& Field = Pair.Value;
+        if (Field.Cell != Pair.Key || Field.Revision < 0 ||
+            Field.ActionReceipts.Num() > MaxFieldActionReceiptsPerCell ||
+            !FMath::IsFinite(Field.Fertility) || Field.Fertility < 0.0f || Field.Fertility > 1.0f ||
+            !FMath::IsFinite(Field.WeedPressure) || Field.WeedPressure < 0.0f || Field.WeedPressure > 1.0f ||
+            !FMath::IsFinite(Field.Mulch) || Field.Mulch < 0.0f || Field.Mulch > 1.0f ||
+            !FMath::IsFinite(Field.Moisture) || Field.Moisture < 0.0f || Field.Moisture > 1.0f ||
+            Field.HarvestCount < 0 || (Field.Revision == 0 && !Field.ActionReceipts.IsEmpty()))
+            return false;
+        TSet<FGuid> ReceiptIds;
+        for (const FWorldFieldActionReceipt& Receipt : Field.ActionReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || ReceiptIds.Contains(Receipt.OperationId) ||
+                Receipt.Cell != Field.Cell || Receipt.ExpectedRevision < 0 ||
+                Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+                Receipt.ResultingRevision > Field.Revision ||
+                static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldFieldActionKind::Fence) ||
+                !FMath::IsFinite(Receipt.Amount) || Receipt.Amount < 0.0f || Receipt.Amount > 1.0f)
+                return false;
+            ReceiptIds.Add(Receipt.OperationId);
+        }
+    }
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         const FWorldCropState& Crop = Pair.Value;
@@ -646,19 +807,44 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
 {
     if (!CanAdvanceAgricultureStep(DeltaSeconds)) return false;
 
+    const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
+    for (TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        FWorldFieldCellState& Field = Pair.Value;
+        const float OldMoisture = Field.Moisture;
+        const float OldWeeds = Field.WeedPressure;
+        const float MoistureLoss = FieldMoistureLossPerHour * Hours *
+            (1.0f - FMath::Clamp(Field.Mulch, 0.0f, 1.0f) * MulchMoistureRetention);
+        Field.Moisture = FMath::Max(0.0f, Field.Moisture - MoistureLoss);
+        if (Field.bTilled && !Field.bFenced)
+            Field.WeedPressure = FMath::Clamp(Field.WeedPressure + WeedGrowthPerHour * Hours *
+                (1.0f - Field.Mulch * 0.5f), 0.0f, 1.0f);
+        if ((!FMath::IsNearlyEqual(OldMoisture, Field.Moisture) ||
+             !FMath::IsNearlyEqual(OldWeeds, Field.WeedPressure)) &&
+            Field.Revision < MAX_int64 - 1)
+            ++Field.Revision;
+    }
+
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         FWorldCropState& Crop = Pair.Value;
         if (Crop.Stage == ECropGrowthStage::Mature || Crop.Stage == ECropGrowthStage::Withered ||
             Crop.Stage == ECropGrowthStage::Harvested)
             continue;
+        const FWorldFieldCellState* Field = FieldCells.Find(Crop.PlotCell);
+        if (Field)
+            Crop.Moisture = Field->Moisture;
         if (Crop.Moisture < MinimumGrowthMoisture)
         {
             Crop.Stage = ECropGrowthStage::Withered;
             ++Crop.Revision;
             continue;
         }
-        Crop.GrowthProgressSeconds += DeltaSeconds * FMath::Clamp(Crop.Moisture, 0.0f, 1.0f);
+        const float FertilityFactor = Field ? (0.5f + 0.5f * Field->Fertility) : 1.0f;
+        const float WeedFactor = Field ? (1.0f - 0.75f * Field->WeedPressure) : 1.0f;
+        const float MulchFactor = Field ? (1.0f + 0.1f * Field->Mulch) : 1.0f;
+        Crop.GrowthProgressSeconds += DeltaSeconds * FMath::Clamp(Crop.Moisture, 0.0f, 1.0f) *
+            FertilityFactor * WeedFactor * MulchFactor;
         while (Crop.GrowthProgressSeconds >= Crop.SecondsPerStage &&
             Crop.Stage != ECropGrowthStage::Mature)
         {
@@ -709,22 +895,74 @@ bool UWorldAgricultureSubsystem::GetAnimal(const FGuid& AnimalId, FWorldAnimalSt
 void UWorldAgricultureSubsystem::ExportSnapshot(
     TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals) const
 {
+    TArray<FWorldFieldCellState> IgnoredFieldCells;
+    ExportSnapshot(OutCrops, OutAnimals, IgnoredFieldCells);
+}
+
+void UWorldAgricultureSubsystem::ExportSnapshot(
+    TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
+    TArray<FWorldFieldCellState>& OutFieldCells) const
+{
     Crops.GenerateValueArray(OutCrops);
     Animals.GenerateValueArray(OutAnimals);
+    FieldCells.GenerateValueArray(OutFieldCells);
     OutCrops.Sort([](const FWorldCropState& A, const FWorldCropState& B)
         { return A.CropId.ToString() < B.CropId.ToString(); });
     OutAnimals.Sort([](const FWorldAnimalState& A, const FWorldAnimalState& B)
         { return A.AnimalId.ToString() < B.AnimalId.ToString(); });
+    OutFieldCells.Sort([](const FWorldFieldCellState& A, const FWorldFieldCellState& B)
+    {
+        if (A.Cell.X != B.Cell.X) return A.Cell.X < B.Cell.X;
+        if (A.Cell.Y != B.Cell.Y) return A.Cell.Y < B.Cell.Y;
+        return A.Cell.Z < B.Cell.Z;
+    });
 }
 
 bool UWorldAgricultureSubsystem::RestoreSnapshot(
     const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot)
 {
+    TArray<FWorldFieldCellState> ExistingFieldCells;
+    FieldCells.GenerateValueArray(ExistingFieldCells);
+    return RestoreSnapshot(CropSnapshot, AnimalSnapshot, ExistingFieldCells);
+}
+
+bool UWorldAgricultureSubsystem::RestoreSnapshot(
+    const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot,
+    const TArray<FWorldFieldCellState>& FieldCellSnapshot)
+{
     if (CropSnapshot.Num() > MaxCrops || AnimalSnapshot.Num() > MaxAnimals ||
+        FieldCellSnapshot.Num() > MaxFieldCells || MaxFieldCells <= 0 || MaxFieldCells > 65536 ||
+        MaxFieldActionReceiptsPerCell <= 0 || MaxFieldActionReceiptsPerCell > 512 ||
+        !FMath::IsFinite(SoilExhaustionPerHarvest) || SoilExhaustionPerHarvest < 0.0f || SoilExhaustionPerHarvest > 1.0f ||
         MaxCrops <= 0 || MaxAnimals <= 0 ||
         MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256) return false;
     TMap<FGuid, FWorldCropState> NewCrops;
     TMap<FGuid, FWorldAnimalState> NewAnimals;
+    TMap<FIntVector, FWorldFieldCellState> NewFieldCells;
+    TSet<FGuid> SeenFieldOperations;
+    for (const FWorldFieldCellState& Field : FieldCellSnapshot)
+    {
+        if (Field.Revision < 0 || Field.ActionReceipts.Num() > MaxFieldActionReceiptsPerCell ||
+            !FMath::IsFinite(Field.Fertility) || Field.Fertility < 0.0f || Field.Fertility > 1.0f ||
+            !FMath::IsFinite(Field.WeedPressure) || Field.WeedPressure < 0.0f || Field.WeedPressure > 1.0f ||
+            !FMath::IsFinite(Field.Mulch) || Field.Mulch < 0.0f || Field.Mulch > 1.0f ||
+            !FMath::IsFinite(Field.Moisture) || Field.Moisture < 0.0f || Field.Moisture > 1.0f ||
+            Field.HarvestCount < 0 || (Field.Revision == 0 && !Field.ActionReceipts.IsEmpty()) ||
+            NewFieldCells.Contains(Field.Cell))
+            return false;
+        for (const FWorldFieldActionReceipt& Receipt : Field.ActionReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || SeenFieldOperations.Contains(Receipt.OperationId) ||
+                Receipt.Cell != Field.Cell || Receipt.ExpectedRevision < 0 ||
+                Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+                Receipt.ResultingRevision > Field.Revision ||
+                static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldFieldActionKind::Fence) ||
+                !FMath::IsFinite(Receipt.Amount) || Receipt.Amount < 0.0f || Receipt.Amount > 1.0f)
+                return false;
+            SeenFieldOperations.Add(Receipt.OperationId);
+        }
+        NewFieldCells.Add(Field.Cell, Field);
+    }
     for (const FWorldCropState& C : CropSnapshot)
     {
         if (!C.CropId.IsValid() || C.CropDefinitionId.IsNone() || C.Revision <= 0 ||
@@ -895,5 +1133,6 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
 
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
+    FieldCells = MoveTemp(NewFieldCells);
     return true;
 }
