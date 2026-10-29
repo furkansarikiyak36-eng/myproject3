@@ -11,7 +11,7 @@
 - `StructuralPieceInterface`: material-neutral physical anchor and placement adapter for logs, stones and sticks.
 - `StoneBuildingPiece`: stone construction proxies, operable door/gate leaf, window shutter, wall-opening passage semantics, bridge/walkway span and traversal reservations, rope socket linking and controlled traversal.
 - `WorldGameDataSubsystem` and `Config/GameData/structure_repairs.json`: material costs, reusable tools, repair amount and conservative per-piece salvage.
-- `WorldRaidAdapterSubsystem`: skips already-passable openings and routes structural collapse into the common graph/ownership transaction.
+- `WorldRaidAdapterSubsystem`: skips already-passable openings, auto-selects the nearest blocking stone piece when no valid explicit target remains, and routes structural collapse into the common graph/ownership transaction. `WorldDemoBootstrapActor` now advances the adapter after each committed fixed step; adapter failure faults and stops the simulation. A visible raid pawn Blueprint is optional; structural damage still runs without one.
 
 ## M064–M067 source completion
 
@@ -32,7 +32,7 @@
 ## Boundaries and validation
 
 - Geometry uses engine-cube greybox placeholders unless a Blueprint-authored mesh is provided; it is not final art.
-- Door/gate toggling is immediate rather than timeline-animated. The rope traversal API exposes controlled `Alpha` advancement; the player's movement input/navigation must drive that API, and end-to-end player controls have not been validated.
+- Door/gate toggling is immediate rather than timeline-animated. `J` enters the nearest compatible rope within 280 cm or cancels traversal; Tick advances it at the configured speed with swept movement. Player input and collision still require UE validation.
 - Window shutters remain a small opening, not a crawl-through; raid navigation/pathfinding and collision around every physical proxy remain engine-test work.
 - The new automation tests exercise door/gate/passage state, rope connection and movement, bridge capacity/span and alternate-support promotion, plus connected salvage and ownership. They are source only until the UE 5.8 test gate is run.
 - Physical graph/anchor persistence and generated proxy persistence still require save/load and PIE acceptance.

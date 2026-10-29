@@ -10,14 +10,14 @@
 - Bridge/walkway second-anchor/span preflight, concurrent traversal weight tickets and explicit release.
 - Visible rope anchor-to-anchor link, span and traveler-weight limits, ticket-based traversal progression and endpoint cleanup.
 - Connected dismantle returns authored salvage for each removed structure node while consuming unique source ownership records; raid collapse uses the same batch transaction without salvage.
-- Raid target lists discard open passages. When no valid explicit obstacle remains, the adapter selects the nearest blocking stone structure to the raid target location and attacks one obstacle per pulse.
+- Raid target lists discard open passages. When no valid explicit obstacle remains, the adapter selects the nearest blocking stone structure to the raid target location and attacks one obstacle per pulse. `WorldDemoBootstrapActor` advances it after each committed fixed step; failure faults and stops simulation. A visible raid pawn Blueprint is optional.
 - Alternate healthy supports are promoted to primary and physical actor/anchor links are rebuilt; transaction rollback restores the graph, inventory, item ledger and actor attachments on pre-destruction failures.
 - Source tests cover these behaviors, including stale revisions and ownership preservation.
 
 ## Important limits
 
 - Proxy geometry is greybox; no final assets are implied.
-- Door/gate switching is immediate, not animated. A caller/Blueprint must drive rope traversal `Alpha`; player input/navigation integration is not yet tested end to end.
+- Door/gate switching is immediate, not animated. `J` enters the nearest compatible rope within 280 cm or cancels traversal; Tick advances traversal with swept movement. Player input/collision still need UE validation.
 - Window shutters do not create a full-sized passage; wall opening is a separate full passage variant.
 - Engine-specific destruction callbacks, physical collisions, raid navigation and save/load have not been exercised in UE 5.8.
 

@@ -91,7 +91,7 @@ public:
     TObjectPtr<UTerrainDigToolComponent> TerrainDigTool;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Character|Traversal", meta=(ClampMin="50.0"))
-    float RopeInteractionRangeCm = 180.0f;
+    float RopeInteractionRangeCm = 280.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Character|Traversal", meta=(ClampMin="25.0"))
     float RopeTraversalSpeedCmPerSecond = 250.0f;
