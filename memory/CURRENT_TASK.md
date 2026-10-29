@@ -59,4 +59,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Next: update P2.3 status/roadmap/codebase with the near/far test; audit source counts and save migration/inputs. Keep P2 rows Kısmi until batch build/tests/PIE. Remaining direct LogBuildTools actions must stay explicitly open.
+Next: inspect all direct `UPlacementKernelSubsystem::CommitPlacement` calls in `LogCarryComponent`/`LogBuildToolsComponent` and decide which physical placement paths bypass `CommitHeldSolution`; wire the same preflight only where necessary. Then run a complete source-only consistency scan; keep P2 rows Kısmi until batch build/tests/PIE. Remaining direct LogBuildTools actions must stay explicitly open.
