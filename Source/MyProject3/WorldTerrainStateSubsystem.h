@@ -35,6 +35,19 @@ struct FWorldTerrainCellState
     int64 Revision = 1;
 };
 
+/** Data-driven extraction yield for one bounded terrain material/depth band. */
+USTRUCT(BlueprintType)
+struct FWorldTerrainResourceYieldRule
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources") FName SourceMaterialId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources") FName OutputDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="0", ClampMax="63")) int32 MinimumDepthLayer = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="0", ClampMax="63")) int32 MaximumDepthLayer = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="0.01", ClampMax="100000")) float UnitsPerCubicMetre = 10.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources", meta=(ClampMin="1", ClampMax="64")) int32 MaxUnitsPerOperation = 16;
+};
+
 USTRUCT()
 struct FWorldTerrainOperationReceipt
 {
@@ -64,6 +77,34 @@ struct FWorldTerrainOperationReceipt
 
     UPROPERTY(SaveGame)
     int64 ExpectedRevision = 0;
+
+    /** Non-empty only for a successful resource-extraction transaction. */
+    UPROPERTY(SaveGame)
+    FGuid VoxelChunkActorIdentityId;
+
+    UPROPERTY(SaveGame)
+    int64 ExpectedDensityRevision = 0;
+
+    UPROPERTY(SaveGame)
+    int64 ResultingDensityRevision = 0;
+
+    UPROPERTY(SaveGame)
+    float RemovedVolumeCubicMetres = 0.0f;
+
+    UPROPERTY(SaveGame)
+    FName YieldSourceMaterialId = NAME_None;
+
+    UPROPERTY(SaveGame)
+    FName YieldOutputDefinitionId = NAME_None;
+
+    UPROPERTY(SaveGame)
+    float YieldUnitsPerCubicMetre = 0.0f;
+
+    UPROPERTY(SaveGame)
+    int32 YieldOutputUnits = 0;
+
+    UPROPERTY(SaveGame)
+    TArray<FGuid> YieldOutputItemIds;
 };
 
 /** Bounded, layer-gated terrain state. Rendering/collision edits belong to a terrain adapter. */
@@ -83,6 +124,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Limits", meta=(ClampMin="1", ClampMax="1000000"))
     int32 MaxOperationReceipts = 100000;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources|Limits", meta=(ClampMin="1", ClampMax="256"))
+    int32 MaxResourceYieldRules = 64;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources")
+    TArray<FWorldTerrainResourceYieldRule> ResourceYieldRules;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Limits", meta=(ClampMin="1", ClampMax="64"))
     int32 MaxDepthPerCell = 8;
 
@@ -100,6 +147,15 @@ public:
         float ToolStrength, int64 ExpectedDensityRevision,
         const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
         FName MaterialId, FWorldTerrainCellState& OutState);
+
+    /** Atomic bounded excavation that also registers deterministically-yielded resources in ownership. */
+    UFUNCTION(BlueprintCallable, Category="World|Terrain|Resources")
+    bool TryExcavateForResource(const FGuid& OperationId,
+        UVoxelTerrainChunkComponent* VoxelChunk, FVector LocalCenter, float RadiusCm,
+        float ToolStrength, int64 ExpectedDensityRevision,
+        const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
+        FName SourceMaterialId, FWorldTerrainCellState& OutState,
+        TArray<FGuid>& OutResourceItemIds);
 
     UFUNCTION(BlueprintPure, Category="World|Terrain")
     bool TryGetCell(const FIntVector& Cell, FWorldTerrainCellState& OutState) const;
