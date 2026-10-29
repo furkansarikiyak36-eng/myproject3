@@ -521,7 +521,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
                 return false;
         }
     }
-    Terrain->ExportSnapshot(OutSave->TerrainCells);
+    Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
     Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
         OutSave->Weather, OutSave->WeatherSeverity);
@@ -643,7 +643,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     }
     if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
 
-    if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells)) return false;
+    if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells, Snapshot->TerrainReceipts)) return false;
     if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
@@ -734,6 +734,14 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Legacy saves lack physical voxel state; fail closed if initialized chunks exist.
         Candidate->VoxelChunks.Reset();
         Candidate->SchemaVersion = 14;
+    }
+    if (Candidate->SchemaVersion == 14)
+    {
+        // Schema v15 persists logical terrain edit receipts. Receipts cannot be
+        // reconstructed from cell revisions, so legacy saves migrate with an
+        // empty receipt history and continue to rely on expected-revision guards.
+        Candidate->TerrainReceipts.Reset();
+        Candidate->SchemaVersion = 15;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
