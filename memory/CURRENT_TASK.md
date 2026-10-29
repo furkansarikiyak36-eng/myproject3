@@ -74,7 +74,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (added persisted field cells/actions and snapshot overloads).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (implemented idempotent field actions, prepared planting, calendar gates, growth modifiers, soil exhaustion, and snapshot overloads; fixed harvest revision preflight).
 - `Source/MyProject3/WorldSimulationSaveGame.h` (edited: `CurrentSchemaVersion` advanced to 24; crop arrays serialize new seed fields with default legacy values).
-- `Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp` (edited: v23→v24 sets historical crop seed definition to `None` and seed return to zero; existing v22→v23 field migration remains in order).
+- `Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp` (v23→v24 crop seed defaults are explicit).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` lines 2650–2795 (item-backed crop/animal test setup and existing harvest/animal assertions read to plan seed-return coverage).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (edited farming test preps plot and added field action/snapshot regression test).
 - `Source/MyProject3/WorldGameDataSubsystem.h` (added `FGameDataCrop.SeedReturnUnits`).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (parses and bounds seed-return units).
@@ -93,7 +94,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
 - P0.5 is changed to use data transformation IDs; agriculture now has crop-data registration, calendar gates, field-cell actions/simulation, field save schema v23, and crop seed-return outputs. None of these recent changes have been built or run in Unreal.
-- The migration chain now normalizes v22→v23 empty field cells and v23→v24 legacy crop seed fields (no seed outputs are invented for saves whose harvest histories predate seed return).
+- The migration chain now normalizes v22→v23 empty field cells and v23→v24 crop seed fields. Existing item-backed agriculture test already exercises seed consumption, crop progression, animal feeding and collection; it is the right place to add a harvest seed-return assertion.
 - Field snapshot state is wired through save coordinator; the old two-array agriculture snapshot overload remains for source/API compatibility while coordinator uses the three-array overload.
 - `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`, so P0.5 should be resolved by making the game-data loader authoritative and not silently registering a parallel demo recipe.
 - `WorldGameDataSubsystem.cpp` already converts `transformations.json` to production and hand recipes. Scenario actor no longer authors a second production recipe. `PLAN_STATUS.md` now reflects this source correction; compile/PIE remain unverified.
@@ -109,4 +110,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add seed-return automation coverage and update the crop save/restore validation test to ensure restored yield + seed output identities persist. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Inspect whether the existing item-backed test harvests its crop after growth; add a harvest maturity step if straightforward, then assert output definitions/count include configured returned seed. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
