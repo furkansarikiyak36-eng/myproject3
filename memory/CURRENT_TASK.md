@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update P4.3 status/docs to reflect data-loaded nearby station controls F2=start/collect, F3=deposit generic recipe inputs/tools, F4=take, exact station integration test, and important remaining gap: no station actors/meshes are placed in VerticalSlice_C so the inputs won't find stations in the current scene. Keep Kısmi and code-written/unbuilt. Then inspect `LogBuildToolsComponent`, `TerrainDigToolComponent` and `WorldGameDataSubsystem` item schema for P4.4 strength integration.
+Append a P4.3 code-written progress line to `ROADMAP.md` and update `CODEBASE.md` production station row; then inspect exact axe/dig tool execution methods for P4.4 strength links. Keep the P4.3 status partial because the scene still has no station actors and no build/tests have run.
