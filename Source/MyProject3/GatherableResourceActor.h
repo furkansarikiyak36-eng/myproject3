@@ -22,6 +22,9 @@ class MYPROJECT3_API AGatherableResourceActor : public AActor
 public:
     AGatherableResourceActor();
 
+    /** Resolved from zones.json after GameData is applied. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Gather|Region") FName ZoneId = NAME_None;
+
     /** Item id from Config/GameData/items.json. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Gather") FName ItemDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Gather", meta=(ClampMin="1")) int32 UnitsPerGather = 1;
