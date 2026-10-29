@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Modify `TerrainDigToolComponent.cpp` to require `Tool.DiggingStick` in the owner's inventory and multiply its configured `ToolStrength` by the authored item strength; add proper feedback if data/tool is missing. Then modify `LogCarryComponent::ProcessAimedPiece` to require `Tool.Axe` and scale ordinary + recipe cut work progress by authored axe strength.
+Link the same `Tool.Axe` requirement/strength to `ULogCarryComponent::ProcessAimedPiece`: verify owner inventory and GameData; reject F-cut if axe absent; scale both the incremental free-cut work and recipe `TryAdvanceCutProgress` work by authored axe strength. Then add P4.4 automation coverage for data strengths and action gating.
