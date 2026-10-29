@@ -66,7 +66,8 @@ bool AProductionStationActor::TryDeposit(UInventoryCraftingComponent* Inventory,
 {
     UWorldProductionSubsystem* Production = GetWorld() ? GetWorld()->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
     FWorldProductionStation Station;
-    if (!IsValid(Inventory) || !Production || Quantity <= 0 || !EnsureRegistered() ||
+    if (!IsValid(Inventory) || !Production || Quantity <= 0 ||
+        !Inventory->IsDefinitionAvailableForProgression(ItemId) || !EnsureRegistered() ||
         !Production->GetStation(StationId, Station) || Inventory->GetItemCount(ItemId) < Quantity)
         return false;
     if (!Production->AddStock(StationId, ItemId, Quantity, Station.Revision))
@@ -86,7 +87,32 @@ bool AProductionStationActor::TryStartRecipe(FName RecipeId, FGuid& OutJobId)
     FWorldProductionStation Station;
     if (!Production || !EnsureRegistered() || !HasRequiredFire() || !Production->GetStation(StationId, Station))
         return false;
+    // The legacy call has no player identity; the production subsystem rejects any locked recipe.
     return Production->TryEnqueueJob(FGuid::NewGuid(), StationId, RecipeId, Station.Revision, OutJobId);
+}
+
+bool AProductionStationActor::TryStartRecipeForPlayer(
+    FName RecipeId, FGuid PlayerEntityId, FGuid& OutJobId)
+{
+    OutJobId.Invalidate();
+    UWorldProductionSubsystem* Production = GetWorld() ? GetWorld()->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    FWorldProductionStation Station;
+    if (!Production || !PlayerEntityId.IsValid() || !EnsureRegistered() ||
+        !HasRequiredFire() || !Production->GetStation(StationId, Station))
+        return false;
+    return Production->TryEnqueueJobForPlayer(
+        FGuid::NewGuid(), StationId, RecipeId, Station.Revision, PlayerEntityId, OutJobId);
+}
+
+bool AProductionStationActor::TryStartRecipeForInventory(
+    FName RecipeId, UInventoryCraftingComponent* Inventory, FGuid& OutJobId)
+{
+    if (!IsValid(Inventory) || !Inventory->ProgressionEntityId.IsValid())
+    {
+        OutJobId.Invalidate();
+        return false;
+    }
+    return TryStartRecipeForPlayer(RecipeId, Inventory->ProgressionEntityId, OutJobId);
 }
 
 int32 AProductionStationActor::CollectFinishedJobs()
@@ -112,8 +138,9 @@ bool AProductionStationActor::TryTake(UInventoryCraftingComponent* Inventory, FN
 {
     UWorldProductionSubsystem* Production = GetWorld() ? GetWorld()->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
     FWorldProductionStation Station;
-    if (!IsValid(Inventory) || !Production || Quantity <= 0 || !Production->GetStation(StationId, Station) ||
-        Station.Stock.FindRef(ItemId) < Quantity)
+    if (!IsValid(Inventory) || !Production || Quantity <= 0 ||
+        !Inventory->IsDefinitionAvailableForProgression(ItemId) ||
+        !Production->GetStation(StationId, Station) || Station.Stock.FindRef(ItemId) < Quantity)
         return false;
     FInventoryStack Stack;
     Stack.ItemId = ItemId;
