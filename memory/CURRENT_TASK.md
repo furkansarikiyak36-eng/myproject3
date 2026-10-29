@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Move station controls from E/F/R to unoccupied F2/F3/F4 (F2 start/collect, F3 deposit, F4 take) in `VerticalSliceCWorldActor::SetupPlayer`, and update all on-screen station help strings. Preserve E=carry interact, F=process aimed piece and R=rotate held piece.
+Audit the added station handler code and integration test: exact IDs, transformation registration, stock reservation/collection, key-binding collisions, and source-only compile risks. Then update P4.3 status/roadmap/codebase, explicitly note that station actors still aren't placed in the slice. P4.4 tool strength remains to do.
