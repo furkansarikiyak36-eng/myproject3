@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `MyProject3.Survival.CreekWetColdExposureCanCauseConfiguredIllness`: initialize shared clock, register `Illness.Cold`, set ambient temperature to a sufficiently cold but valid finite value, wet the profile via `ApplyWetnessExposure`, advance the shared clock/survival step and assert the saved condition appears. Then update plan/codebase/roadmap status for P2.1–P2.3; all source remains unbuilt.
+Update `memory/PLAN_STATUS.md`, `memory/CODEBASE.md`, and `memory/ROADMAP.md` to report P2.1 water fill, P2.2 fatigue/sprint/chop gate, P2.3 creek wetting/cold trigger, P2.5 still partial for fall/animal injury triggers, and schema v26. Maintain unbuilt/unrun caveat and then continue remaining partials.
