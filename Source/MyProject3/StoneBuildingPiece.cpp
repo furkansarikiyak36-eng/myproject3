@@ -687,11 +687,12 @@ void AStoneBuildingPiece::BuildStructuralProxyIfNeeded()
         Box(FVector(0.0, 0.0, 190.0), FVector(220.0, 25.0, 25.0));
         break;
     case EStonePieceType::Gate:
+        // Fixed jambs/lintel only. The gate bars are the moving leaf built
+        // by BuildMovingLeafIfNeeded; static proxy bars would block the passage
+        // even after the leaf rotated open.
         Box(FVector(-125.0, 0.0, 100.0), FVector(35.0, 35.0, 200.0));
         Box(FVector(125.0, 0.0, 100.0), FVector(35.0, 35.0, 200.0));
         Box(FVector(0.0, 0.0, 185.0), FVector(280.0, 30.0, 30.0));
-        for (const float X : {-80.0f, -40.0f, 0.0f, 40.0f, 80.0f})
-            Box(FVector(X, 0.0, 95.0), FVector(12.0, 15.0, 160.0));
         break;
     case EStonePieceType::FenceSegment:
         Box(FVector(-130.0, 0.0, 60.0), FVector(25.0, 25.0, 120.0));
@@ -1138,7 +1139,18 @@ bool AStoneBuildingPiece::TryBeginRopeTraversal(
 {
     OutTraversalId.Invalidate();
     AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
-    if (!Owner || !IsValid(Traveler) || !CanBeginRopeTraversal(WeightKg))
+    if (!Owner || !IsValid(Traveler))
+        return false;
+
+    // Dead/disappeared travelers must not retain the rope's shared capacity.
+    TArray<FGuid> StaleTickets;
+    for (const TPair<FGuid, TWeakObjectPtr<AActor>>& Pair : Owner->ActiveRopeTravelers)
+        if (!Pair.Value.IsValid())
+            StaleTickets.Add(Pair.Key);
+    for (const FGuid& StaleTicket : StaleTickets)
+        Owner->CancelRopeTraversal(StaleTicket);
+
+    if (!CanBeginRopeTraversal(WeightKg))
         return false;
     const bool bStartsAtOwner = Owner == this;
     const FName StartAnchor = bStartsAtOwner ? Owner->RopeLocalAnchorId : Owner->RopeRemoteAnchorId;
@@ -1175,7 +1187,9 @@ bool AStoneBuildingPiece::AdvanceRopeTraversal(FGuid TraversalId, float Alpha)
         *StartsAtOwner ? Owner->RopeRemoteAnchorId : Owner->RopeLocalAnchorId).GetLocation();
     const float Progress = FMath::Clamp(Alpha, 0.0f, 1.0f);
     const FVector Position = FMath::Lerp(Start, End, Progress);
-    if (!TravelerRef->Get()->SetActorLocation(Position, false, nullptr, ETeleportType::TeleportPhysics))
+    // Sweep against the world so a blocked rope path cannot teleport a
+    // traveler through a wall. The caller may cancel or retry the active ticket.
+    if (!TravelerRef->Get()->SetActorLocation(Position, true, nullptr, ETeleportType::TeleportPhysics))
         return false;
     if (Progress >= 1.0f)
         return Owner->CancelRopeTraversal(TraversalId);
