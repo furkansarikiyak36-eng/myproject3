@@ -26,8 +26,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rope")
     float MinZiplineSlopeDegrees = 6.0f;
 
+    /** Total estimated mass of all simultaneous riders, in kg (nominal mesh-volume/density estimate). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rope|Capacity",
-        meta = (ClampMin = "1.0"))
+        meta = (ClampMin = "1.0", ClampMax = "100000.0"))
     float MaxLoadMassKg = 250.0f;
 
     /** Dimensionless sliding-friction coefficient, clamped to [0, 1]. */
