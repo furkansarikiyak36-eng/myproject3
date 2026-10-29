@@ -1834,6 +1834,21 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->SchemaVersion = 18;
     }
 
+    if (Candidate->SchemaVersion == 18)
+    {
+        // Schema v19 persists the carrier transform/identity too. Older v18
+        // snapshots have only a relative transform, so retain compatibility by
+        // attaching to the resolved current carrier rather than guessing its
+        // historical world transform.
+        for (FWorldCarryComponentSnapshot& Carry : Candidate->CarryComponents)
+        {
+            Carry.OwnerActorIdentityId.Invalidate();
+            Carry.OwnerActorTransform = FTransform::Identity;
+            Carry.bHasSavedOwnerTransform = false;
+        }
+        Candidate->SchemaVersion = 19;
+    }
+
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
