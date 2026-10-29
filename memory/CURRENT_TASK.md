@@ -57,7 +57,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` adds calorie burn/stamina cost, now also gates exhausted actions; survival step models rain/storm wetness and warmth/shelter drying; rest uses shared clock).
 - `Config/GameData/conditions.json` (existing `Illness.Cold`, `Illness.DirtyWater`, `Injury.Fall`, and `Injury.AnimalBite` definitions are available for environment triggers).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (declared public environmental `ApplyWetnessExposure`).
-- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (implemented bounded additive wetness; survival step applies configured `Illness.Cold` only after wetness≥0.8, felt temperature sufficiently cold, and core temperature≤36°C; a brief splash alone does not trigger sickness).
+- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (bounded additive environmental wetness; wet-cold illness requires Wetness≥0.8, felt temperature sufficiently cold, and core temperature≤36°C).
+- `Source/MyProject3/VerticalSliceCWorldActor.cpp` (player location update now detects `IsInCreek` and adds 0.12 wetness each survival update while wading).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
@@ -136,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Wire the creek exposure method into `VerticalSliceCWorldActor::Tick`. Then add a test for the wet-cold condition and implement P2.1 container-gated dirty-water fill by reading the current inventory API and item data. Do not build.
+Read `InventoryCraftingComponent.h` and `Config/GameData/items.json`/transformations to find the exact reusable-container and dirty/boiled-water definitions. Then implement a container-gated creek fill action through the authoritative inventory/item ledger; add survival tests for creek wetness and cold-illness.
