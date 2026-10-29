@@ -1,4 +1,6 @@
 #include "WorldItemOwnershipSubsystem.h"
+#include "Engine/World.h"
+#include "WorldSimulationClockSubsystem.h"
 
 bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Record)
 {
@@ -9,7 +11,9 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
         Items.Num() >= MaxTrackedItems ||
         !FMath::IsFinite(Record.WorldLocation.X) ||
         !FMath::IsFinite(Record.WorldLocation.Y) ||
-        !FMath::IsFinite(Record.WorldLocation.Z))
+        !FMath::IsFinite(Record.WorldLocation.Z) ||
+        !FMath::IsFinite(Record.CreatedAtWorldTimeSeconds) ||
+        Record.CreatedAtWorldTimeSeconds < -1.0)
     {
         return false;
     }
@@ -26,6 +30,13 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
     FWorldOwnedItemRecord Normalized = Record;
     if (Normalized.BaseDefinitionId.IsNone())
         Normalized.BaseDefinitionId = Normalized.DefinitionId;
+    if (Normalized.CreatedAtWorldTimeSeconds < 0.0)
+    {
+        const UWorldSimulationClockSubsystem* Clock =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+        Normalized.CreatedAtWorldTimeSeconds =
+            Clock && Clock->IsClockInitialized() ? Clock->GetSimulationTimeSeconds() : 0.0;
+    }
     Items.Add(Normalized.ItemId, Normalized);
     return true;
 }
@@ -321,6 +332,7 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
         Output.OwnerKind = EWorldItemOwnerKind::World;
         Output.OwnerId.Invalidate();
         Output.WorldLocation = OutputWorldLocations[Index];
+        Output.CreatedAtWorldTimeSeconds = Source->CreatedAtWorldTimeSeconds;
         Output.Revision = 1;
         ProposedOutputs.Add(Output);
     }
@@ -387,7 +399,9 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
             static_cast<uint8>(Item.OwnerKind) > static_cast<uint8>(EWorldItemOwnerKind::Transformed) ||
             !FMath::IsFinite(Item.WorldLocation.X) ||
             !FMath::IsFinite(Item.WorldLocation.Y) ||
-            !FMath::IsFinite(Item.WorldLocation.Z))
+            !FMath::IsFinite(Item.WorldLocation.Z) ||
+            !FMath::IsFinite(Item.CreatedAtWorldTimeSeconds) ||
+            Item.CreatedAtWorldTimeSeconds < -1.0)
         {
             return false;
         }
