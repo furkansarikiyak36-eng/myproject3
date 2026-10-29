@@ -1112,8 +1112,16 @@ void AVerticalSliceCWorldActor::RefreshFarmPlotVisuals()
             if (!FarmPlotTiles.IsValidIndex(Index) || !IsValid(FarmPlotTiles[Index]))
                 continue;
 
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const FIntVector LogicalCell(
+                FMath::RoundToInt(WorldX / 100.0f),
+                FMath::RoundToInt(WorldY / 100.0f),
+                FMath::RoundToInt(GetGroundHeight(WorldX, WorldY) / 100.0f));
             FWorldFieldCellState Cell;
-            const bool bExists = Agriculture->GetFieldCell(FIntVector(X, Y, 0), Cell);
+            const bool bExists = Agriculture->GetFieldCell(LogicalCell, Cell);
             FLinearColor Colour = ((X + Y) % 2 == 0)
                 ? FLinearColor(0.20f, 0.125f, 0.065f)
                 : FLinearColor(0.16f, 0.095f, 0.045f);
@@ -2280,7 +2288,10 @@ void AVerticalSliceCWorldActor::ApplyFieldActionInput()
             if (DistanceSquared < BestDistanceSquared)
             {
                 BestDistanceSquared = DistanceSquared;
-                FieldCell = FIntVector(X, Y, 0);
+                FieldCell = FIntVector(
+                    FMath::RoundToInt(WorldX / 100.0f),
+                    FMath::RoundToInt(WorldY / 100.0f),
+                    FMath::RoundToInt(GetGroundHeight(WorldX, WorldY) / 100.0f));
                 bFoundCell = true;
             }
         }
