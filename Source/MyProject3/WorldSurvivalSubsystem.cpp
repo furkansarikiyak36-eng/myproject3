@@ -1199,6 +1199,56 @@ void UWorldSurvivalSubsystem::UnregisterHeatSource(UHeatSourceComponent* Source)
     });
 }
 
+void UWorldSurvivalSubsystem::CaptureHeatSourceRuntimeState(
+    TArray<FWorldHeatSourceRuntimeState>& OutStates) const
+{
+    OutStates.Reset();
+    for (const TWeakObjectPtr<UHeatSourceComponent>& WeakSource : HeatSources)
+    {
+        UHeatSourceComponent* Source = WeakSource.Get();
+        if (!IsValid(Source))
+            continue;
+        FWorldHeatSourceRuntimeState& State = OutStates.AddDefaulted_GetRef();
+        State.Source = Source;
+        State.FuelSeconds = Source->GetFuelSeconds();
+        State.bLit = Source->IsLit();
+    }
+}
+
+bool UWorldSurvivalSubsystem::RestoreHeatSourceRuntimeState(
+    const TArray<FWorldHeatSourceRuntimeState>& Snapshot)
+{
+    TSet<UHeatSourceComponent*> CapturedSources;
+    for (const FWorldHeatSourceRuntimeState& State : Snapshot)
+    {
+        UHeatSourceComponent* Source = State.Source.Get();
+        if (!IsValid(Source) || CapturedSources.Contains(Source) ||
+            !FMath::IsFinite(State.FuelSeconds) || State.FuelSeconds < 0.0f)
+            return false;
+        CapturedSources.Add(Source);
+    }
+
+    int32 CurrentSourceCount = 0;
+    for (const TWeakObjectPtr<UHeatSourceComponent>& WeakSource : HeatSources)
+    {
+        if (!WeakSource.IsValid())
+            continue;
+        ++CurrentSourceCount;
+        if (!CapturedSources.Contains(WeakSource.Get()))
+            return false;
+    }
+    if (CurrentSourceCount != Snapshot.Num())
+        return false;
+
+    for (const FWorldHeatSourceRuntimeState& State : Snapshot)
+    {
+        UHeatSourceComponent* Source = State.Source.Get();
+        if (!Source->RestoreSimulationFuelState(State.FuelSeconds, State.bLit))
+            return false;
+    }
+    return true;
+}
+
 bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
     double DeltaSeconds, double LogicalTimeSeconds) const
 {
