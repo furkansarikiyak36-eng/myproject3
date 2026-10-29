@@ -83,7 +83,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added `MyProject3.Survival.WorldFirewoodGetsWetInRainAndDriesNearLitFire`: rain wets World-owner fuel only; clear weather + lit nearby heat dries only in-range fuel; inventory fuel stays dry; base definition + revisions asserted. Source-only/unrun).
-- `memory/PLAN_STATUS.md` (P3.1 now records existing data-driven fuel rates, O-key refuel, world-only rain wetting, lit-fire drying and the newly authored unrun test; roof coverage/visual verification remain gaps).
+- `memory/PLAN_STATUS.md` (P3.1 records data-driven fuel rates, O-key refuel, world-only rain wetting, lit-fire drying and authored unrun test; roof coverage/visual verification remain gaps).
+- `memory/ROADMAP.md` (added P3.1 code-written evidence line, explicit test name/commit and unbuilt/unrun caveat).
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
 - `Source/MyProject3/LogSnapCharacter.cpp` (now creates one canonical `UInventoryCraftingComponent` default subobject adjacent to carry/build components).
 - `Source/MyProject3/WorldDemoBootstrapActor.cpp` (bootstrap calls `LoadDefault` + `ApplyToWorld` before coordinator initialization, but actor BeginPlay order can leave player inventory already initialized).
@@ -162,4 +163,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `ROADMAP.md` with a P3.1 code-written entry and `CODEBASE.md` with the actual existing world-fuel conversion rule. Then move to P3.2: inspect shelter sensing/heat aggregation and physical enclosure openings; close any real gap without adding a second heat model.
+Update `CODEBASE.md` survival/heat map with fuel data/rain wetting/drying and roof-coverage caveat; then inspect `ShelterSensorComponent` and heat aggregation for P3.2 openings/heat loss.
