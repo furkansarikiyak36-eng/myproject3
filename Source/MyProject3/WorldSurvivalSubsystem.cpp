@@ -12,16 +12,33 @@ namespace
 
 bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profile) const
 {
-    return Profile.EntityId.IsValid() && Profile.Revision > 0 &&
-        InRange(Profile.Health, 0.0f, 100.0f) && InRange(Profile.Hunger, 0.0f, 100.0f) &&
-        InRange(Profile.Thirst, 0.0f, 100.0f) && InRange(Profile.Stamina, 0.0f, 100.0f) &&
-        InRange(Profile.Fatigue, 0.0f, 100.0f) && InRange(Profile.ClothingInsulation, 0.0f, 1.0f) &&
-        InRange(Profile.ShelterProtection, 0.0f, 1.0f) && InRange(Profile.Wetness, 0.0f, 1.0f) &&
-        InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) &&
-        InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) &&
-        InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) &&
-        FMath::IsFinite(Profile.Location.X) && FMath::IsFinite(Profile.Location.Y) &&
-        FMath::IsFinite(Profile.Location.Z) && FMath::IsFinite(Profile.FeltTemperatureCelsius);
+    if (!Profile.EntityId.IsValid() || Profile.Revision <= 0 ||
+        !InRange(Profile.Health, 0.0f, 100.0f) || !InRange(Profile.Hunger, 0.0f, 100.0f) ||
+        !InRange(Profile.Thirst, 0.0f, 100.0f) || !InRange(Profile.Stamina, 0.0f, 100.0f) ||
+        !InRange(Profile.Fatigue, 0.0f, 100.0f) || !InRange(Profile.ClothingInsulation, 0.0f, 1.0f) ||
+        !InRange(Profile.ShelterProtection, 0.0f, 1.0f) || !InRange(Profile.Wetness, 0.0f, 1.0f) ||
+        !InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) ||
+        !InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) ||
+        !InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) ||
+        !FMath::IsFinite(Profile.Location.X) || !FMath::IsFinite(Profile.Location.Y) ||
+        !FMath::IsFinite(Profile.Location.Z) || !FMath::IsFinite(Profile.FeltTemperatureCelsius) ||
+        Profile.Afflictions.Num() > 128)
+        return false;
+
+    TSet<FName> SeenAfflictions;
+    for (const FWorldSurvivalAffliction& Affliction : Profile.Afflictions)
+    {
+        if (Affliction.AfflictionId.IsNone() || SeenAfflictions.Contains(Affliction.AfflictionId) ||
+            !InRange(Affliction.Severity, 0.0f, 1.0f) ||
+            !FMath::IsFinite(Affliction.RemainingSeconds) || Affliction.RemainingSeconds < 0.0 ||
+            Affliction.RemainingSeconds > 315360000.0 ||
+            !InRange(Affliction.HealthLossPerHour, 0.0f, 1000.0f) ||
+            !InRange(Affliction.ThirstGainPerHour, 0.0f, 1000.0f) ||
+            !InRange(Affliction.FatigueGainPerHour, 0.0f, 1000.0f))
+            return false;
+        SeenAfflictions.Add(Affliction.AfflictionId);
+    }
+    return true;
 }
 
 bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profile)
@@ -66,6 +83,7 @@ bool UWorldSurvivalSubsystem::UpdateLocation(const FGuid& EntityId, FVector NewL
     if (Profile->Location.Equals(NewLocation))
         return true;
     Profile->Location = NewLocation;
+    Profile->bResting = false;
     ++Profile->Revision;
     return true;
 }
@@ -96,6 +114,7 @@ bool UWorldSurvivalSubsystem::RecordActivity(
     const float Hours = DurationSeconds / 3600.0f;
     const float Kcal = (GetActivityKcalPerHour(Activity) + CarriedMassKg * CarryKcalPerKgHour) * Hours;
     Profile->PendingActivityKcal = FMath::Min(100000.0f, Profile->PendingActivityKcal + Kcal);
+    Profile->bResting = false;
     // Hard work drains stamina now; rest recovers it during simulation steps.
     float StaminaPerHour = 30.0f;
     switch (Activity)
@@ -124,6 +143,58 @@ bool UWorldSurvivalSubsystem::ConsumeFood(const FGuid& EntityId, float Kcal, flo
     Profile->CaloriesKcal = FMath::Min(MaxCaloriesKcal, Profile->CaloriesKcal + Kcal);
     Profile->Hunger = 100.0f * (1.0f - Profile->CaloriesKcal / MaxCaloriesKcal);
     Profile->Thirst = FMath::Max(0.0f, Profile->Thirst - ThirstRelief);
+    ++Profile->Revision;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::SetResting(
+    const FGuid& EntityId, bool bResting, int64 ExpectedRevision)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || Profile->Revision != ExpectedRevision ||
+        Profile->Revision == MAX_int64 || !IsValidProfile(*Profile) ||
+        (bResting && Profile->Health <= 0.0f))
+        return false;
+    if (Profile->bResting == bResting) return true;
+    Profile->bResting = bResting;
+    ++Profile->Revision;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryApplyAffliction(
+    const FGuid& EntityId, const FWorldSurvivalAffliction& Affliction, int64 ExpectedRevision)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || Profile->Revision != ExpectedRevision || Profile->Revision == MAX_int64 ||
+        !IsValidProfile(*Profile) || Affliction.AfflictionId.IsNone() ||
+        !InRange(Affliction.Severity, 0.0f, 1.0f) ||
+        !FMath::IsFinite(Affliction.RemainingSeconds) || Affliction.RemainingSeconds <= 0.0 ||
+        Affliction.RemainingSeconds > 315360000.0 ||
+        !InRange(Affliction.HealthLossPerHour, 0.0f, 1000.0f) ||
+        !InRange(Affliction.ThirstGainPerHour, 0.0f, 1000.0f) ||
+        !InRange(Affliction.FatigueGainPerHour, 0.0f, 1000.0f) ||
+        Profile->Afflictions.Num() >= 128 ||
+        Profile->Afflictions.ContainsByPredicate([&Affliction](const FWorldSurvivalAffliction& Existing)
+            { return Existing.AfflictionId == Affliction.AfflictionId; }))
+        return false;
+
+    Profile->Afflictions.Add(Affliction);
+    ++Profile->Revision;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryRemoveAffliction(
+    const FGuid& EntityId, FName AfflictionId, int64 ExpectedRevision)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || AfflictionId.IsNone() || Profile->Revision != ExpectedRevision ||
+        Profile->Revision == MAX_int64 || !IsValidProfile(*Profile))
+        return false;
+    const int32 Index = Profile->Afflictions.IndexOfByPredicate(
+        [AfflictionId](const FWorldSurvivalAffliction& Existing)
+            { return Existing.AfflictionId == AfflictionId; });
+    if (Index == INDEX_NONE) return false;
+    Profile->Afflictions.RemoveAt(Index);
     ++Profile->Revision;
     return true;
 }
@@ -198,6 +269,9 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
         !FMath::IsFinite(HungerPerHour) || HungerPerHour < 0.0f ||
         !FMath::IsFinite(ThirstPerHour) || ThirstPerHour < 0.0f ||
         !FMath::IsFinite(FatiguePerHour) || FatiguePerHour < 0.0f ||
+        !InRange(RestFatigueRecoveryPerHour, 0.0f, 100.0f) ||
+        !InRange(RestStaminaRecoveryPerHour, 0.0f, 100.0f) ||
+        MaxDiscoveryRecords < 1 || MaxDiscoveryRecords > 4096 ||
         !FMath::IsFinite(ColdDamagePerHour) || ColdDamagePerHour < 0.0f ||
         !FMath::IsFinite(MaxCaloriesKcal) || MaxCaloriesKcal <= 0.0f ||
         !FMath::IsFinite(BasalKcalPerHour) || BasalKcalPerHour < 0.0f ||
@@ -254,7 +328,21 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
     {
         FWorldSurvivalProfile& P = Pair.Value;
         P.Thirst = FMath::Clamp(P.Thirst + ThirstPerHour * Hours, 0.0f, 100.0f);
-        P.Fatigue = FMath::Clamp(P.Fatigue + FatiguePerHour * Hours, 0.0f, 100.0f);
+        P.Fatigue = P.bResting
+            ? FMath::Max(0.0f, P.Fatigue - RestFatigueRecoveryPerHour * Hours)
+            : FMath::Clamp(P.Fatigue + FatiguePerHour * Hours, 0.0f, 100.0f);
+
+        // Afflictions use logical time and per-hour rates, not rendered frames.
+        for (FWorldSurvivalAffliction& Affliction : P.Afflictions)
+        {
+            const float Rate = Affliction.Severity * Hours;
+            P.Health = FMath::Max(0.0f, P.Health - Affliction.HealthLossPerHour * Rate);
+            P.Thirst = FMath::Clamp(P.Thirst + Affliction.ThirstGainPerHour * Rate, 0.0f, 100.0f);
+            P.Fatigue = FMath::Clamp(P.Fatigue + Affliction.FatigueGainPerHour * Rate, 0.0f, 100.0f);
+            Affliction.RemainingSeconds = FMath::Max(0.0, Affliction.RemainingSeconds - DeltaSeconds);
+        }
+        P.Afflictions.RemoveAll([](const FWorldSurvivalAffliction& Affliction)
+            { return Affliction.RemainingSeconds <= 0.0; });
 
         // Exposure: one felt temperature drives core temperature and shivering.
         P.FeltTemperatureCelsius = ComputeFeltTemperature(P);
@@ -297,7 +385,10 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
 
         if (P.CaloriesKcal <= 0.0f || P.Thirst >= 98.0f)
             P.Health = FMath::Max(0.0f, P.Health - Hours * 2.0f);
-        P.Stamina = FMath::Clamp(P.Stamina + (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours, 0.0f, 100.0f);
+        const float StaminaDelta = P.bResting
+            ? RestStaminaRecoveryPerHour * Hours
+            : (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours;
+        P.Stamina = FMath::Clamp(P.Stamina + StaminaDelta, 0.0f, 100.0f);
         ++P.Revision;
     }
     return true;
@@ -306,8 +397,10 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
 bool UWorldSurvivalSubsystem::RecordDiscovery(
     FName DiscoveryId, FVector Location, double LogicalTimeSeconds)
 {
-    if (DiscoveryId.IsNone() || Location.ContainsNaN() || !FMath::IsFinite(LogicalTimeSeconds) ||
-        LogicalTimeSeconds < 0.0)
+    if (DiscoveryId.IsNone() || !FMath::IsFinite(Location.X) ||
+        !FMath::IsFinite(Location.Y) || !FMath::IsFinite(Location.Z) ||
+        !FMath::IsFinite(LogicalTimeSeconds) || LogicalTimeSeconds < 0.0 ||
+        MaxDiscoveryRecords < 1 || MaxDiscoveryRecords > 4096)
     {
         return false;
     }
@@ -316,6 +409,7 @@ bool UWorldSurvivalSubsystem::RecordDiscovery(
     {
         return true; // discovery is idempotent
     }
+    if (Discoveries.Num() >= MaxDiscoveryRecords) return false;
     FWorldDiscoveryRecord Record;
     Record.DiscoveryId = DiscoveryId;
     Record.Location = Location;
@@ -324,7 +418,75 @@ bool UWorldSurvivalSubsystem::RecordDiscovery(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::TryDiscover(
+    FName DiscoveryId, FVector PlayerLocation, FVector DiscoveryLocation,
+    double LogicalTimeSeconds, const TArray<FName>& AvailableEquipmentTags,
+    TArray<FName>& OutUnlockedContentIds)
+{
+    OutUnlockedContentIds.Reset();
+    if (DiscoveryId.IsNone()) return false;
+
+    // A committed discovery always replays its saved unlock result, independent
+    // of subsequent tuning/gear changes; it never grants a second reward.
+    const FWorldDiscoveryRecord* ExistingRecord = Discoveries.FindByPredicate(
+        [DiscoveryId](const FWorldDiscoveryRecord& Record) { return Record.DiscoveryId == DiscoveryId; });
+    if (ExistingRecord)
+    {
+        OutUnlockedContentIds = ExistingRecord->UnlockedContentIds;
+        return true;
+    }
+
+    const FWorldDiscoveryDefinition* Definition = nullptr;
+    for (const FWorldDiscoveryDefinition& Candidate : DiscoveryDefinitions)
+    {
+        if (Candidate.DiscoveryId != DiscoveryId) continue;
+        if (Definition) return false; // ambiguous authored discovery IDs fail closed
+        Definition = &Candidate;
+    }
+    if (!Definition || !FMath::IsFinite(PlayerLocation.X) ||
+        !FMath::IsFinite(PlayerLocation.Y) || !FMath::IsFinite(PlayerLocation.Z) ||
+        !FMath::IsFinite(DiscoveryLocation.X) || !FMath::IsFinite(DiscoveryLocation.Y) ||
+        !FMath::IsFinite(DiscoveryLocation.Z) ||
+        !FMath::IsFinite(LogicalTimeSeconds) || LogicalTimeSeconds < 0.0 ||
+        !InRange(Definition->InteractionRadiusCm, 10.0f, 10000.0f) ||
+        Discoveries.Num() >= MaxDiscoveryRecords)
+        return false;
+
+    const double DistanceSquared = FVector::DistSquared(PlayerLocation, DiscoveryLocation);
+    const double RadiusSquared = FMath::Square(static_cast<double>(Definition->InteractionRadiusCm));
+    if (!FMath::IsFinite(DistanceSquared) || DistanceSquared > RadiusSquared)
+        return false;
+    if (!Definition->RequiredEquipmentTag.IsNone() &&
+        !AvailableEquipmentTags.Contains(Definition->RequiredEquipmentTag))
+        return false;
+
+    TSet<FName> UniqueUnlocks;
+    for (const FName UnlockId : Definition->UnlockedContentIds)
+    {
+        if (UnlockId.IsNone() || UniqueUnlocks.Contains(UnlockId)) return false;
+        UniqueUnlocks.Add(UnlockId);
+    }
+
+    FWorldDiscoveryRecord Record;
+    Record.DiscoveryId = DiscoveryId;
+    Record.Location = DiscoveryLocation;
+    Record.DiscoveredAtTime = LogicalTimeSeconds;
+    Record.UnlockedContentIds = Definition->UnlockedContentIds;
+    Discoveries.Add(Record);
+    OutUnlockedContentIds = Record.UnlockedContentIds;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::IsContentUnlocked(FName ContentId) const
+{
+    if (ContentId.IsNone()) return false;
+    for (const FWorldDiscoveryRecord& Record : Discoveries)
+        if (Record.UnlockedContentIds.Contains(ContentId)) return true;
+    return false;
+}
+
 bool UWorldSurvivalSubsystem::GetProfile(
+    const FGuid& EntityId, FWorldSurvivalProfile& OutProfile) constbool UWorldSurvivalSubsystem::GetProfile(
     const FGuid& EntityId, FWorldSurvivalProfile& OutProfile) const
 {
     const FWorldSurvivalProfile* Found = Profiles.Find(EntityId);
@@ -361,8 +523,16 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     for (const FWorldDiscoveryRecord& D : DiscoverySnapshot)
     {
         if (D.DiscoveryId.IsNone() || SeenDiscoveries.Contains(D.DiscoveryId) ||
-            D.Location.ContainsNaN() || !FMath::IsFinite(D.DiscoveredAtTime) ||
-            D.DiscoveredAtTime < 0.0) return false;
+            !FMath::IsFinite(D.Location.X) || !FMath::IsFinite(D.Location.Y) ||
+            !FMath::IsFinite(D.Location.Z) || !FMath::IsFinite(D.DiscoveredAtTime) ||
+            D.DiscoveredAtTime < 0.0 || D.UnlockedContentIds.Contains(NAME_None))
+            return false;
+        TSet<FName> UniqueUnlocks;
+        for (const FName UnlockId : D.UnlockedContentIds)
+        {
+            if (UniqueUnlocks.Contains(UnlockId)) return false;
+            UniqueUnlocks.Add(UnlockId);
+        }
         SeenDiscoveries.Add(D.DiscoveryId);
     }
     Profiles = MoveTemp(Proposed);
