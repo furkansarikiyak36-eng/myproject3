@@ -1,0 +1,78 @@
+{
+  "_about": "Primitive-era husbandry data. Capture, production intervals and slaughter yields are logical contracts; physical wildlife/trap/pen visuals are separate adapters.",
+  "animals": [
+    {
+      "id": "Animal.Rabbit",
+      "name": "Yaban tavşanı",
+      "feed": "Grass",
+      "product": "",
+      "product_units": 1,
+      "product_interval_hours": 24,
+      "capture_tools": [
+        "Net",
+        "Basket"
+      ],
+      "slaughter_yields": [
+        {
+          "item": "Meat.Raw",
+          "units": 2
+        },
+        {
+          "item": "Hide.Raw",
+          "units": 1
+        },
+        {
+          "item": "Bone",
+          "units": 1
+        }
+      ]
+    },
+    {
+      "id": "Animal.Bird",
+      "name": "Küçük kuş",
+      "feed": "Seed.Grain",
+      "product": "Egg",
+      "product_units": 1,
+      "product_interval_hours": 24,
+      "capture_tools": [
+        "Net",
+        "Basket"
+      ],
+      "slaughter_yields": [
+        {
+          "item": "Meat.Raw",
+          "units": 1
+        },
+        {
+          "item": "Feather",
+          "units": 2
+        }
+      ]
+    },
+    {
+      "id": "Animal.Goat",
+      "name": "Keçi",
+      "feed": "Grass",
+      "product": "Milk.Raw",
+      "product_units": 1,
+      "product_interval_hours": 6,
+      "capture_tools": [
+        "Rope"
+      ],
+      "slaughter_yields": [
+        {
+          "item": "Meat.Raw",
+          "units": 3
+        },
+        {
+          "item": "Hide.Raw",
+          "units": 1
+        },
+        {
+          "item": "Bone",
+          "units": 2
+        }
+      ]
+    }
+  ]
+}
