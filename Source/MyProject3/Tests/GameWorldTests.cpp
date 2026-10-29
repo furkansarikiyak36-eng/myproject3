@@ -43,6 +43,7 @@
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
 #include "GameFramework/PlayerController.h"
@@ -2633,9 +2634,33 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TestTrue(TEXT("Deck support anchor meets the second foundation in world space"),
         FVector::Dist(Bridge->GetAnchorWorldTransform(TEXT("SupportRight")).GetLocation(),
             SupportB->GetAnchorWorldTransform(TEXT("AutoTop")).GetLocation()) <= 50.0f);
+    Bridge->MaxSupportSpanCm = 200.0f;
+    TestFalse(TEXT("Bridge refuses a span beyond its authored limit"),
+        Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId(),
+            TEXT("AutoTop"), TEXT("SupportRight")));
+    Bridge->GetStructuralAnchor(TEXT("SupportRight"), RightAnchor);
+    SupportB->GetStructuralAnchor(TEXT("AutoTop"), TopAnchor);
+    TestFalse(TEXT("Rejected span leaves bridge anchor free"), RightAnchor.bOccupied);
+    TestFalse(TEXT("Rejected span leaves second support anchor free"), TopAnchor.bOccupied);
+    Bridge->MaxSupportSpanCm = 600.0f;
+
     TestTrue(TEXT("Reserve secondary bridge support through the canonical graph"),
         Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId(),
             TEXT("AutoTop"), TEXT("SupportRight")));
+
+    Bridge->MaxConcurrentTraversalWeightKg = 150.0f;
+    TestTrue(TEXT("Two-ended supported bridge accepts a bounded traveler"),
+        Bridge->CanCarryTraversalLoad(100.0f));
+    const FGuid TravelerTicketA = FGuid::NewGuid();
+    const FGuid TravelerTicketB = FGuid::NewGuid();
+    TestTrue(TEXT("Bridge reserves the first traversal ticket"),
+        Bridge->TryReserveBridgeTraversal(TravelerTicketA, 100.0f));
+    TestFalse(TEXT("Bridge rejects concurrent travelers beyond its weight budget"),
+        Bridge->TryReserveBridgeTraversal(TravelerTicketB, 60.0f));
+    TestTrue(TEXT("Bridge releases a completed traversal ticket"),
+        Bridge->ReleaseBridgeTraversal(TravelerTicketA));
+    TestFalse(TEXT("A completed bridge ticket cannot be released twice"),
+        Bridge->ReleaseBridgeTraversal(TravelerTicketA));
 
     Bridge->GetStructuralAnchor(TEXT("SupportRight"), RightAnchor);
     SupportB->GetStructuralAnchor(TEXT("AutoTop"), TopAnchor);
@@ -2715,6 +2740,224 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TArray<UStaticMeshComponent*> AuthoredBridgeMeshes;
     AuthoredBridge->GetComponents<UStaticMeshComponent>(AuthoredBridgeMeshes);
     TestEqual(TEXT("Authored bridge retains only its root mesh component"), AuthoredBridgeMeshes.Num(), 1);
+
+    // Remove one foundation after restoring the bridge's second independent support.
+    // The bridge should survive and promote that surviving support to its primary edge.
+    TestTrue(TEXT("Re-add the alternate support for removal promotion"),
+        Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId(),
+            TEXT("AutoTop"), TEXT("SupportRight")));
+    FStructuralNodeRecord SupportANode;
+    TestTrue(TEXT("Read root support before batch collapse"), Graph->GetNode(SupportA->GetStructuralNodeId(), SupportANode));
+    TestTrue(TEXT("Collapse consumes a standalone foundation without removing its supported bridge"),
+        Graph->TryCollapseConnectedStructure(SupportA->GetStructuralNodeId(), SupportANode.Revision));
+    TestFalse(TEXT("Collapsed foundation leaves the structural graph"),
+        Graph->GetNode(SupportA->GetStructuralNodeId(), SupportANode));
+    FStructuralNodeRecord BridgeAfterCollapse;
+    TestTrue(TEXT("Bridge survives collapse through its alternate support"),
+        Graph->GetNode(Bridge->GetStructuralNodeId(), BridgeAfterCollapse));
+    TestTrue(TEXT("Alternate support becomes the promoted primary parent"),
+        BridgeAfterCollapse.ParentNodeId == SupportB->GetStructuralNodeId() &&
+        BridgeAfterCollapse.OwnAnchorId == TEXT("SupportRight"));
+    TestTrue(TEXT("Promoted bridge remains supported"), Graph->HasValidSupportPath(Bridge->GetStructuralNodeId()));
+    FWorldOwnedItemRecord ConsumedFoundation;
+    UWorldItemOwnershipSubsystem* Ownership = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    TestTrue(TEXT("Foundation identity remains in the ownership ledger"),
+        Ownership && Ownership->TryGetItem(SupportA->GetStructuralNodeId(), ConsumedFoundation));
+    TestTrue(TEXT("Collapsed foundation is no longer world-owned"),
+        ConsumedFoundation.OwnerKind == EWorldItemOwnerKind::Consumed);
+    return true;
+}
+
+// P7 / M064-M067: operable opening pieces, rope traversal and raid blocking contracts.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FStructuralInteractivePiecesAndRopeTraversalTest,
+    "MyProject3.World.Structure.InteractiveOpeningsRopeAndRaidBlocking", Flags)
+bool FStructuralInteractivePiecesAndRopeTraversalTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    if (!TestNotNull(TEXT("World"), World))
+        return false;
+
+    auto SpawnPiece = [World](EStonePieceType Type, const FVector& Location) -> AStoneBuildingPiece*
+    {
+        const FTransform Transform(FRotator::ZeroRotator, Location);
+        AStoneBuildingPiece* Piece = World->SpawnActorDeferred<AStoneBuildingPiece>(
+            AStoneBuildingPiece::StaticClass(), Transform);
+        if (!Piece)
+            return nullptr;
+        Piece->PieceType = Type;
+        Piece->DefinitionId = TEXT("StoneBlock");
+        Piece->bStartsPlaced = true;
+        Piece->FinishSpawning(Transform);
+        return Piece;
+    };
+
+    AStoneBuildingPiece* Door = SpawnPiece(EStonePieceType::DoorFrame, FVector(0.0, 0.0, 0.0));
+    AStoneBuildingPiece* Window = SpawnPiece(EStonePieceType::WindowFrame, FVector(600.0, 0.0, 0.0));
+    AStoneBuildingPiece* Opening = SpawnPiece(EStonePieceType::WallOpening, FVector(1200.0, 0.0, 0.0));
+    AStoneBuildingPiece* Gate = SpawnPiece(EStonePieceType::Gate, FVector(1800.0, 0.0, 0.0));
+    AStoneBuildingPiece* Fence = SpawnPiece(EStonePieceType::FenceSegment, FVector(2400.0, 0.0, 0.0));
+    AStoneBuildingPiece* DefenseWall = SpawnPiece(EStonePieceType::DefensiveWall, FVector(3000.0, 0.0, 0.0));
+    if (!TestNotNull(TEXT("Door"), Door) || !TestNotNull(TEXT("Window"), Window) ||
+        !TestNotNull(TEXT("Opening"), Opening) || !TestNotNull(TEXT("Gate"), Gate) ||
+        !TestNotNull(TEXT("Fence"), Fence) || !TestNotNull(TEXT("Defense wall"), DefenseWall))
+        return false;
+
+    TestTrue(TEXT("Closed door blocks the passage"), Door->IsRaidBlocking() && !Door->IsPassageClear());
+    TestTrue(TEXT("Door toggles open"), Door->TrySetOpen(true));
+    TestTrue(TEXT("Open door becomes traversable and stops blocking a raid"),
+        Door->IsOpen() && Door->IsPassageClear() && !Door->IsRaidBlocking());
+    TestTrue(TEXT("Door toggles closed again"), Door->TrySetOpen(false));
+    TestTrue(TEXT("Closed door blocks a raid again"), Door->IsRaidBlocking());
+
+    TestTrue(TEXT("Window shutter can open"), Window->TrySetOpen(true));
+    TestFalse(TEXT("Opening a window shutter does not create a full actor-sized passage"),
+        Window->IsPassageClear());
+    TestTrue(TEXT("Window frame remains a raid obstacle"), Window->IsRaidBlocking());
+    TestFalse(TEXT("Wall opening is a clear passage"), Opening->IsRaidBlocking() || !Opening->IsPassageClear());
+
+    TestTrue(TEXT("Closed gate blocks passage"), Gate->IsRaidBlocking());
+    TestTrue(TEXT("Gate can open"), Gate->TrySetOpen(true));
+    TestTrue(TEXT("Open gate allows passage and does not block a raid"),
+        !Gate->IsRaidBlocking() && Gate->IsPassageClear());
+    TestTrue(TEXT("Gate can close"), Gate->TrySetOpen(false));
+    TestTrue(TEXT("Fence remains a raid obstacle"), Fence->IsRaidBlocking());
+    TestTrue(TEXT("Defensive wall remains a raid obstacle"), DefenseWall->IsRaidBlocking());
+
+    AStoneBuildingPiece* RopeA = SpawnPiece(EStonePieceType::RopeCrossingAnchor, FVector(0.0, 5000.0, 0.0));
+    AStoneBuildingPiece* RopeB = SpawnPiece(EStonePieceType::RopeCrossingAnchor, FVector(600.0, 5000.0, 0.0));
+    if (!TestNotNull(TEXT("First rope anchor"), RopeA) || !TestNotNull(TEXT("Second rope anchor"), RopeB))
+        return false;
+    FStructuralAnchorView RopeAnchorA;
+    FStructuralAnchorView RopeAnchorB;
+    TestTrue(TEXT("First anchor exposes rope socket"), RopeA->GetStructuralAnchor(TEXT("RopeSocket"), RopeAnchorA));
+    TestTrue(TEXT("Second anchor exposes rope socket"), RopeB->GetStructuralAnchor(TEXT("RopeSocket"), RopeAnchorB));
+    TestTrue(TEXT("Connect visible rope between compatible sockets"),
+        RopeA->TryConnectRopeTo(RopeB, TEXT("RopeSocket"), TEXT("RopeSocket")));
+    RopeA->GetStructuralAnchor(TEXT("RopeSocket"), RopeAnchorA);
+    RopeB->GetStructuralAnchor(TEXT("RopeSocket"), RopeAnchorB);
+    TestTrue(TEXT("Rope connection reserves both endpoint sockets"),
+        RopeAnchorA.bOccupied && RopeAnchorB.bOccupied);
+    TestTrue(TEXT("Rope accepts a traveler within its load budget"), RopeA->CanBeginRopeTraversal(80.0f));
+    TestFalse(TEXT("Rope rejects a traveler above its load budget"), RopeA->CanBeginRopeTraversal(130.0f));
+
+    AActor* Traveler = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Rope traveler"), Traveler))
+        return false;
+    USceneComponent* TravelerRoot = NewObject<USceneComponent>(Traveler, TEXT("TravelerRoot"));
+    Traveler->SetRootComponent(TravelerRoot);
+    TravelerRoot->RegisterComponent();
+    FGuid TraversalId;
+    TestTrue(TEXT("Begin a controlled rope traversal"), RopeA->TryBeginRopeTraversal(Traveler, 80.0f, TraversalId));
+    TestTrue(TEXT("Rope traversal returns a valid ticket"), TraversalId.IsValid());
+    TestTrue(TEXT("Advance traveler to the middle of the rope"), RopeA->AdvanceRopeTraversal(TraversalId, 0.5f));
+    TestTrue(TEXT("Midpoint is between rope ends"),
+        FMath::IsNearlyEqual(Traveler->GetActorLocation().X, 300.0f, 1.0f) &&
+        FMath::IsNearlyEqual(Traveler->GetActorLocation().Y, 5000.0f, 1.0f));
+    TestTrue(TEXT("Complete rope traversal at the far anchor"), RopeA->AdvanceRopeTraversal(TraversalId, 1.0f));
+    TestFalse(TEXT("Completed rope ticket is no longer active"), RopeA->CancelRopeTraversal(TraversalId));
+    TestTrue(TEXT("Traveler arrives at the far socket"),
+        FVector::Dist(Traveler->GetActorLocation(), RopeB->GetAnchorWorldTransform(TEXT("RopeSocket")).GetLocation()) <= 1.0f);
+
+    AStoneBuildingPiece* RopeFarA = SpawnPiece(EStonePieceType::RopeCrossingAnchor, FVector(0.0, 8000.0, 0.0));
+    AStoneBuildingPiece* RopeFarB = SpawnPiece(EStonePieceType::RopeCrossingAnchor, FVector(1800.0, 8000.0, 0.0));
+    if (!TestNotNull(TEXT("Long rope source"), RopeFarA) || !TestNotNull(TEXT("Long rope target"), RopeFarB))
+        return false;
+    TestFalse(TEXT("Rope rejects an overlong span"),
+        RopeFarA->TryConnectRopeTo(RopeFarB, TEXT("RopeSocket"), TEXT("RopeSocket")));
+    RopeFarA->GetStructuralAnchor(TEXT("RopeSocket"), RopeAnchorA);
+    RopeFarB->GetStructuralAnchor(TEXT("RopeSocket"), RopeAnchorB);
+    TestFalse(TEXT("Rejected rope span leaves both sockets free"),
+        RopeAnchorA.bOccupied || RopeAnchorB.bOccupied);
+    return true;
+}
+
+// P7 / M063-M069: actor, graph, item ownership and salvage form one connected dismantle transaction.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FConnectedStructureDismantleTransactionTest,
+    "MyProject3.World.Structure.ConnectedDismantleOwnershipAndSalvage", Flags)
+bool FConnectedStructureDismantleTransactionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), Data) ||
+        !TestNotNull(TEXT("Structural graph"), Graph) || !TestNotNull(TEXT("Item ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Load repair and salvage data"), Data->LoadDefault() && Data->ApplyToWorld());
+
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("Stone placeholder mesh"), Cube))
+        return false;
+    auto SpawnStone = [World, Cube](const FVector& Location, bool bGround) -> AStoneBuildingPiece*
+    {
+        const FTransform Transform(FRotator::ZeroRotator, Location);
+        AStoneBuildingPiece* Piece = World->SpawnActorDeferred<AStoneBuildingPiece>(
+            AStoneBuildingPiece::StaticClass(), Transform);
+        if (!Piece)
+            return nullptr;
+        Piece->PieceType = EStonePieceType::Block;
+        Piece->DefinitionId = TEXT("StoneBlock");
+        Piece->bStartsPlaced = bGround;
+        Piece->Mesh->SetStaticMesh(Cube);
+        Piece->FinishSpawning(Transform);
+        return Piece;
+    };
+
+    AStoneBuildingPiece* Foundation = SpawnStone(FVector(0.0, 0.0, 0.0), true);
+    AStoneBuildingPiece* Wall = SpawnStone(FVector(0.0, 0.0, 200.0), false);
+    AStoneBuildingPiece* UpperWall = SpawnStone(FVector(0.0, 0.0, 400.0), false);
+    if (!TestNotNull(TEXT("Foundation"), Foundation) || !TestNotNull(TEXT("Wall"), Wall) ||
+        !TestNotNull(TEXT("Upper wall"), UpperWall))
+        return false;
+
+    TestTrue(TEXT("Hold first wall before snapping"), Wall->SetHeldState(true));
+    TestTrue(TEXT("Attach first wall to its foundation"),
+        Wall->TryConnectToAnchor(Foundation, TEXT("AutoTop"), TEXT("AutoBottom")));
+    TestTrue(TEXT("Hold upper wall before snapping"), UpperWall->SetHeldState(true));
+    TestTrue(TEXT("Attach upper wall to first wall"),
+        UpperWall->TryConnectToAnchor(Wall, TEXT("AutoTop"), TEXT("AutoBottom")));
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwner);
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item weights and recipes to salvage inventory"), Data->ApplyToInventory(Inventory));
+    TestEqual(TEXT("Inventory starts without stone salvage"), Inventory->GetItemCount(TEXT("Stone")), 0);
+
+    const FGuid FoundationId = Foundation->GetStructuralNodeId();
+    const FGuid WallId = Wall->GetStructuralNodeId();
+    const FGuid UpperWallId = UpperWall->GetStructuralNodeId();
+    FStructuralNodeRecord RootBefore;
+    FStructuralNodeRecord WallBefore;
+    FStructuralNodeRecord UpperBefore;
+    TestTrue(TEXT("Capture foundation graph revision"), Graph->GetNode(FoundationId, RootBefore));
+    TestTrue(TEXT("Capture wall graph revision"), Graph->GetNode(WallId, WallBefore));
+    TestTrue(TEXT("Capture upper wall graph revision"), Graph->GetNode(UpperWallId, UpperBefore));
+    const int32 NodesBefore = Graph->GetNodeCount();
+
+    TestFalse(TEXT("Stale root revision rejects the entire dismantle"),
+        Graph->TryDismantleConnectedStructureToInventory(FoundationId, RootBefore.Revision - 1, Inventory));
+    TestEqual(TEXT("Stale dismantle leaves every graph node intact"), Graph->GetNodeCount(), NodesBefore);
+    TestEqual(TEXT("Stale dismantle returns no inventory material"), Inventory->GetItemCount(TEXT("Stone")), 0);
+
+    TestTrue(TEXT("Dismantle the full connected structure as one transaction"),
+        Graph->TryDismantleConnectedStructureToInventory(FoundationId, RootBefore.Revision, Inventory));
+    TestFalse(TEXT("Foundation removed from graph"), Graph->GetNode(FoundationId, RootBefore));
+    TestFalse(TEXT("Wall removed from graph"), Graph->GetNode(WallId, WallBefore));
+    TestFalse(TEXT("Upper wall removed from graph"), Graph->GetNode(UpperWallId, UpperBefore));
+    TestEqual(TEXT("Conservative salvage is returned for all three pieces"),
+        Inventory->GetItemCount(TEXT("Stone")), 6);
+
+    for (const FGuid& SourceId : {FoundationId, WallId, UpperWallId})
+    {
+        FWorldOwnedItemRecord Source;
+        TestTrue(TEXT("Source identity remains auditable in the ownership ledger"),
+            Ownership->TryGetItem(SourceId, Source));
+        TestTrue(TEXT("Removed source is no longer world-owned"),
+            Source.OwnerKind == EWorldItemOwnerKind::Consumed);
+    }
     return true;
 }
 

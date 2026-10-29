@@ -1526,8 +1526,7 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
             EWorldItemOwnerKind::World, EWorldItemOwnerKind::Consumed, FGuid(),
             Entry.Item.WorldLocation, Consumed))
         {
-            Ownership->RestoreSnapshot(OwnershipBefore, TransferReceiptsBefore, SplitReceiptsBefore);
-            return false;
+            return RollbackData();
         }
     }
 

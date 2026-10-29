@@ -1,42 +1,47 @@
 # Phase 7 — Shared Structure Graph, Support and Damage
 
-**Status:** Partial source implementation; graph contracts and a conservative repair/salvage path are now present, but the phase is not engine-verified.  
+**Status:** Source-level mechanics and transaction routes implemented for M059–M070; Unreal validation is still required.  
 **Registry scope:** M059–M070  
 **Prerequisites:** Phases 1–6 contracts and physical-piece layers  
-**Engine validation:** Deferred to the final gate; all recent P7 commits are marked `[unbuilt]`.
+**Engine validation:** UE 5.8 UBT/UHT, Editor automation and PIE not run in this pass.
 
 ## Current source boundaries
 
-- `WorldStructuralGraphSubsystem`: canonical graph, primary and secondary support links, anchor claims, aggregate load, damage/repair, support-path queries and snapshot representation.
-- `StructuralPieceInterface`: material-neutral physical anchor and placement adapter.
-- `StoneBuildingPiece`: stone-domain anchor rules and lightweight engine-cube proxy archetypes for wall segments/openings, floor/roof, ramp/stair, bridge deck, rope crossing anchor, elevated walkway, gate, fence, railing and defensive wall.
-- `WorldGameDataSubsystem` and `Config/GameData/structure_repairs.json`: data-authored repair material, reusable tool, damage restored and standalone salvage yield.
-- `WorldStructuralGraphSubsystem::TryRepairDamageWithInventory`: material-backed graph repair.
-- `WorldStructuralGraphSubsystem::TryDismantleStandaloneNodeToInventory`: bounded salvage path for standalone pieces only.
+- `WorldStructuralGraphSubsystem`: primary/secondary support graph, anchor claims, load, damage, repair, leaf-first removal, snapshot restoration and connected dismantle/collapse transactions.
+- `StructuralPieceInterface`: material-neutral physical anchor and placement adapter for logs, stones and sticks.
+- `StoneBuildingPiece`: stone construction proxies, operable door/gate leaf, window shutter, wall-opening passage semantics, bridge/walkway span and traversal reservations, rope socket linking and controlled traversal.
+- `WorldGameDataSubsystem` and `Config/GameData/structure_repairs.json`: material costs, reusable tools, repair amount and conservative per-piece salvage.
+- `WorldRaidAdapterSubsystem`: skips already-passable openings and routes structural collapse into the common graph/ownership transaction.
 
-The engine-cube shapes are greybox/proxy geometry. They are not final visual assets and do not, by themselves, implement door interaction, open/closed states, real rope traversal, or a validated bridge span.
+## M064–M067 source completion
 
-## Implemented contracts
+- Door and gate leafs have an explicit open/close API with moving pivot geometry; the logical passage and raid-blocking state changes with it.
+- Window shutters can open, but opening a window is not treated as a full-size passage.
+- `WallOpening` has a clear-passage state independent of a movable door.
+- Bridge deck/elevated walkway accepts traversal only with a primary and second independent support, bounded span, valid support path, and both physical support anchors reserved. Active traversal IDs reserve a shared weight budget and can be released.
+- Rope crossing anchors create a visible link between two compatible sockets, reject invalid/overlong spans, reserve each endpoint, and provide ticket-based movement along the line with a per-traveler and shared load limit.
+- Raid target processing checks `IsRaidBlocking()`: an open door/gate or a wall opening is skipped; closed gates, window frames, fences and defensive walls remain damageable targets if configured in `DefenseTargetNodeIds`.
 
-- Graph connections reject duplicate/self/cyclic edges, invalid support paths, overloaded support chains and anchor claims reused at the graph level.
-- Secondary support links validate physical adapter anchors/tags and reserve/release both actors' anchors with the logical link.
-- Disconnect rejects when a dependent would lose its last healthy ground path; rejected operations do not intentionally mutate the canonical links or physical secondary-anchor reservations.
-- Aggregate load is split across primary and secondary support contacts according to the logical support model.
-- Damage is clamped at the configured threshold and material/tool-backed repair reduces the graph's authoritative damage value.
-- Standalone dismantle rejects parented/connected/dependent nodes, consumes their source ledger identity, returns data-authored recovery material, and restores inventory/ownership/graph snapshots if a later step rejects.
-- Dependent removal planning is deterministic, leaf-first, and aware of secondary-support dependents.
+## M063/M069 source completion
 
-## Accepted boundaries, not yet closure claims
+- Connected dismantling gathers a deterministic leaf-first structure plan and preflights every actor identity, lifecycle, world-item owner, graph revision, physical anchor and salvage recipe before changing ownership.
+- Every unique source item is transferred from `World` to `Consumed`; dismantle yields the data-authored conservative salvage for every removed piece. Raid-induced collapse uses the same atomic graph/actor/ownership route without salvage.
+- Alternate healthy supports are promoted deterministically to primary support rather than orphaning a surviving bridge/walkway. The graph rebuild reconstructs actor-local links and physical anchor reservations for surviving pieces.
+- Rollback restores ownership ledger, inventory snapshot, graph snapshot and actor attachments when a pre-destruction step fails. Actor destruction happens only after the graph batch removal and lifecycle transition path has been committed.
 
-- M064–M067 now have authorable stone-piece enum choices and primitive geometry fallbacks; the gameplay behavior requiring doors/windows to operate, validated bridge/walkway spans, rope travel, and gate/fence/raid integration remains incomplete.
-- Connected-structure dismantle/salvage and multi-actor physical collapse remain deferred; the new recovery API deliberately handles standalone pieces only.
-- Runtime persistence of dynamically generated proxy meshes and full save/load physical graph/anchor restoration require the engine gate.
+## Boundaries and validation
+
+- Geometry uses engine-cube greybox placeholders unless a Blueprint-authored mesh is provided; it is not final art.
+- Door/gate toggling is immediate rather than timeline-animated. The rope traversal API exposes controlled `Alpha` advancement; the player's movement input/navigation must drive that API, and end-to-end player controls have not been validated.
+- Window shutters remain a small opening, not a crawl-through; raid navigation/pathfinding and collision around every physical proxy remain engine-test work.
+- The new automation tests exercise door/gate/passage state, rope connection and movement, bridge capacity/span and alternate-support promotion, plus connected salvage and ownership. They are source only until the UE 5.8 test gate is run.
+- Physical graph/anchor persistence and generated proxy persistence still require save/load and PIE acceptance.
 
 ## Acceptance gates
 
-- [x] Source API and invariants statically reviewed.
-- [x] Data-driven repair profiles and conservative standalone salvage source implemented.
-- [x] Automation source authored for graph support/damage, repair/salvage, proxy shape creation and secondary-anchor reservation.
-- [ ] Cross-domain physical graph/anchor behavior verified in Unreal.
-- [ ] Unreal 5.8 build/UHT plus `MyProject3.World.Structure.*` automation tests run.
-- [ ] M064–M067 interaction and traversal behavior; connected collapse/repair/salvage and physical save/load acceptance.
+- [x] M059–M063 logical graph, support, damage and removal contracts in source.
+- [x] M064–M067 greybox interaction/traversal/raid-state APIs in source.
+- [x] M063/M069 connected ownership/salvage/collapse transaction route in source.
+- [x] Acceptance test source authored for interactive pieces and connected transaction.
+- [ ] Unreal 5.8 compile/UHT and Editor automation tests — not run here.
+- [ ] PIE tests for animation/collision/traversal/raid navigation and physical save/load — pending.
