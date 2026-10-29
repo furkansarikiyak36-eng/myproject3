@@ -72,6 +72,28 @@ bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& S
     return true;
 }
 
+bool UWorldProductionSubsystem::ConfigureStationFireRequirement(
+    const FGuid& StationId, bool bNeedsFire, bool bNeedsHotFire, bool bRequirementSatisfied)
+{
+    FWorldProductionStation* Station = Stations.Find(StationId);
+    if (!Station || !StationId.IsValid())
+        return false;
+
+    const bool bEffectiveRequirement = (!bNeedsFire && !bNeedsHotFire) || bRequirementSatisfied;
+    if (Station->bRequiresFire == bNeedsFire &&
+        Station->bRequiresHotFire == bNeedsHotFire &&
+        Station->bFireRequirementSatisfied == bEffectiveRequirement)
+        return true;
+    if (Station->Revision <= 0 || Station->Revision == MAX_int64)
+        return false;
+
+    Station->bRequiresFire = bNeedsFire;
+    Station->bRequiresHotFire = bNeedsHotFire;
+    Station->bFireRequirementSatisfied = bEffectiveRequirement;
+    ++Station->Revision;
+    return true;
+}
+
 bool UWorldProductionSubsystem::AddStock(
     const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision)
 {
@@ -890,10 +912,32 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
     {
         FWorldProductionStation& Station = Pair.Value;
         bool bStationChanged = false;
+        const bool bFireRequired = Station.bRequiresFire || Station.bRequiresHotFire;
+        if (bFireRequired && !Station.bFireRequirementSatisfied)
+        {
+            for (FWorldProductionJob& Job : Station.Jobs)
+            {
+                if ((Job.State == EProductionJobState::Queued || Job.State == EProductionJobState::Running) &&
+                    Job.BlockedReason != TEXT("NeedsFire"))
+                {
+                    Job.BlockedReason = TEXT("NeedsFire");
+                    bStationChanged = true;
+                }
+            }
+            if (bStationChanged)
+                ++Station.Revision;
+            continue; // Keep queued/running progress; the same job resumes once its fire returns.
+        }
+
         for (FWorldProductionJob& Job : Station.Jobs)
         {
             if (Job.State == EProductionJobState::Completed || Job.State == EProductionJobState::Blocked)
                 continue;
+            if (Job.BlockedReason == TEXT("NeedsFire"))
+            {
+                Job.BlockedReason = NAME_None;
+                bStationChanged = true;
+            }
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
             const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
             if (Job.State == EProductionJobState::Queued)

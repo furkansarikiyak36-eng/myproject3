@@ -10,6 +10,8 @@
 
 AProductionStationActor::AProductionStationActor()
 {
+    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.TickInterval = 0.5f;
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
     SetRootComponent(Mesh);
 }
@@ -18,6 +20,17 @@ void AProductionStationActor::BeginPlay()
 {
     Super::BeginPlay();
     EnsureRegistered();
+}
+
+void AProductionStationActor::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    const UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    const FGameDataStation* Data = GameData && GameData->IsApplied() && !StationDataId.IsNone()
+        ? GameData->GetStations().Find(StationDataId) : nullptr;
+    if (Data && (Data->bNeedsFire || Data->bNeedsHotFire))
+        EnsureRegistered(); // Refresh the condition only when this station type needs fire.
 }
 
 bool AProductionStationActor::EnsureRegistered()
@@ -33,14 +46,23 @@ bool AProductionStationActor::EnsureRegistered()
         return false; // Never register a station with an invented fallback capacity.
     if (!StationId.IsValid())
         StationId = FGuid::NewGuid();
+    const bool bFireSatisfied = HasRequiredFire();
     FWorldProductionStation Existing;
     if (Production->GetStation(StationId, Existing))
-        return Existing.StationTag == StationDataId;
+    {
+        if (Existing.StationTag != StationDataId || Existing.StorageCapacityUnits != Data->Capacity)
+            return false;
+        return Production->ConfigureStationFireRequirement(
+            StationId, Data->bNeedsFire, Data->bNeedsHotFire, bFireSatisfied);
+    }
 
     FWorldProductionStation Station;
     Station.StationId = StationId;
     Station.StationTag = StationDataId;
     Station.StorageCapacityUnits = Data->Capacity;
+    Station.bRequiresFire = Data->bNeedsFire;
+    Station.bRequiresHotFire = Data->bNeedsHotFire;
+    Station.bFireRequirementSatisfied = (!Data->bNeedsFire && !Data->bNeedsHotFire) || bFireSatisfied;
     return Production->RegisterStation(Station);
 }
 

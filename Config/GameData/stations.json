@@ -20,7 +20,8 @@
     {
       "id": "charcoal_pit",
       "name": "Kömür çukuru",
-      "capacity": 32
+      "capacity": 32,
+      "needs_fire": true
     },
     {
       "id": "smoke_rack",

@@ -115,6 +115,11 @@ struct FWorldProductionStation
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") FGuid StationId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") FName StationTag = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production", meta=(ClampMin="1")) int32 StorageCapacityUnits = 128;
+    /** Authored station requirement copied from stations.json and kept with the station record. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") bool bRequiresFire = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") bool bRequiresHotFire = false;
+    /** Last condition reported by the station actor; production pauses while required fire is absent. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") bool bFireRequirementSatisfied = true;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") TMap<FName, int32> Stock;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionJob> Jobs;
     /** Receipts prevent one physical source actor from becoming station stock more than once. */
@@ -140,6 +145,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterRecipe(const FWorldProductionRecipe& Recipe);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool RegisterStation(const FWorldProductionStation& Station);
+    /** Updates station fire requirements/current state; only revisions on actual changes. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool ConfigureStationFireRequirement(
+        const FGuid& StationId, bool bNeedsFire, bool bNeedsHotFire, bool bRequirementSatisfied);
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
     /** Takes stock out of a station (into a player's hands). Job inputs already left the stock when the job was queued. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryTakeStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);

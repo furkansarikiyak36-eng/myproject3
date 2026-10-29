@@ -46,6 +46,7 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void Tick(float DeltaSeconds) override;
 
 private:
     UPROPERTY(SaveGame, VisibleAnywhere, Category="Station") FGuid StationId;

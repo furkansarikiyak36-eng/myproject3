@@ -996,6 +996,19 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->NaturalEvents = FWorldEventDirectorSnapshot();
         Candidate->SchemaVersion = 28;
     }
+    if (Candidate->SchemaVersion == 28)
+    {
+        // Schema v29 adds fire requirements and current fire condition to production stations.
+        // Older saves cannot know which physical fire was nearby; the station actor refreshes
+        // these derived fields from stations.json and actual heat sources after load.
+        for (FWorldProductionStation& Station : Candidate->ProductionStations)
+        {
+            Station.bRequiresFire = false;
+            Station.bRequiresHotFire = false;
+            Station.bFireRequirementSatisfied = true;
+        }
+        Candidate->SchemaVersion = 29;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 

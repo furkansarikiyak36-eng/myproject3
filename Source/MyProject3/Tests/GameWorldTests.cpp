@@ -1078,4 +1078,71 @@ bool FSledTowOngoingCostTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+// P3.4: fire-dependent production pauses without losing progress and resumes when the condition returns.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProductionStationFirePauseResumeTest,
+    "MyProject3.World.Production.FireDependentJobsPauseAndResume", Flags)
+bool FProductionStationFirePauseResumeTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Production subsystem"), Production))
+        return false;
+
+    FWorldProductionStation Station;
+    Station.StationId = FGuid::NewGuid();
+    Station.StationTag = TEXT("charcoal_pit");
+    Station.StorageCapacityUnits = 32;
+    Station.bRequiresFire = true;
+    Station.bFireRequirementSatisfied = true;
+    TestTrue(TEXT("Register station"), Production->RegisterStation(Station));
+
+    FWorldProductionRecipe Recipe;
+    Recipe.RecipeId = TEXT("Test.Charcoal");
+    Recipe.RequiredStationTag = TEXT("charcoal_pit");
+    Recipe.DurationSeconds = 120.0;
+    FProductionIngredient Input;
+    Input.ItemId = TEXT("Firewood");
+    Input.Quantity = 6;
+    Recipe.Inputs.Add(Input);
+    FProductionIngredient Output;
+    Output.ItemId = TEXT("Charcoal");
+    Output.Quantity = 3;
+    Recipe.Outputs.Add(Output);
+    TestTrue(TEXT("Register recipe"), Production->RegisterRecipe(Recipe));
+
+    FWorldProductionStation Current;
+    TestTrue(TEXT("Read station"), Production->GetStation(Station.StationId, Current));
+    TestTrue(TEXT("Deposit firewood"), Production->AddStock(Station.StationId, TEXT("Firewood"), 6, Current.Revision));
+    TestTrue(TEXT("Read stocked station"), Production->GetStation(Station.StationId, Current));
+    FGuid JobId;
+    TestTrue(TEXT("Enqueue charcoal job"), Production->TryEnqueueJob(
+        FGuid::NewGuid(), Station.StationId, Recipe.RecipeId, Current.Revision, JobId));
+
+    TestTrue(TEXT("Fire goes out"), Production->ConfigureStationFireRequirement(
+        Station.StationId, true, false, false));
+    TestTrue(TEXT("Advance with no fire"), Production->AdvanceProductionStep(60.0));
+    TestTrue(TEXT("Read paused station"), Production->GetStation(Station.StationId, Current));
+    const FWorldProductionJob* Job = Current.Jobs.FindByPredicate([JobId](const FWorldProductionJob& J)
+        { return J.JobId == JobId; });
+    if (!TestNotNull(TEXT("Paused job"), Job))
+        return false;
+    TestEqual(TEXT("Progress does not advance while fire is out"), Job->ProgressSeconds, 0.0, 0.001);
+    TestTrue(TEXT("Job records why it is paused"), Job->BlockedReason == TEXT("NeedsFire"));
+
+    TestTrue(TEXT("Fire returns"), Production->ConfigureStationFireRequirement(
+        Station.StationId, true, false, true));
+    TestTrue(TEXT("First resumed minute"), Production->AdvanceProductionStep(60.0));
+    TestTrue(TEXT("Read resumed station"), Production->GetStation(Station.StationId, Current));
+    Job = Current.Jobs.FindByPredicate([JobId](const FWorldProductionJob& J) { return J.JobId == JobId; });
+    if (!TestNotNull(TEXT("Resumed job"), Job))
+        return false;
+    TestEqual(TEXT("Progress resumes without resetting"), Job->ProgressSeconds, 60.0, 0.001);
+    TestTrue(TEXT("Second resumed minute completes job"), Production->AdvanceProductionStep(60.0));
+    TestTrue(TEXT("Read completed station"), Production->GetStation(Station.StationId, Current));
+    TestEqual(TEXT("Charcoal output committed"), Current.Stock.FindRef(TEXT("Charcoal")), 3);
+    return true;
+}
+
 #endif
