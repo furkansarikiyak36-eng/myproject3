@@ -2,6 +2,7 @@
 
 #include "WorldSurvivalSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "EngineUtils.h"
