@@ -23,6 +23,14 @@ bool UWorldLogisticsRouteSubsystem::UpsertEdge(const FLogisticsRouteEdge& Edge)
     if (Edge.FromNode.IsNone() || Edge.ToNode.IsNone() || Edge.FromNode == Edge.ToNode ||
         !Nodes.Contains(Edge.FromNode) || !Nodes.Contains(Edge.ToNode) ||
         !FMath::IsFinite(Edge.Cost) || Edge.Cost < 0.0f ||
+        !FMath::IsFinite(Edge.SlopeRatio) || Edge.SlopeRatio < 0.0f || Edge.SlopeRatio > 10.0f ||
+        !FMath::IsFinite(Edge.SurfaceCostMultiplier) ||
+        Edge.SurfaceCostMultiplier < 0.01f || Edge.SurfaceCostMultiplier > 100.0f ||
+        !FMath::IsFinite(Edge.WeatherSensitivity) || Edge.WeatherSensitivity < 0.0f || Edge.WeatherSensitivity > 100.0f ||
+        !FMath::IsFinite(Edge.LoadSensitivity) || Edge.LoadSensitivity < 0.0f || Edge.LoadSensitivity > 100.0f ||
+        !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
+        Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f ||
+        (Edge.bRequiresInfrastructure && !Edge.bHasBuiltInfrastructure) ||
         MaxEdges < 1 || MaxEdges > 16384)
     {
         return false;
@@ -79,11 +87,80 @@ bool UWorldLogisticsRouteSubsystem::RemoveNode(FName NodeId)
     return true;
 }
 
+bool UWorldLogisticsRouteSubsystem::ComputeEdgeCost(
+    const FLogisticsRouteEdge& Edge,
+    const FLogisticsRouteCostContext& Context,
+    float& OutCost) const
+{
+    OutCost = 0.0f;
+    if (!FMath::IsFinite(Edge.Cost) || Edge.Cost < 0.0f ||
+        !FMath::IsFinite(Edge.SlopeRatio) || Edge.SlopeRatio < 0.0f || Edge.SlopeRatio > 10.0f ||
+        !FMath::IsFinite(Edge.SurfaceCostMultiplier) ||
+        Edge.SurfaceCostMultiplier < 0.01f || Edge.SurfaceCostMultiplier > 100.0f ||
+        !FMath::IsFinite(Edge.WeatherSensitivity) || Edge.WeatherSensitivity < 0.0f ||
+        Edge.WeatherSensitivity > 100.0f ||
+        !FMath::IsFinite(Edge.LoadSensitivity) || Edge.LoadSensitivity < 0.0f ||
+        Edge.LoadSensitivity > 100.0f ||
+        !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
+        Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f ||
+        !FMath::IsFinite(Context.CarriedMassKg) || Context.CarriedMassKg < 0.0f ||
+        !FMath::IsFinite(Context.MaxCarryMassKg) || Context.MaxCarryMassKg <= 0.0f ||
+        Context.CarriedMassKg > Context.MaxCarryMassKg ||
+        !FMath::IsFinite(Context.WeatherSeverity) ||
+        Context.WeatherSeverity < 0.0f || Context.WeatherSeverity > 1.0f)
+    {
+        return false;
+    }
+    if (Edge.bRequiresInfrastructure && !Edge.bHasBuiltInfrastructure)
+    {
+        return false;
+    }
+
+    const double LoadRatio = static_cast<double>(Context.CarriedMassKg) /
+        static_cast<double>(Context.MaxCarryMassKg);
+    const double SlopeFactor = 1.0 + static_cast<double>(Edge.SlopeRatio) * 0.75;
+    const double SurfaceFactor = Edge.SurfaceCostMultiplier;
+    const double WeatherFactor = 1.0 +
+        static_cast<double>(Edge.WeatherSensitivity) * Context.WeatherSeverity;
+    const double LoadFactor = 1.0 +
+        static_cast<double>(Edge.LoadSensitivity) * LoadRatio;
+    const double InfrastructureFactor = Edge.bHasBuiltInfrastructure
+        ? 1.0 : 1.0 + static_cast<double>(Edge.MissingInfrastructurePenalty);
+    const double Cost = static_cast<double>(Edge.Cost) * SlopeFactor *
+        SurfaceFactor * WeatherFactor * LoadFactor * InfrastructureFactor;
+    if (!FMath::IsFinite(Cost) || Cost < 0.0 ||
+        Cost > static_cast<double>(TNumericLimits<float>::Max()))
+    {
+        return false;
+    }
+    OutCost = static_cast<float>(Cost);
+    return true;
+}
+
 bool UWorldLogisticsRouteSubsystem::FindRoute(
     FName StartNode, FName GoalNode, TArray<FName>& OutPath, float& OutTotalCost) const
 {
+    return FindRouteWithContext(StartNode, GoalNode,
+        FLogisticsRouteCostContext(), OutPath, OutTotalCost);
+}
+
+bool UWorldLogisticsRouteSubsystem::FindRouteWithContext(
+    FName StartNode, FName GoalNode,
+    const FLogisticsRouteCostContext& Context,
+    TArray<FName>& OutPath, float& OutTotalCost) const
+{
     OutPath.Reset();
     OutTotalCost = 0.0f;
+
+    // Validate once at the boundary; all edge costs then use the exact same context.
+    if (!FMath::IsFinite(Context.CarriedMassKg) || Context.CarriedMassKg < 0.0f ||
+        !FMath::IsFinite(Context.MaxCarryMassKg) || Context.MaxCarryMassKg <= 0.0f ||
+        Context.CarriedMassKg > Context.MaxCarryMassKg ||
+        !FMath::IsFinite(Context.WeatherSeverity) ||
+        Context.WeatherSeverity < 0.0f || Context.WeatherSeverity > 1.0f)
+    {
+        return false;
+    }
 
     const FLogisticsRouteNode* Start = Nodes.Find(StartNode);
     const FLogisticsRouteNode* Goal = Nodes.Find(GoalNode);
@@ -114,13 +191,24 @@ bool UWorldLogisticsRouteSubsystem::FindRoute(
     }
     Distances[StartNode] = 0.0f;
 
-    // O(V^2 + E) bounded Dijkstra is sufficient for this deliberately small
-    // authored route graph and avoids hidden heap/lifetime complexity.
+    // Sort tie cases explicitly: route choice must not depend on TMap/TSet iteration order.
+    TArray<FLogisticsRouteEdge> SortedEdges = Edges;
+    SortedEdges.Sort([](const FLogisticsRouteEdge& A, const FLogisticsRouteEdge& B)
+    {
+        if (A.FromNode != B.FromNode)
+            return A.FromNode.ToString() < B.FromNode.ToString();
+        return A.ToNode.ToString() < B.ToNode.ToString();
+    });
+
+    // O(V^2 + E) bounded Dijkstra is sufficient for this deliberately small graph.
     while (!Unvisited.IsEmpty())
     {
         FName Current = NAME_None;
         float BestDistance = TNumericLimits<float>::Max();
-        for (const FName Candidate : Unvisited)
+        TArray<FName> SortedUnvisited = Unvisited.Array();
+        SortedUnvisited.Sort([](const FName& A, const FName& B)
+            { return A.ToString() < B.ToString(); });
+        for (const FName Candidate : SortedUnvisited)
         {
             const float* Distance = Distances.Find(Candidate);
             if (Distance && *Distance < BestDistance)
@@ -139,11 +227,17 @@ bool UWorldLogisticsRouteSubsystem::FindRoute(
         }
         Unvisited.Remove(Current);
 
-        for (const FLogisticsRouteEdge& Edge : Edges)
+        for (const FLogisticsRouteEdge& Edge : SortedEdges)
         {
             if (!Edge.bEnabled || Edge.FromNode != Current ||
                 !Unvisited.Contains(Edge.ToNode))
             {
+                continue;
+            }
+            float EdgeCost = 0.0f;
+            if (!ComputeEdgeCost(Edge, Context, EdgeCost))
+            {
+                // Invalid or infrastructure-blocked edges are unavailable, not zero-cost.
                 continue;
             }
             const float* CurrentDistance = Distances.Find(Current);
@@ -152,11 +246,12 @@ bool UWorldLogisticsRouteSubsystem::FindRoute(
             {
                 continue;
             }
-            const double CandidateCost = static_cast<double>(*CurrentDistance) + Edge.Cost;
+            const double CandidateCost = static_cast<double>(*CurrentDistance) + EdgeCost;
             if (!FMath::IsFinite(CandidateCost) || CandidateCost > TNumericLimits<float>::Max())
             {
                 continue;
             }
+            // Strictly-lower updates plus sorted traversal make equal-cost route choice stable.
             if (static_cast<float>(CandidateCost) < *NeighborDistance)
             {
                 Distances[Edge.ToNode] = static_cast<float>(CandidateCost);
