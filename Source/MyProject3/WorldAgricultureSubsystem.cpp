@@ -674,7 +674,8 @@ bool UWorldAgricultureSubsystem::TryCaptureAnimal(
             Existing->InputItemId == CaptureToolItemId &&
             Existing->ExpectedInventoryOwnerId == ExpectedInventoryOwnerId &&
             Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
-            Existing->ExpectedItemRevision == ExpectedToolItemRevision;
+            Existing->ExpectedItemRevision == ExpectedToolItemRevision &&
+            Existing->RequestedInputDefinitionId == Tool.DefinitionId;
     }
 
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
