@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add an explicit reusable container item to `items.json` only if data design already supports it; otherwise use the existing fired pot as the water vessel and validate that choice. Implement fill as an idempotent subsystem transaction against item ledger + inventory snapshot; test it.
+Add an explicit reusable container item to `items.json` only if data design already supports it; otherwise use the existing fired pot as the water vessel and validate that choice. Add `FillWaterFromCreek` to survival action enum/receipt, implement idempotent fill with pot ownership validation, ledger+inventory rollback, and saved output ID. Add tests for missing pot, successful fill, and idempotent retry.
