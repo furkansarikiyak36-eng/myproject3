@@ -57,6 +57,16 @@ bool ValidateProductionReceiptItemReferences(
             }
         }
 
+        for (const FWorldProductionItemIntakeReceipt& Receipt : Station.ItemIntakeReceipts)
+        {
+            const FWorldOwnedItemRecord* Source = ItemsById.Find(Receipt.SourceItemId);
+            if (!Source || Source->OwnerKind != EWorldItemOwnerKind::Transformed ||
+                Source->DefinitionId != Receipt.SourceDefinitionId ||
+                Source->Revision < Receipt.ResultingItemRevision ||
+                Receipt.StockItemId != Receipt.SourceDefinitionId)
+                return false;
+        }
+
         for (const FWorldProductionMaterializationReceipt& Receipt : Station.MaterializationReceipts)
         {
             // A materialized output may later be held, stored, split or consumed,
