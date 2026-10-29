@@ -2262,10 +2262,6 @@ void AVerticalSliceCWorldActor::ApplyFieldActionInput()
 
     if (GEngine)
     {
-        const FString CellStatus = UpdatedCell.bFenced ? TEXT("fenced")
-            : UpdatedCell.bTilled ? TEXT("tilled")
-            : UpdatedCell.bCleared ? TEXT("cleared")
-            : TEXT("changed");
         GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 220, 160),
             FString::Printf(TEXT("FIELD: %s cell (%d,%d) | revision %lld | stamina charged"),
                 *Action.Id.ToString(), FieldCell.X, FieldCell.Y,
