@@ -1889,11 +1889,24 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
         OperationId = FGuid::NewGuid();
 
     // Resolve incremental-progress receipts before checking prerequisites: a
-    // successful final cut changes those prerequisites by design.
-    if (CutProgressReceipts.ContainsByPredicate([&OperationId](const FLogCutProgressReceipt& Receipt)
-        { return Receipt.OperationId == OperationId; }))
+    // successful final cut changes those prerequisites by design. A one-shot
+    // wrapper may retry a multi-step cut with a different work argument, so
+    // replay the committed result directly rather than replaying the final step.
+    if (const FLogCutProgressReceipt* Existing = CutProgressReceipts.FindByPredicate(
+        [&OperationId](const FLogCutProgressReceipt& Receipt)
+        {
+            return Receipt.OperationId == OperationId;
+        }))
     {
-        return TryAdvanceCutProgress(Action, 1.0f, OperationId);
+        if (Existing->Action != Action)
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::Conflict, OperationId,
+                FText::FromString(TEXT("This operation ID was already used for another cut action.")));
+        }
+        if (Existing->ResultCode != EWorldOperationResultCode::Success)
+            return FWorldOperationResult::Failure(Existing->ResultCode, OperationId, Existing->ResultMessage);
+        return FWorldOperationResult::Success(OperationId, Existing->ResultMessage, Existing->AffectedObjectIds);
     }
 
     // Compatibility path for older callers and previously committed split
