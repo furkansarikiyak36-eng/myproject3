@@ -121,7 +121,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WildlifeActor.cpp` (current spawning/tick/death behavior inspected).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed exact owned-item fields and owner kinds).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires an inventory owner ID, finite timestamps/location and capacity; fills `BaseDefinitionId`).
-- `Source/MyProject3/LogSnapCharacter.h` (current character already has the canonical inventory, health and shelter-sensor components; protected state is where fall tracking fields can live).
+- `Source/MyProject3/LogSnapCharacter.h` (added falling-state/peak-speed fields and public Blueprint-callable `ApplyFallImpact` entry point for the thresholded landing consequence).
 - `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival conditions exists).
 - `Source/MyProject3/WildlifeActor.h/.cpp` (Enemy already approaches the player and stops at ~150 cm, but there is no bite cooldown or attack/damage action; SmallAnimal capture state is present).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
@@ -155,4 +155,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add peak falling-speed tracking to the character Tick and a callable/testable `ApplyFallImpact` method that deals physical damage + condition `Injury.Fall` above a threshold. Then implement rate-limited enemy bite handling in wildlife using the same survival profile bridge, with tests for condition application and one-hit-per-cooldown behavior.
+Implement fall tracking in `LogSnapCharacter.cpp`: capture the largest downward speed while movement is falling, trigger `ApplyFallImpact` once on landing transition, and have that method deal bounded physical damage and apply `Injury.Fall` through the assigned survival profile.
