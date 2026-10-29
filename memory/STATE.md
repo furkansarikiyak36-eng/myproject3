@@ -24,6 +24,10 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
   corner to corner, mirrored struts.
 - End to end joints bend 45 / 90 / 135 toward the carry direction.
 
+## Plan
+
+- Game plan (draft): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`. Physical assembly frozen until phase 10.
+
 ## Open
 
 - Checked by eye with `mp3.SnapGallery` (screenshots), not yet by the user in PIE.

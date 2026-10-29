@@ -2,6 +2,14 @@
 
 Newest first. Each: the decision, then why.
 
+- **2026-10-29 · Game plan (draft, awaiting approval): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`.**
+  World first, story last; every mechanic must feed another; time is the main resource.
+  Era 1 = primitive era with 9 material groups (stone/flint, wood/bark, bone/antler, fibre/rope/hide,
+  grass/reed, clay/soil/sand, resin, charcoal/ochre, shell/tooth/feather), max 2-3 items per group.
+  38 locked transformations: 30 item recipes (cheap) and 8 physical parts (expensive).
+  Physical assembly (SotF-style) is frozen until phase 10. Farming is a 15-step hand-tool chain.
+  12-month calendar with signalled, chained events. Exploration gates seeds, deposits and knowledge.
+  Why: avoid scope creep and build connected systems before costly geometry and story.
 - **2026-10-27 · Shared memory in the repo (`memory/`).** All assistants read and write it.
   Why: stop re-analysing the whole repo in every chat and every account.
 - **2026-10-27 · Reference images are kept as our own text analyses (`references/`), never as files.**
