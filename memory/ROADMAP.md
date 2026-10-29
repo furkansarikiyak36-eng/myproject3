@@ -308,3 +308,5 @@ Newest first, one line each: `date · task · status · evidence (commit, test c
 - 2026-10-29 · P1.1 · tested · WorldCalendar + clock date, GameWorldTests.cpp, 88/88
 - 2026-10-29 · P0.0 · tested · group-a adopted on game/p00-adopt-group-a, build fixed (16 errors), 85/85 tests, 250ce13
 - 2026-10-29 · design + roadmap written · — · commit after 85569c6
+
+- 2026-10-29 · P4.4 · code-written · `FGameDataItem::ToolStrength` and `GetToolStrength` are data-backed; Tool.Axe=1.5, Tool.DiggingStick=1.0; legacy Tool rows default to 1.0, non-tools to 0, Tool values validate within 0.1–10; VerticalSlice_C grants missing prototype tools after data application; axe strength scales tree chop and log-cut work; N digging requires Tool.DiggingStick and multiplies the configured dig strength; `MyProject3.GameData.ToolStrengthIsAuthoredAndResolved` authored. No durability/wear model. **Unbuilt/unrun; no PIE validation.**
