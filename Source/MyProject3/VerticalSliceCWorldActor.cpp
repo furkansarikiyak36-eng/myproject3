@@ -1428,10 +1428,10 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             GatherBinding.bConsumeInput = false;
 
             FInputKeyBinding& CycleFieldBinding = InputComponent->BindKey(
-                EKeys::F8, IE_Pressed, this, &AVerticalSliceCWorldActor::CycleFieldActionInput);
+                EKeys::F9, IE_Pressed, this, &AVerticalSliceCWorldActor::CycleFieldActionInput);
             CycleFieldBinding.bConsumeInput = false;
             FInputKeyBinding& ApplyFieldBinding = InputComponent->BindKey(
-                EKeys::F9, IE_Pressed, this, &AVerticalSliceCWorldActor::ApplyFieldActionInput);
+                EKeys::F10, IE_Pressed, this, &AVerticalSliceCWorldActor::ApplyFieldActionInput);
             ApplyFieldBinding.bConsumeInput = false;
             bInputBound = true;
         }
