@@ -2488,8 +2488,8 @@ void AVerticalSliceCWorldActor::PlantOrHarvestCropInput()
     }
 
     FGuid NewCropId;
-    if (!Agriculture->TryPlantCrop(FGuid::NewGuid(), SelectedCrop->Id,
-        SelectedSeed.ItemId, SelectedSeed.Revision, Inventory->GetInventoryOwnerId(),
+    if (!Agriculture->TryPlantCropWithLabor(FGuid::NewGuid(), SelectedCrop->Id,
+        SelectedSeed.ItemId, SelectedSeed.Revision, Inventory, PlayerSurvivalId,
         FieldCell, Field.Moisture, NewCropId))
     {
         if (GEngine)
