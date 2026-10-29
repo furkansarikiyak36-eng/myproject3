@@ -1237,17 +1237,31 @@ bool UWorldAgricultureSubsystem::GetAnimal(const FGuid& AnimalId, FWorldAnimalSt
 void UWorldAgricultureSubsystem::ExportSnapshot(
     TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals) const
 {
-    TArray<FWorldFieldCellState> IgnoredFieldCells;
-    ExportSnapshot(OutCrops, OutAnimals, IgnoredFieldCells);
+    TArray<FWorldFieldCellState> ExistingFields;
+    TArray<FWorldAnimalPenState> ExistingPens;
+    FieldCells.GenerateValueArray(ExistingFields);
+    AnimalPens.GenerateValueArray(ExistingPens);
+    ExportSnapshot(OutCrops, OutAnimals, ExistingFields, ExistingPens);
 }
 
 void UWorldAgricultureSubsystem::ExportSnapshot(
     TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
     TArray<FWorldFieldCellState>& OutFieldCells) const
 {
+    TArray<FWorldAnimalPenState> ExistingPens;
+    AnimalPens.GenerateValueArray(ExistingPens);
+    ExportSnapshot(OutCrops, OutAnimals, OutFieldCells, ExistingPens);
+}
+
+void UWorldAgricultureSubsystem::ExportSnapshot(
+    TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
+    TArray<FWorldFieldCellState>& OutFieldCells,
+    TArray<FWorldAnimalPenState>& OutAnimalPens) const
+{
     Crops.GenerateValueArray(OutCrops);
     Animals.GenerateValueArray(OutAnimals);
     FieldCells.GenerateValueArray(OutFieldCells);
+    AnimalPens.GenerateValueArray(OutAnimalPens);
     OutCrops.Sort([](const FWorldCropState& A, const FWorldCropState& B)
         { return A.CropId.ToString() < B.CropId.ToString(); });
     OutAnimals.Sort([](const FWorldAnimalState& A, const FWorldAnimalState& B)
@@ -1258,21 +1272,35 @@ void UWorldAgricultureSubsystem::ExportSnapshot(
         if (A.Cell.Y != B.Cell.Y) return A.Cell.Y < B.Cell.Y;
         return A.Cell.Z < B.Cell.Z;
     });
+    OutAnimalPens.Sort([](const FWorldAnimalPenState& A, const FWorldAnimalPenState& B)
+        { return A.PenId.ToString() < B.PenId.ToString(); });
 }
 
 bool UWorldAgricultureSubsystem::RestoreSnapshot(
     const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot)
 {
-    TArray<FWorldFieldCellState> ExistingFieldCells;
-    FieldCells.GenerateValueArray(ExistingFieldCells);
-    return RestoreSnapshot(CropSnapshot, AnimalSnapshot, ExistingFieldCells);
+    TArray<FWorldFieldCellState> ExistingFields;
+    TArray<FWorldAnimalPenState> ExistingPens;
+    FieldCells.GenerateValueArray(ExistingFields);
+    AnimalPens.GenerateValueArray(ExistingPens);
+    return RestoreSnapshot(CropSnapshot, AnimalSnapshot, ExistingFields, ExistingPens);
 }
 
 bool UWorldAgricultureSubsystem::RestoreSnapshot(
     const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot,
     const TArray<FWorldFieldCellState>& FieldCellSnapshot)
 {
+    TArray<FWorldAnimalPenState> ExistingPens;
+    AnimalPens.GenerateValueArray(ExistingPens);
+    return RestoreSnapshot(CropSnapshot, AnimalSnapshot, FieldCellSnapshot, ExistingPens);
+}
+
+bool UWorldAgricultureSubsystem::RestoreSnapshot(
+    const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot,
+    const TArray<FWorldFieldCellState>& FieldCellSnapshot,
+    const TArray<FWorldAnimalPenState>& AnimalPenSnapshot){
     if (CropSnapshot.Num() > MaxCrops || AnimalSnapshot.Num() > MaxAnimals ||
+        AnimalPenSnapshot.Num() > MaxAnimalPens || MaxAnimalPens <= 0 || MaxAnimalPens > 4096 ||
         FieldCellSnapshot.Num() > MaxFieldCells || MaxFieldCells <= 0 || MaxFieldCells > 65536 ||
         MaxFieldActionReceiptsPerCell <= 0 || MaxFieldActionReceiptsPerCell > 512 ||
         !FMath::IsFinite(SoilExhaustionPerHarvest) || SoilExhaustionPerHarvest < 0.0f || SoilExhaustionPerHarvest > 1.0f ||
@@ -1281,6 +1309,32 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
     TMap<FGuid, FWorldCropState> NewCrops;
     TMap<FGuid, FWorldAnimalState> NewAnimals;
     TMap<FIntVector, FWorldFieldCellState> NewFieldCells;
+    TMap<FGuid, FWorldAnimalPenState> NewAnimalPens;
+    TSet<FGuid> PenMemberAnimalIds;
+    for (const FWorldAnimalPenState& Pen : AnimalPenSnapshot)
+    {
+        if (!Pen.PenId.IsValid() || Pen.Location.ContainsNaN() || Pen.Capacity <= 0 ||
+            Pen.Capacity > 128 || Pen.Revision <= 0 || Pen.AnimalIds.Num() > Pen.Capacity ||
+            NewAnimalPens.Contains(Pen.PenId))
+            return false;
+        TSet<FName> AllowedDefinitions;
+        for (const FName DefinitionId : Pen.AllowedAnimalDefinitionIds)
+        {
+            if (DefinitionId.IsNone() || AllowedDefinitions.Contains(DefinitionId))
+                return false;
+            AllowedDefinitions.Add(DefinitionId);
+        }
+        TSet<FGuid> LocalAnimalIds;
+        for (const FGuid& AnimalId : Pen.AnimalIds)
+        {
+            if (!AnimalId.IsValid() || LocalAnimalIds.Contains(AnimalId) ||
+                PenMemberAnimalIds.Contains(AnimalId))
+                return false;
+            LocalAnimalIds.Add(AnimalId);
+            PenMemberAnimalIds.Add(AnimalId);
+        }
+        NewAnimalPens.Add(Pen.PenId, Pen);
+    }
     TSet<FGuid> SeenFieldOperations;
     for (const FWorldFieldCellState& Field : FieldCellSnapshot)
     {
@@ -1341,16 +1395,52 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             return false;
         NewCrops.Add(C.CropId, C);
     }
+    TSet<FGuid> SourceWildlifeIds;
     for (const FWorldAnimalState& A : AnimalSnapshot)
     {
         if (!A.AnimalId.IsValid() || A.AnimalDefinitionId.IsNone() || A.Revision <= 0 ||
+            static_cast<uint8>(A.LifecycleState) > static_cast<uint8>(EWorldAnimalLifecycleState::Slaughtered) ||
             !FMath::IsFinite(A.Hunger) || A.Hunger < 0.0f || A.Hunger > 100.0f ||
             !FMath::IsFinite(A.Health) || A.Health < 0.0f || A.Health > 100.0f ||
             A.ProductUnits < 0 || !FMath::IsFinite(A.ProductProgressSeconds) ||
             A.ProductProgressSeconds < 0.0 || A.ProductProgressSeconds >= 3600.0 ||
             A.Location.ContainsNaN() || A.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
-            NewAnimals.Contains(A.AnimalId)) return false;
+            NewAnimals.Contains(A.AnimalId) ||
+            (A.LifecycleState == EWorldAnimalLifecycleState::Penned && !A.PenId.IsValid()) ||
+            (A.LifecycleState != EWorldAnimalLifecycleState::Penned && A.PenId.IsValid()) ||
+            (A.LifecycleState == EWorldAnimalLifecycleState::Slaughtered && A.Health > 0.0f))
+            return false;
+        if (A.SourceWildlifeIdentityId.IsValid())
+        {
+            if (SourceWildlifeIds.Contains(A.SourceWildlifeIdentityId))
+                return false;
+            SourceWildlifeIds.Add(A.SourceWildlifeIdentityId);
+        }
         NewAnimals.Add(A.AnimalId, A);
+    }
+
+    for (const TPair<FGuid, FWorldAnimalPenState>& Pair : NewAnimalPens)
+    {
+        const FWorldAnimalPenState& Pen = Pair.Value;
+        for (const FGuid& AnimalId : Pen.AnimalIds)
+        {
+            const FWorldAnimalState* Animal = NewAnimals.Find(AnimalId);
+            if (!Animal || Animal->LifecycleState != EWorldAnimalLifecycleState::Penned ||
+                Animal->PenId != Pen.PenId ||
+                (!Pen.AllowedAnimalDefinitionIds.IsEmpty() &&
+                 !Pen.AllowedAnimalDefinitionIds.Contains(Animal->AnimalDefinitionId)))
+                return false;
+        }
+    }
+    for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
+    {
+        const FWorldAnimalState& Animal = Pair.Value;
+        if (Animal.LifecycleState == EWorldAnimalLifecycleState::Penned)
+        {
+            const FWorldAnimalPenState* Pen = NewAnimalPens.Find(Animal.PenId);
+            if (!Pen || !Pen->AnimalIds.Contains(Animal.AnimalId))
+                return false;
+        }
     }
     TSet<FGuid> SeenOperationIds;
     TSet<FGuid> SeenOutputIds;
@@ -1409,15 +1499,18 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             if (!Receipt.OperationId.IsValid() || SeenOperationIds.Contains(Receipt.OperationId) ||
                 Receipt.EntityId != Animal.AnimalId ||
                 (Receipt.Action != EWorldAgricultureActionKind::FeedAnimal &&
-                 Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts) ||
-                Receipt.ExpectedEntityRevision <= 0 ||
+                 Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts &&
+                 Receipt.Action != EWorldAgricultureActionKind::CaptureAnimal &&
+                 Receipt.Action != EWorldAgricultureActionKind::MoveAnimalToPen &&
+                 Receipt.Action != EWorldAgricultureActionKind::SlaughterAnimal) ||
                 Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
                 Receipt.ResultingEntityRevision > Animal.Revision)
                 return false;
 
             if (Receipt.Action == EWorldAgricultureActionKind::FeedAnimal)
             {
-                if (!Receipt.InputItemId.IsValid() || !Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                if (Receipt.ExpectedEntityRevision <= 0 ||
+                    !Receipt.InputItemId.IsValid() || !Receipt.ExpectedInventoryOwnerId.IsValid() ||
                     Receipt.ExpectedItemRevision <= 0 ||
                     Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
                     Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.FeedDefinitionId ||
@@ -1425,21 +1518,61 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                     Receipt.HungerReduction <= 0.0f || Receipt.HungerReduction > 100.0f ||
                     !Receipt.OutputItemIds.IsEmpty())
                     return false;
+                bNeedsItemValidation = true;
             }
-            else
+            else if (Receipt.Action == EWorldAgricultureActionKind::CollectAnimalProducts)
             {
-                if (Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.ProductDefinitionId ||
+                if (Receipt.ExpectedEntityRevision <= 0 ||
+                    Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.ProductDefinitionId ||
                     Receipt.RequestedOutputUnits <= 0 || Receipt.RequestedOutputUnits > 64 ||
                     Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits)
                     return false;
                 for (const FGuid& ItemId : Receipt.OutputItemIds)
                 {
-                    if (!ItemId.IsValid() || SeenOutputIds.Contains(ItemId))
-                        return false;
+                    if (!ItemId.IsValid() || SeenOutputIds.Contains(ItemId)) return false;
                     SeenOutputIds.Add(ItemId);
                 }
+                bNeedsItemValidation = true;
             }
-            bNeedsItemValidation = true;
+            else if (Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal)
+            {
+                if (Receipt.ExpectedEntityRevision != 0 || Receipt.ResultingEntityRevision != 1 ||
+                    !Receipt.SourceWildlifeIdentityId.IsValid() ||
+                    Receipt.SourceWildlifeIdentityId != Animal.SourceWildlifeIdentityId ||
+                    Receipt.DefinitionId != Animal.AnimalDefinitionId ||
+                    !Receipt.OutputItemIds.IsEmpty() || Receipt.InputItemId.IsValid())
+                    return false;
+            }
+            else if (Receipt.Action == EWorldAgricultureActionKind::MoveAnimalToPen)
+            {
+                if (Receipt.ExpectedEntityRevision <= 0 ||
+                    !Receipt.SourceWildlifeIdentityId.IsValid() ||
+                    Receipt.SourceWildlifeIdentityId != Animal.SourceWildlifeIdentityId ||
+                    !Receipt.PenId.IsValid() || Receipt.ExpectedPenRevision <= 0 ||
+                    Receipt.ResultingPenRevision != Receipt.ExpectedPenRevision + 1 ||
+                    Receipt.DefinitionId != Animal.AnimalDefinitionId ||
+                    !Receipt.OutputItemIds.IsEmpty())
+                    return false;
+            }
+            else if (Receipt.Action == EWorldAgricultureActionKind::SlaughterAnimal)
+            {
+                if (Receipt.ExpectedEntityRevision <= 0 ||
+                    !Receipt.SourceWildlifeIdentityId.IsValid() ||
+                    Receipt.SourceWildlifeIdentityId != Animal.SourceWildlifeIdentityId ||
+                    !Receipt.PenId.IsValid() || Receipt.ExpectedPenRevision <= 0 ||
+                    Receipt.ResultingPenRevision != Receipt.ExpectedPenRevision + 1 ||
+                    Receipt.DefinitionId != Animal.AnimalDefinitionId ||
+                    Receipt.RequestedOutputUnits <= 0 || Receipt.RequestedOutputUnits > 64 ||
+                    Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits ||
+                    Animal.LifecycleState != EWorldAnimalLifecycleState::Slaughtered)
+                    return false;
+                for (const FGuid& ItemId : Receipt.OutputItemIds)
+                {
+                    if (!ItemId.IsValid() || SeenOutputIds.Contains(ItemId)) return false;
+                    SeenOutputIds.Add(ItemId);
+                }
+                bNeedsItemValidation = true;
+            }
             SeenOperationIds.Add(Receipt.OperationId);
         }
     }
@@ -1479,5 +1612,6 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
     FieldCells = MoveTemp(NewFieldCells);
+    AnimalPens = MoveTemp(NewAnimalPens);
     return true;
 }
