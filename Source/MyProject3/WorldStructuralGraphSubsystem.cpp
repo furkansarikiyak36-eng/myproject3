@@ -253,6 +253,19 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
         }
     }
 
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        const FStructuralNodeRecord* ParentNode = Pair.Value.ParentNodeId.IsValid()
+            ? Nodes.Find(Pair.Value.ParentNodeId) : nullptr;
+        if (ParentNode && ParentNode->Kind != Pair.Value.Kind)
+        {
+            if (IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Pair.Value.Actor.Get()))
+                ChildPiece->SetStructuralAnchorOccupied(Pair.Value.OwnAnchorId, false);
+            if (IStructuralPieceInterface* ParentPiece = Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()))
+                ParentPiece->SetStructuralAnchorOccupied(Pair.Value.ParentAnchorId, false);
+        }
+    }
+
     TArray<FGuid> OrderedIds;
     Nodes.GetKeys(OrderedIds);
     OrderedIds.Sort([](const FGuid& A, const FGuid& B)
@@ -320,6 +333,44 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
                 TEXT("Structural graph restored but same-material actor link reconstruction failed for node %s."),
                 *NodeId.ToString());
             return false;
+        }
+    }
+
+    // Re-reserve each secondary contact after primary actor links are rebuilt.
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        AActor* ChildActor = Pair.Value.Actor.Get();
+        IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(ChildActor);
+        for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
+        {
+            const FStructuralNodeRecord* SupportNode = Nodes.Find(Link.SupportNodeId);
+            AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
+            IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(SupportActor);
+            if (!ChildPiece && !SupportPiece)
+                continue;
+            FStructuralAnchorView ChildAnchor;
+            FStructuralAnchorView SupportAnchor;
+            if (!ChildPiece || !SupportPiece ||
+                !ChildPiece->GetStructuralAnchor(Link.OwnAnchorId, ChildAnchor) ||
+                !SupportPiece->GetStructuralAnchor(Link.SupportAnchorId, SupportAnchor) ||
+                !ChildAnchor.bCanConnect || !SupportAnchor.bCanReceive ||
+                ChildAnchor.bOccupied || SupportAnchor.bOccupied ||
+                ChildAnchor.Tag != SupportAnchor.Tag ||
+                FVector::Dist(ChildActor->GetActorTransform().TransformPosition(ChildAnchor.LocalTransform.GetLocation()),
+                    SupportActor->GetActorTransform().TransformPosition(SupportAnchor.LocalTransform.GetLocation())) > 50.0f)
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("Structural graph restored but secondary support anchors failed reconstruction for node %s."),
+                    *Pair.Key.ToString());
+                return false;
+            }
+            if (!ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, true) ||
+                !SupportPiece->SetStructuralAnchorOccupied(Link.SupportAnchorId, true))
+            {
+                ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, false);
+                SupportPiece->SetStructuralAnchorOccupied(Link.SupportAnchorId, false);
+                return false;
+            }
         }
     }
 
@@ -1224,17 +1275,86 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
         RemovalSet.Add(NodeId);
     }
 
-    // Reject partial removals: no surviving actor may keep an anchor or graph
-    // edge into the transaction set. This is conservative when an alternate
-    // support exists; that case needs an explicit actor-to-actor support promotion.
     for (const FGuid& NodeId : LeafFirstOrder)
     {
         const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
         if (!Node || !Node->Actor.IsValid() || Node->Revision >= MAX_int64 - LeafFirstOrder.Num() - 2)
             return false;
+    }
+
+    TSet<FGuid> AffectedSurvivorIds;
+    for (const FGuid& NodeId : LeafFirstOrder)
         for (const FGuid& DependentId : GetAllDependents(NodeId))
             if (!RemovalSet.Contains(DependentId))
+                AffectedSurvivorIds.Add(DependentId);
+
+    TFunction<bool(FGuid, TSet<FGuid>&)> HasPathWithoutRemoval;
+    HasPathWithoutRemoval = [this, &RemovalSet, &HasPathWithoutRemoval](
+        FGuid CurrentId, TSet<FGuid>& Visiting) -> bool
+    {
+        if (!CurrentId.IsValid() || RemovalSet.Contains(CurrentId) || Visiting.Contains(CurrentId))
+            return false;
+        const FStructuralNodeRecord* Current = Nodes.Find(CurrentId);
+        if (!Current || !Current->Actor.IsValid() || Current->Damage >= Current->DamageThreshold)
+            return false;
+        if (Current->bGroundSupported)
+            return true;
+        Visiting.Add(CurrentId);
+        bool bSupported = Current->ParentNodeId.IsValid() &&
+            HasPathWithoutRemoval(Current->ParentNodeId, Visiting);
+        for (const FStructuralSupportLink& Link : Current->SecondarySupports)
+            if (!bSupported && !RemovalSet.Contains(Link.SupportNodeId))
+                bSupported = HasPathWithoutRemoval(Link.SupportNodeId, Visiting);
+        Visiting.Remove(CurrentId);
+        return bSupported;
+    };
+
+    TMap<FGuid, FStructuralNodeRecord> ProposedSurvivors;
+    for (const FGuid& SurvivorId : AffectedSurvivorIds)
+    {
+        const FStructuralNodeRecord* Existing = Nodes.Find(SurvivorId);
+        if (!Existing || Existing->Revision >= MAX_int64 - LeafFirstOrder.Num() - 2)
+            return false;
+        FStructuralNodeRecord Updated = *Existing;
+
+        if (RemovalSet.Contains(Updated.ParentNodeId))
+        {
+            TArray<FStructuralSupportLink> Candidates = Updated.SecondarySupports;
+            Candidates.Sort([](const FStructuralSupportLink& A, const FStructuralSupportLink& B)
+            {
+                return A.SupportNodeId.ToString() < B.SupportNodeId.ToString();
+            });
+            const FStructuralSupportLink* Promoted = nullptr;
+            for (const FStructuralSupportLink& Candidate : Candidates)
+            {
+                if (RemovalSet.Contains(Candidate.SupportNodeId))
+                    continue;
+                TSet<FGuid> SupportVisiting;
+                if (HasPathWithoutRemoval(Candidate.SupportNodeId, SupportVisiting))
+                {
+                    Promoted = &Candidate;
+                    break;
+                }
+            }
+            if (!Promoted)
                 return false;
+            const FGuid PromotedSupportId = Promoted->SupportNodeId;
+            Updated.ParentNodeId = PromotedSupportId;
+            Updated.ParentAnchorId = Promoted->SupportAnchorId;
+            Updated.OwnAnchorId = Promoted->OwnAnchorId;
+            Updated.SecondarySupports.RemoveAll(
+                [&PromotedSupportId](const FStructuralSupportLink& Link)
+                { return Link.SupportNodeId == PromotedSupportId; });
+        }
+
+        Updated.SecondarySupports.RemoveAll(
+            [&RemovalSet](const FStructuralSupportLink& Link)
+            { return RemovalSet.Contains(Link.SupportNodeId); });
+        TSet<FGuid> SurvivorVisiting;
+        if (!HasPathWithoutRemoval(SurvivorId, SurvivorVisiting))
+            return false;
+        ++Updated.Revision;
+        ProposedSurvivors.Add(SurvivorId, Updated);
     }
 
     struct FRemovalEntry
@@ -1396,6 +1516,9 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
         return false;
     };
 
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : ProposedSurvivors)
+        Nodes.Add(Pair.Key, Pair.Value);
+
     for (const FRemovalEntry& Entry : Entries)
     {
         FWorldOwnedItemRecord Consumed;
@@ -1417,9 +1540,8 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
         }
     }
 
-    // Preflight passed and every dependant is removed leaf-first. Disconnect
-    // actor-local links while all actors still exist; all source items are now
-    // consumed and salvage has already been delivered.
+    // Remove local links while all actors still exist. If a domain adapter
+    // refuses disconnect, roll the whole transaction back before any actor dies.
     for (const FRemovalEntry& Entry : Entries)
     {
         AActor* Actor = Entry.Actor.Get();
@@ -1428,42 +1550,30 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
 
         if (Entry.Node.ParentNodeId.IsValid())
         {
+            bool bDetached = false;
             if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
-                Log->DetachFromSnapParent(true);
+                bDetached = Log->DetachFromSnapParent(false);
             else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Actor))
-                Stone->RemoveConnection(true);
+                bDetached = Stone->RemoveConnection(false);
             else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Actor))
-                Stick->RemoveConnection(true);
+                bDetached = Stick->RemoveConnection(false);
             else
-                TryDisconnect(Entry.NodeId);
-        }
+                bDetached = TryDisconnect(Entry.NodeId);
+            if (!bDetached)
+                return RollbackData();
 
-        // Settle every authored anchor reservation from the before-image too;
-        // this catches partially restored or cross-domain actor-local state.
-        if (IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Actor))
-        {
-            if (Entry.Node.ParentNodeId.IsValid())
-                ChildPiece->SetStructuralAnchorOccupied(Entry.Node.OwnAnchorId, false);
-            for (const FStructuralSupportLink& Link : Entry.Node.SecondarySupports)
-                ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, false);
-        }
-        if (Entry.Node.ParentNodeId.IsValid())
-        {
-            const FStructuralNodeRecord* ParentNode = Nodes.Find(Entry.Node.ParentNodeId);
-            if (IStructuralPieceInterface* ParentPiece = ParentNode
-                ? Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()) : nullptr)
-                {
-                ParentPiece->SetStructuralAnchorOccupied(Entry.Node.ParentAnchorId, false);
-            }
-        }
-        for (const FStructuralSupportLink& Link : Entry.Node.SecondarySupports)
-        {
-            const FStructuralNodeRecord* SupportNode = Nodes.Find(Link.SupportNodeId);
-            if (IStructuralPieceInterface* SupportPiece = SupportNode
-                ? Cast<IStructuralPieceInterface>(SupportNode->Actor.Get()) : nullptr)
-                SupportPiece->SetStructuralAnchorOccupied(Link.SupportAnchorId, false);
+            FStructuralNodeRecord DetachedNode;
+            if (!GetNode(Entry.NodeId, DetachedNode) ||
+                DetachedNode.ParentNodeId.IsValid() || !DetachedNode.SecondarySupports.IsEmpty())
+                return RollbackData();
         }
     }
+
+    // Actor-local attachments are reconstructed from the changed graph before
+    // the removed subset is committed. Promoted alternate supports therefore
+    // become real parent links and regain their anchor reservations.
+    if (!RebuildLogActorAttachmentsFromSnapshot())
+        return RollbackData();
 
     if (!RemoveNodesAtomically(LeafFirstOrder))
         return RollbackData();
