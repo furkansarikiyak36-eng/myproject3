@@ -1,8 +1,8 @@
 # Current task (checkpoint)
 
-Status: open — P6 source-written; Unreal verification pending
+Status: open — P6 and P7.1 route-query source written; Unreal verification pending
 Overall goal: Finish partial tasks in memory/PLAN_STATUS.md in dependency order, including player input/HUD where required.
-Current work package completed as code: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter.
+Current source-written work: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter, and the P7.1 player walking route-cost query.
 Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 
 ## Fixed constraints
@@ -21,10 +21,11 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 6. [x] Add automation-test source for field work, seasonal rejection/acceptance, seed ownership/returns, repeat receipts and field snapshot.
 7. [x] Add data-driven animal definitions, unique-item and count-stack capture, logical 4-stake/1-rope pen, gate/assignment, owned-item feed, closed-pen products, data-driven slaughter outputs; save pens in schema v24 and update simulation rollback.
 8. [x] Update memory/PLAN_STATUS.md and CODEBASE.md to reflect source-written status honestly. CODE_INDEX.md is generated and is still stale; it should be regenerated with tools/memory_code_index.py when the repo is locally available.
-9. [ ] Batch Unreal UHT/UBT build, automation tests, then fix all errors. No build/test has run on this branch.
-10. [ ] Add headless whole-world year simulation and any P7/P8/P9.2 tasks in dependency order.
-11. [ ] Integrate WildlifeActor/stick-trap interactions, player input/HUD, field tools, physical pen/crop/animal visuals; complete remaining field chain.
-12. [ ] New Valley scene and PIE play acceptance last.
+9. [x] Add P7.1 `ALogSnapCharacter::FindWalkingRoute`: query the existing graph with live `CarryLoad` mass limit/mass and initialized climate severity; add a test-source case for deterministic storm/slope/surface/infrastructure cost. This is a route query only; it does not drive movement.
+10. [ ] Batch Unreal UHT/UBT build, automation tests, then fix all errors. No build/test has run on this branch.
+11. [ ] Populate routes from actual zones/bridges/roads; add route preview input/HUD and apply physical slope/surface impacts to actual walking speed/time. Continue P7.2–P7.4/P8/P9.2 in dependency order and add the headless whole-world year simulation.
+12. [ ] Integrate WildlifeActor/stick-trap interactions, player input/HUD, field tools, physical pen/crop/animal visuals; complete remaining field chain.
+13. [ ] New Valley scene and PIE play acceptance last.
 
 ## Files read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
@@ -38,17 +39,17 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 
 ## Findings
 - Field state now tracks clear/till, fertility, weeds, mulch, moisture, planted crop, last-crop/repeat count and revision-bound receipts. These are logical contracts; field visuals/tools/player controls are not wired.
-- Eking requires a prepared field, current permitted month, field-owned moisture threshold, fertility/weed limits and a unique seed item whose ownership/revision is valid. Harvest creates harvest items plus configured seed-return items and applies a stronger fertility cost for repeated crop cycles.
+- Ekim requires a prepared field, current permitted month, field-owned moisture threshold, fertility/weed limits and a unique seed item whose ownership/revision is valid. Harvest creates harvest items plus configured seed-return items and applies a stronger fertility cost for repeated crop cycles.
 - crops.json defines Crop.Grain, Crop.Root and Crop.Legume; plant months, seed return and soil parameters are validated and registered in agriculture. These tuning values are placeholders, not balance-approved values.
 - animals.json defines Animal.Rabbit, Animal.Bird and Animal.Goat; item IDs/intervals/tools/yields are checked and registered. The logical animal chain supports both unique-ledger and count-stack capture tools; pen construction consumes 4 Stake + 1 Rope; feed requires a unique ledger-owned feed item; products accrue for captured animals in a closed pen; slaughter yields come from animal data.
 - Save schema v23 persists field cells and stops inventing seed history for legacy saves; schema v24 persists logical pens and migrates old animals as uncaptured. The fixed-step rollback now carries fields and pens.
 - Tests in GameWorldTests.cpp now cover field-work retries, seasonal planting, item-backed seed consume/return, crop maturation, field snapshot, unique/count-stack capture, pen/material consumption, feed/product collection, slaughter idempotency and farm/pen snapshot. They are source-only and have not run.
-- memory/PLAN_STATUS.md and CODEBASE.md now state that P6 is partial/source-written. Player input/HUD, actual WildlifeActor/stick-trap integration, field tools, full 15-step post-harvest chain, whole-year simulation and scene/PIE work remain open.
+- memory/PLAN_STATUS.md and CODEBASE.md state that P6 is partial/source-written. `ALogSnapCharacter::FindWalkingRoute` was added for P7.1 using current carry mass and climate severity; this is a query-only adapter and has no HUD/input or world-authored route mapping. Player input/HUD, actual WildlifeActor/stick-trap integration, field tools, the full 15-step post-harvest chain, direct terrain movement cost, whole-year simulation and scene/PIE work remain open.
 
 ## Changes
 - Branch: game/p06-farming-seed-cycle.
-- Updated WorldAgricultureSubsystem.h/.cpp; WorldGameDataSubsystem.h/.cpp; Config/GameData/crops.json, animals.json, items.json; WorldSimulationSaveGame.h; WorldSaveCoordinatorSubsystem.cpp; WorldSimulationCoordinatorSubsystem.cpp; Tests/GameWorldTests.cpp; memory/PLAN_STATUS.md; memory/CODEBASE.md.
+- Updated WorldAgricultureSubsystem.h/.cpp; WorldGameDataSubsystem.h/.cpp; Config/GameData/crops.json, animals.json, items.json; WorldSimulationSaveGame.h; WorldSaveCoordinatorSubsystem.cpp; WorldSimulationCoordinatorSubsystem.cpp; LogSnapCharacter.h/.cpp; Tests/GameWorldTests.cpp; Tests/MyProject3CoreTests.cpp; memory/PLAN_STATUS.md; memory/CODEBASE.md.
 - No Unreal build, automation test or PIE run has been executed for this branch.
 
 ## Next step
-Proceed with the next dependency-ordered backlog slice after P6: inspect P7.1–P7.4 source headers and contracts first, without building. Before the eventual batch build, re-audit all P6 receipt/save invariants and regenerate CODE_INDEX.md locally.
+Proceed with P7.2–P7.4 dependency review, starting with zone/infrastructure route-node mapping; inspect headers/contracts before editing, without building. Before the eventual batch build, re-audit all P6 receipt/save invariants and regenerate CODE_INDEX.md locally.
