@@ -1137,16 +1137,16 @@ void AVerticalSliceCWorldActor::SetupPlayer()
                 EKeys::I, IE_Pressed, this, &AVerticalSliceCWorldActor::FillCreekWaterInput);
             FillWaterBinding.bConsumeInput = false;
             FInputKeyBinding& DrinkWaterBinding = InputComponent->BindKey(
-                EKeys::K, IE_Pressed, this, &AVerticalSliceCWorldActor::DrinkWaterInput);
+                EKeys::M, IE_Pressed, this, &AVerticalSliceCWorldActor::DrinkWaterInput);
             DrinkWaterBinding.bConsumeInput = false;
             FInputKeyBinding& BoilWaterBinding = InputComponent->BindKey(
-                EKeys::B, IE_Pressed, this, &AVerticalSliceCWorldActor::BoilWaterInput);
+                EKeys::F5, IE_Pressed, this, &AVerticalSliceCWorldActor::BoilWaterInput);
             BoilWaterBinding.bConsumeInput = false;
             FInputKeyBinding& RestBinding = InputComponent->BindKey(
-                EKeys::P, IE_Pressed, this, &AVerticalSliceCWorldActor::RestInput);
+                EKeys::F6, IE_Pressed, this, &AVerticalSliceCWorldActor::RestInput);
             RestBinding.bConsumeInput = false;
             FInputKeyBinding& SurvivalStatusBinding = InputComponent->BindKey(
-                EKeys::V, IE_Pressed, this, &AVerticalSliceCWorldActor::ShowSurvivalStatusInput);
+                EKeys::F7, IE_Pressed, this, &AVerticalSliceCWorldActor::ShowSurvivalStatusInput);
             SurvivalStatusBinding.bConsumeInput = false;
             FInputKeyBinding& RefuelBinding = InputComponent->BindKey(
                 EKeys::O, IE_Pressed, this, &AVerticalSliceCWorldActor::RefuelFireInput);
@@ -1757,8 +1757,8 @@ void AVerticalSliceCWorldActor::BoilWaterInput()
             {
                 const TCHAR* Message = bSucceeded
                     ? (bStarted
-                        ? TEXT("Boiling started. Keep the pot near a lit fire and wait before pressing B again.")
-                        : TEXT("Water is boiled. Press K to drink it."))
+                        ? TEXT("Boiling started. Keep the pot near a lit fire and wait before pressing F5 again.")
+                        : TEXT("Water is boiled. Press M to drink it."))
                     : TEXT("Boiling needs dirty water or a waiting boiling item, a fired pot and a nearby lit fire.");
                 GEngine->AddOnScreenDebugMessage(9203, 4.0f,
                     bSucceeded ? FColor::Green : FColor::Orange, Message);
@@ -1993,6 +1993,6 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     {
         bIntroShown = true;
         GEngine->AddOnScreenDebugMessage(-1, 12.0f, FColor(230, 210, 160),
-            TEXT("The camp is abandoned. The cabin has no door and no roof, the bridge is gone, and the nights are cold. Controls: LMB chop, I fill pot, B boil, K drink, P rest, V status, O refuel fire, J helper."));
+            TEXT("The camp is abandoned. The cabin has no door and no roof, the bridge is gone, and the nights are cold. Controls: LMB chop, I fill pot, F5 boil, M drink, F6 rest, F7 status, O refuel fire, J helper."));
     }
 }
