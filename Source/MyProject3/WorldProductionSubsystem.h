@@ -41,7 +41,7 @@ struct FWorldProductionJob
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") FName BlockedReason = NAME_None;
 };
 
-/** Durable idempotency receipt for converting one physical world item into station stock. */
+/** Durable receipt for converting a physical singleton or logical resource stack into station stock. */
 USTRUCT(BlueprintType)
 struct FWorldProductionPhysicalIntakeReceipt
 {
@@ -53,6 +53,9 @@ struct FWorldProductionPhysicalIntakeReceipt
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName SourceDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName SourceMeshVariantSetId = NAME_None;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName StockItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production", meta=(ClampMin="1")) int32 Quantity = 1;
+    /** Older receipts are physical by default; stack intake sets this false. */
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") bool bPhysicalActorIntake = true;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingItemRevision = 0;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
 };
@@ -128,6 +131,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
     /** Converts one loose, world-owned physical log into one station stock unit. OperationId must be reused for retries. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
+    /** Converts a non-actor-backed world resource stack into production stock, preserving quantity. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedResourceStack(
+        FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision,
+        int64 ExpectedStationRevision, FName& OutStockItemId);
     /** Stable recipe key for physical resource stock; preserves the nominal mesh family when one is authored. */
     UFUNCTION(BlueprintPure, Category="World|Production") static FName MakePhysicalStockItemId(FName DefinitionId, FName MeshVariantSetId);
     /** Converts one aggregate stock unit into a real world-owned physical log. Callers must reuse OperationId for retries. */
