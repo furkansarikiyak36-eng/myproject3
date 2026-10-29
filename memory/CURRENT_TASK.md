@@ -47,7 +47,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - After every repository step, update Findings/Changes and Next step here.
 
 ### Read
-- `Source/MyProject3/WorldSurvivalSubsystem.h` (current action/profile APIs reviewed for P2; supports location, activity, owned-item consumption, rest, conditions, weather, and save receipts).
+- `Source/MyProject3/WorldSurvivalSubsystem.h` (P2 API declarations: profile/location/activity/owned-item consume/rest/condition/weather/snapshots).
+- `Source/MyProject3/VerticalSliceCWorldActor.h` (current third-person/scene driver and available creek/fire/survival input hooks reviewed).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
