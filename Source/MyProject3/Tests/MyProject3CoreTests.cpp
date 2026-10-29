@@ -3943,6 +3943,13 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read profile after fill"), Survival->GetProfile(Profile.EntityId, AfterFill));
     TestEqual(TEXT("Fill receipt advances profile exactly once"), AfterFill.Revision,
         static_cast<int64>(Profile.Revision + 1));
+    FGuid DuplicateWaterId;
+    TestFalse(TEXT("A full pot cannot create another water item on a different operation"),
+        Survival->TryFillWaterFromCreek(FGuid::NewGuid(), Profile.EntityId, AfterFill.Revision,
+            PotId, PotAfterFill.Revision, InventoryOwnerId, CreekLocation, DuplicateWaterId));
+    TestFalse(TEXT("Rejected duplicate fill returns no item identity"), DuplicateWaterId.IsValid());
+    TestEqual(TEXT("Rejected duplicate fill leaves exactly one water item"),
+        Inventory->GetItemCount(TEXT("Water.Dirty")), 1);
 
     TArray<FWorldSurvivalProfile> Profiles;
     TArray<FWorldDiscoveryRecord> Discoveries;
