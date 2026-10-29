@@ -1,0 +1,108 @@
+{
+  "_about": "P7.2 logical zone catalog for the primitive-era valley. Existing VerticalSlice_C provides authored anchors only for the base camp, creek crossing/ford and lookout; the lake-swamp and mountain-pass positions remain unplaced until the final scene phase.",
+  "zones": [
+    {
+      "id": "Zone.0",
+      "number": 0,
+      "name": "Üs vadisi",
+      "description": "Başlangıç alanı; ağaç, taş ve su.",
+      "resource_item_ids": [
+        "Log",
+        "Stone",
+        "Water.Dirty",
+        "Stick",
+        "Grass",
+        "Berries"
+      ],
+      "barrier_id": "Barrier.None",
+      "barrier_description": "No major regional barrier.",
+      "permanent_solution_ids": [],
+      "seasonal_months": []
+    },
+    {
+      "id": "Zone.1",
+      "number": 1,
+      "name": "Dere boyu",
+      "description": "Kil, kum, saz ve balık; dere geçişi başlangıçta riskli ve yavaştır.",
+      "resource_item_ids": [
+        "Clay",
+        "Sand",
+        "Reed",
+        "Fish.Raw",
+        "Water.Dirty",
+        "Seed.Grain"
+      ],
+      "barrier_id": "Barrier.Creek",
+      "barrier_description": "Deep creek with steep banks; the east ford is traversable at higher travel cost.",
+      "permanent_solution_ids": [
+        "Infrastructure.CreekBridge",
+        "Infrastructure.SteppingStones"
+      ],
+      "seasonal_months": []
+    },
+    {
+      "id": "Zone.2",
+      "number": 2,
+      "name": "Yüksek orman",
+      "description": "Reçine, boynuz, av, çakmaktaşı ve kök bitki tohumu.",
+      "resource_item_ids": [
+        "Resin",
+        "Antler",
+        "Hide.Raw",
+        "Flint",
+        "Seed.Root"
+      ],
+      "barrier_id": "Barrier.SlopeRock",
+      "barrier_description": "Steep slope and cliff terrace; the existing lookout stair stringers have no usable steps.",
+      "permanent_solution_ids": [
+        "Infrastructure.ForestTrail",
+        "Infrastructure.HillSteps",
+        "Infrastructure.RopeLine"
+      ],
+      "seasonal_months": []
+    },
+    {
+      "id": "Zone.3",
+      "number": 3,
+      "name": "Göl ve bataklık",
+      "description": "Kabuk, aşı boyası ve nadir baklagil tohumu.",
+      "resource_item_ids": [
+        "Shell",
+        "OchreEarth",
+        "Seed.Legume",
+        "Fish.Raw",
+        "Water.Dirty"
+      ],
+      "barrier_id": "Barrier.SwampLake",
+      "barrier_description": "Soft swamp ground and lake water interrupt the foot route.",
+      "permanent_solution_ids": [
+        "Infrastructure.Boardwalk",
+        "Infrastructure.Raft"
+      ],
+      "seasonal_months": []
+    },
+    {
+      "id": "Zone.4",
+      "number": 4,
+      "name": "Dağ geçidi",
+      "description": "Mevsimlik kaynaklar ve uzak keşif yeri.",
+      "resource_item_ids": [
+        "Berries",
+        "Bone",
+        "Antler",
+        "Meat.Raw"
+      ],
+      "barrier_id": "Barrier.SnowColdDistance",
+      "barrier_description": "Snow, cold and travel distance; open travel window is seasonal.",
+      "permanent_solution_ids": [
+        "Capability.ColdProtection",
+        "Infrastructure.ForwardCamp"
+      ],
+      "seasonal_months": [
+        6,
+        7,
+        8
+      ]
+    }
+  ]
+}
