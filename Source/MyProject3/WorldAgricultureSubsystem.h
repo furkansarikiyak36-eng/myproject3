@@ -237,6 +237,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool RegisterCrop(const FWorldCropState& Crop);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool RegisterAnimal(const FWorldAnimalState& Animal);
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool SetCropMoisture(const FGuid& CropId, float Moisture, int64 ExpectedRevision);
+    /** Applies a deterministic climate/event effect to prepared fields and growing crops. Called inside the shared fixed-step transaction. */
+    bool ApplyEnvironmentalEffect(FName EffectId, float Severity, double DeltaSeconds);
     /** Legacy numeric simulation hook; player-facing feeding must use TryFeedAnimal so food ownership is consumed. */
     bool FeedAnimal(const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision);
     UFUNCTION(BlueprintPure, Category="World|Simulation") bool CanAdvanceAgricultureStep(double DeltaSeconds) const;
