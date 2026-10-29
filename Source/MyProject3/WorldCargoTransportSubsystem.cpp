@@ -28,6 +28,16 @@ bool UWorldCargoTransportSubsystem::StartTransport(
     FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
     float CostPerSecond, FGuid& OutCargoId)
 {
+    const FLogisticsRouteCostContext DefaultContext;
+    return StartTransportWithContext(ItemId, ExpectedItemRevision, SourceStorageId,
+        OriginNode, DestinationNode, DestinationStorageId, CostPerSecond, DefaultContext, OutCargoId);
+}
+
+bool UWorldCargoTransportSubsystem::StartTransportWithContext(
+    const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& SourceStorageId,
+    FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
+    float CostPerSecond, const FLogisticsRouteCostContext& CostContext, FGuid& OutCargoId)
+{
     OutCargoId.Invalidate();
     UWorldLogisticsRouteSubsystem* Routes = GetRoutes();
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
@@ -50,7 +60,7 @@ bool UWorldCargoTransportSubsystem::StartTransport(
 
     TArray<FName> Path;
     float RouteCost = 0.0f;
-    if (!Routes->FindRoute(OriginNode, DestinationNode, Path, RouteCost) ||
+    if (!Routes->FindRouteWithContext(OriginNode, DestinationNode, CostContext, Path, RouteCost) ||
         Path.Num() < 2 || !FMath::IsFinite(RouteCost) || RouteCost < 0.0f)
         return false;
 
@@ -68,6 +78,8 @@ bool UWorldCargoTransportSubsystem::StartTransport(
     Record.Route = Path;
     Record.RouteCost = RouteCost;
     Record.CostPerSecond = CostPerSecond;
+    Record.CargoMassKg = CostContext.CargoMassKg;
+    Record.WeatherSeverityAtDispatch = CostContext.WeatherSeverity;
     Record.DeliveryOperationId = FGuid::NewGuid();
     if (!Record.CargoId.IsValid() || !Record.DeliveryOperationId.IsValid() ||
         Cargo.Contains(Record.CargoId))
@@ -168,6 +180,9 @@ bool UWorldCargoTransportSubsystem::CanAdvanceCargoStep(double DeltaSeconds) con
 
         if (Record.Revision >= MAX_int64 - 1 ||
             !FMath::IsFinite(Record.RouteCost) || Record.RouteCost < 0.0f ||
+            !FMath::IsFinite(Record.CargoMassKg) || Record.CargoMassKg < 0.0f || Record.CargoMassKg > 1000000.0f ||
+            !FMath::IsFinite(Record.WeatherSeverityAtDispatch) || Record.WeatherSeverityAtDispatch < 0.0f ||
+            Record.WeatherSeverityAtDispatch > 1.0f ||
             !FMath::IsFinite(Record.Progress) || Record.Progress < 0.0f ||
             Record.Progress > Record.RouteCost ||
             !FMath::IsFinite(Record.CostPerSecond) || Record.CostPerSecond <= 0.0f ||
@@ -270,6 +285,9 @@ bool UWorldCargoTransportSubsystem::RestoreSnapshot(const TArray<FWorldCargoTran
             R.OriginNode.IsNone() || R.DestinationNode.IsNone() || R.Route.Num() < 2 ||
             R.Route[0] != R.OriginNode || R.Route.Last() != R.DestinationNode ||
             !FMath::IsFinite(R.RouteCost) || R.RouteCost < 0.0f ||
+            !FMath::IsFinite(R.CargoMassKg) || R.CargoMassKg < 0.0f || R.CargoMassKg > 1000000.0f ||
+            !FMath::IsFinite(R.WeatherSeverityAtDispatch) || R.WeatherSeverityAtDispatch < 0.0f ||
+            R.WeatherSeverityAtDispatch > 1.0f ||
             !FMath::IsFinite(R.Progress) || R.Progress < 0.0f || R.Progress > R.RouteCost ||
             !FMath::IsFinite(R.CostPerSecond) || R.CostPerSecond <= 0.0f ||
             R.ItemRevision <= 0 || R.Revision <= 0 || !R.DeliveryOperationId.IsValid() ||
