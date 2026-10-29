@@ -40,29 +40,29 @@ struct FWorldTerrainOperationReceipt
 {
     GENERATED_BODY()
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FGuid OperationId;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FIntVector Cell = FIntVector::ZeroValue;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     int64 ResultingRevision = 0;
 
     // Immutable committed state returned by idempotent retries.
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FWorldTerrainCellState ResultState;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     int32 RequestedDepthLayer = 0;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     ETerrainCellEdit RequestedEdit = ETerrainCellEdit::Excavate;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     FName RequestedMaterialId = NAME_None;
 
-    UPROPERTY()
+    UPROPERTY(SaveGame)
     int64 ExpectedRevision = 0;
 };
 
@@ -78,6 +78,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Limits", meta=(ClampMin="1", ClampMax="1000000"))
     int32 MaxEditedCells = 50000;
+
+    /** Receipt retention is bounded; once full, new edits fail closed rather than lose retry safety. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Limits", meta=(ClampMin="1", ClampMax="1000000"))
+    int32 MaxOperationReceipts = 100000;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Limits", meta=(ClampMin="1", ClampMax="64"))
     int32 MaxDepthPerCell = 8;
@@ -103,7 +107,11 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Terrain")
     int32 GetEditedCellCount() const { return Cells.Num(); }
     void ExportSnapshot(TArray<FWorldTerrainCellState>& OutCells) const;
+    void ExportSnapshot(TArray<FWorldTerrainCellState>& OutCells,
+        TArray<FWorldTerrainOperationReceipt>& OutReceipts) const;
     bool RestoreSnapshot(const TArray<FWorldTerrainCellState>& Snapshot);
+    bool RestoreSnapshot(const TArray<FWorldTerrainCellState>& Snapshot,
+        const TArray<FWorldTerrainOperationReceipt>& ReceiptSnapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Terrain")
