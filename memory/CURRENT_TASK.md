@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Read `BuildPlanActor.cpp` slot setup (2026-10-29): slots are local transforms with an optional single support-slot index; a feasible 720 cm creek span can use three supported beam segments per side, intermediate posts, cross-deck logs, and short sloped end ramps. Build completion is all-slots-filled, not one placement.
 - Read `Source/MyProject3/BuildPlanActor.cpp` setup (SHA c129a8c8bbcbb92d7b753257c84e0f0fca0bc354): the existing plan builder uses per-slot local transforms and support-slot IDs; most logs are capped around 300–440 cm. The authored creek crossing is 720 cm bank-to-bank, so a simple two-beam bridge plan would be structurally implausible and must not auto-enable route state.
 - Read `Source/MyProject3/BuildPlanActor.cpp` (2026-10-29): every completed plan goes through a private `Complete()` function, which handles only storage/hutch-specific outputs and then destroys the plan. No bridge plan or general completion callback exists.
 - 2026-10-29 · Read `Source/MyProject3/BuildPlanActor.h` (SHA 945f0a5f5eb40102c19b663af1754998e14d486e): `ABuildPlanActor` supports ghost-slot construction and `IsComplete()`, but exposes no completion delegate/ID for infrastructure semantics; only `LogWall`, shelter, storage, ramp and other generic plans exist, not a dedicated creek bridge plan.
