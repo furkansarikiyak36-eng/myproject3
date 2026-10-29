@@ -1643,7 +1643,7 @@ void AVerticalSliceCWorldActor::DrinkWaterInput()
 
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(9202, 3.0f, FColor::Silver,
-            TEXT("No owned water. Fill a fired pot at the creek (I), boil it by a fire (B), then drink (K)."));
+            TEXT("No owned water. Fill a fired pot at the creek (I), boil it by a fire (F5), then drink (M)."));
 }
 
 void AVerticalSliceCWorldActor::BoilWaterInput()
