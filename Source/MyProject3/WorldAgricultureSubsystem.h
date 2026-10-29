@@ -80,6 +80,9 @@ public:
         const FGuid& CropId, int64 ExpectedRevision, FName& OutItemDefinitionId, int32& OutYieldUnits);
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool SetCropMoisture(const FGuid& CropId, float Moisture, int64 ExpectedRevision);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool FeedAnimal(const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision);
+    UFUNCTION(BlueprintCallable, Category="World|Animals") bool TryCollectAnimalProduct(
+        const FGuid& AnimalId, int64 ExpectedRevision, int32 Quantity,
+        FName& OutProductDefinitionId, int32& OutCollectedQuantity);
     UFUNCTION(BlueprintPure, Category="World|Simulation") bool CanAdvanceAgricultureStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Simulation") bool AdvanceAgricultureStep(double DeltaSeconds);
     UFUNCTION(BlueprintPure, Category="World|Farm") bool GetCrop(const FGuid& CropId, FWorldCropState& OutCrop) const;
