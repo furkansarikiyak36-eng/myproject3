@@ -45,6 +45,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxCrops = 2048;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxAnimals = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm") float MinimumGrowthMoisture = 0.15f;
+    /** Full-severity weather multipliers; actual value interpolates from 1.0 by severity. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float RainGrowthMultiplier = 1.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float WindGrowthMultiplier = 0.9f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float SnowGrowthMultiplier = 0.2f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float StormGrowthMultiplier = 0.5f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float HeatwaveGrowthMultiplier = 0.6f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float HungerPerHour = 5.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float ProductHungerLimit = 55.0f;
 
