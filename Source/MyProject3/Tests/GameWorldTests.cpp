@@ -15,6 +15,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WallCoatingComponent.h"
 #include "StoneBuildingPiece.h"
 #include "GatherableResourceActor.h"
@@ -1128,6 +1129,61 @@ bool FWallCoatingConsumesPlasterAndSealsGapsTest::RunTest(const FString& Paramet
     TestTrue(TEXT("Half coating seals small shelter gaps"), Coating->ProvidesShelterSeal());
     TestFalse(TEXT("Stale revision refuses more plaster"), Coating->TryApplyPlaster(FGuid::NewGuid(), Inventory, 1, 2, CoatingLevel));
     TestEqual(TEXT("Stale request leaves inventory intact"), Inventory->GetItemCount(TEXT("Plaster")), 0);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FloodClosesAndRestoresFloodProneRoutesTest,
+    "MyProject3.World.Logistics.FloodClosuresAndRouteSnapshot", Flags)
+bool FFloodClosesAndRestoresFloodProneRoutesTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldLogisticsRouteSubsystem* Routes =
+        World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Route subsystem"), Routes))
+        return false;
+
+    FLogisticsRouteNode Start;
+    Start.NodeId = TEXT("Village");
+    Start.Location = FVector(0.0, 0.0, 0.0);
+    FLogisticsRouteNode Crossing;
+    Crossing.NodeId = TEXT("RiverCrossing");
+    Crossing.Location = FVector(1000.0, 0.0, 0.0);
+    FLogisticsRouteNode Goal;
+    Goal.NodeId = TEXT("Forest");
+    Goal.Location = FVector(2000.0, 0.0, 0.0);
+    TestTrue(TEXT("Register village"), Routes->UpsertNode(Start));
+    TestTrue(TEXT("Register river crossing"), Routes->UpsertNode(Crossing));
+    TestTrue(TEXT("Register forest"), Routes->UpsertNode(Goal));
+
+    FLogisticsRouteEdge FloodEdge;
+    FloodEdge.FromNode = Start.NodeId;
+    FloodEdge.ToNode = Crossing.NodeId;
+    FloodEdge.Cost = 1.0f;
+    FloodEdge.bFloodProne = true;
+    FLogisticsRouteEdge SafeEdge;
+    SafeEdge.FromNode = Crossing.NodeId;
+    SafeEdge.ToNode = Goal.NodeId;
+    SafeEdge.Cost = 1.0f;
+    TestTrue(TEXT("Register flood-prone edge"), Routes->UpsertEdge(FloodEdge));
+    TestTrue(TEXT("Register safe edge"), Routes->UpsertEdge(SafeEdge));
+
+    TArray<FName> Path;
+    float Cost = 0.0f;
+    TestTrue(TEXT("Route is open before a flood"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+    const FGuid FloodId = FGuid::NewGuid();
+    TestTrue(TEXT("Activate flood route claim"), Routes->ApplyActiveFloodEvents({ FloodId }));
+    TestFalse(TEXT("Flood-prone edge blocks the route"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+
+    FWorldLogisticsRouteSnapshot Snapshot;
+    Routes->ExportSnapshot(Snapshot);
+    TestTrue(TEXT("Route snapshot restores"), Routes->RestoreSnapshot(Snapshot));
+    TestFalse(TEXT("Saved flood claim remains active"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+
+    TestTrue(TEXT("Clear ended flood claims"), Routes->ApplyActiveFloodEvents({}));
+    TestTrue(TEXT("Route reopens after the flood"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+    TestEqual(TEXT("Route returns three nodes"), Path.Num(), 3);
     return true;
 }
 
