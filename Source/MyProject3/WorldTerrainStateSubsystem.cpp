@@ -156,7 +156,6 @@ bool UWorldTerrainStateSubsystem::TryExcavateCellWithYield(
         FWorldOwnedItemRecord ExistingOutput;
         if (!ExistingReceipt->OutputWorldItemId.IsValid() ||
             !Ownership->TryGetItem(ExistingReceipt->OutputWorldItemId, ExistingOutput) ||
-            ExistingOutput.OwnerKind != EWorldItemOwnerKind::World ||
             ExistingOutput.DefinitionId != ExistingReceipt->YieldedResourceDefinitionId ||
             ExistingOutput.Quantity != ExistingReceipt->YieldedResourceUnits)
             return false;
