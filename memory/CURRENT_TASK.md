@@ -125,7 +125,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/LogSnapCharacter.h` (fall tracking fields and `ApplyFallImpact` entry point).
 - `Source/MyProject3/LogSnapCharacter.cpp` (tracks peak downward velocity while falling; hard impacts ≥850 cm/s deal bounded physical damage and attempt receipt-backed `Injury.Fall` through the shelter sensor profile).
 - `Source/MyProject3/WildlifeActor.h` (added bite cooldown timer).
-- `Source/MyProject3/WildlifeActor.cpp` (Enemy now applies 8 physical damage + an `Injury.AnimalBite` condition at ≤190 cm, and waits 3 seconds before another bite; damage still occurs if the survival profile/condition isn't available).
+- `Source/MyProject3/WildlifeActor.cpp` (Enemy now delegates near-range Tick to shared `TryBiteTarget`; the method applies 8 physical damage, attempts `Injury.AnimalBite`, and sets a 3-second cooldown; physical damage still occurs if the profile is unavailable).
 - `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival conditions exists).
 - `Source/MyProject3/WildlifeActor.h/.cpp` (Enemy already approaches the player and stops at ~150 cm, but there is no bite cooldown or attack/damage action; SmallAnimal capture state is present).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
@@ -159,4 +159,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Extract the current inline Enemy bite into `TryBiteTarget(APawn*)` in `WildlifeActor.cpp`, and let the Tick branch call it when within 190 cm. The method must enforce kind/reach/cooldown and apply health + configured injury. Then add cooldown regression test.
+Add `MyProject3.Survival.HostileBiteAppliesInjuryAndRespectsCooldown` test by spawning ALogSnapCharacter and AWildlifeActor, registering `Injury.AnimalBite`, invoking TryBiteTarget twice without advancing time, and checking the second call causes no extra damage/condition. Then update PLAN_STATUS for P2.1–P2.5 and current test evidence.
