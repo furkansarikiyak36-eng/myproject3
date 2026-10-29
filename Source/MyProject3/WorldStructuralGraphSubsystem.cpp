@@ -878,14 +878,101 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
             bSupportsChild |= Link.SupportNodeId == NodeId;
         if (bSupportsChild)
         {
-            // A piece resting on several supports shares its load equally.
             const float ChildLoad = ComputeAggregateLoad(Pair.Key, Visiting, bOutValid);
-            Total += ChildLoad / static_cast<float>(1 + Pair.Value.SecondarySupports.Num());
             if (!bOutValid)
             {
                 Visiting.Remove(NodeId);
                 return 0.0f;
             }
+
+            // Approximate a point load at the child actor origin. For two supports,
+            // inverse-distance weights reproduce the linear beam-reaction rule:
+            // the nearer support carries more of the load. For three or more
+            // supports this remains a deterministic heuristic, not a full solver.
+            TArray<FGuid> SupportIds;
+            if (Pair.Value.ParentNodeId.IsValid())
+                SupportIds.Add(Pair.Value.ParentNodeId);
+            for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
+                if (Link.SupportNodeId.IsValid())
+                    SupportIds.AddUnique(Link.SupportNodeId);
+            SupportIds.Sort([](const FGuid& A, const FGuid& B)
+            {
+                return A.ToString() < B.ToString();
+            });
+
+            if (SupportIds.IsEmpty())
+            {
+                Visiting.Remove(NodeId);
+                bOutValid = false;
+                return 0.0f;
+            }
+
+            const AActor* ChildActor = Pair.Value.Actor.Get();
+            const bool bChildLocationValid = IsValid(ChildActor) &&
+                !ChildActor->GetActorLocation().ContainsNaN();
+            bool bAllLocationsValid = bChildLocationValid;
+            for (const FGuid& SupportId : SupportIds)
+            {
+                const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportId);
+                const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
+                bAllLocationsValid &= IsValid(SupportActor) &&
+                    !SupportActor->GetActorLocation().ContainsNaN();
+            }
+
+            TArray<double> RawWeights;
+            RawWeights.Reserve(SupportIds.Num());
+            double WeightTotal = 0.0;
+            int32 CoincidentSupports = 0;
+            for (const FGuid& SupportId : SupportIds)
+            {
+                double Weight = 1.0;
+                if (bAllLocationsValid)
+                {
+                    const AActor* SupportActor = Nodes.FindChecked(SupportId).Actor.Get();
+                    const double Distance = FVector::Distance(
+                        ChildActor->GetActorLocation(), SupportActor->GetActorLocation());
+                    if (!FMath::IsFinite(Distance))
+                    {
+                        Visiting.Remove(NodeId);
+                        bOutValid = false;
+                        return 0.0f;
+                    }
+                    if (Distance <= 1.0)
+                    {
+                        Weight = 0.0;
+                        ++CoincidentSupports;
+                    }
+                    else
+                    {
+                        Weight = 1.0 / Distance;
+                    }
+                }
+                RawWeights.Add(Weight);
+                if (Weight > 0.0)
+                    WeightTotal += Weight;
+            }
+
+            if (CoincidentSupports > 0)
+            {
+                WeightTotal = static_cast<double>(CoincidentSupports);
+                for (int32 Index = 0; Index < SupportIds.Num(); ++Index)
+                {
+                    const AActor* SupportActor = Nodes.FindChecked(SupportIds[Index]).Actor.Get();
+                    RawWeights[Index] = FVector::Distance(
+                        ChildActor->GetActorLocation(), SupportActor->GetActorLocation()) <= 1.0
+                        ? 1.0 : 0.0;
+                }
+            }
+
+            const int32 SupportIndex = SupportIds.IndexOfByKey(NodeId);
+            if (SupportIndex == INDEX_NONE || !FMath::IsFinite(WeightTotal) ||
+                WeightTotal <= 0.0 || !FMath::IsFinite(ChildLoad) || ChildLoad < 0.0f)
+            {
+                Visiting.Remove(NodeId);
+                bOutValid = false;
+                return 0.0f;
+            }
+            Total += ChildLoad * static_cast<float>(RawWeights[SupportIndex] / WeightTotal);
         }
     }
     Visiting.Remove(NodeId);
