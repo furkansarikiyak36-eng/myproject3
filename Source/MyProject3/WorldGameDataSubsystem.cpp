@@ -1,5 +1,7 @@
 #include "WorldGameDataSubsystem.h"
 
+#include "WorldAgricultureSubsystem.h"
+
 #include "HeatSourceComponent.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldProductionSubsystem.h"
@@ -376,7 +378,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
     UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
     UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
-    if (!Production || !Survival || !Clock || !Climate || !Terrain)
+    UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
+    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture)
         return Fail(TEXT("A world subsystem is missing"));
 
     // Station recipes. A tool is put into the station and comes back with the output.
@@ -449,6 +452,21 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
 
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
+
+    // The crop list is data, not a placeholder registration hidden in a demo actor.
+    for (const FGameDataCrop& C : Crops)
+    {
+        FWorldCropDefinition Definition;
+        Definition.CropDefinitionId = C.Id;
+        Definition.SeedDefinitionId = C.SeedItemId;
+        Definition.HarvestDefinitionId = C.HarvestItemId;
+        Definition.HarvestUnits = C.HarvestUnits;
+        Definition.SecondsPerStage = C.SecondsPerStage;
+        Definition.PlantMonths = C.PlantMonths;
+        Definition.FoundInZone = C.FoundInZone;
+        if (!Agriculture->RegisterCropDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Agriculture refused crop %s"), *C.Id.ToString()));
+    }
 
     for (const FLayer& L : Layers)
     {
