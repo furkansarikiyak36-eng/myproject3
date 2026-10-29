@@ -928,7 +928,14 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
                 double Weight = 1.0;
                 if (bAllLocationsValid)
                 {
-                    const AActor* SupportActor = Nodes.FindChecked(SupportId).Actor.Get();
+                    const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportId);
+                    const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
+                    if (!IsValid(SupportActor))
+                    {
+                        Visiting.Remove(NodeId);
+                        bOutValid = false;
+                        return 0.0f;
+                    }
                     const double Distance = FVector::Distance(
                         ChildActor->GetActorLocation(), SupportActor->GetActorLocation());
                     if (!FMath::IsFinite(Distance))
@@ -957,7 +964,14 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
                 WeightTotal = static_cast<double>(CoincidentSupports);
                 for (int32 Index = 0; Index < SupportIds.Num(); ++Index)
                 {
-                    const AActor* SupportActor = Nodes.FindChecked(SupportIds[Index]).Actor.Get();
+                    const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportIds[Index]);
+                    const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
+                    if (!IsValid(SupportActor))
+                    {
+                        Visiting.Remove(NodeId);
+                        bOutValid = false;
+                        return 0.0f;
+                    }
                     RawWeights[Index] = FVector::Distance(
                         ChildActor->GetActorLocation(), SupportActor->GetActorLocation()) <= 1.0
                         ? 1.0 : 0.0;
