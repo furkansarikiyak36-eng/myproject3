@@ -127,7 +127,7 @@ Existing: `UWorldSimulationClockSubsystem` (time snapshot, saved). `UWorldSurviv
 `EWorldWeatherState { Clear, Rain, Wind, Snow, Storm, Heatwave }` and `SetWeather`.
 Missing: day/month/season/year, weather driven by the calendar, events with signals.
 
-**P1.1 · Calendar** — `todo` · Needs: P0.4
+**P1.1 · Calendar** — `tested` (88/88; config is a UPROPERTY until P0.4 loads data) · Needs: P0.4
 Derive year, month (1–12), day of month, season from the clock. Days per month from
 `calendar.json` (default 5, see open question Q1). Start date: end of March, year 1.
 Tests: day rollover, month rollover, year rollover, save/load keeps the date.
@@ -256,5 +256,6 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P1.1 · tested · WorldCalendar + clock date, GameWorldTests.cpp, 88/88
 - 2026-10-29 · P0.0 · tested · group-a adopted on game/p00-adopt-group-a, build fixed (16 errors), 85/85 tests, 250ce13
 - 2026-10-29 · design + roadmap written · — · commit after 85569c6

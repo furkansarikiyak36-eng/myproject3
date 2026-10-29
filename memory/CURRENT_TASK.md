@@ -27,7 +27,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 
 ### Plan (one commit per step; tick when tested)
 0. [x] Adopt group-a (250ce13, 85/85): new branch, merge simple-intent, fix 10 UHT + 6 C++ errors, run all tests, fix failures.
-1. [ ] P1.1 calendar (day/month/season/year from clock, days per month 5)
+1. [x] P1.1 calendar (88/88) (day/month/season/year from clock, days per month 5)
 2. [ ] P1.2 monthly climate, snow depth, ground wetness
 3. [ ] P2.1 water items (dirty/boiled), P2.2 sleep place, P2.4 spoilage modifiers, P2.5 condition triggers
 4. [ ] P3.1 wet wood + charcoal fuel, P3.2 enclosure from graph
@@ -52,4 +52,4 @@ Order may change; record why here.
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 1: P1.1 calendar. Read WorldSimulationClockSubsystem.h/.cpp, add day/month/season/year (5 days per month, start end of March year 1), tests.
+Step 2: P1.2 monthly climate. Read WorldSurvivalSubsystem weather API (SetWeather, AmbientTemperatureCelsius, WeatherSeverity) and VerticalSliceCWorldActor.cpp ~1185-1195 (day/night weather). Plan: UWorldClimateSubsystem or functions: per-month temperature range + precipitation chance (defaults from plan section 7), daily deterministic weather from clock seed, snow depth and ground wetness that grow/melt; drive Survival->SetWeather + AmbientTemperature from it.

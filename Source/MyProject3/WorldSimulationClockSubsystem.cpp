@@ -87,3 +87,8 @@ int32 UWorldSimulationClockSubsystem::GetDeterministicSeedForOperation(
     Mixed ^= OperationId.D + 0x27d4eb2fu + (Mixed << 6) + (Mixed >> 2);
     return static_cast<int32>(Mixed);
 }
+
+bool UWorldSimulationClockSubsystem::GetCalendarDate(FWorldCalendarDate& OutDate) const
+{
+    return bInitialized && WorldCalendar::DateFromTime(SimulationTimeSeconds, CalendarConfig, OutDate);
+}

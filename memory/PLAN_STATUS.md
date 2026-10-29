@@ -14,8 +14,8 @@ Update this file whenever a task changes state.
 
 | Status | Count | Tasks |
 |---|---:|---|
-| Var | 2 | P2.6, P5.3 (both [A]) |
-| Kısmi | 27 | P1.1, P1.2, P2.1, P2.2, P2.4, P2.5, P3.1, P3.2, P4.1–P4.4, P5.1, P6.2–P6.4, P7.1–P7.4, P8.2, P8.3, P9.2, P10, and save (all phases) |
+| Var | 3 | P1.1, P2.6, P5.3 |
+| Kısmi | 26 | P1.2, P2.1, P2.2, P2.4, P2.5, P3.1, P3.2, P4.1–P4.4, P5.1, P6.2–P6.4, P7.1–P7.4, P8.2, P8.3, P9.2, P10, and save (all phases) |
 | Yok | 16 | P0.2–P0.5, P1.3, P1.4, P2.3, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
@@ -28,7 +28,7 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P0.3 data files | Yok | only `Config/Placement/PlacementProfiles.json` [S]; [A] definitions are editor arrays (UPROPERTY), not files | all game data JSON |
 | P0.4 data loader | Yok | — | loader + validation |
 | P0.5 recipes from data | Yok | recipe hard-coded in `WorldDemoScenarioActor.cpp` [S] | data-driven recipes |
-| P1.1 calendar | Kısmi | simulation clock: time, tick, seed, save [S] | day, month, season, year, start date |
+| P1.1 calendar | Var | `WorldCalendar` + clock `GetCalendarDate`: year, month, day, hour, season from saved time; 5 days/month, start March 5 08:00; 3 tests | config from data file (P0.3), HUD (P1.4) |
 | P1.2 climate by month | Kısmi | weather states Clear/Rain/Wind/Snow/Storm/Heatwave; VerticalSlice_C switches night snow / day wind [S] | monthly climate, temperature curve, snow depth, ground wetness |
 | P1.3 event director | Yok | only raids have a warning phase [S] | natural events with signals: snowstorm, heavy rain, flood |
 | P1.4 date/signals on screen | Yok | — | HUD date/season, visible signs |

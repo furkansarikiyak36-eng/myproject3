@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "WorldCalendar.h"
 #include "WorldSimulationClockSubsystem.generated.h"
 
 /**
@@ -79,6 +80,14 @@ public:
     /** Stable per-operation seed, independent of operation call ordering. */
     UFUNCTION(BlueprintPure, Category = "World|Clock")
     int32 GetDeterministicSeedForOperation(const FGuid& OperationId) const;
+
+    /** How simulation time maps to year, month, day and season. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World|Calendar")
+    FWorldCalendarConfig CalendarConfig;
+
+    /** Today's date from the simulation time. False before the clock starts or on a bad config. */
+    UFUNCTION(BlueprintPure, Category = "World|Calendar")
+    bool GetCalendarDate(FWorldCalendarDate& OutDate) const;
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category = "World|Clock")
