@@ -1108,6 +1108,23 @@ bool UWorldSurvivalSubsystem::RegisterDiscoveryDefinition(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::HasDiscoveryOperationReceipt(
+    const FGuid& OperationId, const FGuid& EntityId, FName DiscoveryId,
+    FVector RequestedLocation) const
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || DiscoveryId.IsNone() ||
+        RequestedLocation.ContainsNaN())
+        return false;
+
+    const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId);
+    return Existing &&
+        Existing->Action == EWorldSurvivalActionKind::RecordDiscovery &&
+        Existing->OperationId == OperationId &&
+        Existing->EntityId == EntityId &&
+        Existing->DiscoveryId == DiscoveryId &&
+        Existing->RequestedLocation.Equals(RequestedLocation, 0.001f);
+}
+
 bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
     const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
     FName DiscoveryId, FVector Location, double LogicalTimeSeconds)
