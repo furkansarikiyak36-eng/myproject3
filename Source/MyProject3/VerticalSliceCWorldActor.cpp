@@ -181,6 +181,8 @@ bool AVerticalSliceCWorldActor::IsOpenGround(float X, float Y, float Margin) con
     const FVector2D P(X, Y);
     return FVector2D::Distance(P, CampCentre) > 900.0f + Margin &&
         FVector2D::Distance(P, CabinCentre) > 600.0f + Margin &&
+        // The field patch is reserved from tree placement so its nine soil tiles remain usable.
+        FVector2D::Distance(P, FarmPlotCentre) > 360.0f + Margin &&
         FMath::Abs(Y - GetCreekCentreY(X)) > 480.0f + Margin &&
         !(FMath::Abs(X - PalisadeX) < 500.0f + Margin && FMath::Abs(Y) < 900.0f) &&
         !(X > -400.0f && X < 1800.0f && Y > 1350.0f && Y < 1700.0f) &&
@@ -570,7 +572,9 @@ void AVerticalSliceCWorldActor::BuildRocksAndGrass()
                     FVector(Random.FRandRange(0.05f, 0.18f)) * FVector(1.0f, 0.8f, 0.5f)), true);
             continue;
         }
-        if (FVector2D::Distance(FVector2D(X, Y), CampCentre) < 450.0f || FVector2D::Distance(FVector2D(X, Y), CabinCentre) < 330.0f)
+        if (FVector2D::Distance(FVector2D(X, Y), CampCentre) < 450.0f ||
+            FVector2D::Distance(FVector2D(X, Y), CabinCentre) < 330.0f ||
+            FVector2D::Distance(FVector2D(X, Y), FarmPlotCentre) < 360.0f)
             continue;
         const float Height = Random.FRandRange(0.18f, 0.42f);
         GrassClumps->AddInstance(FTransform(FRotator(Random.FRandRange(-8, 8), Random.FRandRange(0, 360), 0),
