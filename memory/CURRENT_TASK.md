@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add the explicit item strengths to `Tool.Axe` and `Tool.DiggingStick`; then implement the inventory-backed strength links in player tree chopping, log cutting work, and N-dig action. Update checkpoint after each edit.
+Link `Tool.Axe` to `VerticalSliceCWorldActor::ChopInput` tree damage and `ULogCarryComponent::ProcessAimedPiece` work progress, using `GetToolStrength` and requiring the actual inventory stack; then link `Tool.DiggingStick` to `TerrainDigToolComponent::DigInput`. Add data-ready starter stacks for the demo only after `GameData->IsApplied()`.
