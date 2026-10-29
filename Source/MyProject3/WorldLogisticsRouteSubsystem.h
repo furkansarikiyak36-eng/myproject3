@@ -60,6 +60,10 @@ struct FLogisticsRouteEdge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Cost")
     bool bRequiresInfrastructure = false;
 
+    /** Stable data ID used by construction/infrastructure adapters to update this edge. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Cost")
+    FName InfrastructureId = NAME_None;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics")
     bool bEnabled = true;
 };
@@ -105,6 +109,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="Logistics")
     bool SetEdgeEnabled(FName FromNode, FName ToNode, bool bEnabled);
 
+    /** Update matching authored edges after an infrastructure item is built, repaired or lost. */
+    UFUNCTION(BlueprintCallable, Category="Logistics")
+    bool SetInfrastructureBuilt(FName InfrastructureId, bool bBuilt);
+
     UFUNCTION(BlueprintCallable, Category="Logistics")
     bool RemoveNode(FName NodeId);
 
@@ -130,6 +138,11 @@ public:
 
     UFUNCTION(BlueprintPure, Category="Logistics")
     int32 GetEdgeCount() const { return Edges.Num(); }
+
+    /** Deterministic route-graph persistence for infrastructure state and route revisions. */
+    void ExportSnapshot(TArray<FLogisticsRouteNode>& OutNodes, TArray<FLogisticsRouteEdge>& OutEdges) const;
+    bool RestoreSnapshot(const TArray<FLogisticsRouteNode>& NodeSnapshot,
+        const TArray<FLogisticsRouteEdge>& EdgeSnapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="Logistics")
