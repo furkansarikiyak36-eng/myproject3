@@ -170,14 +170,14 @@ Each day pick temperature and weather from the month's ranges in `calendar.json`
 (deterministic seed saved with the world). Call the existing `SetWeather`. Snow depth and
 ground wetness as world values that grow/melt. Tests: January never Heatwave; snow melts in March.
 
-**P1.3 · Event director** — `todo` · Needs: P1.2
+**P1.3 · Event director** — `code-written` (2026-10-29; unbuilt/unrun) · `WorldEventDirectorSubsystem` + `events.json`: deterministic seeded schedule, month/chance gates, warning/active/end lifecycle, predecessor chains, bounded history, transactional coordinator integration and saved snapshot. `EffectId` world mutations are deferred to P8.1. · Needs: P1.2
 New `UWorldEventDirectorSubsystem`: events from `events.json`; each event has a **signal phase**
 (hours/days before) and an **effect phase**; conditions read world state (month, snow depth,
 dryness, wind). First three events only: snowstorm, heavy rain, flood (water level rises in
 low cells). Chained events come in P8. Tests: signal always precedes effect; flood only after
 melt + rain; state saved mid-event.
 
-**P1.4 · Player sees it** — `todo`, deferred to the end by user decision (2026-10-29): new "Valley" scene built last · Needs: P1.3. The shared coordinator already advances from the `AWorldDemoBootstrapActor` base Tick; VerticalSlice_C reads initialized climate weather/severity for survival. Its local `Hours` still drives the sun visual separately. Remaining: date/season HUD, visible event signals and a consistent visual-to-logical time presentation. Recent integration source is unbuilt/unrun.
+**P1.4 · Player sees it** — `code-written` (2026-10-29; unbuilt/unrun), scene remains deferred: `UWorldHudDataSubsystem` exposes date/season/weather/temperature/active event notifications; `LogSnapHUD` draws a simple readout; VerticalSlice_C sun reads the authoritative clock. Remaining: PIE layout, message lifecycle/UX and visual-to-logical weather match. New "Valley" scene stays last by user decision.
 HUD shows date and season; signals are visible in the world (sky/clouds, falling pressure line
 on HUD, animals hiding later). No placement rules in HUD. Done when: `played` (user checks a
 fast-forwarded year in PIE).

@@ -40,6 +40,13 @@ Last built and tested: `bbc57b3` = 102/102.
 - Next work: `ROADMAP.md` (first open task P0.1 waits for the user: merge into `main`?).
 - Game plan (draft): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`. Physical assembly frozen until phase 10.
 
+## Recent progress — 2026-10-29
+
+- On `game/p00-adopt-group-a`, committed P1.3 natural-event director/data and wired the game-data loader + coordinator transaction/rollback.
+- Added P1.4 read-only HUD data aggregation + Canvas display and made VerticalSlice_C sun presentation use the shared simulation clock.
+- Added save schema v28 with v27 migration, plus one focused Automation test source. Commit chain: `0c2f1e0` → `cd76c57` → `07dfb57` after checkpoint `f5c44c5`.
+- These P1 changes are **code-written only**; Unreal 5.8 build, automation, PIE and save/load validation have not run.
+
 ## Open
 
 - Checked by eye with `mp3.SnapGallery` (screenshots), not yet by the user in PIE.

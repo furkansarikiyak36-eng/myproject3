@@ -27,10 +27,19 @@ Baseline: latest source changes are documented as unbuilt/unrun. Prior build/tes
 5. Batch compile/test remains deferred to the user's UE 5.8 environment.
 
 ## Findings
-- Current work branch contains shared logical clock, calendar, climate and coordinator; natural event director and event HUD are missing/incomplete.
-- Save schema is v27. Any persisted field requires validation and a migration.
+- Shared clock/calendar/climate have source-level P1.1/P1.2 integration: game data loads `calendar.json`/`climate.json`, solar presentation reads the shared clock.
+- P1.3/P1.4 source code is committed: nine `events.json` definitions, deterministic event lifecycle/chains, coordinator transactional advance and deferred signal publishing, schema v28 snapshot/migration, read-only HUD data contract and Canvas readout.
+- `EffectId` is a future domain-adapter contract, not yet a world-effect implementation; those mutations remain P8.1.
+- All P1 integration/test source is code-written only. No Unreal build, automation test, PIE or save/load roundtrip was run in this session.
 - Existing systems include item ownership/operation ledger, production, storage, terrain/voxel, agriculture/wildlife, survival, structural graph, logistics/cargo, raid director, helper and save coordinator.
 - Current gap ledger overstates whole-task completion if source presence is read as gameplay acceptance; treat runtime integration as a separate gate.
 
+## Changes in this checkpoint
+- Added `WorldEventDirectorSubsystem.h/.cpp` and `events.json` (nine definitions; storm→flood/toxic rain, drought→wildfire, flood→epidemic chains).
+- Wired definitions into `WorldGameDataSubsystem`, coordinator fixed-step preflight/advance/rollback, and post-commit transition dispatch.
+- Added `WorldHudDataSubsystem`, HUD date/season/weather/event readout, shared-clock sun time, save schema v28 and v27 migration.
+- Authored `MyProject3.World.Events.DeterministicLifecycleChainAndSnapshot` for warning/active/end/chaining/snapshot/HUD coverage.
+- Three code commits are on `game/p00-adopt-group-a`; the P1 source changes are unbuilt/unrun.
+
 ## Next step
-Inspect the remaining exact declarations and caller paths; implement cohesive changes in bounded batches, then update the status ledger and dated session log. Do not claim UE compile, Automation, PIE or save/load success.
+Continue with the requested Phase 2–7 and Phase 9 backend gaps in bounded, source-reviewed batches. Do not claim UE compile, Automation, PIE or save/load success.
