@@ -789,6 +789,26 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Creek discovery unlocks bridge infrastructure"), Survival->IsDefinitionUnlocked(
         Explorer.EntityId, TEXT("Infrastructure.CreekBridge")));
 
+    FString ZoneAccessReason;
+    TestFalse(TEXT("Lake-swamp zone is locked before high-forest discovery"),
+        Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.3"), ZoneAccessReason));
+    TestTrue(TEXT("Read explorer after creek discovery"), Survival->GetProfile(Explorer.EntityId, Explorer));
+    TestTrue(TEXT("Record high-forest discovery after its prerequisite"), Survival->TryRecordConfiguredDiscovery(
+        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone2.HighForest"),
+        FVector(600.0, 2650.0, 700.0), 0.0));
+    TestTrue(TEXT("Read explorer after high-forest discovery"), Survival->GetProfile(Explorer.EntityId, Explorer));
+    TestTrue(TEXT("Lake-swamp zone opens after high-forest discovery"),
+        Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.3"), ZoneAccessReason));
+    TestFalse(TEXT("Mountain pass is seasonally closed in the starting month"),
+        Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.4"), ZoneAccessReason));
+    TestTrue(TEXT("Seasonal denial gives a reason"), ZoneAccessReason.Contains(TEXT("seasonally closed")));
+
+    TestTrue(TEXT("Advance calendar into June"), Clock->AdvanceSimulation(11.0 * 86400.0));
+    TestFalse(TEXT("Mountain pass still requires cold-protection equipment"),
+        Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.4"), ZoneAccessReason));
+    TestTrue(TEXT("Equipment denial names the required capability"),
+        ZoneAccessReason.Contains(TEXT("Capability.ColdProtection")));
+
     const FWorldCropDefinition* GrainDefinition = Agriculture->CropDefinitions.FindByPredicate(
         [](const FWorldCropDefinition& D) { return D.CropDefinitionId == TEXT("Crop.Grain"); });
     TestNotNull(TEXT("Grain crop definition"), GrainDefinition);
