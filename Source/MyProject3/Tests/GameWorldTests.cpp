@@ -1687,4 +1687,108 @@ bool FFieldActionConsumesConfiguredInputsAndChargesLaborTest::RunTest(const FStr
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCropHarvestToInventoryChargesAuthoredLaborTest,
+    "MyProject3.World.Farming.HarvestToInventoryChargesLaborAndIsIdempotent", Flags)
+bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+
+    TestTrue(TEXT("Load game data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply crop definitions"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(77129));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    TestTrue(TEXT("Register harvester profile"), Survival->RegisterProfile(Profile));
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Inventory owner"), InventoryOwner))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryOwner, TEXT("HarvestTestInventory"));
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Configure item weights"), GameData->ApplyToInventory(Inventory));
+
+    const FGameDataCrop* CropDefinition = GameData->GetCrops().FindByPredicate(
+        [](const FGameDataCrop& Candidate) { return Candidate.Id == TEXT("Crop.Grain"); });
+    if (!TestNotNull(TEXT("Grain crop definition"), CropDefinition))
+        return false;
+
+    FWorldCropState Crop;
+    Crop.CropId = FGuid::NewGuid();
+    Crop.CropDefinitionId = CropDefinition->Id;
+    Crop.PlotCell = FIntVector(-3, 12, 0);
+    Crop.Stage = ECropGrowthStage::Mature;
+    Crop.Moisture = 0.75f;
+    Crop.SecondsPerStage = CropDefinition->SecondsPerStage;
+    Crop.Revision = 1;
+    Crop.SeedDefinitionId = CropDefinition->SeedItemId;
+    Crop.HarvestDefinitionId = CropDefinition->HarvestItemId;
+    Crop.HarvestUnits = CropDefinition->HarvestUnits;
+    Crop.SeedReturnUnits = CropDefinition->SeedReturnUnits;
+    TestTrue(TEXT("Register mature crop"), Agriculture->RegisterCrop(Crop));
+
+    FWorldSurvivalProfile BeforeHarvest;
+    TestTrue(TEXT("Read profile before harvest"), Survival->GetProfile(Profile.EntityId, BeforeHarvest));
+    const FGuid HarvestOperation = FGuid::NewGuid();
+    TArray<FGuid> OutputIds;
+    TestTrue(TEXT("Harvest all outputs into the player's inventory"),
+        Agriculture->TryHarvestCropToInventory(HarvestOperation, Crop.CropId, Crop.Revision,
+            Inventory, Profile.EntityId, OutputIds));
+
+    TestEqual(TEXT("Harvest outputs include produce and returned seeds"),
+        OutputIds.Num(), CropDefinition->HarvestUnits + CropDefinition->SeedReturnUnits);
+    TestEqual(TEXT("Produce is in the inventory"),
+        Inventory->GetItemCount(CropDefinition->HarvestItemId), CropDefinition->HarvestUnits);
+    TestEqual(TEXT("Returned seeds are in the inventory"),
+        Inventory->GetItemCount(CropDefinition->SeedItemId), CropDefinition->SeedReturnUnits);
+
+    for (const FGuid& OutputId : OutputIds)
+    {
+        FWorldOwnedItemRecord Item;
+        TestTrue(TEXT("Each output remains ledger-backed"), Ownership->TryGetItem(OutputId, Item));
+        TestTrue(TEXT("Each output is owned by the player inventory"),
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            Item.OwnerId == Inventory->GetInventoryOwnerId());
+    }
+
+    FWorldSurvivalProfile AfterHarvest;
+    TestTrue(TEXT("Read profile after harvest"), Survival->GetProfile(Profile.EntityId, AfterHarvest));
+    TestTrue(TEXT("Harvest charges the crop's authored labor energy"),
+        AfterHarvest.PendingActivityKcal > BeforeHarvest.PendingActivityKcal);
+    TestTrue(TEXT("Harvest charges stamina"),
+        AfterHarvest.Stamina < BeforeHarvest.Stamina);
+
+    TArray<FGuid> RetryIds;
+    TestTrue(TEXT("Retry returns the same committed harvest"),
+        Agriculture->TryHarvestCropToInventory(HarvestOperation, Crop.CropId, Crop.Revision,
+            Inventory, Profile.EntityId, RetryIds));
+    TestEqual(TEXT("Retry preserves output count"), RetryIds.Num(), OutputIds.Num());
+    for (int32 Index = 0; Index < FMath::Min(RetryIds.Num(), OutputIds.Num()); ++Index)
+        TestTrue(TEXT("Retry returns the original output identity"), RetryIds[Index] == OutputIds[Index]);
+
+    FWorldSurvivalProfile AfterRetry;
+    TestTrue(TEXT("Read profile after harvest retry"), Survival->GetProfile(Profile.EntityId, AfterRetry));
+    TestEqual(TEXT("Retry does not charge labor twice"),
+        AfterRetry.PendingActivityKcal, AfterHarvest.PendingActivityKcal);
+    TestEqual(TEXT("Retry does not drain stamina twice"),
+        AfterRetry.Stamina, AfterHarvest.Stamina);
+    return true;
+}
+
 #endif
