@@ -69,6 +69,13 @@ bool AProductionStationActor::TryDeposit(UInventoryCraftingComponent* Inventory,
     if (!IsValid(Inventory) || !Production || Quantity <= 0 || !EnsureRegistered() ||
         !Production->GetStation(StationId, Station) || Inventory->GetItemCount(ItemId) < Quantity)
         return false;
+
+    // Station stock is aggregate quantity, not a unique-item owner. Do not
+    // route a ledger-identified physical item through generic remove/add stacks.
+    if (Inventory->Items.ContainsByPredicate([ItemId](const FInventoryStack& Stack)
+        { return Stack.ItemId == ItemId && Stack.OwnedWorldItemId.IsValid(); }))
+        return false;
+
     if (!Production->AddStock(StationId, ItemId, Quantity, Station.Revision))
         return false; // No room in the station.
     if (!Inventory->TryRemoveItem(ItemId, Quantity))
@@ -118,9 +125,45 @@ bool AProductionStationActor::TryTake(UInventoryCraftingComponent* Inventory, FN
     FInventoryStack Stack;
     Stack.ItemId = ItemId;
     Stack.Quantity = Quantity;
-    if (!Inventory->CanAddItems({ Stack }) || !Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision))
+    if (const UWorldGameDataSubsystem* GameData = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr)
+    {
+        if (const FGameDataItem* Item = GameData->GetItems().Find(ItemId))
+        {
+            if (Item->Category == FName(TEXT("Tool")))
+                Stack.Category = EInventoryItemCategory::Tool;
+            else if (Item->Category == FName(TEXT("Weapon")))
+                Stack.Category = EInventoryItemCategory::Weapon;
+            else if (Item->Category == FName(TEXT("BuildingPart")))
+                Stack.Category = EInventoryItemCategory::BuildingPart;
+            else if (Item->Category == FName(TEXT("Consumable")))
+                Stack.Category = EInventoryItemCategory::Consumable;
+            else if (Item->Category == FName(TEXT("Protection")))
+                Stack.Category = EInventoryItemCategory::Protection;
+            else if (Item->Category == FName(TEXT("Quest")))
+                Stack.Category = EInventoryItemCategory::Quest;
+            else
+                Stack.Category = EInventoryItemCategory::Resource;
+        }
+    }
+    Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
+    Stack.MaxStack = Stack.bIsTool ? 1 : 99;
+    if (!Inventory->CanAddItems({ Stack }) ||
+        !Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision))
         return false;
-    return Inventory->TryAddItem(Stack);
+
+    if (Inventory->TryAddItem(Stack))
+        return true;
+
+    // Stock was deducted first; restore it if inventory insertion unexpectedly
+    // fails after the capacity preflight.
+    FWorldProductionStation AfterTake;
+    if (!Production->GetStation(StationId, AfterTake) ||
+        !Production->AddStock(StationId, ItemId, Quantity, AfterTake.Revision))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Could not roll back station stock for item %s."), *ItemId.ToString());
+    }
+    return false;
 }
 
 int32 AProductionStationActor::GetStockCount(FName ItemId) const
