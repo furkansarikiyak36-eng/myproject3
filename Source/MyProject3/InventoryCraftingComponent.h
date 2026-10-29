@@ -5,6 +5,7 @@
 #include "InventoryCraftingComponent.generated.h"
 
 class AActor;
+class UHeatSourceComponent;
 
 UCLASS(ClassGroup=(Gameplay), meta=(BlueprintSpawnableComponent))
 class MYPROJECT3_API UInventoryCraftingComponent : public UActorComponent
@@ -37,6 +38,8 @@ public:
  UFUNCTION(BlueprintCallable, Category="Inventory|Consumable") bool TryConsumeFood(FName ItemId, FGuid SurvivalEntityId, int32 Quantity = 1);
  /** Consumes authored feed from this inventory and applies its effect to one animal. */
  UFUNCTION(BlueprintCallable, Category="Inventory|Animals") bool TryFeedAnimal(FName ItemId, FGuid AnimalId, int32 Quantity = 1);
+ /** Consumes authored fuel items into the heat source's single burn-time counter. */
+ UFUNCTION(BlueprintCallable, Category="Inventory|Fuel") bool TryFuelHeatSource(FName ItemId, UHeatSourceComponent* HeatSource, int32 Quantity = 1);
  /** Equips a single authored equipment item, replacing anything in the same slot. */
  UFUNCTION(BlueprintCallable, Category="Inventory|Equipment") bool TryEquipItem(FName ItemId);
  UFUNCTION(BlueprintCallable, Category="Inventory|Equipment") bool TryUnequipItem(FName EquipmentSlotId);
