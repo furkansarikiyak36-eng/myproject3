@@ -593,6 +593,10 @@ bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefiniti
         Definition.SeedReturnUnits > 64 || Definition.HarvestUnits + Definition.SeedReturnUnits > 64 ||
         !FMath::IsFinite(Definition.SecondsPerStage) ||
         Definition.SecondsPerStage <= 0.0 ||
+        !FMath::IsFinite(Definition.PlantLaborSeconds) || Definition.PlantLaborSeconds < 1.0 ||
+        Definition.PlantLaborSeconds > 3600.0 ||
+        !FMath::IsFinite(Definition.HarvestLaborSeconds) || Definition.HarvestLaborSeconds < 1.0 ||
+        Definition.HarvestLaborSeconds > 3600.0 ||
         !FMath::IsFinite(Definition.MinimumPlantMoisture) ||
         Definition.MinimumPlantMoisture < 0.0f || Definition.MinimumPlantMoisture > 1.0f ||
         MaxCropDefinitions <= 0 || MaxCropDefinitions > 4096 ||
