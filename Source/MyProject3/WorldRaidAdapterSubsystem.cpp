@@ -62,6 +62,15 @@ bool UWorldRaidAdapterSubsystem::HasActiveRaidPawns() const
     return false;
 }
 
+bool UWorldRaidAdapterSubsystem::HasRaidPawnReachedTarget() const
+{
+    for (const TWeakObjectPtr<APawn>& Pawn : ActiveRaidPawns)
+        if (const ARaidPlaceholderPawn* Raider = Cast<ARaidPlaceholderPawn>(Pawn.Get()))
+            if (Raider->HasReachedRaidTarget())
+                return true;
+    return false;
+}
+
 bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetTimeSeconds) const
 {
     UWorld* World = GetWorld();
@@ -158,18 +167,21 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
 
         if (PulseIndex > CurrentRaid.LastCommittedAttackPulseIndex)
         {
-            ++RequiredRevisionIncrements;
             const FGuid PulseOperationId = MakeRaidPulseOperationId(CurrentRaid.RaidId, PulseIndex);
             FWorldOperationResult PreviousResult;
             const bool bHasCompletedReceipt =
                 OperationLedger->TryGetCompletedResult(PulseOperationId, PreviousResult);
             if (bHasCompletedReceipt)
             {
+                // A previously committed but not-yet-watermarked receipt must
+                // still be reconciled even if raiders have since left the target.
                 if (!PreviousResult.IsSuccess())
                     return false;
+                ++RequiredRevisionIncrements;
             }
-            else
+            else if (HasRaidPawnReachedTarget())
             {
+                ++RequiredRevisionIncrements;
                 if (!OperationLedger->CanBeginOperation(PulseOperationId))
                     return false;
 
@@ -537,6 +549,16 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         }
         NextDamageTimeSeconds = Raid.ActiveStartTime +
             (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
+        return FMath::IsFinite(NextDamageTimeSeconds);
+    }
+
+    // A raid can damage structures only after at least one wave pawn has
+    // reached the objective. If navigation is absent or blocked, do not fake
+    // successful attacks; advance the scheduled index without a damage commit.
+    if (!HasRaidPawnReachedTarget())
+    {
+        NextDamageTimeSeconds = Raid.ActiveStartTime +
+            (static_cast<double>(PulseIndex) + 1.0) * EffectiveIntervalSeconds;
         return FMath::IsFinite(NextDamageTimeSeconds);
     }
 
