@@ -12,7 +12,8 @@
         4,
         5
       ],
-      "found_in_zone": 1
+      "found_in_zone": 1,
+      "seed_return_units": 1
     },
     {
       "id": "Crop.Root",
@@ -26,7 +27,8 @@
         5,
         6
       ],
-      "found_in_zone": 2
+      "found_in_zone": 2,
+      "seed_return_units": 1
     },
     {
       "id": "Crop.Legume",
@@ -39,7 +41,8 @@
         5,
         6
       ],
-      "found_in_zone": 3
+      "found_in_zone": 3,
+      "seed_return_units": 1
     }
   ]
 }
