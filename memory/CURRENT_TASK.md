@@ -52,7 +52,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (Tick drives separate time/weather and updates survival location; only LMB chop and J helper inputs are bound; `IsInCreek` currently only classifies water for log drift).
 - `Source/MyProject3/LogSnapCharacter.cpp` (WASD movement is polled in Tick; no survival action-cost or fatigue speed integration exists).
 - `Source/MyProject3/ShelterSensorComponent.h` (`SurvivalEntityId` is public and can bridge the player character to the survival profile).
-- `Source/MyProject3/LogSnapCharacter.cpp` (include block re-read before adding survival movement cost/speed coupling).
+- `Source/MyProject3/LogSnapCharacter.cpp` (constructor sets base MaxWalkSpeed 420 cm/s; Tick polls WASD and has no existing survival activity call).
+- `Source/MyProject3/LogSnapCharacter.h` (added base movement speed and survival activity accumulator for non-compounding fatigue modifiers).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` currently records calorie burn and drains stamina but does not gate the caller's action; `AdvanceSurvivalStep` already models rain/storm wetness and faster drying near warmth/shelter; `TryBeginRest` uses shared-clock rest quality; condition definitions can be applied with receipts).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
@@ -132,4 +133,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement P2.2 movement fatigue/sprint gate by adding minimal state to `LogSnapCharacter.h` and modifying its current Tick in `LogSnapCharacter.cpp`; `ShelterSensor->SurvivalEntityId` is the player-profile bridge. Then add the matching activity gates to `WorldSurvivalSubsystem::RecordActivity` and enforce chop cost before tree damage in `VerticalSliceCWorldActor::ChopInput`.
+Modify `LogSnapCharacter.cpp` to read the survival profile through `ShelterSensor->SurvivalEntityId`, make fatigue lower walking speed, add LeftShift sprint when stamina/fatigue allow, and report Walk/Run activity once per second. Then update `RecordActivity` to reject invalid Run/Chop/Dig/Build/Carry requests when depleted, and bind chop action cost in `VerticalSliceCWorldActor.cpp`.
