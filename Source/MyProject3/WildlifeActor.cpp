@@ -2,6 +2,8 @@
 
 #include "ConstructionHelpers.h"
 #include "PhysicalHealthComponent.h"
+#include "ShelterSensorComponent.h"
+#include "WorldSurvivalSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 
 #include "Components/StaticMeshComponent.h"
@@ -95,6 +97,7 @@ bool AWildlifeActor::ApplyAnimalManagementState(
 void AWildlifeActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    TimeToNextBiteSeconds = FMath::Max(0.0f, TimeToNextBiteSeconds - FMath::Max(0.0f, DeltaSeconds));
     if (bCapturedForAnimalManagement || Health->IsDead() || Health->IsStaggered() ||
         MoveSpeed <= 0.0f || !GetWorld())
         return;
@@ -102,11 +105,45 @@ void AWildlifeActor::Tick(float DeltaSeconds)
     FVector Target = WanderTarget;
     if (Kind == EWildlifeKind::Enemy)
     {
-        // Enemies walk toward a nearby player and stop at arm's length.
-        if (const APawn* Player = MyProject3Construction::FindPlayerPawn(GetWorld()))
+        // Enemies approach nearby players and make a bounded melee attack
+        // when within reach. The cooldown prevents one hit per frame.
+        if (APawn* Player = MyProject3Construction::FindPlayerPawn(GetWorld()))
         {
-            if (FVector::Dist(Player->GetActorLocation(), GetActorLocation()) < 2500.0f)
+            const float DistanceToPlayer = FVector::Dist2D(Player->GetActorLocation(), GetActorLocation());
+            if (DistanceToPlayer < 2500.0f)
+            {
                 Target = Player->GetActorLocation();
+                if (DistanceToPlayer <= 190.0f && TimeToNextBiteSeconds <= 0.0f)
+                {
+                    if (UPhysicalHealthComponent* PlayerHealth =
+                        Player->FindComponentByClass<UPhysicalHealthComponent>())
+                    {
+                        const FVector PushDirection =
+                            (Player->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+                        PlayerHealth->ApplyPhysicalDamage(
+                            8.0f, PushDirection * 110.0f + FVector(0.0f, 0.0f, 35.0f), this);
+                    }
+
+                    if (const UShelterSensorComponent* Shelter =
+                        Player->FindComponentByClass<UShelterSensorComponent>();
+                        Shelter && Shelter->SurvivalEntityId.IsValid())
+                    {
+                        if (UWorldSurvivalSubsystem* Survival =
+                            GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
+                        {
+                            FWorldSurvivalProfile Profile;
+                            if (Survival->GetProfile(Shelter->SurvivalEntityId, Profile))
+                            {
+                                Survival->TryApplyCondition(FGuid::NewGuid(), Profile.EntityId,
+                                    Profile.Revision, FName(TEXT("Injury.AnimalBite")), 0.5f);
+                            }
+                        }
+                    }
+
+                    TimeToNextBiteSeconds = 3.0f;
+                    return;
+                }
+            }
         }
     }
     else
