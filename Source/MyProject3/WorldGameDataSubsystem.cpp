@@ -158,8 +158,16 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Item.WeightGrams = static_cast<int32>(NumberField(Entry, TEXT("weight_g")));
         Item.Category = NameField(Entry, TEXT("category"));
         Item.bPhysical = BoolField(Entry, TEXT("physical"));
+        Item.ToolStrength = Item.Category == FName(TEXT("Tool"))
+            ? static_cast<float>(NumberField(Entry, TEXT("tool_strength"), 1.0))
+            : 0.0f;
         if (Item.Id.IsNone() || NewItems.Contains(Item.Id) || Item.WeightGrams <= 0)
             return Fail(FString::Printf(TEXT("Bad or duplicate item %s"), *Item.Id.ToString()));
+        if (Item.Category == FName(TEXT("Tool")) &&
+            (!FMath::IsFinite(Item.ToolStrength) ||
+             Item.ToolStrength < 0.1f || Item.ToolStrength > 10.0f))
+            return Fail(FString::Printf(TEXT("Tool %s has invalid tool_strength (expected 0.1..10)."),
+                *Item.Id.ToString()));
         const TSharedPtr<FJsonObject>* Sub = nullptr;
         if (Entry->TryGetObjectField(TEXT("consumable"), Sub))
         {
@@ -366,6 +374,20 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     LastError.Reset();
     bLoaded = true;
     bApplied = false;
+    return true;
+}
+
+bool UWorldGameDataSubsystem::GetToolStrength(FName ItemId, float& OutStrength) const
+{
+    OutStrength = 0.0f;
+    if (!bLoaded || ItemId.IsNone())
+        return false;
+    const FGameDataItem* Item = Items.Find(ItemId);
+    if (!Item || Item->Category != FName(TEXT("Tool")) ||
+        !FMath::IsFinite(Item->ToolStrength) || Item->ToolStrength < 0.1f ||
+        Item->ToolStrength > 10.0f)
+        return false;
+    OutStrength = Item->ToolStrength;
     return true;
 }
 
