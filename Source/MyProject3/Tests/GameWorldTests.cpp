@@ -36,6 +36,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
+#include "GameFramework/PlayerController.h"
 
 namespace GameWorldTests
 {
