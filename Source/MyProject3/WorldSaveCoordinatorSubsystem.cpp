@@ -8,6 +8,7 @@
 #include "WorldClimateSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
@@ -579,6 +580,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     if (!World || !OutSave) return false;
     UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
     UWorldThreatDirectorSubsystem* Threat = World->GetSubsystem<UWorldThreatDirectorSubsystem>();
+    UWorldEventDirectorSubsystem* Events = World->GetSubsystem<UWorldEventDirectorSubsystem>();
     UWorldItemOwnershipSubsystem* Items = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
     UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
@@ -587,8 +589,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger ||
-        !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized()) return false;
+    if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger ||
+        !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() || !Events->IsEventDirectorInitialized()) return false;
     if (OperationLedger->HasPendingOperations())
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused while a world operation is pending."));
@@ -600,6 +602,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     if (const UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>())
         OutSave->Climate = Climate->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
+    OutSave->Events = Events->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts, OutSave->ItemSplitReceipts);
     OperationLedger->ExportSnapshot(OutSave->OperationLedgerEntries);
     // Held actor/carry-component state is not yet part of this manifest. Refuse
@@ -665,6 +668,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
         return false;
     UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
     UWorldThreatDirectorSubsystem* Threat = World->GetSubsystem<UWorldThreatDirectorSubsystem>();
+    UWorldEventDirectorSubsystem* Events = World->GetSubsystem<UWorldEventDirectorSubsystem>();
     UWorldItemOwnershipSubsystem* Items = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
     UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
@@ -674,7 +678,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
+    if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
         return false;
 
     if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
@@ -772,6 +776,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!Storage->RestoreSnapshot(Snapshot->StorageContainers, Snapshot->StorageReservations)) return false;
     if (!Cargo->RestoreSnapshot(Snapshot->Cargo)) return false;
     if (!Threat->RestoreSnapshot(Snapshot->Threat)) return false;
+    if (!Events->RestoreSnapshot(Snapshot->Events)) return false;
     return true;
 }
 
@@ -981,6 +986,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Schema v27 adds related-item identities/revisions to survival receipts for
         // reusable-vessel water boiling. Existing v26 receipts never use this action.
         Candidate->SchemaVersion = 27;
+    }
+    if (Candidate->SchemaVersion == 27)
+    {
+        // Schema v28 adds the natural-event signal/effect history and per-day
+        // trigger guards. Older saves start a fresh event history from restored time.
+        Candidate->Events = FWorldEventDirectorSnapshot();
+        Candidate->SchemaVersion = 28;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
