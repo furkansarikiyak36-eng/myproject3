@@ -78,6 +78,13 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
     TObjectPtr<UPhysicalHealthComponent> PhysicalHealth;
 
+    /** Profile registered by the active world bootstrap; traversal effort uses the shared survival ledger. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
+    FGuid SurvivalEntityId;
+
+    UFUNCTION(BlueprintCallable, Category = "Survival")
+    void SetSurvivalEntityId(const FGuid& EntityId);
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
     TObjectPtr<UShelterSensorComponent> ShelterSensor;
 
@@ -90,6 +97,7 @@ protected:
     float LastGroundZ = 0.0f;
     bool bHasLastGroundZ = false;
     float CameraBaseHeight = 64.0f;
+    float TraversalActivitySeconds = 0.0f;
 
     float AxeSwingElapsed = 0.0f;
     float AxeSwingDuration = 0.30f;
