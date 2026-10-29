@@ -6,6 +6,8 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WildlifeActor.h"
+#include "WorldObjectIdentityComponent.h"
 
 const FWorldCropDefinition* UWorldAgricultureSubsystem::FindCropDefinition(FName CropDefinitionId) const
 {
@@ -151,6 +153,66 @@ UWorldAgricultureSubsystem::FindActionReceipt(const FGuid& OperationId) const
             return Found;
     }
     return nullptr;
+}
+
+AWildlifeActor* UWorldAgricultureSubsystem::FindWildlifeActor(const FGuid& IdentityId) const
+{
+    if (!IdentityId.IsValid() || !GetWorld())
+        return nullptr;
+
+    AWildlifeActor* Found = nullptr;
+    for (TActorIterator<AWildlifeActor> It(GetWorld()); It; ++It)
+    {
+        AWildlifeActor* Candidate = *It;
+        if (!IsValid(Candidate) || !IsValid(Candidate->Identity) ||
+            Candidate->Identity->GetInstanceId() != IdentityId)
+            continue;
+        if (Found)
+            return nullptr; // Duplicate stable identities are ambiguous; fail closed.
+        Found = Candidate;
+    }
+    return Found;
+}
+
+bool UWorldAgricultureSubsystem::RegisterAnimalPen(const FWorldAnimalPenState& Pen)
+{
+    if (!Pen.PenId.IsValid() || Pen.Location.ContainsNaN() ||
+        Pen.Capacity <= 0 || Pen.Capacity > 128 || Pen.Revision <= 0 ||
+        !Pen.AnimalIds.IsEmpty() || MaxAnimalPens <= 0 || MaxAnimalPens > 4096)
+        return false;
+
+    TSet<FName> AllowedTypes;
+    for (const FName DefinitionId : Pen.AllowedAnimalDefinitionIds)
+    {
+        if (DefinitionId.IsNone() || AllowedTypes.Contains(DefinitionId))
+            return false;
+        AllowedTypes.Add(DefinitionId);
+    }
+
+    if (FWorldAnimalPenState* Existing = AnimalPens.Find(Pen.PenId))
+    {
+        return Existing->Capacity == Pen.Capacity &&
+            Existing->AllowedAnimalDefinitionIds == Pen.AllowedAnimalDefinitionIds &&
+            FVector::DistSquared(Existing->Location, Pen.Location) <= 1.0;
+    }
+    if (AnimalPens.Num() >= MaxAnimalPens)
+        return false;
+
+    FWorldAnimalPenState NewPen = Pen;
+    NewPen.AnimalIds.Reset();
+    NewPen.Revision = FMath::Max<int64>(1, NewPen.Revision);
+    AnimalPens.Add(NewPen.PenId, MoveTemp(NewPen));
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::GetAnimalPen(
+    const FGuid& PenId, FWorldAnimalPenState& OutPen) const
+{
+    const FWorldAnimalPenState* Pen = AnimalPens.Find(PenId);
+    if (!Pen)
+        return false;
+    OutPen = *Pen;
+    return true;
 }
 
 bool UWorldAgricultureSubsystem::FindInventoryForOwner(
