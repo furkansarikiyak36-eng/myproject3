@@ -82,6 +82,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing `FCreekWaterFillWithReusablePotTest` covers missing vessel, dirty-water output, reusable pot unchanged, retry, and profile snapshot restore; `FCreekWetColdExposureIllnessTest` also exists. Both are source-only/unrun).
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
 - `Source/MyProject3/LogSnapCharacter.cpp` (constructor/create-subobject path contains no `UInventoryCraftingComponent`, so the new I-key action cannot work on the plain C++ pawn unless a Blueprint adds inventory).
+- GitHub code search for a player `CreateDefaultSubobject<UInventoryCraftingComponent>` returned no results; no canonical C++ player inventory attachment was found by that search.
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: scenario recipe selection resolves from game data).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
@@ -145,4 +146,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Check current project for any existing player inventory component injection/duplicate setup. If none, add one canonical `UInventoryCraftingComponent` default subobject to `ALogSnapCharacter` (header declaration + cpp include/constructor) so I-key water collection and owned-item survival actions have a real inventory. Then audit capacity preflight and test restore.
+Add `UInventoryCraftingComponent` as a default subobject on `ALogSnapCharacter` (header property + cpp include/constructor) so the standalone C++ player can carry owned items; avoid a parallel inventory. After the edit, inspect `WorldGameDataSubsystem` bootstrap timing so item weights are registered before the water-fill interaction.
