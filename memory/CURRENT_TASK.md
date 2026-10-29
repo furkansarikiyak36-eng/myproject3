@@ -25,13 +25,16 @@ Started: 2026-10-29 · ChatGPT
 - Do not call a task tested/played/done without actual local evidence.
 
 ### Plan
-1. [in-progress] Make the placement/carry contracts explicit.
+1. [x] Make the placement/carry contracts explicit; P0.2 documentation is committed.
 2. [todo] Implement missing data-driven natural-event rules and connect them to existing shared-clock orchestration without bypassing rollback semantics.
-3. [todo] Close safe backend-only gaps in survival, shelter/plaster, gathering/stations, farming/regions/routes/raids/repair/helper.
+3. [in-progress] Close safe backend-only gaps in survival, shelter/plaster, gathering/stations, farming/regions/routes/raids/repair/helper. Plaster/charcoal data-contract test is authored.
 4. [todo] Add focused automation tests for all changed contracts; author only, do not claim run.
-5. [todo] Reconcile status docs and create session note; batch build/test remains for local Unreal session.
+5. [todo] Reconcile remaining status docs and keep the session note current; batch build/test remains for local Unreal session.
 
 ### Findings
 - This branch contains station placement, gatherable spawning and charcoal recipe/fire-pause changes authored earlier in this work session.
-- The status ledger on this branch is stale: it still says station actors are not placed and marks P3.3/P3.4 as missing, despite later entries in the same file showing the actual partial work.
+- P0.2 is now documented in the placement guide and carry module note. Open geometry issues remain frozen until P10.
+- Added an automation test for the existing `mix_plaster` and `burn_charcoal` data contracts; it is authored but unrun.
+- `mix_plaster` has no persistent wall-coating behavior yet; natural-event runtime and date/event UI are still open.
+- The status ledger was reconciled for P0.2/P3.3/P3.4, but broader task closure and one batch validation remain.
 - Current known baseline evidence does not cover these recent unbuilt changes. All new work stays `code-written / unbuilt-unrun`.
