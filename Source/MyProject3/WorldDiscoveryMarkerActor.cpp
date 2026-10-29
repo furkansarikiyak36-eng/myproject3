@@ -136,6 +136,22 @@ bool AWorldDiscoveryMarkerActor::TryCommitDiscovery()
         RewardQuantity < 0 || RewardQuantity > 64)
         return false;
 
+    // The actor is a view/trigger for authored discovery data, never an alternate
+    // source of reward authority. A misplaced or hand-edited marker cannot grant
+    // different items or unlocks than its validated GameData record.
+    const FGameDataDiscovery* AuthoredDiscovery =
+        GameData->GetDiscoveries().FindByPredicate([this](const FGameDataDiscovery& Candidate)
+        {
+            return Candidate.Id == DiscoveryId;
+        });
+    if (!AuthoredDiscovery ||
+        AuthoredDiscovery->RewardItemId != RewardItemId ||
+        AuthoredDiscovery->RewardQuantity != RewardQuantity ||
+        AuthoredDiscovery->bRewardUniqueItems != bRewardUniqueItems ||
+        !FMath::IsNearlyEqual(AuthoredDiscovery->RevealRadiusCm, RevealRadiusCm, 0.01f) ||
+        FVector::Dist2D(GetActorLocation(), AuthoredDiscovery->Location) > 50.0f)
+        return false;
+
     FWorldSurvivalProfile Profile;
     if (!Survival->GetProfile(Shelter->SurvivalEntityId, Profile))
         return false;
