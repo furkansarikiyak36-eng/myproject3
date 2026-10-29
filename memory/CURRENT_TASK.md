@@ -76,7 +76,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSimulationSaveGame.h` (edited: schema v23 now contains persisted `FieldCells`).
 - `Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp` (edited: field snapshots are exported/restored, schema v22 migrates to v23 with an empty legacy field list).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (edited farming test preps plot and added field action/snapshot regression test).
-- Re-read `WorldGameDataSubsystem.h/.cpp` crop schema/parser and `WorldAgricultureSubsystem.h/.cpp` harvest receipt fields before seed-return change.
+- `Source/MyProject3/WorldGameDataSubsystem.h` (edited: `FGameDataCrop` now carries `SeedReturnUnits`, default 1).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
