@@ -28,6 +28,16 @@ bool UWorldCargoTransportSubsystem::StartTransport(
     FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
     float CostPerSecond, FGuid& OutCargoId)
 {
+    return StartTransportWithContext(ItemId, ExpectedItemRevision, SourceStorageId,
+        OriginNode, DestinationNode, DestinationStorageId,
+        FLogisticsRouteCostContext(), CostPerSecond, OutCargoId);
+}
+
+bool UWorldCargoTransportSubsystem::StartTransportWithContext(
+    const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& SourceStorageId,
+    FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
+    const FLogisticsRouteCostContext& RouteContext, float CostPerSecond, FGuid& OutCargoId)
+{
     OutCargoId.Invalidate();
     UWorldLogisticsRouteSubsystem* Routes = GetRoutes();
     UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
@@ -50,7 +60,7 @@ bool UWorldCargoTransportSubsystem::StartTransport(
 
     TArray<FName> Path;
     float RouteCost = 0.0f;
-    if (!Routes->FindRoute(OriginNode, DestinationNode, Path, RouteCost) ||
+    if (!Routes->FindRouteWithContext(OriginNode, DestinationNode, RouteContext, Path, RouteCost) ||
         Path.Num() < 2 || !FMath::IsFinite(RouteCost) || RouteCost < 0.0f)
         return false;
 
@@ -66,6 +76,7 @@ bool UWorldCargoTransportSubsystem::StartTransport(
     Record.OriginNode = OriginNode;
     Record.DestinationNode = DestinationNode;
     Record.Route = Path;
+    Record.RouteCostContext = RouteContext;
     Record.RouteCost = RouteCost;
     Record.CostPerSecond = CostPerSecond;
     Record.DeliveryOperationId = FGuid::NewGuid();
@@ -202,11 +213,26 @@ bool UWorldCargoTransportSubsystem::AdvanceCargoStep(double DeltaSeconds)
     if (!CanAdvanceCargoStep(DeltaSeconds))
         return false;
 
+    UWorldLogisticsRouteSubsystem* Routes = GetRoutes();
     for (TPair<FGuid, FWorldCargoTransportRecord>& Pair : Cargo)
     {
         FWorldCargoTransportRecord& Record = Pair.Value;
         if (Record.State != ECargoTransportState::InTransit)
             continue;
+
+        // A road/bridge/rope can disappear or a weather/surface cost can change
+        // after departure. Keep the item in transit ownership and block the
+        // shipment rather than silently following a stale route or losing cargo.
+        float LiveRouteCost = 0.0f;
+        if (!Routes || !Routes->CalculatePathCost(
+            Record.Route, Record.RouteCostContext, LiveRouteCost) ||
+            !FMath::IsNearlyEqual(LiveRouteCost, Record.RouteCost, 0.01f))
+        {
+            ++Record.Revision;
+            Record.State = ECargoTransportState::Blocked;
+            Record.BlockedReason = FName(TEXT("RouteInvalidated"));
+            continue;
+        }
 
         const float ProposedProgress = Record.Progress +
             Record.CostPerSecond * static_cast<float>(DeltaSeconds);
@@ -236,11 +262,55 @@ bool UWorldCargoTransportSubsystem::RetryBlockedDelivery(const FGuid& CargoId)
     FWorldCargoTransportRecord* Record = Cargo.Find(CargoId);
     UWorldStorageSubsystem* Storage = GetStorage();
     if (!Record || !Storage || Record->State != ECargoTransportState::Blocked ||
-        Record->Revision >= MAX_int64 - 1 ||
+        Record->BlockedReason != FName(TEXT("OwnershipOrDestinationUnavailable")) ||
+        Record->Progress < Record->RouteCost || Record->Revision >= MAX_int64 - 1 ||
         !Storage->HasIncomingReservation(Record->DestinationStorageId, Record->CargoId, Record->ItemId))
         return false;
     if (!TryDeliver(*Record))
         return false;
+    return true;
+}
+
+bool UWorldCargoTransportSubsystem::ReplanBlockedCargo(
+    const FGuid& CargoId, const FLogisticsRouteCostContext& RouteContext)
+{
+    FWorldCargoTransportRecord* Record = Cargo.Find(CargoId);
+    UWorldLogisticsRouteSubsystem* Routes = GetRoutes();
+    UWorldItemOwnershipSubsystem* Ownership = GetOwnership();
+    UWorldStorageSubsystem* Storage = GetStorage();
+    if (!Record || !Routes || !Ownership || !Storage ||
+        Record->State != ECargoTransportState::Blocked ||
+        Record->BlockedReason != FName(TEXT("RouteInvalidated")) ||
+        Record->Revision >= MAX_int64 - 1 ||
+        !Storage->HasIncomingReservation(Record->DestinationStorageId, Record->CargoId, Record->ItemId))
+    {
+        return false;
+    }
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(Record->ItemId, Item) ||
+        Item.Revision != Record->ItemRevision ||
+        Item.OwnerKind != EWorldItemOwnerKind::InTransit || Item.OwnerId != Record->CargoId)
+        return false;
+
+    TArray<FName> NewRoute;
+    float NewRouteCost = 0.0f;
+    if (!Routes->FindRouteWithContext(
+        Record->OriginNode, Record->DestinationNode, RouteContext, NewRoute, NewRouteCost) ||
+        NewRoute.Num() < 2 || !FMath::IsFinite(NewRouteCost) || NewRouteCost < 0.0f)
+    {
+        return false;
+    }
+
+    // The route is a new plan; old progress is not transferable to a different
+    // path. The item identity and destination reservation remain unchanged.
+    Record->Route = MoveTemp(NewRoute);
+    Record->RouteCostContext = RouteContext;
+    Record->RouteCost = NewRouteCost;
+    Record->Progress = 0.0f;
+    Record->State = ECargoTransportState::InTransit;
+    Record->BlockedReason = NAME_None;
+    ++Record->Revision;
     return true;
 }
 
