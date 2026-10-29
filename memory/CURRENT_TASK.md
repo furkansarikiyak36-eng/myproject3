@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Replace any aggregate initialization of `FInventoryStack` with field-by-field assignments. Then extend `IsValidProfile` and `RestoreSnapshot` receipt validators/ownership checks for `FillWaterFromCreek`. Bump SaveGame schema to v26 and add v25→v26 migration; afterward add and wire creek interaction tests.
+Extend survival profile receipt validation (`IsValidProfile`) and snapshot ownership validation to recognize `FillWaterFromCreek` and verify its result item identity/base definition; then bump save schema v26 with v25→v26 migration.
