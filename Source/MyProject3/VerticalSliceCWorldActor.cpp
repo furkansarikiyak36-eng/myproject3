@@ -24,6 +24,7 @@
 #include "WildlifeActor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "StructuralPieceInterface.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldClimateSubsystem.h"
 #include "PhysicalHealthComponent.h"
@@ -31,6 +32,7 @@
 #include "WorldEventDirectorSubsystem.h"
 #include "WorldCalendar.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 #include "Components/DirectionalLightComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -2056,34 +2058,117 @@ void AVerticalSliceCWorldActor::ChopInput()
     const bool bHitSomething = GetWorld()->LineTraceSingleByChannel(
         Hit, Location, Location + Rotation.Vector() * 260.0f, ECC_Visibility, Params);
 
-    // The axe on a log: repair a damaged piece, or mark and make a cut (the second click cuts).
-    ULogCarryComponent* Carry = Controller->GetPawn() ? Controller->GetPawn()->FindComponentByClass<ULogCarryComponent>() : nullptr;
-    if (ALogBuildPiece* Log = bHitSomething ? Cast<ALogBuildPiece>(Hit.GetActor()) : nullptr;
-        Log && Carry && !Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
+    // The axe repairs damaged placed pieces only when the matching repair material
+    // is available. Graph damage and inventory are rolled back together on failure.
+    ULogCarryComponent* Carry = Controller->GetPawn()
+        ? Controller->GetPawn()->FindComponentByClass<ULogCarryComponent>() : nullptr;
+    if (bHitSomething && Carry && !Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
     {
-        UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-        if (Log->IsPlaced() && Graph)
+        UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+        IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Hit.GetActor());
+        FStructuralNodeRecord Node;
+        if (Piece && Piece->IsStructurallyPlaced() && Graph &&
+            Graph->GetNode(Piece->GetStructuralNodeId(), Node) && Node.Damage > 0.0f)
         {
+            FName RepairMaterial = NAME_None;
+            switch (Node.Kind)
+            {
+            case EStructuralNodeKind::Wood: RepairMaterial = TEXT("Firewood"); break;
+            case EStructuralNodeKind::Stone: RepairMaterial = TEXT("Stone"); break;
+            case EStructuralNodeKind::Stick: RepairMaterial = TEXT("Stick"); break;
+            default: break;
+            }
+            int32 GenericRepairUnits = 0;
+            for (const FInventoryStack& Stack : Inventory->Items)
+                if (Stack.ItemId == RepairMaterial && !Stack.OwnedWorldItemId.IsValid())
+                    GenericRepairUnits += FMath::Max(0, Stack.Quantity);
+            if (RepairMaterial.IsNone() || GenericRepairUnits <= 0)
+            {
+                if (GEngine)
+                    GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                        RepairMaterial.IsNone()
+                            ? TEXT("This structural material has no repair rule yet.")
+                            : FString::Printf(TEXT("Repair requires one generic %s."), *RepairMaterial.ToString()));
+                return;
+            }
+
             if (Survival && PlayerSurvivalId.IsValid() &&
-                !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+                !Survival->CanRecordActivity(PlayerSurvivalId, ESurvivalActivity::Build, 0.75f, 0.0f))
             {
                 if (GEngine)
                     GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
                         TEXT("Too exhausted or resting. Wait for rest to end or recover stamina."));
                 return;
             }
+
             const float RepairEffectiveness = Survival && PlayerSurvivalId.IsValid()
-                ? Survival->GetWorkEffectiveness(PlayerSurvivalId) : 1.0f;
-            if (Graph->RepairDamage(Log->GetStructuralNodeId(), 25.0f * RepairEffectiveness))
+                ? FMath::Clamp(Survival->GetWorkEffectiveness(PlayerSurvivalId), 0.1f, 1.5f) : 1.0f;
+            const float RepairAmount = 25.0f * RepairEffectiveness;
+            TArray<FWorldStructuralNodeSnapshot> GraphBefore;
+            FGuid OwnerActorId;
+            FGuid InventoryOwnerBefore;
+            TArray<FInventoryStack> InventoryBefore;
+            FName QuickAccessBefore = NAME_None;
+            if (!Graph->ExportSnapshot(GraphBefore))
             {
-                if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
-                    Character->PlayAxeSwing();
-                Carry->SetPlacementStatus(TEXT("Repaired a part of the damage."));
+                Carry->SetPlacementStatus(TEXT("Repair failed: structural state could not be snapshotted."));
                 return;
             }
+            Inventory->ExportSnapshot(OwnerActorId, InventoryOwnerBefore, InventoryBefore, QuickAccessBefore);
+            if (!InventoryOwnerBefore.IsValid() || InventoryOwnerBefore != Inventory->GetInventoryOwnerId())
+                return;
+
+            auto RollbackRepair = [&]() -> bool
+            {
+                const bool bInventoryRestored =
+                    Inventory->RestoreSnapshot(InventoryOwnerBefore, InventoryBefore, QuickAccessBefore);
+                const bool bGraphRestored = Graph->RestoreSnapshot(GraphBefore);
+                if (!bInventoryRestored || !bGraphRestored)
+                {
+                    if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                        World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                        Coordinator->MarkSimulationFaulted(
+                            TEXT("Structural repair rollback failed; stop simulation and recover/reset the world."));
+                    return false;
+                }
+                return true;
+            };
+
+            if (!Inventory->TryRemoveItem(RepairMaterial, 1))
+            {
+                Carry->SetPlacementStatus(TEXT("Repair failed: repair material changed."));
+                return;
+            }
+            if (!Graph->RepairDamage(Node.NodeId, RepairAmount))
+            {
+                RollbackRepair();
+                Carry->SetPlacementStatus(TEXT("Repair failed: structural damage changed."));
+                return;
+            }
+            if (Survival && PlayerSurvivalId.IsValid() &&
+                !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Build, 0.75f, 0.0f))
+            {
+                RollbackRepair();
+                Carry->SetPlacementStatus(TEXT("Repair rolled back because the survival action could not be committed."));
+                return;
+            }
+
+            if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Pawn))
+                Character->PlayAxeSwing();
+            FStructuralNodeRecord UpdatedNode;
+            const float RemainingDamage = Graph->GetNode(Node.NodeId, UpdatedNode)
+                ? UpdatedNode.Damage : Node.Damage;
+            Carry->SetPlacementStatus(FString::Printf(
+                TEXT("Repaired %s with 1 %s. Remaining damage: %.0f."),
+                *Node.Kind.ToString(), *RepairMaterial.ToString(), RemainingDamage));
+            return;
         }
-        Carry->ProcessAimedPiece();
-        return;
+
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Hit.GetActor()))
+        {
+            Carry->ProcessAimedPiece();
+            return;
+        }
     }
 
     ++ChopSwingCount;
