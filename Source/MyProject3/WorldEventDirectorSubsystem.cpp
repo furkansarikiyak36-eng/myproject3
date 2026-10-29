@@ -87,7 +87,8 @@ bool UWorldEventDirectorSubsystem::CanAdvanceEventStep(
         !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
         !FMath::IsFinite(TargetTimeSeconds) || TargetTimeSeconds < State.LastProcessedTimeSeconds ||
         !FMath::IsFinite(Clock->GetSimulationTimeSeconds() + DeltaSeconds) ||
-        TargetTickIndex < State.LastProcessedTickIndex ||
+        !FMath::IsNearlyEqual(TargetTimeSeconds, Clock->GetSimulationTimeSeconds() + DeltaSeconds, 0.001) ||
+        TargetTickIndex <= State.LastProcessedTickIndex ||
         State.Serial < 0 || State.Serial >= MAX_int32 - 1 ||
         MaxEventInstances < 1 || MaxEventInstances > 512 ||
         State.Instances.Num() > MaxEventInstances)
@@ -229,6 +230,15 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
         }
     }
 
+    // Retire old terminal history before admitting new events. Otherwise a
+    // long-running world would eventually fill the history with completed
+    // events and permanently stop emitting any new natural events.
+    for (int32 Index = State.Instances.Num() - 1; Index >= 0; --Index)
+    {
+        if (IsTerminalEvent(State.Instances[Index].Phase))
+            State.Instances.RemoveAt(Index, 1, EAllowShrinking::No);
+    }
+
     int32 NewSignals = 0;
     for (const FGameDataWorldEvent& Definition : Data->GetWorldEvents())
     {
@@ -322,8 +332,15 @@ void UWorldEventDirectorSubsystem::ApplyActiveEventWeather() const
             OverrideSeverity = Instance.Severity;
         }
     }
+    // Natural-event overrides are temporary. Once their final active instance
+    // ends, restore the weather currently owned by the climate system instead of
+    // leaving the survival subsystem stuck on stale storm/rain state.
+    const UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
     if (bHasOverride)
         Survival->SetWeather(OverrideWeather, OverrideSeverity);
+    else if (Climate && Climate->IsClimateInitialized())
+        Survival->SetWeather(Climate->GetWeather(), Climate->GetWeatherSeverity());
 }
 
 TArray<FWorldNaturalEventInstance> UWorldEventDirectorSubsystem::GetActiveNaturalEvents() const
