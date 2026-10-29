@@ -93,6 +93,34 @@ struct FWorldPhysicalActorSnapshot
     TArray<uint8> ActorSaveGameData;
 };
 
+/** Explicit held-item relationship; transient component pointers are never serialized. */
+USTRUCT()
+struct FWorldCarryComponentSnapshot
+{
+    GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    FSoftObjectPath OwnerActorPath;
+
+    UPROPERTY(SaveGame)
+    FName CarryComponentName = NAME_None;
+
+    UPROPERTY(SaveGame)
+    FGuid CarryOwnerId;
+
+    UPROPERTY(SaveGame)
+    FGuid HeldItemId;
+
+    UPROPERTY(SaveGame)
+    FTransform HeldItemRelativeTransform = FTransform::Identity;
+
+    UPROPERTY(SaveGame)
+    bool bHeldMaterialPiece = false;
+
+    UPROPERTY(SaveGame)
+    bool bPlayerControlledOwner = false;
+};
+
 USTRUCT()
 struct FWorldInventorySnapshot
 {
@@ -116,7 +144,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 17;
+    static constexpr int32 CurrentSchemaVersion = 18;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
@@ -139,5 +167,6 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageContainerRecord> StorageContainers;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageIncomingReservation> StorageReservations;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldPhysicalActorSnapshot> PhysicalActors;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldCarryComponentSnapshot> CarryComponents;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStructuralNodeSnapshot> StructuralGraph;
 };
