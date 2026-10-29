@@ -169,6 +169,9 @@ private:
     void GatherInput();
     void CycleFieldActionInput();
     void ApplyFieldActionInput();
+    void PlantOrHarvestCropInput();
+    bool FindNearestFarmPlotCell(const FVector& WorldLocation, FIntVector& OutCell,
+        float MaxDistanceCm = 135.0f) const;
     void FillCreekWaterInput();
     void DrinkWaterInput();
     void BoilWaterInput();
