@@ -314,6 +314,8 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Survival|Equipment")
     bool HasEquippedCapability(const FGuid& EntityId, FName CapabilityId) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetActivityKcalPerHour(ESurvivalActivity Activity) const;
+    /** Fatigue reduces work effectiveness linearly, bounded at 50% (P2.2). */
+    UFUNCTION(BlueprintPure, Category="World|Survival") float GetWorkEffectiveness(const FGuid& EntityId) const;
     /** The single felt-temperature function every system reads. */
     UFUNCTION(BlueprintPure, Category="World|Survival") float ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetHeatAt(const FVector& Location) const;
