@@ -24,7 +24,8 @@ Started: 2026-10-30 · Branch: `game/p00-adopt-group-a` (single working branch)
        Then build + all tests.
 1. [x] Phase 0 closed (P0.2-P0.5 Var; P0.1 main merge waits for the user).
 2. [x] Phase 1 closed (127/127): chains, counters, fog, late frost, HUD countdown, save v30.
-3. [ ] Phase 2 ... 9: per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
+3. [x] Phase 2 closed (all P2 Var; existing code + tests verified, no new code needed).
+4. [ ] Phase 3 ... 9: per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
 Side lines p06/p07 hold a second farming API: do not merge; port only data files (zones, routes, discoveries,
 animals) if phase 6/7 needs them.
 
@@ -39,4 +40,4 @@ animals) if phase 6/7 needs them.
 - p00 merge commit: tree = integration, memory notes kept from p00.
 
 ### Next step
-Phase 2: read PLAN_STATUS rows P2.x, close the gaps, build + test.
+Phase 3: read PLAN_STATUS rows P3.x, close the gaps, build + test.
