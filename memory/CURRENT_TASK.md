@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `PLAN_STATUS.md` P3.2 to record the fixed opening-gap ray logic + regression test (code-written/unrun), while leaving graph-based per-gap heat loss and P3.3 plaster out of scope. Update `ROADMAP.md` and `CODEBASE.md` with this specific evidence. Then continue P4.3 station use/tool item strength links.
+Update `ROADMAP.md` progress log and `CODEBASE.md` Fire/Shelter row with P3.2 opening-ray fix/test. Then inspect current P4.3 station interaction and P4.4 tool strength/tool preservation data paths; do not extend P10 physical assembly.
