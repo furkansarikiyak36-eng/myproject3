@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Check `VerticalSliceCWorldActor.cpp` and other bootstrap/world actor sources for every heat-source construction and whether `GameData->ApplyToHeatSource` is called. If absent, wire one canonical method so data-defined Firewood/Firewood.Wet/Charcoal fuel records apply to placed sources; then add data-backed player fire refuelling/ignition. P3.2 enclosure heat-gap remains after fuel interaction.
+P3.1 implementation bundle: (1) ensure data fuel definitions get applied to heat sources that exist when `ApplyToWorld` runs; (2) ensure dynamically constructed fire actors have stable identity for `TryAddFuelItem`; (3) bind an unused player key near a fire to consume the exact owned fuel item then relight; (4) convert exposed world `Firewood` to `Firewood.Wet` during rain/storm and allow drying at sufficient heat. Add one/two focused tests if feasible. No build.
