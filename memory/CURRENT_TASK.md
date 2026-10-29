@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Read the current `WorldProductionSubsystem.h` API list (SHA 3b0925cb44d03ba87ad1ba31d161b80ebab4c146): `TryIngestWorldOwnedItem`, `TryIngestWorldOwnedLogPiece`, and `TryMaterializeStockAsWorldLog` are still BlueprintCallable without a player ID. They need player-bound variants or must be hidden from Blueprint and fail closed when definitions are gated.
 - Narrow `TryTakeStock` implementation (WorldProductionSubsystem.cpp near line 1261) only checks station revision, item ID, quantity and available stock. It has no player/progression check, confirming direct stock taking needs a fail-closed path for knowledge-gated items.
 - Production source method listing: stock add/take are unbound operations, unlike player-bound recipe enqueue. Need preserve trusted rollback while closing player-facing bypasses.
 - Narrow source read confirms `TryTakeStock` is not adjacent to `AddStock`; production stock ingress and physical/ledger item ingestion are separate APIs. Need enumerate public method definitions before choosing the gated wrapper refactor, to avoid breaking receipt rollback.
