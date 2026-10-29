@@ -49,9 +49,11 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 ### Read
 - `memory/CURRENT_TASK.md` (checkpoint only).
 - `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
+- `memory/CODE_INDEX.md` (raw unit index; used to identify code file names, not read gameplay source yet).
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
+- `CODE_INDEX.md` is the authoritative filename/type map; begin with P0.5/P2 and follow exact subsystem headers before editing.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
 - Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
 
@@ -60,4 +62,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - After reading `CODEBASE.md`, recorded its stale branch scope and the current roadmap's newer test-count reference.
 
 ### Next step
-Read `memory/CODE_INDEX.md` to map exact headers/sources for the first task batch (P0.5 + P2.1–P2.5), then fetch only the headers identified there. Update this checkpoint after each read/edit.
+Fetch the current branch versions of the exact headers identified in `CODE_INDEX.md` for P0.5/P2.1–P2.5; update the checkpoint after every header read before opening the next.
