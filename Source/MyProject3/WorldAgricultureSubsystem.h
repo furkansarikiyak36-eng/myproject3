@@ -40,7 +40,7 @@ struct FWorldCropDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="64")) int32 HarvestUnits = 3;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1")) double SecondsPerStage = 3600.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="1")) float MinimumPlantMoisture = 0.15f;
-}
+};
 
 USTRUCT(BlueprintType)
 struct FWorldCropState
@@ -75,6 +75,7 @@ struct FWorldAnimalState
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FGuid OwnerSettlementId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="100")) float Hunger = 0.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="100")) float Health = 100.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName FeedDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName ProductDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0")) int32 ProductUnits = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0")) double ProductProgressSeconds = 0.0;
