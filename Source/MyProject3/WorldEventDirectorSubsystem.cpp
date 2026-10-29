@@ -629,7 +629,14 @@ bool UWorldEventDirectorSubsystem::RestoreSnapshot(const FWorldEventDirectorSnap
     // A v27/legacy save has no event manifest. Start a new deterministic event
     // history from its restored clock instead of freezing the simulation.
     if (!Snapshot.bInitialized)
-        return InitializeEventDirector();
+    {
+        if (!InitializeEventDirector())
+            return false;
+        if (UWorldLogisticsRouteSubsystem* Routes =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr)
+            return Routes->ApplyActiveFloodEvents({});
+        return false;
+    }
     if (!IsValidSnapshot(Snapshot))
         return false;
 
@@ -650,5 +657,18 @@ bool UWorldEventDirectorSubsystem::RestoreSnapshot(const FWorldEventDirectorSnap
     PresentedSignalIds.Reset();
     PresentedActiveIds.Reset();
     ApplyActiveEventWeather();
-    return true;
+
+    TArray<FGuid> ActiveFloodIds;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+            [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+        if (Definition && Definition->Effect == TEXT("flooded_routes"))
+            ActiveFloodIds.Add(Instance.InstanceId);
+    }
+    UWorldLogisticsRouteSubsystem* Routes =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    return Routes && Routes->ApplyActiveFloodEvents(ActiveFloodIds);
 }
