@@ -109,8 +109,13 @@ bool UWorldThreatDirectorSubsystem::CalculateRaidPressureAndTarget(
                 continue;
             const float Light = FMath::IsFinite(Heat->GetRaidLightSignature())
                 ? FMath::Max(0.0f, Heat->GetRaidLightSignature()) : 0.0f;
+            const float FuelHeat = FMath::IsFinite(Heat->GetFuelHeatMultiplier())
+                ? FMath::Clamp(Heat->GetFuelHeatMultiplier(), 0.1f, 3.0f) : 1.0f;
+            // Cooler fuel blends (notably wet wood) smoke more; hot charcoal
+            // still emits some smoke but is a weaker smell/visibility beacon.
+            const float SmokeFuelFactor = FMath::Clamp(1.0f + (1.0f - FuelHeat) * 0.75f, 0.25f, 1.75f);
             const float Smoke = FMath::IsFinite(Heat->GetRaidSmokeSignature())
-                ? FMath::Max(0.0f, Heat->GetRaidSmokeSignature()) : 0.0f;
+                ? FMath::Max(0.0f, Heat->GetRaidSmokeSignature()) * SmokeFuelFactor : 0.0f;
             HeatSignals.Add(TPair<FVector, TPair<float, float>>(
                 Heat->GetComponentLocation(), TPair<float, float>(Light, Smoke)));
         }
