@@ -23,6 +23,7 @@
 #include "LogContainerActor.h"
 #include "Engine/StaticMesh.h"
 #include "PhysicalHealthComponent.h"
+#include "LogSnapCharacter.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
 #include "ThrownImpactComponent.h"
@@ -3989,6 +3990,68 @@ bool FCreekWetColdExposureIllnessTest::RunTest(const FString& Parameters)
         {
             return Condition.DefinitionId == FName(TEXT("Illness.Cold"));
         }));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFallImpactAppliesPhysicalAndSurvivalInjuryTest,
+    "MyProject3.Survival.FallImpactAppliesConfiguredInjuryOnce", TestFlags)
+bool FFallImpactAppliesPhysicalAndSurvivalInjuryTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(9417, 500.0));
+
+    FWorldSurvivalConditionDefinition Fall;
+    Fall.DefinitionId = TEXT("Injury.Fall");
+    Fall.Kind = EWorldSurvivalConditionKind::Injury;
+    Fall.HealthLossPerHour = 0.0f;
+    Fall.FatiguePerHour = 1.0f;
+    Fall.StaminaLossPerHour = 5.0f;
+    Fall.DurationSeconds = 96.0 * 3600.0;
+    TestTrue(TEXT("Register fall injury definition"), Survival->RegisterConditionDefinition(Fall));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(0.0, 0.0, 200.0);
+    TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    const FTransform SpawnTransform(FVector(0.0, 0.0, 200.0));
+    ALogSnapCharacter* Player = World->SpawnActor<ALogSnapCharacter>(
+        ALogSnapCharacter::StaticClass(), SpawnTransform, SpawnParameters);
+    if (!TestNotNull(TEXT("Player character"), Player) ||
+        !TestNotNull(TEXT("Player physical health"), Player->PhysicalHealth) ||
+        !TestNotNull(TEXT("Player shelter sensor"), Player->ShelterSensor))
+        return false;
+    Player->ShelterSensor->SurvivalEntityId = Profile.EntityId;
+
+    const float InitialPhysicalHealth = Player->PhysicalHealth->Health;
+    Player->ApplyFallImpact(800.0f);
+    TestEqual(TEXT("Sub-threshold fall causes no physical damage"),
+        Player->PhysicalHealth->Health, InitialPhysicalHealth);
+    FWorldSurvivalProfile AfterSmallFall;
+    TestTrue(TEXT("Read profile after small fall"), Survival->GetProfile(Profile.EntityId, AfterSmallFall));
+    TestEqual(TEXT("Sub-threshold fall adds no injury"), AfterSmallFall.Conditions.Num(), 0);
+
+    Player->ApplyFallImpact(1300.0f);
+    TestTrue(TEXT("Hard fall reduces physical health"),
+        Player->PhysicalHealth->Health < InitialPhysicalHealth);
+    FWorldSurvivalProfile AfterHardFall;
+    TestTrue(TEXT("Read profile after hard fall"), Survival->GetProfile(Profile.EntityId, AfterHardFall));
+    TestEqual(TEXT("Hard fall adds one configured injury"), AfterHardFall.Conditions.Num(), 1);
+    TestEqual(TEXT("Fall condition uses data definition"),
+        AfterHardFall.Conditions[0].DefinitionId, FName(TEXT("Injury.Fall")));
+    TestTrue(TEXT("Fall condition carries nonzero severity"),
+        AfterHardFall.Conditions[0].Severity > 0.0f);
     return true;
 }
 
