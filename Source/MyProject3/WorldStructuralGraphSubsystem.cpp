@@ -529,14 +529,67 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
         CurrentId = Current->ParentNodeId;
     }
 
-    // Disconnecting removes the piece from the structure entirely: its extra
-    // contacts go too, so actor-local detachment and graph state stay aligned.
+    // Physical secondary-support anchor reservations must be released with
+    // the canonical edges. Logical-only nodes are allowed, but half-adapted
+    // links are rejected before any mutation.
+    IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Child->Actor.Get());
+    TArray<FStructuralSupportLink> ReservationsToRelease;
     for (const FStructuralSupportLink& Link : Child->SecondarySupports)
     {
         const FStructuralNodeRecord* Support = Nodes.Find(Link.SupportNodeId);
-        if (!Support || Support->Revision == MAX_int64)
+        IStructuralPieceInterface* SupportPiece = Support
+            ? Cast<IStructuralPieceInterface>(Support->Actor.Get()) : nullptr;
+        FStructuralAnchorView ChildAnchor;
+        FStructuralAnchorView SupportAnchor;
+        const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+        if (!Support || Support->Revision == MAX_int64 ||
+            (bHasPhysicalAdapters &&
+             (!ChildPiece || !SupportPiece ||
+              !ChildPiece->GetStructuralAnchor(Link.OwnAnchorId, ChildAnchor) ||
+              !SupportPiece->GetStructuralAnchor(Link.SupportAnchorId, SupportAnchor))))
             return false;
+        if (bHasPhysicalAdapters)
+            ReservationsToRelease.Add(Link);
     }
+
+    TArray<FStructuralSupportLink> ReleasedReservations;
+    for (const FStructuralSupportLink& Link : ReservationsToRelease)
+    {
+        const FStructuralNodeRecord* Support = Nodes.Find(Link.SupportNodeId);
+        IStructuralPieceInterface* SupportPiece = Support
+            ? Cast<IStructuralPieceInterface>(Support->Actor.Get()) : nullptr;
+        if (!ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, false))
+        {
+            for (const FStructuralSupportLink& Restore : ReleasedReservations)
+            {
+                const FStructuralNodeRecord* RestoreSupport = Nodes.Find(Restore.SupportNodeId);
+                if (IStructuralPieceInterface* RestorePiece = RestoreSupport
+                    ? Cast<IStructuralPieceInterface>(RestoreSupport->Actor.Get()) : nullptr)
+                {
+                    ChildPiece->SetStructuralAnchorOccupied(Restore.OwnAnchorId, true);
+                    RestorePiece->SetStructuralAnchorOccupied(Restore.SupportAnchorId, true);
+                }
+            }
+            return false;
+        }
+        if (!SupportPiece->SetStructuralAnchorOccupied(Link.SupportAnchorId, false))
+        {
+            ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, true);
+            for (const FStructuralSupportLink& Restore : ReleasedReservations)
+            {
+                const FStructuralNodeRecord* RestoreSupport = Nodes.Find(Restore.SupportNodeId);
+                if (IStructuralPieceInterface* RestorePiece = RestoreSupport
+                    ? Cast<IStructuralPieceInterface>(RestoreSupport->Actor.Get()) : nullptr)
+                {
+                    ChildPiece->SetStructuralAnchorOccupied(Restore.OwnAnchorId, true);
+                    RestorePiece->SetStructuralAnchorOccupied(Restore.SupportAnchorId, true);
+                }
+            }
+            return false;
+        }
+        ReleasedReservations.Add(Link);
+    }
+
     for (const FStructuralSupportLink& Link : Child->SecondarySupports)
     {
         if (FStructuralNodeRecord* Support = Nodes.Find(Link.SupportNodeId))
@@ -669,7 +722,8 @@ bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId
         return false;
     const FStructuralSupportLink RemovedLink = *ExistingLink;
     const TArray<FStructuralSupportLink> PreviousSupports = Child->SecondarySupports;
-    Child->SecondarySupports.RemoveSingle(RemovedLink);
+    Child->SecondarySupports.RemoveAll(
+        [&SupportNodeId](const FStructuralSupportLink& Link) { return Link.SupportNodeId == SupportNodeId; });
 
     // Removing a brace is not allowed to leave a still-registered piece
     // unsupported or overload any remaining support.

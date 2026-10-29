@@ -299,10 +299,11 @@ bool AStoneBuildingPiece::TryCommitGroundPlacement(
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(false);
+        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : false);
         Mesh->SetCollisionProfileName(TEXT("BlockAll"));
-        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
     }
+    ApplyStructuralProxyCollision();
     return true;
 }
 
@@ -421,8 +422,9 @@ bool AStoneBuildingPiece::TryConnectToAnchor(
     {
         Mesh->SetSimulatePhysics(false);
         Mesh->SetCollisionProfileName(TEXT("BlockAll"));
-        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
     }
+    ApplyStructuralProxyCollision();
     return true;
 }
 
@@ -487,6 +489,8 @@ bool AStoneBuildingPiece::RemoveConnection(bool bAllowGraphFailure)
         ParentPiece.Reset();
         ParentAnchorId = NAME_None;
         OwnAnchorIdUsed = NAME_None;
+        if (bGraphDisconnected)
+            ApplyStructuralProxyCollision();
         return bGraphDisconnected;
     }
 
@@ -502,9 +506,12 @@ bool AStoneBuildingPiece::RemoveConnection(bool bAllowGraphFailure)
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(false);
+        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : false);
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
+        if (bUsesStructuralProxy)
+            Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
+    ApplyStructuralProxyCollision();
     return true;
 }
 
@@ -560,8 +567,9 @@ void AStoneBuildingPiece::ApplyCrossMaterialAttachment(AActor* Parent)
     {
         Mesh->SetSimulatePhysics(false);
         Mesh->SetCollisionProfileName(TEXT("BlockAll"));
-        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
     }
+    ApplyStructuralProxyCollision();
 }
 
 void AStoneBuildingPiece::ClearCrossMaterialAttachment()
@@ -571,9 +579,10 @@ void AStoneBuildingPiece::ClearCrossMaterialAttachment()
     if (Mesh && !bIsHeld)
     {
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
-        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-        Mesh->SetSimulatePhysics(true);
+        Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : true);
     }
+    ApplyStructuralProxyCollision();
 }
 
 void AStoneBuildingPiece::GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) const
