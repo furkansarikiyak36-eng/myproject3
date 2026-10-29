@@ -70,7 +70,13 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
         Survival->WeatherSeverity < 0.0f || Survival->WeatherSeverity > 1.0f ||
         !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
         !FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
-        MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(HungerPerHour) ||
+        MinimumGrowthMoisture > 1.0f ||
+        !FMath::IsFinite(BaseSoilDryingPerHour) || BaseSoilDryingPerHour < 0.0f || BaseSoilDryingPerHour > 1.0f ||
+        !FMath::IsFinite(RainMoistureGainPerHour) || RainMoistureGainPerHour < 0.0f || RainMoistureGainPerHour > 1.0f ||
+        !FMath::IsFinite(StormMoistureGainPerHour) || StormMoistureGainPerHour < 0.0f || StormMoistureGainPerHour > 1.0f ||
+        !FMath::IsFinite(WindMoistureLossPerHour) || WindMoistureLossPerHour < 0.0f || WindMoistureLossPerHour > 1.0f ||
+        !FMath::IsFinite(HeatwaveMoistureLossPerHour) || HeatwaveMoistureLossPerHour < 0.0f || HeatwaveMoistureLossPerHour > 1.0f ||
+        !FMath::IsFinite(HungerPerHour) ||
         HungerPerHour < 0.0f || !FMath::IsFinite(ProductHungerLimit) ||
         ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f ||
         !FMath::IsFinite(RainGrowthMultiplier) || RainGrowthMultiplier < 0.0f || RainGrowthMultiplier > 2.0f ||
@@ -83,10 +89,12 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         const FWorldCropState& Crop = Pair.Value;
-        if (Crop.Revision == MAX_int64 ||
-            !FMath::IsFinite(Crop.GrowthProgressSeconds) ||
+        if (Crop.Revision <= 0 || Crop.Revision == MAX_int64 ||
+            static_cast<uint8>(Crop.Stage) > static_cast<uint8>(ECropGrowthStage::Withered) ||
+            !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
-            !FMath::IsFinite(Crop.GrowthProgressSeconds + DeltaSeconds))
+            !FMath::IsFinite(Crop.GrowthProgressSeconds + DeltaSeconds * 2.0))
             return false;
     }
     for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
@@ -134,11 +142,49 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
         WeatherGrowthMultiplier > 2.0)
         return false;
 
+    const double Hours = DeltaSeconds / 3600.0;
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         FWorldCropState& Crop = Pair.Value;
+        double MoistureRatePerHour = -static_cast<double>(BaseSoilDryingPerHour);
+        switch (Survival->Weather)
+        {
+        case EWorldWeatherState::Rain:
+            MoistureRatePerHour += static_cast<double>(RainMoistureGainPerHour) *
+                static_cast<double>(Survival->WeatherSeverity);
+            break;
+        case EWorldWeatherState::Storm:
+            MoistureRatePerHour += static_cast<double>(StormMoistureGainPerHour) *
+                static_cast<double>(Survival->WeatherSeverity);
+            break;
+        case EWorldWeatherState::Wind:
+            MoistureRatePerHour -= static_cast<double>(WindMoistureLossPerHour) *
+                static_cast<double>(Survival->WeatherSeverity);
+            break;
+        case EWorldWeatherState::Heatwave:
+            MoistureRatePerHour -= static_cast<double>(HeatwaveMoistureLossPerHour) *
+                static_cast<double>(Survival->WeatherSeverity);
+            break;
+        case EWorldWeatherState::Snow:
+        case EWorldWeatherState::Clear:
+        default:
+            break;
+        }
+
+        const double UpdatedMoisture = FMath::Clamp(
+            static_cast<double>(Crop.Moisture) + MoistureRatePerHour * Hours, 0.0, 1.0);
+        if (!FMath::IsFinite(UpdatedMoisture))
+            return false;
+        const bool bMoistureChanged =
+            !FMath::IsNearlyEqual(static_cast<double>(Crop.Moisture), UpdatedMoisture, 1.0e-8);
+        Crop.Moisture = static_cast<float>(UpdatedMoisture);
+
         if (Crop.Stage == ECropGrowthStage::Mature || Crop.Stage == ECropGrowthStage::Withered)
+        {
+            if (bMoistureChanged)
+                ++Crop.Revision;
             continue;
+        }
         if (Crop.Moisture < MinimumGrowthMoisture)
         {
             Crop.Stage = ECropGrowthStage::Withered;
@@ -146,8 +192,7 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
             continue;
         }
         Crop.GrowthProgressSeconds += DeltaSeconds *
-            static_cast<double>(FMath::Clamp(Crop.Moisture, 0.0f, 1.0f)) *
-            WeatherGrowthMultiplier;
+            static_cast<double>(Crop.Moisture) * WeatherGrowthMultiplier;
         while (Crop.GrowthProgressSeconds >= Crop.SecondsPerStage &&
             Crop.Stage != ECropGrowthStage::Mature)
         {
