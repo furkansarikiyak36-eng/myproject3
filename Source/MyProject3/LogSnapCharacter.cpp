@@ -466,7 +466,7 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
     {
         SurvivalActivityAccumulator = 0.0f;
         if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-            Movement->MaxWalkSpeed = BaseWalkSpeed;
+            Movement->MaxWalkSpeed = BaseWalkSpeed * CarrySpeedFactor * SlopeSpeedFactor * WeatherSpeedFactor;
     }
 
     // VerticalSlice_C rest is a bounded sleep-like interval on the shared
