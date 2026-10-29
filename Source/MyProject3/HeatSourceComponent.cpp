@@ -1,6 +1,11 @@
 #include "HeatSourceComponent.h"
 
 #include "WorldSurvivalSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "InventoryCraftingComponent.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 
 #include "Engine/World.h"
 
@@ -27,6 +32,154 @@ void UHeatSourceComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
         Survival->UnregisterHeatSource(this);
     }
     Super::EndPlay(EndPlayReason);
+}
+
+bool UHeatSourceComponent::RegisterFuelDefinition(const FHeatFuelDefinition& Definition)
+{
+    if (Definition.ItemDefinitionId.IsNone() ||
+        !FMath::IsFinite(Definition.BurnSecondsPerItem) ||
+        Definition.BurnSecondsPerItem <= 0.0f || Definition.BurnSecondsPerItem > 86400.0f ||
+        MaxFuelDefinitions <= 0 || MaxFuelDefinitions > 1024 ||
+        FuelDefinitions.Num() >= MaxFuelDefinitions ||
+        FuelDefinitions.ContainsByPredicate([&Definition](const FHeatFuelDefinition& Existing)
+            { return Existing.ItemDefinitionId == Definition.ItemDefinitionId; }))
+        return false;
+    FuelDefinitions.Add(Definition);
+    return true;
+}
+
+bool UHeatSourceComponent::TryAddFuelItem(
+    const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedItemRevision,
+    const FGuid& InventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !ItemId.IsValid() ||
+        ExpectedItemRevision <= 0 || ExpectedItemRevision >= MAX_int64 - 1 ||
+        !InventoryOwnerId.IsValid())
+        return false;
+
+    // Resolve retries first so receipt capacity or later fuel burning cannot
+    // cause a previously accepted refuel to be applied a second time.
+    for (const FHeatFuelOperationReceipt& Receipt : FuelReceipts)
+    {
+        if (Receipt.OperationId != OperationId)
+            continue;
+        return Receipt.ItemId == ItemId &&
+            Receipt.ExpectedItemRevision == ExpectedItemRevision &&
+            Receipt.InventoryOwnerId == InventoryOwnerId;
+    }
+    if (MaxFuelReceipts <= 0 || MaxFuelReceipts > 4096 ||
+        FuelReceipts.Num() >= MaxFuelReceipts ||
+        !FMath::IsFinite(FuelSeconds) || !FMath::IsFinite(MaxFuelSeconds) ||
+        FuelSeconds < 0.0f || MaxFuelSeconds <= 0.0f || FuelSeconds > MaxFuelSeconds)
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!World || !Ownership)
+        return false;
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(ItemId, Item) ||
+        Item.Revision != ExpectedItemRevision || Item.Revision >= MAX_int64 - 1 ||
+        Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Item.OwnerId != InventoryOwnerId || Item.Quantity != 1)
+        return false;
+
+    const FHeatFuelDefinition* Definition = FuelDefinitions.FindByPredicate(
+        [&Item](const FHeatFuelDefinition& Candidate)
+        {
+            return Candidate.ItemDefinitionId == Item.DefinitionId;
+        });
+    if (!Definition || !FMath::IsFinite(Definition->BurnSecondsPerItem) ||
+        Definition->BurnSecondsPerItem <= 0.0f ||
+        Definition->BurnSecondsPerItem > MaxFuelSeconds - FuelSeconds)
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        UInventoryCraftingComponent* Candidate =
+            IsValid(*It) ? It->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+        if (IsValid(Candidate) && Candidate->GetInventoryOwnerId() == InventoryOwnerId)
+        {
+            if (Inventory)
+                return false;
+            Inventory = Candidate;
+        }
+    }
+    if (!Inventory)
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid PreviousInventoryOwnerId;
+    TArray<FInventoryStack> PreviousInventory;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousInventoryOwnerId,
+        PreviousInventory, PreviousQuickAccess);
+    if (PreviousInventoryOwnerId != InventoryOwnerId)
+        return false;
+
+    bool bHasExactStack = false;
+    for (const FInventoryStack& Stack : PreviousInventory)
+    {
+        if (Stack.OwnedWorldItemId == ItemId)
+        {
+            if (Stack.Quantity != 1 || Stack.ItemId != Item.DefinitionId)
+                return false;
+            bHasExactStack = true;
+            break;
+        }
+    }
+    if (!bHasExactStack)
+        return false;
+
+    TArray<FWorldOwnedItemRecord> PreviousItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousItems, PreviousTransfers, PreviousSplits);
+    auto Rollback = [&]() -> bool
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        const bool bItemsRestored = Ownership->RestoreSnapshot(
+            PreviousItems, PreviousTransfers, PreviousSplits);
+        if (!bInventoryRestored || !bItemsRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Fuel-item rollback failed for item %s."),
+                *ItemId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Fuel refuelling rollback failed; stop simulation and recover/reset the world."));
+            }
+            return false;
+        }
+        return true;
+    };
+
+    FInventoryStack RemovedStack;
+    if (!Inventory->TryRemoveOwnedItemReference(ItemId, RemovedStack))
+        return false;
+    if (!Ownership->TryConsumeItem(OperationId, ItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::Inventory))
+    {
+        Rollback();
+        return false;
+    }
+
+    FuelSeconds += Definition->BurnSecondsPerItem;
+    FHeatFuelOperationReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.ItemId = ItemId;
+    Receipt.InventoryOwnerId = InventoryOwnerId;
+    Receipt.ExpectedItemRevision = ExpectedItemRevision;
+    Receipt.ItemDefinitionId = Item.DefinitionId;
+    Receipt.AddedBurnSeconds = Definition->BurnSecondsPerItem;
+    Receipt.ResultingFuelSeconds = FuelSeconds;
+    FuelReceipts.Add(Receipt);
+    return true;
 }
 
 bool UHeatSourceComponent::AddFuel(float BurnSeconds)
