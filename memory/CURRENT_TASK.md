@@ -15,7 +15,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 0. [x] Create isolated task branch.
 1. [x] Read shared project memory and codebase map.
 2. [x] Inspect agriculture, game-data, calendar, ownership, save and world-test code.
-3. [x] Identify the crop/field integration gaps.
+3. [x] Identify crop/field integration gaps.
 4. [ ] Implement field-cell state/actions, seasonal planting, soil exhaustion/rotation and seed return under idempotent operation rules.
 5. [ ] Load crop months/seed-return/soil parameters from crops.json; validate all references and register definitions in ApplyToWorld.
 6. [ ] Add automation-test source for positive, negative, seasonal, retry and snapshot cases.
@@ -28,21 +28,23 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
 - Source/MyProject3/WorldAgricultureSubsystem.h/.cpp
 - Source/MyProject3/WorldGameDataSubsystem.h/.cpp; Config/GameData/crops.json
-- Source/MyProject3/WorldCalendar.h; Source/MyProject3/WorldSimulationClockSubsystem.h
-- Source/MyProject3/WorldItemOwnershipSubsystem.h
-- Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp; Source/MyProject3/WorldSimulationSaveGame.h
-- Source/MyProject3/Tests/GameWorldTests.cpp; memory/CODE_INDEX.md
+- Config/GameData/items.json, Config/GameData/transformations.json
+- Source/MyProject3/WorldCalendar.h, Source/MyProject3/WorldSimulationClockSubsystem.h/.cpp
+- Source/MyProject3/WorldItemOwnershipSubsystem.h, Source/MyProject3/InventoryCraftingComponent.h/.cpp
+- Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp, Source/MyProject3/WorldSimulationSaveGame.h
+- Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md
 
 ## Findings
-- Agriculture has item-backed Plant/Harvest/Feed/Collect receipts but no field-cell state; TryPlantCrop does not check planting month or require a prepared plot.
-- crops.json already contains plant_months and zone data; the loader parses months without checking 1–12/duplicates, and ApplyToWorld never registers FGameDataCrop into UWorldAgricultureSubsystem.
-- Harvest creates crop output items only; there is no seed return or fertility/soil exhaustion state.
-- Save snapshots persist crops/animals only. Field cells must be added to snapshots, validation/restore, and a schema migration.
-- Parent-branch history reports 102/102 tests at bbc57b3; this is not evidence for the current work branch or future edits.
+- Agriculture has item-backed Plant/Harvest/Feed/Collect receipts but no field-cell state; TryPlantCrop neither checks planting month nor requires a cleared/tilled plot.
+- crops.json has plant_months and zone data; its parser does not validate month range/duplicates, and ApplyToWorld does not register parsed crop definitions into UWorldAgricultureSubsystem.
+- Harvest creates harvest items only; the crop/field contract has no seed-return output or soil exhaustion/fertility state.
+- Current save schema is v22 and agriculture snapshots contain crops/animals only. Persisted field cells require a new save field and v23 migration.
+- Data already defines Seed.Grain/Root/Legume and harvest outputs, plus Compost; no dedicated Mulch item is defined. Keep field work state separate from physical tool/resource UI for now.
+- Parent-branch history reports 102/102 tests at bbc57b3; this is not evidence for current-branch edits.
 
 ## Changes
 - Created game/p06-farming-seed-cycle from game/p00-adopt-group-a.
-- Updated this checkpoint before source inspection and recorded crop integration gaps.
+- Checkpointed the audited crop, data and persistence gaps before implementation.
 
 ## Next step
-Inspect current save schema/migration tail, crop/field operation APIs, relevant item/recipe IDs and inventory membership functions. Then implement field state and crop lifecycle contracts, with no build.
+Implement the agriculture data contracts and save snapshot changes: field cell/field-work receipts, crop planting months/soil parameters/seed-return units, and v23 persistence. Then wire crops.json to the loader and add tests. No build.
