@@ -29,7 +29,8 @@ enum class EBuildPlanKind : uint8
     Couch UMETA(DisplayName = "Couch"),
     Shelf UMETA(DisplayName = "Shelf"),
     RabbitHutch UMETA(DisplayName = "Rabbit Hutch"),
-    CornerRamp UMETA(DisplayName = "Corner Ramp")
+    CornerRamp UMETA(DisplayName = "Corner Ramp"),
+    CreekBridge UMETA(DisplayName = "Creek Bridge (segmented log span)")
 };
 
 /** One log position in a plan, in the plan's local space. */
@@ -86,7 +87,7 @@ public:
     }
 
     /** The last plan kind, for cycling through them. */
-    static constexpr EBuildPlanKind LastKind = EBuildPlanKind::CornerRamp;
+    static constexpr EBuildPlanKind LastKind = EBuildPlanKind::CreekBridge;
 
     int32 GetSlotCount() const { return Slots.Num(); }
     int32 GetFilledCount() const;
