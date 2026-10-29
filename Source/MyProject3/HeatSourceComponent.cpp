@@ -69,8 +69,14 @@ bool UHeatSourceComponent::TryAddFuelItem(
     }
 
     UWorld* World = GetWorld();
-    if (!World)
+    AActor* OwningActor = GetOwner();
+    UWorldObjectIdentityComponent* OwnerIdentity =
+        IsValid(OwningActor) ? OwningActor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    // Refuelling changes persistent component state. A source without stable
+    // actor identity cannot participate in the world-save manifest safely.
+    if (!World || !IsValid(OwnerIdentity) || !OwnerIdentity->HasValidIdentity())
         return false;
+
     // Operation IDs are global across heat-source components. Without this
     // guard, the ownership ledger's idempotent consume receipt could be replayed
     // into a second fire and award the same burn time twice.
