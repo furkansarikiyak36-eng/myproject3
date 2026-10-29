@@ -1275,6 +1275,7 @@ void UWorldSurvivalSubsystem::CaptureHeatSourceRuntimeState(
         State.Source = Source;
         State.FuelSeconds = Source->GetFuelSeconds();
         State.bLit = Source->IsLit();
+        State.FuelHeatMultiplier = Source->GetFuelHeatMultiplier();
     }
 }
 
@@ -1306,7 +1307,7 @@ bool UWorldSurvivalSubsystem::RestoreHeatSourceRuntimeState(
     for (const FWorldHeatSourceRuntimeState& State : Snapshot)
     {
         UHeatSourceComponent* Source = State.Source.Get();
-        if (!Source->RestoreSimulationFuelState(State.FuelSeconds, State.bLit))
+        if (!Source->RestoreSimulationFuelState(State.FuelSeconds, State.bLit, State.FuelHeatMultiplier))
             return false;
     }
     return true;

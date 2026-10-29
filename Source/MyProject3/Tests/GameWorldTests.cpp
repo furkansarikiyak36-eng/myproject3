@@ -11,6 +11,8 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldStorageSubsystem.h"
+#include "HeatSourceComponent.h"
+#include "WorldObjectIdentityComponent.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -516,6 +518,91 @@ bool FSpoilageByStorageTest::RunTest(const FString& Parameters)
     }()));
     TestTrue(TEXT("Winter climate"), Climate->InitializeClimate());
     TestTrue(TEXT("Frost slows ageing"), Ownership->GetSpoilageRate(Moved) <= 0.25f);
+    return true;
+}
+
+// P3.1: wet wood burns short and weak, charcoal burns hot enough to fire clay.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFuelKindsTest,
+    "MyProject3.World.Fire.WetWoodWeakCharcoalHot", Flags)
+bool FFuelKindsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(4, 0.0));
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    AActor* FireActor = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryActor);
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    UWorldObjectIdentityComponent* FireIdentity = NewObject<UWorldObjectIdentityComponent>(FireActor);
+    FireActor->AddInstanceComponent(FireIdentity);
+    FireIdentity->RegisterComponent();
+    FireIdentity->EnsureIdentity();
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor);
+    FireActor->AddInstanceComponent(Fire);
+    Fire->RegisterComponent();
+    Fire->MaxFuelSeconds = 20000.0f;
+
+    const FGuid InventoryId = Inventory->GetInventoryOwnerId();
+    TArray<FInventoryStack> Stacks;
+    auto AddFuel = [&](FName DefinitionId) -> FGuid
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = FGuid::NewGuid();
+        Item.DefinitionId = DefinitionId;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = InventoryId;
+        TestTrue(TEXT("Register fuel"), Ownership->RegisterItem(Item));
+        Inventory->ItemWeightGrams.Add(DefinitionId, 500);
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.MaxStack = 1;
+        Stack.OwnedWorldItemId = Item.ItemId;
+        Stacks.Add(Stack);
+        return Item.ItemId;
+    };
+    const FGuid Wet = AddFuel(TEXT("Firewood.Wet"));
+    const FGuid Coal1 = AddFuel(TEXT("Charcoal"));
+    const FGuid Coal2 = AddFuel(TEXT("Charcoal.B"));
+    TestTrue(TEXT("Inventory"), Inventory->RestoreSnapshot(InventoryId, Stacks, NAME_None));
+
+    FHeatFuelDefinition WetWood;
+    WetWood.ItemDefinitionId = TEXT("Firewood.Wet");
+    WetWood.BurnSecondsPerItem = 600.0f;
+    WetWood.HeatOutputMultiplier = 0.6f;
+    FHeatFuelDefinition Charcoal;
+    Charcoal.ItemDefinitionId = TEXT("Charcoal");
+    Charcoal.BurnSecondsPerItem = 2400.0f;
+    Charcoal.HeatOutputMultiplier = 1.5f;
+    FHeatFuelDefinition CharcoalB = Charcoal;
+    CharcoalB.ItemDefinitionId = TEXT("Charcoal.B");
+    FHeatFuelDefinition Bad = Charcoal;
+    Bad.ItemDefinitionId = TEXT("Bad");
+    Bad.HeatOutputMultiplier = 9.0f;
+    TestTrue(TEXT("Wet wood fuel"), Fire->RegisterFuelDefinition(WetWood));
+    TestTrue(TEXT("Charcoal fuel"), Fire->RegisterFuelDefinition(Charcoal));
+    TestTrue(TEXT("Charcoal fuel B"), Fire->RegisterFuelDefinition(CharcoalB));
+    TestFalse(TEXT("Impossible heat refused"), Fire->RegisterFuelDefinition(Bad));
+
+    TestTrue(TEXT("Wet wood in"), Fire->TryAddFuelItem(FGuid::NewGuid(), Wet, 1, InventoryId));
+    TestTrue(TEXT("Light"), Fire->Ignite());
+    const FVector Near = Fire->GetComponentLocation() + FVector(100.0, 0.0, 0.0);
+    const float WetHeat = Fire->GetHeatAt(Near);
+    TestEqual(TEXT("Wet wood fire is weak"), Fire->GetFuelHeatMultiplier(), 0.6f, 0.001f);
+    TestFalse(TEXT("Wet wood is not hot enough for clay"), Fire->IsBurningHot());
+
+    TestTrue(TEXT("Charcoal in"), Fire->TryAddFuelItem(FGuid::NewGuid(), Coal1, 1, InventoryId));
+    // (600 x 0.6 + 2400 x 1.5) / 3000 = 1.32
+    TestEqual(TEXT("Mixed fire"), Fire->GetFuelHeatMultiplier(), 1.32f, 0.001f);
+    TestTrue(TEXT("Mostly charcoal is hot"), Fire->IsBurningHot());
+    TestTrue(TEXT("More charcoal"), Fire->TryAddFuelItem(FGuid::NewGuid(), Coal2, 1, InventoryId));
+    TestTrue(TEXT("Charcoal fire warms more"), Fire->GetHeatAt(Near) > WetHeat * 2.0f);
     return true;
 }
 

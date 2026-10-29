@@ -38,7 +38,7 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P2.4 spoilage | Var | freshness duration, spoiled energy [A]; spoilage age accrues per owner: storage `SpoilageRateMultiplier` (cellar, smoke rack) x air-temperature factor from climate; schema v22; test. Smoked/dried food = other item definitions with longer freshness (recipes, P4) | the temperature of a segment is read when it closes (approximation); damp not modelled |
 | P2.5 disease/injury | Kısmi | conditions Injury/Illness/Poisoning, duration, damage, treatment item [A]; physical health [S]; triggers: dirty water (`ConditionOnConsumeId`), spoiled food (`ConditionWhenSpoiledId`) | triggers: toxic rain (P8), falls, animal attacks, long wet cold (P2.3) |
 | P2.6 clothing | Var [A] | slots Head/Body/Hands/Legs/Feet, insulation, water resistance, capabilities | (hide clothing recipe is P4) |
-| P3.1 fire fuel | Kısmi | fuel = seconds, a log thrown on adds seconds [S]; fuel items with burn time and receipts [A] | wet wood, charcoal item, player input |
+| P3.1 fire fuel | Kısmi | fuel items with burn time and receipts [A]; per-fuel `HeatOutputMultiplier` mixed by burn time (wet wood 0.6, charcoal 1.5), `IsBurningHot` for firing clay; saved and rolled back; test | firewood turning wet in rain (item state), player input on the fire |
 | P3.2 shelter enclosure | Kısmi | roof/wall cover by line traces [S]; shelter protection separate from clothing [A] | heat loss from the structural graph |
 | P3.3 clay plaster | Yok | — | plaster item, wall state, closes gaps |
 | P3.4 charcoal pit | Yok | generic production station [S] | the station and recipe |

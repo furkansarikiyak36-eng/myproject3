@@ -30,7 +30,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 1. [x] P1.1 calendar (88/88) (day/month/season/year from clock, days per month 5)
 2. [x] P1.2 monthly climate, snow depth, ground wetness (91/91)
 3. [x] P2.1/P2.5 consume conditions (92), P2.2 rest quality (93), P2.4 spoilage by storage+temperature (94)
-4. [ ] P3.1 wet wood + charcoal fuel, P3.2 enclosure from graph
+4. [~] P3.1 fuel heat (wet wood/charcoal) done 95/95; P3.2 enclosure from graph next
 5. [ ] P4.1-P4.4 gatherables, recipes, stations, tool requirements (needs data files P0.3/P0.4 first)
 6. [ ] P5.1 layer data
 7. [ ] P6.2-P6.4 field steps, seeds, animal chain
@@ -55,4 +55,4 @@ User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; ski
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 4: P3.1 wet wood + charcoal fuel (HeatSourceComponent fuel definitions: burn seconds per item; wet = climate ground wetness or item flag -> less burn time), P3.2 shelter enclosure from the structural graph. Read HeatSourceComponent.h/.cpp (TryAddFuelItem) and ShelterSensorComponent first.
+Step 4b: P3.2 shelter enclosure from the structural graph. Read ShelterSensorComponent.cpp (line traces) and WorldStructuralGraphSubsystem API (GetAllDependents, node kinds). Idea: sensor traces only count hits on actors registered in the structural graph that are ground-supported (a real built roof/wall, not a tree); per-direction gaps lower protection.

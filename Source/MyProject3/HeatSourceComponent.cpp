@@ -40,6 +40,8 @@ bool UHeatSourceComponent::RegisterFuelDefinition(const FHeatFuelDefinition& Def
     if (Definition.ItemDefinitionId.IsNone() ||
         !FMath::IsFinite(Definition.BurnSecondsPerItem) ||
         Definition.BurnSecondsPerItem <= 0.0f || Definition.BurnSecondsPerItem > 86400.0f ||
+        !FMath::IsFinite(Definition.HeatOutputMultiplier) ||
+        Definition.HeatOutputMultiplier < 0.1f || Definition.HeatOutputMultiplier > 3.0f ||
         MaxFuelDefinitions <= 0 || MaxFuelDefinitions > 1024 ||
         FuelDefinitions.Num() >= MaxFuelDefinitions ||
         FuelDefinitions.ContainsByPredicate([&Definition](const FHeatFuelDefinition& Existing)
@@ -201,6 +203,12 @@ bool UHeatSourceComponent::TryAddFuelItem(
         return false;
     }
 
+    // The fire's heat is the burn-time-weighted mix of what is in it.
+    const float MixedSeconds = FuelSeconds + Definition->BurnSecondsPerItem;
+    FuelHeatMultiplier = MixedSeconds > 0.0f
+        ? (FuelSeconds * FuelHeatMultiplier + Definition->BurnSecondsPerItem *
+            FMath::Clamp(Definition->HeatOutputMultiplier, 0.1f, 3.0f)) / MixedSeconds
+        : 1.0f;
     FuelSeconds += Definition->BurnSecondsPerItem;
     FHeatFuelOperationReceipt Receipt;
     Receipt.OperationId = OperationId;
@@ -244,17 +252,19 @@ float UHeatSourceComponent::GetHeatAt(const FVector& WorldLocation) const
         return 0.0f;
     // Quadratic falloff: warm next to the fire, little at the edge.
     const float Closeness = 1.0f - Distance / RadiusCm;
-    return HeatOutputCelsius * Closeness * Closeness;
+    return HeatOutputCelsius * FuelHeatMultiplier * Closeness * Closeness;
 }
 
-bool UHeatSourceComponent::RestoreSimulationFuelState(float InFuelSeconds, bool bInLit)
+bool UHeatSourceComponent::RestoreSimulationFuelState(float InFuelSeconds, bool bInLit, float InFuelHeatMultiplier)
 {
-    if (!FMath::IsFinite(InFuelSeconds) || InFuelSeconds < 0.0f ||
+    if (!FMath::IsFinite(InFuelHeatMultiplier) || InFuelHeatMultiplier < 0.1f || InFuelHeatMultiplier > 3.0f ||
+        !FMath::IsFinite(InFuelSeconds) || InFuelSeconds < 0.0f ||
         !FMath::IsFinite(MaxFuelSeconds) || MaxFuelSeconds <= 0.0f ||
         InFuelSeconds > MaxFuelSeconds || (bInLit && InFuelSeconds <= 0.0f))
         return false;
     FuelSeconds = InFuelSeconds;
     bLit = bInLit;
+    FuelHeatMultiplier = InFuelHeatMultiplier;
     return true;
 }
 

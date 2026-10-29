@@ -13,6 +13,7 @@ struct FWorldHeatSourceRuntimeState
     TWeakObjectPtr<UHeatSourceComponent> Source;
     float FuelSeconds = 0.0f;
     bool bLit = false;
+    float FuelHeatMultiplier = 1.0f;
 };
 
 UENUM(BlueprintType)

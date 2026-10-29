@@ -12,6 +12,8 @@ struct FHeatFuelDefinition
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Fuel") FName ItemDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Fuel", meta=(ClampMin="0.01", ClampMax="86400")) float BurnSecondsPerItem = 900.0f;
+    /** Heat of this fuel: dry wood 1, wet wood ~0.6 (smoky, short), charcoal ~1.5 (hot enough for pottery). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Fuel", meta=(ClampMin="0.1", ClampMax="3")) float HeatOutputMultiplier = 1.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -71,6 +73,14 @@ public:
     UFUNCTION(BlueprintPure, Category="Heat")
     float GetFuelSeconds() const { return FuelSeconds; }
 
+    /** Heat of the fuel now in the fire, weighted by its burn time (P3.1). */
+    UFUNCTION(BlueprintPure, Category="Heat")
+    float GetFuelHeatMultiplier() const { return FuelHeatMultiplier; }
+
+    /** Lit and burning charcoal-hot: needed to fire clay (P4). */
+    UFUNCTION(BlueprintPure, Category="Heat")
+    bool IsBurningHot() const { return bLit && FuelHeatMultiplier >= 1.3f; }
+
     /** Internal numerical helper. Player-facing refuelling must consume an owned fuel item. */
     bool AddFuel(float BurnSeconds);
 
@@ -97,7 +107,7 @@ public:
     void AdvanceFuel(double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity);
 
     /** Internal transaction rollback hook; restores only fuel/lit runtime state. */
-    bool RestoreSimulationFuelState(float InFuelSeconds, bool bInLit);
+    bool RestoreSimulationFuelState(float InFuelSeconds, bool bInLit, float InFuelHeatMultiplier = 1.0f);
 
 private:
     UPROPERTY(SaveGame, VisibleAnywhere, Category="Heat")
@@ -105,6 +115,9 @@ private:
 
     UPROPERTY(SaveGame, VisibleAnywhere, Category="Heat")
     bool bLit = false;
+
+    UPROPERTY(SaveGame, VisibleAnywhere, Category="Heat")
+    float FuelHeatMultiplier = 1.0f;
 
     UPROPERTY(SaveGame, VisibleAnywhere, Category="Heat|Fuel")
     TArray<FHeatFuelOperationReceipt> FuelReceipts;
