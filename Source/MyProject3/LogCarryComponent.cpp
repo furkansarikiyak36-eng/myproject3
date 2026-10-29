@@ -1365,6 +1365,8 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
 
     const FTransform PreviousTransform = Item->GetActorTransform();
     const bool bPreviousActorCollision = Item->GetActorEnableCollision();
+    const bool bPreviousHidden = Item->IsHidden();
+    const bool bPreviousTickEnabled = Item->IsActorTickEnabled();
     UPrimitiveComponent* RootPrimitive =
         Cast<UPrimitiveComponent>(Item->GetRootComponent());
     const bool bPreviousSimulatePhysics =
@@ -1386,6 +1388,8 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
             RootPrimitive->SetCollisionEnabled(PreviousCollision);
         }
         Item->SetActorEnableCollision(bPreviousActorCollision);
+        Item->SetActorHiddenInGame(bPreviousHidden);
+        Item->SetActorTickEnabled(bPreviousTickEnabled);
     };
 
     if (RootPrimitive)
@@ -1446,6 +1450,11 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
         return false;
     }
 
+    // World spawn/BeginPlay quarantines non-World-owned physical actors.
+    // Re-establish the visible, interactive held representation only after the
+    // carry relationship and carry-load registration have both succeeded.
+    Item->SetActorHiddenInGame(false);
+    Item->SetActorTickEnabled(true);
     CarryOwnerId = InCarryOwnerId;
     return true;
 }
