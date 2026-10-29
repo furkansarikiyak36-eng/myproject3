@@ -2,6 +2,32 @@
   "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
   "items": [
     {
+      "id": "Milk.Raw",
+      "group": "food",
+      "name": "Çiğ süt",
+      "weight_g": 1000,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 500,
+        "freshness_h": 48,
+        "spoiled_fraction": 0.25,
+        "spoiled_condition": "Poisoning.SpoiledFood"
+      }
+    },
+    {
+      "id": "Egg",
+      "group": "food",
+      "name": "Yumurta",
+      "weight_g": 100,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 140,
+        "freshness_h": 168,
+        "spoiled_fraction": 0.25,
+        "spoiled_condition": "Poisoning.SpoiledFood"
+      }
+    },
+    {
       "id": "Stone",
       "group": "stone",
       "name": "Taş",
@@ -213,7 +239,7 @@
       "category": "Resource",
       "fuel": {
         "burn_s": 1800,
-        "heat": 1.0
+        "heat": 1
       }
     },
     {
@@ -599,7 +625,7 @@
         "kcal": 120,
         "thirst": 5,
         "freshness_h": 72,
-        "spoiled_fraction": 0.0
+        "spoiled_fraction": 0
       }
     },
     {
