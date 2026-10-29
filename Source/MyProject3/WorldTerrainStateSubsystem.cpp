@@ -1,6 +1,12 @@
 #include "WorldTerrainStateSubsystem.h"
 
 #include "VoxelTerrainChunkComponent.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 
 bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     const FGuid& OperationId, const FIntVector& Cell, int32 DepthLayer,
@@ -165,6 +171,217 @@ bool UWorldTerrainStateSubsystem::TryApplyVoxelExcavation(
             *OperationId.ToString());
     }
     return false;
+}
+
+bool UWorldTerrainStateSubsystem::TryExcavateForResource(
+    const FGuid& OperationId, UVoxelTerrainChunkComponent* VoxelChunk,
+    FVector LocalCenter, float RadiusCm, float ToolStrength, int64 ExpectedDensityRevision,
+    const FIntVector& LogicalCell, int32 DepthLayer, int64 ExpectedCellRevision,
+    FName SourceMaterialId, FWorldTerrainCellState& OutState, TArray<FGuid>& OutResourceItemIds)
+{
+    OutResourceItemIds.Reset();
+    if (!OperationId.IsValid() || !IsValid(VoxelChunk) || SourceMaterialId.IsNone() ||
+        !FMath::IsFinite(LocalCenter.X) || !FMath::IsFinite(LocalCenter.Y) ||
+        !FMath::IsFinite(LocalCenter.Z) || !FMath::IsFinite(RadiusCm) || RadiusCm <= 0.0f ||
+        !FMath::IsFinite(ToolStrength) || ToolStrength <= 0.0f ||
+        ExpectedDensityRevision <= 0 || ExpectedCellRevision < 0 ||
+        DepthLayer < 0 || DepthLayer >= MaxEditableDepthLayers ||
+        MaxResourceYieldRules <= 0 || MaxResourceYieldRules > 256 ||
+        ResourceYieldRules.Num() > MaxResourceYieldRules)
+        return false;
+
+    const FWorldTerrainResourceYieldRule* MatchedRule = nullptr;
+    for (const FWorldTerrainResourceYieldRule& Candidate : ResourceYieldRules)
+    {
+        if (Candidate.SourceMaterialId != SourceMaterialId ||
+            DepthLayer < Candidate.MinimumDepthLayer || DepthLayer > Candidate.MaximumDepthLayer)
+            continue;
+        if (MatchedRule)
+            return false; // Ambiguous yield policy must not multiply resources.
+        if (Candidate.SourceMaterialId.IsNone() || Candidate.OutputDefinitionId.IsNone() ||
+            Candidate.MinimumDepthLayer < 0 || Candidate.MaximumDepthLayer < Candidate.MinimumDepthLayer ||
+            Candidate.MaximumDepthLayer >= MaxDepthPerCell ||
+            !FMath::IsFinite(Candidate.UnitsPerCubicMetre) ||
+            Candidate.UnitsPerCubicMetre <= 0.0f || Candidate.UnitsPerCubicMetre > 100000.0f ||
+            Candidate.MaxUnitsPerOperation <= 0 || Candidate.MaxUnitsPerOperation > 64)
+            return false;
+        MatchedRule = &Candidate;
+    }
+    if (!MatchedRule)
+        return false;
+
+    AActor* ChunkActor = VoxelChunk->GetOwner();
+    UWorldObjectIdentityComponent* ChunkIdentity =
+        IsValid(ChunkActor) ? ChunkActor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    if (!IsValid(ChunkIdentity) || !ChunkIdentity->HasValidIdentity())
+        return false;
+    const FGuid ChunkActorIdentityId = ChunkIdentity->GetInstanceId();
+    if (!ChunkActorIdentityId.IsValid())
+        return false;
+
+    // Resource retries use the terrain receipt as the authoritative output list.
+    // Validate the full request before returning the recorded output identities.
+    if (const FWorldTerrainOperationReceipt* Existing = Receipts.Find(OperationId))
+    {
+        if (Existing->Cell != LogicalCell ||
+            Existing->RequestedDepthLayer != DepthLayer ||
+            Existing->RequestedEdit != ETerrainCellEdit::Excavate ||
+            Existing->RequestedMaterialId != SourceMaterialId ||
+            Existing->ExpectedRevision != ExpectedCellRevision ||
+            Existing->VoxelChunkActorIdentityId != ChunkActorIdentityId ||
+            Existing->ExpectedDensityRevision != ExpectedDensityRevision ||
+            Existing->YieldSourceMaterialId != MatchedRule->SourceMaterialId ||
+            Existing->YieldOutputDefinitionId != MatchedRule->OutputDefinitionId ||
+            !FMath::IsNearlyEqual(Existing->YieldUnitsPerCubicMetre,
+                MatchedRule->UnitsPerCubicMetre, 0.0001f))
+            return false;
+
+        FWorldTerrainCellState RetryState;
+        if (!TryApplyVoxelExcavation(OperationId, VoxelChunk, LocalCenter, RadiusCm,
+            ToolStrength, ExpectedDensityRevision, LogicalCell, DepthLayer,
+            ExpectedCellRevision, SourceMaterialId, RetryState))
+            return false;
+
+        UWorldItemOwnershipSubsystem* Ownership =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        if (!Ownership || Existing->YieldOutputUnits < 0 ||
+            Existing->YieldOutputUnits > MatchedRule->MaxUnitsPerOperation ||
+            Existing->YieldOutputItemIds.Num() != Existing->YieldOutputUnits)
+            return false;
+        for (const FGuid& ItemId : Existing->YieldOutputItemIds)
+        {
+            FWorldOwnedItemRecord Item;
+            if (!Ownership->TryGetItem(ItemId, Item))
+                return false;
+        }
+        OutState = RetryState;
+        OutResourceItemIds = Existing->YieldOutputItemIds;
+        return true;
+    }
+
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!World || !Ownership || MaxOperationReceipts <= 0 ||
+        Receipts.Num() >= MaxOperationReceipts ||
+        Ownership->MaxTrackedItems <= 0 ||
+        Ownership->GetTrackedItemCount() >= Ownership->MaxTrackedItems)
+        return false;
+
+    TArray<FWorldTerrainCellState> CellsBefore;
+    TArray<FWorldTerrainOperationReceipt> TerrainReceiptsBefore;
+    ExportSnapshot(CellsBefore, TerrainReceiptsBefore);
+
+    TArray<float> DensityBefore;
+    TArray<FVoxelTerrainDigReceipt> DigReceiptsBefore;
+    int64 DensityRevisionBefore = 0;
+    if (!VoxelChunk->ExportDensitySnapshot(DensityBefore, DensityRevisionBefore, DigReceiptsBefore) ||
+        DensityRevisionBefore != ExpectedDensityRevision)
+        return false;
+
+    TArray<FWorldOwnedItemRecord> ItemsBefore;
+    TArray<FWorldItemTransferReceipt> TransferReceiptsBefore;
+    TArray<FWorldItemSplitReceipt> SplitReceiptsBefore;
+    Ownership->ExportSnapshot(ItemsBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+
+    const int32 CellsPerAxisBefore = VoxelChunk->CellsPerAxis;
+    const float VoxelSizeBefore = VoxelChunk->VoxelSizeCm;
+    auto RollbackAll = [&]() -> bool
+    {
+        const bool bTerrainRestored = RestoreSnapshot(CellsBefore, TerrainReceiptsBefore);
+        const bool bDensityRestored = VoxelChunk->RestoreDensitySnapshot(
+            CellsPerAxisBefore, VoxelSizeBefore, DensityRevisionBefore,
+            DensityBefore, DigReceiptsBefore);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            ItemsBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+        if (!bTerrainRestored || !bDensityRestored || !bOwnershipRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Resource excavation rollback failed for operation %s."),
+                *OperationId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Resource excavation rollback failed; stop simulation and recover/reset the world."));
+            }
+            return false;
+        }
+        return true;
+    };
+
+    FWorldTerrainCellState State;
+    if (!TryApplyVoxelExcavation(OperationId, VoxelChunk, LocalCenter, RadiusCm,
+        ToolStrength, ExpectedDensityRevision, LogicalCell, DepthLayer,
+        ExpectedCellRevision, SourceMaterialId, State))
+        return false;
+
+    FVoxelTerrainDigReceipt DigReceipt;
+    if (!VoxelChunk->TryGetDigReceipt(OperationId, DigReceipt) ||
+        DigReceipt.ResultingRevision <= DigReceipt.ExpectedRevision ||
+        !FMath::IsFinite(DigReceipt.RemovedVolumeCubicMetres) ||
+        DigReceipt.RemovedVolumeCubicMetres <= 0.0f)
+    {
+        RollbackAll();
+        return false;
+    }
+
+    const double RawUnits = FMath::FloorToDouble(
+        static_cast<double>(DigReceipt.RemovedVolumeCubicMetres) *
+        static_cast<double>(MatchedRule->UnitsPerCubicMetre) + 1.e-6);
+    if (!FMath::IsFinite(RawUnits) || RawUnits < 0.0 ||
+        RawUnits > static_cast<double>(MatchedRule->MaxUnitsPerOperation))
+    {
+        RollbackAll();
+        return false;
+    }
+    const int32 OutputUnits = static_cast<int32>(RawUnits);
+
+    TArray<FGuid> CreatedItemIds;
+    CreatedItemIds.Reserve(OutputUnits);
+    const FTransform ChunkTransform = VoxelChunk->GetComponentTransform();
+    const double CenteringOffset = (static_cast<double>(OutputUnits) - 1.0) * 0.5;
+    for (int32 Index = 0; Index < OutputUnits; ++Index)
+    {
+        FWorldOwnedItemRecord Output;
+        Output.ItemId = FGuid::NewGuid();
+        Output.DefinitionId = MatchedRule->OutputDefinitionId;
+        Output.BaseDefinitionId = MatchedRule->OutputDefinitionId;
+        Output.Quantity = 1;
+        Output.OwnerKind = EWorldItemOwnerKind::World;
+        const FVector LocalOutputLocation = LocalCenter +
+            FVector((static_cast<double>(Index) - CenteringOffset) * 15.0, 0.0, RadiusCm * 0.5);
+        Output.WorldLocation = ChunkTransform.TransformPosition(LocalOutputLocation);
+        if (!Output.ItemId.IsValid() || Output.WorldLocation.ContainsNaN() ||
+            !Ownership->RegisterItem(Output))
+        {
+            RollbackAll();
+            OutState = FWorldTerrainCellState();
+            OutResourceItemIds.Reset();
+            return false;
+        }
+        CreatedItemIds.Add(Output.ItemId);
+    }
+
+    FWorldTerrainOperationReceipt* CommittedReceipt = Receipts.Find(OperationId);
+    if (!CommittedReceipt)
+    {
+        RollbackAll();
+        OutState = FWorldTerrainCellState();
+        OutResourceItemIds.Reset();
+        return false;
+    }
+    CommittedReceipt->VoxelChunkActorIdentityId = ChunkActorIdentityId;
+    CommittedReceipt->ExpectedDensityRevision = DigReceipt.ExpectedRevision;
+    CommittedReceipt->ResultingDensityRevision = DigReceipt.ResultingRevision;
+    CommittedReceipt->RemovedVolumeCubicMetres = DigReceipt.RemovedVolumeCubicMetres;
+    CommittedReceipt->YieldSourceMaterialId = MatchedRule->SourceMaterialId;
+    CommittedReceipt->YieldOutputDefinitionId = MatchedRule->OutputDefinitionId;
+    CommittedReceipt->YieldUnitsPerCubicMetre = MatchedRule->UnitsPerCubicMetre;
+    CommittedReceipt->YieldOutputUnits = OutputUnits;
+    CommittedReceipt->YieldOutputItemIds = CreatedItemIds;
+    OutState = State;
+    OutResourceItemIds = MoveTemp(CreatedItemIds);
+    return true;
 }
 
 bool UWorldTerrainStateSubsystem::TryGetCell(
