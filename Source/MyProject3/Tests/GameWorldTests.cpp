@@ -974,7 +974,7 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     Inventory->RegisterComponent();
     TestTrue(TEXT("Apply item definitions to clothing inventory"), Data->ApplyToInventory(Inventory));
 
-    auto AddUniqueClothing = [&](FName DefinitionId, int32 WeightGrams) -> FWorldOwnedItemRecord
+    auto AddUniqueClothing = [&](FName DefinitionId) -> FWorldOwnedItemRecord
     {
         FWorldOwnedItemRecord Item;
         Item.ItemId = FGuid::NewGuid();
@@ -997,9 +997,8 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
         return Item;
     };
 
-    const FWorldOwnedItemRecord Tunic = AddUniqueClothing(TEXT("Clothing.HideTunic"), 2500);
-    const FWorldOwnedItemRecord Boots = AddUniqueClothing(TEXT("Clothing.HideBoots"), 1200);
-    (void)WeightGrams; // Weight is authoritative in item data; the helper argument is informational.
+    const FWorldOwnedItemRecord Tunic = AddUniqueClothing(TEXT("Clothing.HideTunic"));
+    const FWorldOwnedItemRecord Boots = AddUniqueClothing(TEXT("Clothing.HideBoots"));
 
     TestTrue(TEXT("Read profile before equipping tunic"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
     TestTrue(TEXT("Equip owned hide tunic"), Survival->TryEquipItem(FGuid::NewGuid(), Profile.EntityId,
