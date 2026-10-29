@@ -1310,7 +1310,7 @@ bool FAnimalCapturePenSlaughterLifecycleTest::RunTest(const FString& Parameters)
         AssignOperation, Animal.AnimalId, Animal.Revision + 1, PenId, Pen.Revision));
     TestTrue(TEXT("Close pen gate"), Agriculture->TrySetAnimalPenGate(
         FGuid::NewGuid(), PenId, Pen.Revision + 1, true));
-    TestTrue(TEXT("A pen containing an animal cannot be opened"), Agriculture->TrySetAnimalPenGate(
+    TestFalse(TEXT("A pen containing an animal cannot be opened"), Agriculture->TrySetAnimalPenGate(
         FGuid::NewGuid(), PenId, Pen.Revision + 2, false));
 
     TestTrue(TEXT("Read penned goat"), Agriculture->GetAnimal(Animal.AnimalId, Animal));
