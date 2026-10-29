@@ -2,6 +2,10 @@
 
 Newest first. Each: the decision, then why.
 
+- **2026-10-29 · Build the backend first; open the new game scene ("Valley") last.** VerticalSlice_C stays the
+  log/placement test level. Until the scene exists, tasks stop at `tested` (no `played`); a headless
+  "whole world" automation test (data + bootstrap + a fast year + save/load) stands in for seeing it all together.
+  Why: user wants to see everything at once at the end and avoid reworking a scene while systems change.
 - **2026-10-29 · Game plan (draft, awaiting approval): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`.**
   World first, story last; every mechanic must feed another; time is the main resource.
   Era 1 = primitive era with 9 material groups (stone/flint, wood/bark, bone/antler, fibre/rope/hide,
