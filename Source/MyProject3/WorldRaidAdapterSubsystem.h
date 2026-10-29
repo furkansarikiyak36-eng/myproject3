@@ -67,6 +67,7 @@ private:
     double NextDamageTimeSeconds = 0.0;
 
     bool HasActiveRaidPawns() const;
+    bool HasRaidPawnReachedTarget() const;
     UWorldThreatDirectorSubsystem* GetThreatDirector() const;
     UWorldStructuralGraphSubsystem* GetStructuralGraph() const;
     bool ResolvePrimaryTargetNode(const FThreatRaidRecord& Raid, FGuid& OutNodeId, FVector& OutLocation) const;
