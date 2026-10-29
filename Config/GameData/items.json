@@ -502,6 +502,13 @@
       }
     },
     {
+      "id": "Water.Boiling",
+      "group": "food",
+      "name": "Kaynatılmakta olan su",
+      "weight_g": 1000,
+      "category": "Resource"
+    },
+    {
       "id": "Water.Boiled",
       "group": "food",
       "name": "Kaynamış su",
