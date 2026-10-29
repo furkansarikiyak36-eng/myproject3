@@ -1003,12 +1003,54 @@ bool UInventoryCraftingComponent::TryConsumeFood(
  return true;
 }
 
+bool UInventoryCraftingComponent::TryCollectAnimalProduct(
+ FGuid AnimalId, int64 ExpectedAnimalRevision)
+{
+ if (!GetWorld() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0 ||
+     ExpectedAnimalRevision == MAX_int64) return false;
+ UWorldAgricultureSubsystem* Agriculture = GetWorld()->GetSubsystem<UWorldAgricultureSubsystem>();
+ FWorldAnimalState Animal;
+ if (!Agriculture || !Agriculture->GetAnimal(AnimalId, Animal) ||
+     Animal.Revision != ExpectedAnimalRevision || Animal.Health <= 0.0f ||
+     Animal.ProductDefinitionId.IsNone() || Animal.ProductUnits <= 0) return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(Animal.ProductDefinitionId);
+ if (!Def || Def->UnitWeightGrams <= 0 || Def->MaxStack <= 0) return false;
+
+ TArray<FInventoryStack> Additions;
+ int32 Remaining = Animal.ProductUnits;
+ while (Remaining > 0)
+ {
+  FInventoryStack Output;
+  Output.ItemId = Def->ItemId;
+  Output.Category = Def->Category;
+  Output.MaxStack = Def->MaxStack;
+  Output.bIsTool = Def->bIsTool;
+  Output.AgeSeconds = 0.0;
+  Output.Quantity = FMath::Min(Remaining, Output.MaxStack);
+  if (Output.Quantity <= 0) return false;
+  Remaining -= Output.Quantity;
+  Additions.Add(Output);
+ }
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildAdditionPreview(Additions, ProposedItems)) return false;
+
+ FName CommittedItemId = NAME_None;
+ int32 CommittedUnits = 0;
+ if (!Agriculture->TryCollectAnimalProduct(AnimalId, ExpectedAnimalRevision,
+     CommittedItemId, CommittedUnits) ||
+     CommittedItemId != Animal.ProductDefinitionId || CommittedUnits != Animal.ProductUnits)
+  return false;
+ Items = MoveTemp(ProposedItems);
+ return true;
+}
+
 bool UInventoryCraftingComponent::TryFeedAnimal(FName ItemId, FGuid AnimalId, int32 Quantity)
 {
  if (!GetWorld() || ItemId.IsNone() || !AnimalId.IsValid() ||
      Quantity <= 0 || Quantity > 10000) return false;
  const FInventoryItemDefinition* Def = FindItemDefinition(ItemId);
- if (!Def || !FMath::IsFinite(Def->AnimalFeedHungerReduction) ||
+ if (!Def || Def->Category != EInventoryItemCategory::Consumable ||
+     !FMath::IsFinite(Def->AnimalFeedHungerReduction) ||
      Def->AnimalFeedHungerReduction <= 0.0f) return false;
  const double Relief = static_cast<double>(Def->AnimalFeedHungerReduction) * Quantity;
  if (!FMath::IsFinite(Relief) || Relief <= 0.0 || Relief > 100.0) return false;
