@@ -826,8 +826,10 @@ void AStoneBuildingPiece::BuildMovingLeafIfNeeded()
 
 void AStoneBuildingPiece::ApplyMovingLeafState()
 {
+    const float SafeOpenYaw = FMath::IsFinite(DoorOpenYawDegrees)
+        ? FMath::Clamp(DoorOpenYawDegrees, 10.0f, 150.0f) : 95.0f;
     if (MovingLeafPivot)
-        MovingLeafPivot->SetRelativeRotation(FRotator(0.0, bIsOpen ? DoorOpenYawDegrees : 0.0, 0.0));
+        MovingLeafPivot->SetRelativeRotation(FRotator(0.0, bIsOpen ? SafeOpenYaw : 0.0, 0.0));
     for (UStaticMeshComponent* Part : MovingLeafParts)
     {
         if (IsValid(Part))
@@ -844,7 +846,8 @@ bool AStoneBuildingPiece::TrySetOpen(bool bOpen)
         PieceType != EStonePieceType::WindowFrame &&
         PieceType != EStonePieceType::Gate)
         return false;
-    if (!bGenerateMovingLeaf || !MovingLeafPivot || MovingLeafParts.IsEmpty())
+    if (!bGenerateMovingLeaf || !MovingLeafPivot || MovingLeafParts.IsEmpty() ||
+        !FMath::IsFinite(DoorOpenYawDegrees))
         return false;
     if (bIsOpen == bOpen)
         return true;
@@ -931,6 +934,8 @@ bool AStoneBuildingPiece::CanCarryTraversalLoad(float WeightKg) const
     if ((PieceType != EStonePieceType::BridgeDeck &&
          PieceType != EStonePieceType::ElevatedWalkway) ||
         !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f ||
+        !FMath::IsFinite(MaxConcurrentTraversalWeightKg) || MaxConcurrentTraversalWeightKg <= 0.0f ||
+        !FMath::IsFinite(MaxSupportSpanCm) || MaxSupportSpanCm <= 0.0f ||
         WeightKg > MaxConcurrentTraversalWeightKg)
         return false;
     const UWorldStructuralGraphSubsystem* Graph =
@@ -1006,7 +1011,9 @@ bool AStoneBuildingPiece::TryConnectRopeTo(
     const FVector End = TargetPiece->GetAnchorWorldTransform(TargetAnchorId).GetLocation();
     const float Span = FVector::Distance(Start, End);
     const float AllowedSpan = FMath::Min(MaxRopeSpanCm, TargetPiece->MaxRopeSpanCm);
-    if (!FMath::IsFinite(Span) || Span < 100.0f || Span > AllowedSpan)
+    if (!FMath::IsFinite(MaxRopeSpanCm) || !FMath::IsFinite(TargetPiece->MaxRopeSpanCm) ||
+        MaxRopeSpanCm < 100.0f || TargetPiece->MaxRopeSpanCm < 100.0f ||
+        !FMath::IsFinite(Span) || Span < 100.0f || Span > AllowedSpan)
         return false;
 
     UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -1114,11 +1121,17 @@ void AStoneBuildingPiece::DisconnectRopeConnection()
 bool AStoneBuildingPiece::CanBeginRopeTraversal(float WeightKg) const
 {
     const AStoneBuildingPiece* Owner = bOwnsRopeConnection ? this : RopeOtherEnd.Get();
-    if (!Owner || !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f)
+    if (!Owner || !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f ||
+        !FMath::IsFinite(Owner->MaxRopeSpanCm) || Owner->MaxRopeSpanCm < 100.0f ||
+        !FMath::IsFinite(Owner->MaxRopeTravelerWeightKg) || Owner->MaxRopeTravelerWeightKg <= 0.0f ||
+        !FMath::IsFinite(Owner->MaxConcurrentTraversalWeightKg) || Owner->MaxConcurrentTraversalWeightKg <= 0.0f)
         return false;
     const AStoneBuildingPiece* Other = Owner->RopeOtherEnd.Get();
     if (!Other || Other == Owner || Owner->PieceType != EStonePieceType::RopeCrossingAnchor ||
-        Other->PieceType != EStonePieceType::RopeCrossingAnchor)
+        Other->PieceType != EStonePieceType::RopeCrossingAnchor ||
+        !FMath::IsFinite(Other->MaxRopeSpanCm) || Other->MaxRopeSpanCm < 100.0f ||
+        !FMath::IsFinite(Other->MaxRopeTravelerWeightKg) || Other->MaxRopeTravelerWeightKg <= 0.0f ||
+        !FMath::IsFinite(Other->MaxConcurrentTraversalWeightKg) || Other->MaxConcurrentTraversalWeightKg <= 0.0f)
         return false;
     const float Span = FVector::Distance(
         Owner->GetAnchorWorldTransform(Owner->RopeLocalAnchorId).GetLocation(),
@@ -1192,7 +1205,9 @@ bool AStoneBuildingPiece::AdvanceRopeTraversal(FGuid TraversalId, float Alpha)
     const FVector Position = FMath::Lerp(Start, End, Progress);
     // Sweep against the world so a blocked rope path cannot teleport a
     // traveler through a wall. The caller may cancel or retry the active ticket.
-    if (!TravelerRef->Get()->SetActorLocation(Position, true, nullptr, ETeleportType::TeleportPhysics))
+    FHitResult SweepHit;
+    if (!TravelerRef->Get()->SetActorLocation(Position, true, &SweepHit, ETeleportType::TeleportPhysics) ||
+        SweepHit.bBlockingHit)
         return false;
     if (Progress >= 1.0f)
         return Owner->CancelRopeTraversal(TraversalId);
