@@ -1638,7 +1638,7 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         for (const FWorldOwnedItemRecord& Item : WorldItems)
         {
             if (Item.OwnerKind != EWorldItemOwnerKind::World ||
-                Item.OwnerId.IsValid() || !Item.ItemId.IsValid() || Item.Revision <= 0)
+                !Item.ItemId.IsValid() || Item.Revision <= 0)
                 continue;
 
             FName DesiredDefinition = NAME_None;
