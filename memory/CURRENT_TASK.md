@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update the current `CODEBASE.md` Survival needs and Wildlife rows with the newly committed fall/bite trigger implementations, add the default player inventory and game-data backfill fact, and keep all additions explicitly unbuilt/unrun. Then verify no save-schema or receipt action enum limit was missed by the newly added FillWater action.
+Do a source-only consistency audit of the new receipt enum maximum (`FillWaterFromCreek`), save v26 migration and test compatibility. If clean enough, proceed to P3.1 fire behavior: wet fuel in rain, item-state update, and fire interaction feedback. All new code remains unbuilt; don't claim test success.
