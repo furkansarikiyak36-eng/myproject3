@@ -6,6 +6,7 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 #include "WildlifeActor.h"
 #include "WorldObjectIdentityComponent.h"
 
@@ -126,6 +127,203 @@ bool UWorldAgricultureSubsystem::TryApplyFieldAction(
     Receipt.Amount = Amount;
     Updated.ActionReceipts.Add(Receipt);
     FieldCells.Add(Cell, MoveTemp(Updated));
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::RegisterFieldActionDefinition(
+    const FWorldFieldActionDefinition& Definition)
+{
+    if (Definition.Id.IsNone() ||
+        static_cast<uint8>(Definition.Action) > static_cast<uint8>(EWorldFieldActionKind::Fence) ||
+        !FMath::IsFinite(Definition.Amount) || Definition.Amount < 0.0f || Definition.Amount > 1.0f ||
+        !FMath::IsFinite(Definition.LaborSeconds) || Definition.LaborSeconds < 1.0 ||
+        Definition.LaborSeconds > 7200.0 ||
+        MaxFieldActionDefinitions < 1 || MaxFieldActionDefinitions > 16)
+        return false;
+
+    const bool bNeedsAmount = Definition.Action == EWorldFieldActionKind::Fertilize ||
+        Definition.Action == EWorldFieldActionKind::Water ||
+        Definition.Action == EWorldFieldActionKind::Weed ||
+        Definition.Action == EWorldFieldActionKind::Mulch;
+    if ((bNeedsAmount && Definition.Amount <= 0.0f) ||
+        (!bNeedsAmount && Definition.Amount != 0.0f))
+        return false;
+
+    if (FieldActionDefinitions.ContainsByPredicate(
+        [&Definition](const FWorldFieldActionDefinition& Existing)
+        {
+            return Existing.Id == Definition.Id || Existing.Action == Definition.Action;
+        }) || FieldActionDefinitions.Num() >= MaxFieldActionDefinitions)
+        return false;
+
+    TSet<FName> SeenInputs;
+    for (const FWorldFieldActionCost& Input : Definition.Inputs)
+    {
+        if (Input.ItemId.IsNone() || Input.Quantity <= 0 || Input.Quantity > 64 ||
+            SeenInputs.Contains(Input.ItemId))
+            return false;
+        SeenInputs.Add(Input.ItemId);
+    }
+    TSet<FName> SeenTools;
+    for (const FName ToolId : Definition.RequiredTools)
+    {
+        if (ToolId.IsNone() || SeenTools.Contains(ToolId))
+            return false;
+        SeenTools.Add(ToolId);
+    }
+
+    FieldActionDefinitions.Add(Definition);
+    FieldActionDefinitions.Sort([](const FWorldFieldActionDefinition& A,
+        const FWorldFieldActionDefinition& B)
+    {
+        return A.Id.ToString() < B.Id.ToString();
+    });
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryApplyFieldActionWithInventory(
+    const FGuid& OperationId, UInventoryCraftingComponent* Inventory,
+    const FGuid& SurvivalEntityId, const FIntVector& Cell,
+    EWorldFieldActionKind Action, int64 ExpectedRevision, FWorldFieldCellState& OutCell)
+{
+    OutCell = FWorldFieldCellState();
+    if (!OperationId.IsValid() || !IsValid(Inventory) || !SurvivalEntityId.IsValid() ||
+        ExpectedRevision < 0 ||
+        static_cast<uint8>(Action) > static_cast<uint8>(EWorldFieldActionKind::Fence))
+        return false;
+
+    const FWorldFieldActionDefinition* Definition =
+        FieldActionDefinitions.FindByPredicate([Action](const FWorldFieldActionDefinition& Candidate)
+        {
+            return Candidate.Action == Action;
+        });
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationCoordinatorSubsystem* Coordinator =
+        World ? World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr;
+    if (!Definition || !World || !Survival || !Ownership)
+        return false;
+
+    if (const FWorldFieldActionReceipt* ExistingReceipt = FindFieldActionReceipt(OperationId))
+    {
+        const bool bSameRequest = ExistingReceipt->Cell == Cell &&
+            ExistingReceipt->Action == Action &&
+            ExistingReceipt->ExpectedRevision == ExpectedRevision &&
+            FMath::IsNearlyEqual(ExistingReceipt->Amount, Definition->Amount, 0.0001f);
+        return bSameRequest && GetFieldCell(Cell, OutCell);
+    }
+
+    FWorldFieldCellState ExistingCell;
+    const bool bCellExists = GetFieldCell(Cell, ExistingCell);
+    const int64 CurrentRevision = bCellExists ? ExistingCell.Revision : 0;
+    if (CurrentRevision != ExpectedRevision || CurrentRevision >= MAX_int64 - 1 ||
+        (bCellExists && ExistingCell.ActionReceipts.Num() >= MaxFieldActionReceiptsPerCell) ||
+        (!bCellExists && FieldCells.Num() >= MaxFieldCells) ||
+        MaxFieldCells <= 0 || MaxFieldCells > 65536 ||
+        MaxFieldActionReceiptsPerCell <= 0 || MaxFieldActionReceiptsPerCell > 512)
+        return false;
+
+    FWorldFieldCellState ProposedCell;
+    ProposedCell.Cell = Cell;
+    if (bCellExists)
+        ProposedCell = ExistingCell;
+    if ((Action == EWorldFieldActionKind::Till && !ProposedCell.bCleared) ||
+        ((Action == EWorldFieldActionKind::Fertilize ||
+          Action == EWorldFieldActionKind::Weed ||
+          Action == EWorldFieldActionKind::Mulch) &&
+         (!ProposedCell.bCleared || !ProposedCell.bTilled)))
+        return false;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!InventoryOwnerId.IsValid())
+        return false;
+
+    for (const FWorldFieldActionCost& Input : Definition->Inputs)
+        if (Inventory->GetItemCount(Input.ItemId) < Input.Quantity)
+            return false;
+    for (const FName ToolId : Definition->RequiredTools)
+        if (Inventory->GetItemCount(ToolId) < 1)
+            return false;
+    if (!Survival->CanRecordActivity(
+        SurvivalEntityId, ESurvivalActivity::Build, Definition->LaborSeconds, 0.0f))
+        return false;
+
+    FGuid InventoryActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorBefore, InventoryOwnerBefore,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != InventoryOwnerId)
+        return false;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+
+    TArray<FWorldCropState> CropsBefore;
+    TArray<FWorldAnimalState> AnimalsBefore;
+    TArray<FWorldFieldCellState> FieldCellsBefore;
+    TArray<FWorldAnimalPenState> AnimalPensBefore;
+    ExportSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+
+    TArray<FWorldSurvivalProfile> ProfilesBefore;
+    TArray<FWorldDiscoveryRecord> DiscoveriesBefore;
+    EWorldWeatherState WeatherBefore = EWorldWeatherState::Clear;
+    float WeatherSeverityBefore = 0.0f;
+    Survival->ExportSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bFarmRestored =
+            RestoreSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored =
+            Inventory->RestoreSnapshot(InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bSurvivalRestored =
+            Survival->RestoreSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+        if (!bFarmRestored || !bOwnershipRestored || !bInventoryRestored || !bSurvivalRestored)
+        {
+            if (Coordinator)
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Field-action rollback failed; stop simulation and recover/reset the world."));
+            UE_LOG(LogTemp, Error, TEXT("Field-action rollback failed for operation %s."),
+                *OperationId.ToString());
+            return false;
+        }
+        return true;
+    };
+
+    for (const FWorldFieldActionCost& Input : Definition->Inputs)
+    {
+        if (!Inventory->TryRemoveItem(Input.ItemId, Input.Quantity))
+        {
+            Rollback();
+            return false;
+        }
+    }
+
+    if (!TryApplyFieldAction(OperationId, Cell, Action, ExpectedRevision, Definition->Amount) ||
+        !GetFieldCell(Cell, OutCell))
+    {
+        Rollback();
+        OutCell = FWorldFieldCellState();
+        return false;
+    }
+
+    if (!Survival->RecordActivity(
+        SurvivalEntityId, ESurvivalActivity::Build, Definition->LaborSeconds, 0.0f))
+    {
+        Rollback();
+        OutCell = FWorldFieldCellState();
+        return false;
+    }
+
     return true;
 }
 
