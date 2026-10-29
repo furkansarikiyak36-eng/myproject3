@@ -115,7 +115,8 @@ enum class EWorldSurvivalActionKind : uint8
     TreatCondition,
     EquipItem,
     UnequipItem,
-    RecordDiscovery
+    RecordDiscovery,
+    FillWaterFromCreek
 };
 
 /** Persistent idempotency receipt stored with the affected survival profile. */
@@ -127,6 +128,8 @@ struct FWorldSurvivalActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid EntityId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") EWorldSurvivalActionKind Action = EWorldSurvivalActionKind::ConsumeFoodItem;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ItemId;
+    /** Output item created by a data-backed action such as filling a vessel from a creek. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ResultingItemId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ExpectedItemOwnerId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedProfileRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedItemRevision = 0;
@@ -255,6 +258,11 @@ public:
     bool TryConsumeFoodItem(const FGuid& OperationId, const FGuid& EntityId,
         int64 ExpectedProfileRevision, const FGuid& ItemId, int64 ExpectedItemRevision,
         const FGuid& ExpectedInventoryOwnerId);
+    /** Fills one unique fired-clay pot from a creek with a ledger-owned dirty-water item. The pot is reusable. */
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Water")
+    bool TryFillWaterFromCreek(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
+        const FGuid& ExpectedInventoryOwnerId, const FVector& CreekLocation, FGuid& OutWaterItemId);
     /** Begins a bounded rest interval on the common world clock; it does not create a second clock. */
     UFUNCTION(BlueprintCallable, Category="World|Survival")
     bool TryBeginRest(const FGuid& OperationId, const FGuid& EntityId,
