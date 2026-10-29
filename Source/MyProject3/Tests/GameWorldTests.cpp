@@ -14,6 +14,7 @@
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldAgricultureSubsystem.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
@@ -727,13 +728,29 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     UWorldTerrainStateSubsystem* Terrain = World ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
     UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
     UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production) ||
         !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Climate"), Climate) ||
-        !TestNotNull(TEXT("Agriculture"), Agriculture))
+        !TestNotNull(TEXT("Agriculture"), Agriculture) || !TestNotNull(TEXT("Routes"), Routes))
         return false;
     TestTrue(TEXT("Load"), Data->LoadDefault());
     TestTrue(FString::Printf(TEXT("Apply (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
     TestFalse(TEXT("Apply only once"), Data->ApplyToWorld());
+    TestEqual(TEXT("Exactly five zone definitions load"), Data->GetZones().Num(), 5);
+    TestEqual(TEXT("Five zone catalog matches IDs 0 through 4"), Data->GetZones().Num(),
+        Data->GetZones().FilterByPredicate([](const FGameDataZone& Z) { return Z.Number >= 0 && Z.Number <= 4; }).Num());
+    TestTrue(TEXT("Route graph loaded into the world"), Routes->GetNodeCount() == Data->GetRouteNodes().Num() &&
+        Routes->GetEdgeCount() == Data->GetRouteEdges().Num());
+    const FGameDataZone* CreekZone = Data->GetZones().FindByPredicate(
+        [](const FGameDataZone& Z) { return Z.Id == TEXT("Zone.1"); });
+    TestNotNull(TEXT("Creek zone catalog entry"), CreekZone);
+    if (CreekZone)
+    {
+        TestTrue(TEXT("Creek lists clay and fish"), CreekZone->ResourceItemIds.Contains(TEXT("Clay")) &&
+            CreekZone->ResourceItemIds.Contains(TEXT("Fish.Raw")));
+        TestTrue(TEXT("Creek has a permanent bridge solution"),
+            CreekZone->PermanentSolutionIds.Contains(TEXT("Infrastructure.CreekBridge")));
+    }
     TestEqual(TEXT("Crop definitions are registered into agriculture"), Agriculture->CropDefinitions.Num(), Data->GetCrops().Num());
     TestEqual(TEXT("Animal definitions are registered into agriculture"), Agriculture->AnimalDefinitions.Num(), Data->GetAnimals().Num());
     const FWorldAnimalDefinition* GoatDefinition = Agriculture->AnimalDefinitions.FindByPredicate(
@@ -1366,6 +1383,64 @@ bool FAnimalCapturePenSlaughterLifecycleTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Pen gate state is restored"), PenAfterSlaughter.bGateClosed);
     TestTrue(TEXT("Read restored slaughter record"), Agriculture->GetAnimal(Animal.AnimalId, SlaughteredAnimal));
     TestTrue(TEXT("Slaughter output identity persists"), SlaughteredAnimal.SlaughterOutputItemIds == SlaughterIds);
+    return true;
+}
+
+
+// P7.2/P7.4: the configured creek bridge makes the route cheaper, and built state survives graph snapshots.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FConfiguredZoneBridgeRouteCostTest,
+    "MyProject3.World.Traversal.ConfiguredBridgeReducesCreekRouteCostAndPersists", Flags)
+bool FConfiguredZoneBridgeRouteCostTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Route graph"), Routes))
+        return false;
+
+    TestTrue(TEXT("Load zone and route data"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply route data: %s"), *Data->GetLastError()), Data->ApplyToWorld());
+    FLogisticsRouteCostContext Context;
+    Context.CarriedMassKg = 0.0f;
+    Context.MaxCarryMassKg = 100.0f;
+    Context.WeatherSeverity = 0.0f;
+
+    TArray<FName> BeforePath;
+    float BeforeCost = 0.0f;
+    TestTrue(TEXT("Find creek path before bridge construction"), Routes->FindRouteWithContext(
+        TEXT("Route.Camp"), TEXT("Route.Creek.EastBank"), Context, BeforePath, BeforeCost));
+    TestTrue(TEXT("Pre-bridge route uses the slower ford"), BeforePath.Contains(TEXT("Route.Ford.WestBank")) &&
+        BeforePath.Contains(TEXT("Route.Ford.EastBank")));
+
+    TestTrue(TEXT("Mark creek bridge as built"), Routes->SetInfrastructureBuilt(TEXT("Infrastructure.CreekBridge"), true));
+    TArray<FName> AfterPath;
+    float AfterCost = 0.0f;
+    TestTrue(TEXT("Find creek path after bridge construction"), Routes->FindRouteWithContext(
+        TEXT("Route.Camp"), TEXT("Route.Creek.EastBank"), Context, AfterPath, AfterCost));
+    TestTrue(TEXT("Built bridge route is cheaper"), AfterCost < BeforeCost);
+    TestTrue(TEXT("Post-bridge route crosses the direct bridge edge"),
+        AfterPath.Contains(TEXT("Route.Creek.WestBank")) && AfterPath.Contains(TEXT("Route.Creek.EastBank")));
+    TestFalse(TEXT("Post-bridge route does not detour through the ford"),
+        AfterPath.Contains(TEXT("Route.Ford.WestBank")) || AfterPath.Contains(TEXT("Route.Ford.EastBank")));
+
+    TArray<FLogisticsRouteNode> SavedNodes;
+    TArray<FLogisticsRouteEdge> SavedEdges;
+    Routes->ExportSnapshot(SavedNodes, SavedEdges);
+    TestTrue(TEXT("Temporarily remove bridge-built state"), Routes->SetInfrastructureBuilt(TEXT("Infrastructure.CreekBridge"), false));
+    float UnbuiltCost = 0.0f;
+    TArray<FName> UnbuiltPath;
+    TestTrue(TEXT("Route remains possible via ford"), Routes->FindRouteWithContext(
+        TEXT("Route.Camp"), TEXT("Route.Creek.EastBank"), Context, UnbuiltPath, UnbuiltCost));
+    TestTrue(TEXT("Graph snapshot restores infrastructure state"),
+        Routes->RestoreSnapshot(SavedNodes, SavedEdges));
+    float RestoredCost = 0.0f;
+    TArray<FName> RestoredPath;
+    TestTrue(TEXT("Recompute route after restore"), Routes->FindRouteWithContext(
+        TEXT("Route.Camp"), TEXT("Route.Creek.EastBank"), Context, RestoredPath, RestoredCost));
+    TestTrue(TEXT("Built bridge cost is restored"), FMath::IsNearlyEqual(RestoredCost, AfterCost, 0.001f));
+    TestTrue(TEXT("Built bridge route remains direct after restore"), RestoredPath.Contains(TEXT("Route.Creek.WestBank")) &&
+        RestoredPath.Contains(TEXT("Route.Creek.EastBank")));
     return true;
 }
 
