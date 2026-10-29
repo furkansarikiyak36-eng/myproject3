@@ -21,24 +21,23 @@
 ## Task
 
 Status: `done`
-Goal: Judge the quality of group-a-code-closure: can we take it as is?
-Asked by the user: "chatgpt kurduğu dal kaliteli değil mi alamaz mıyız"
+Goal: Map everything group-a-code-closure adds to the game plan (phase/task), what it gives us, what we build on top.
+Asked by the user: "chatgpt kurduğu her şeyin planda yeri var mı, neler ekletebilir, o kodu alıp üstüne ne kurabiliriz"
 Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: feature/simple-intent
 
 ### Plan
-1. Tests added, player wiring (input/HUD callers), data vs hard-coded, complexity (receipts/schema).
-2. Sample 2-3 functions.
-3. Verdict + record in CODEBASE.md.
+1. Extract added types/enums/functions from group-a headers (git diff, headers only).
+2. Map each feature to ROADMAP tasks; mark fits / needs change / no place.
+3. Write the mapping into ROADMAP (per task "group-a gives") and CODEBASE.
 
 ### Read
 - —
 
 ### Findings
-- Known: 10 UHT + 6 C++ errors (CODEBASE Findings).
-- Tests 48 -> 65 core (authored). Player wiring: only LogSnapCharacter +7 lines (dig tool N); HUD, carry, level untouched. 28 receipt mentions in survival header; schema v20. Farming API: Plant/Harvest/Feed/Collect only.
+- Mapping table written to ROADMAP.md section "What group-a-code-closure gives each task". All 19 pieces have a place; only conflict: item-key region gates (keep for climate only). P0, P1 entirely missing in group-a.
 
 ### Changes
 - —
 
 ### Next step
-None. Waiting for the user to answer Q00. Verdict recorded in CODEBASE.md Findings.
+None. User decides Q00.

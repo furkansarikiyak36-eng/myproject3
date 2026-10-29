@@ -47,6 +47,37 @@ Never write a higher status than you proved. A web assistant that cannot build m
   not in C++ (after P0.3).
 - Add an automation test with every behaviour change.
 
+## What `group-a-code-closure` gives each task (if adopted, Q00)
+
+Checked 2026-10-29 from its headers. "Fits" = matches the plan; "partly" = a base, plan needs more.
+Everything below is backend only: no input or HUD for the player unless stated. Branch does not compile yet.
+
+| group-a piece | Task | Fit | Build on top (our work) |
+|---|---|---|---|
+| Item freshness (`CreatedAtWorldTimeSeconds`), consumable `FreshnessDurationSeconds`, `SpoiledEnergyFraction` | P2.4 | partly: time only | Storage modifiers: cellar, smoke rack, drying, heat, damp |
+| `TryConsumeFoodItem` (kcal + thirst relief from an item) | P2.1 | fits | Dirty/boiled water items; dirty water → illness |
+| `TryBeginRest` (fatigue/stamina recovery on the shared clock) | P2.2 | fits | Sleep place quality (cold ground vs bed), night |
+| Conditions `Injury, Illness, Poisoning` with duration, damage, treatment item | P2.5 | fits | Triggers: dirty water, spoiled food, toxic rain, falls, animals |
+| Equipment slots `Head, Body, Hands, Legs, Feet`, clothing insulation, water resistance, capabilities | P2.6 | fits | Hide clothing recipe (#15); wetness (P2.3) uses water resistance |
+| Shelter protection separate from clothing | P3.2 | partly: still line traces | Enclosure from the structural graph, plaster closes gaps |
+| Fuel item definitions, `TryAddFuelItem` (item → burn seconds, receipts) | P3.1 | fits | Wet wood burns worse, charcoal item, player input on the fire |
+| Generic production intake `TryIngestWorldOwnedItem` | P4.2–P4.3 | fits | The 38 transformations and 8 stations as data |
+| Incremental cut progress receipts (work over time) | P4 / P10 | fits ("work takes time") | Same for other tools (knapping, scraping) |
+| Bounded voxel dig, soil classes soft/hard/rock with tool strength, support clearance, dig receipts | P5.1, P5.3 | fits | Collapse of unsupported rooms (it only refuses near structures), cellar/trench/cistern |
+| Resource yield rules: material + depth layer → item, units per m³ | P5.1 | fits exactly | Our layers: soil, clay, sand, stone, flint, ochre |
+| `TerrainDigToolComponent` (N key, crosshair dig) | P5 player wiring | partly: strength is a setting | Strength from the equipped tool (P4.4) |
+| Voxel density save, generic component SaveGame snapshot, schema v20 | every phase | fits | — |
+| Crop definition seed item → harvest item; Plant/Harvest/Feed/CollectProducts with items | P6.2–P6.4 | partly: 2 of 15 field steps + animal feeding/products | Field cell state, 13 other steps, tools, fertility, seed saving, calendar |
+| Discovery definitions: prerequisites, required equipment, unlocked definitions; `IsDefinitionUnlocked` | P7.3 | fits | Discoveries placed in the world; recipes/seeds gated by unlocks |
+| Region access by equipped capability (`HasEquippedCapability`) | P7.2 | partly | Use only for climate gates (cold pass needs warm clothes). Other zones are opened by infrastructure, not by item keys |
+| Route cost context: slope, surface, weather, load, required/built infrastructure; cargo replan | P7.1, P7.4 | fits the "bridge makes the next trip cheaper" idea | Apply the same cost to player movement; built bridge/path marks the edge |
+| Raid damage pulse claimed once per raid index | P8.2–P8.3 | fits (small) | Signal-driven raids |
+| Exact unique-item removal, `Equipped` ownership state | shared state | fits | — |
+
+**Not in group-a (still all ours):** P0 data files, all of P1 (calendar, seasons, climate, events), wetness, water item types,
+the 38 transformations as data, field chain, zones content, natural events and chains, player input/HUD for every system.
+**Nothing in group-a contradicts the plan**, except item-key region gates (keep for climate only).
+
 ---
 
 ## Phase 0 — Preparation
