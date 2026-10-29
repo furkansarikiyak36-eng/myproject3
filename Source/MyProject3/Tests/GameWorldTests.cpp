@@ -14,6 +14,7 @@
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
 #include "VoxelTerrainChunkComponent.h"
@@ -1009,6 +1010,68 @@ bool FPlasterAndCharcoalDataContractsTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Flood has a warning before the effect"), Flood->WarningSeconds > 0.0);
         TestTrue(TEXT("Flood has a positive duration"), Flood->DurationSeconds > 0.0);
     }
+    return true;
+}
+
+
+// P1.3/P1.4: a natural event signals before becoming active, and its current phase is saved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNaturalEventSignalAndSaveContractTest,
+    "MyProject3.World.Events.SignalBeforeEffectAndSnapshot", Flags)
+bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Climate"), Climate) || !TestNotNull(TEXT("Event director"), Events))
+        return false;
+    TestTrue(TEXT("Load data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply data"), Data->ApplyToWorld());
+    TestTrue(TEXT("Start clock"), Clock->InitializeClock(7391));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Initialize event director"), Events->InitializeEventDirector());
+
+    FWorldClimateSnapshot ForcedWeather = Climate->ExportSnapshot();
+    ForcedWeather.Weather = EWorldWeatherState::Snow;
+    ForcedWeather.Severity = 0.9f;
+    ForcedWeather.TemperatureCelsius = -4.0f;
+    ForcedWeather.SnowDepthCm = 210.0f;
+    ForcedWeather.GroundWetness = 0.2f;
+    ForcedWeather.WeatherDayIndex = 0;
+    TestTrue(TEXT("Force a reproducible snow day"), Climate->RestoreSnapshot(ForcedWeather));
+
+    TestTrue(TEXT("Event preflight"), Events->CanAdvanceEventStep(60.0, 60.0, 1));
+    TestTrue(TEXT("Advance into signal phase"), Events->AdvanceEventStep(60.0, 60.0, 1));
+    const FWorldNaturalEventInstance* Signal = Events->GetEventInstances().FindByPredicate(
+        [](const FWorldNaturalEventInstance& Instance)
+        { return Instance.DefinitionId == TEXT("Event.Snowstorm"); });
+    TestNotNull(TEXT("Snowstorm signal exists"), Signal);
+    if (Signal)
+    {
+        TestTrue(TEXT("Signal is not active before warning ends"), Signal->Phase == EWorldNaturalEventPhase::Signal);
+        TestTrue(TEXT("Signal time precedes effect time"), Signal->SignalStartedAtSeconds < Signal->StartsAtSeconds);
+    }
+
+    TestTrue(TEXT("Preflight at effect start"), Events->CanAdvanceEventStep(1800.0, 1860.0, 2));
+    TestTrue(TEXT("Advance into effect phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
+    const TArray<FWorldNaturalEventInstance> Active = Events->GetActiveNaturalEvents();
+    const FWorldNaturalEventInstance* ActiveSnow = Active.FindByPredicate(
+        [](const FWorldNaturalEventInstance& Instance)
+        { return Instance.DefinitionId == TEXT("Event.Snowstorm"); });
+    TestNotNull(TEXT("Snowstorm is active after warning"), ActiveSnow);
+    if (ActiveSnow)
+        TestTrue(TEXT("Effect phase active"), ActiveSnow->Phase == EWorldNaturalEventPhase::Active);
+
+    const FWorldEventDirectorSnapshot Snapshot = Events->ExportSnapshot();
+    TestTrue(TEXT("Restore the event snapshot"), Events->RestoreSnapshot(Snapshot));
+    TestTrue(TEXT("Active event survives snapshot round-trip"),
+        Events->GetActiveNaturalEvents().ContainsByPredicate(
+            [](const FWorldNaturalEventInstance& Instance)
+            { return Instance.DefinitionId == TEXT("Event.Snowstorm") &&
+                Instance.Phase == EWorldNaturalEventPhase::Active; }));
     return true;
 }
 
