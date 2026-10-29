@@ -256,6 +256,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P2.1/P2.5 (part) · tested · consumables cause conditions (dirty water, spoiled food), 92/92
 - 2026-10-29 · P1.2 · tested · UWorldClimateSubsystem, coordinator + save v21, 91/91
 - 2026-10-29 · P1.1 · tested · WorldCalendar + clock date, GameWorldTests.cpp, 88/88
 - 2026-10-29 · P0.0 · tested · group-a adopted on game/p00-adopt-group-a, build fixed (16 errors), 85/85 tests, 250ce13

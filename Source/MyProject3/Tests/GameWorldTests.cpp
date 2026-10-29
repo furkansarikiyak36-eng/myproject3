@@ -8,6 +8,8 @@
 #include "WorldClimateSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "InventoryCraftingComponent.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -282,6 +284,127 @@ bool FClimateCoordinatorTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Date"), Clock->GetCalendarDate(Date));
     TestEqual(TEXT("30 hours after 08:00 on March 5 is April 1, 14:00"), Date.Month, 4);
     TestEqual(TEXT("Hour"), Date.HourOfDay, 14.0f, 0.01f);
+    return true;
+}
+
+// P2.1 + P2.5: dirty water makes you ill, boiled water does not; spoiled meat poisons.
+// A condition that is not defined refuses the whole action (the item stays).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FConsumeCausesConditionTest,
+    "MyProject3.World.Needs.DirtyWaterAndSpoiledFoodCauseConditions", Flags)
+bool FConsumeCausesConditionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(3, 100.0));
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryId = Inventory->GetInventoryOwnerId();
+
+    TArray<FInventoryStack> Stacks;
+    auto AddItem = [&](FName DefinitionId) -> FGuid
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = FGuid::NewGuid();
+        Item.DefinitionId = DefinitionId;
+        Item.BaseDefinitionId = DefinitionId;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = InventoryId;
+        Item.Quantity = 1;
+        Item.CreatedAtWorldTimeSeconds = 100.0;
+        TestTrue(TEXT("Register item"), Ownership->RegisterItem(Item));
+        Inventory->ItemWeightGrams.Add(DefinitionId, 300);
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.MaxStack = 1;
+        Stack.OwnedWorldItemId = Item.ItemId;
+        Stacks.Add(Stack);
+        return Item.ItemId;
+    };
+    const FGuid Dirty = AddItem(TEXT("Water.Dirty"));
+    const FGuid Boiled = AddItem(TEXT("Water.Boiled"));
+    const FGuid Meat = AddItem(TEXT("Meat.Cooked"));
+    const FGuid Mystery = AddItem(TEXT("Berry.Unknown"));
+    TestTrue(TEXT("Inventory holds the items"), Inventory->RestoreSnapshot(InventoryId, Stacks, NAME_None));
+
+    FWorldSurvivalConditionDefinition Illness;
+    Illness.DefinitionId = TEXT("Illness.DirtyWater");
+    Illness.Kind = EWorldSurvivalConditionKind::Illness;
+    Illness.HealthLossPerHour = 1.0f;
+    Illness.DurationSeconds = 2.0 * 86400.0;
+    TestTrue(TEXT("Illness defined"), Survival->RegisterConditionDefinition(Illness));
+    FWorldSurvivalConditionDefinition Poisoning;
+    Poisoning.DefinitionId = TEXT("Poisoning.SpoiledFood");
+    Poisoning.Kind = EWorldSurvivalConditionKind::Poisoning;
+    Poisoning.HealthLossPerHour = 3.0f;
+    Poisoning.DurationSeconds = 86400.0;
+    TestTrue(TEXT("Poisoning defined"), Survival->RegisterConditionDefinition(Poisoning));
+
+    FWorldSurvivalConsumableDefinition DirtyWater;
+    DirtyWater.DefinitionId = TEXT("Water.Dirty");
+    DirtyWater.ThirstRelief = 40.0f;
+    DirtyWater.ConditionOnConsumeId = Illness.DefinitionId;
+    DirtyWater.ConditionSeverity = 0.6f;
+    TestTrue(TEXT("Dirty water"), Survival->RegisterConsumableDefinition(DirtyWater));
+    FWorldSurvivalConsumableDefinition BoiledWater;
+    BoiledWater.DefinitionId = TEXT("Water.Boiled");
+    BoiledWater.ThirstRelief = 40.0f;
+    TestTrue(TEXT("Boiled water"), Survival->RegisterConsumableDefinition(BoiledWater));
+    FWorldSurvivalConsumableDefinition CookedMeat;
+    CookedMeat.DefinitionId = TEXT("Meat.Cooked");
+    CookedMeat.CaloriesKcal = 600.0f;
+    CookedMeat.FreshnessDurationSeconds = 3600.0;
+    CookedMeat.SpoiledEnergyFraction = 0.3f;
+    CookedMeat.ConditionWhenSpoiledId = Poisoning.DefinitionId;
+    TestTrue(TEXT("Cooked meat"), Survival->RegisterConsumableDefinition(CookedMeat));
+    FWorldSurvivalConsumableDefinition UnknownBerry;
+    UnknownBerry.DefinitionId = TEXT("Berry.Unknown");
+    UnknownBerry.CaloriesKcal = 50.0f;
+    UnknownBerry.ConditionOnConsumeId = TEXT("Condition.NotDefined");
+    TestTrue(TEXT("Berry"), Survival->RegisterConsumableDefinition(UnknownBerry));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.CaloriesKcal = 1000.0f;
+    Profile.Hunger = 60.0f;
+    Profile.Thirst = 70.0f;
+    TestTrue(TEXT("Profile"), Survival->RegisterProfile(Profile));
+    auto Current = [&]() { FWorldSurvivalProfile P; Survival->GetProfile(Profile.EntityId, P); return P; };
+
+    TestTrue(TEXT("Drink boiled water"), Survival->TryConsumeFoodItem(FGuid::NewGuid(), Profile.EntityId, Current().Revision, Boiled, 1, InventoryId));
+    TestEqual(TEXT("Boiled water is safe"), Current().Conditions.Num(), 0);
+    TestEqual(TEXT("Thirst relieved"), Current().Thirst, 30.0f);
+
+    TestTrue(TEXT("Drink dirty water"), Survival->TryConsumeFoodItem(FGuid::NewGuid(), Profile.EntityId, Current().Revision, Dirty, 1, InventoryId));
+    TestEqual(TEXT("Dirty water makes you ill"), Current().Conditions.Num(), 1);
+    if (Current().Conditions.Num() == 1)
+    {
+        TestTrue(TEXT("It is an illness"), Current().Conditions[0].Kind == EWorldSurvivalConditionKind::Illness);
+        TestEqual(TEXT("Severity from the water"), Current().Conditions[0].Severity, 0.6f);
+    }
+
+    const int64 BeforeBerry = Current().Revision;
+    TestFalse(TEXT("Unknown condition refuses the meal"), Survival->TryConsumeFoodItem(FGuid::NewGuid(), Profile.EntityId, BeforeBerry, Mystery, 1, InventoryId));
+    FWorldOwnedItemRecord BerryRecord;
+    TestTrue(TEXT("Berry still exists"), Ownership->TryGetItem(Mystery, BerryRecord));
+    TestTrue(TEXT("Berry still in the inventory"), BerryRecord.OwnerKind == EWorldItemOwnerKind::Inventory);
+    TestEqual(TEXT("Profile untouched"), Current().Revision, BeforeBerry);
+
+    TestTrue(TEXT("Two hours pass"), Clock->AdvanceSimulation(7200.0));
+    const float CaloriesBefore = Current().CaloriesKcal;
+    TestTrue(TEXT("Eat spoiled meat"), Survival->TryConsumeFoodItem(FGuid::NewGuid(), Profile.EntityId, Current().Revision, Meat, 1, InventoryId));
+    TestEqual(TEXT("Spoiled meat gives 30% energy"), Current().CaloriesKcal, CaloriesBefore + 180.0f, 0.01f);
+    TestEqual(TEXT("Spoiled meat poisons"), Current().Conditions.Num(), 2);
+    if (Current().Conditions.Num() == 2)
+        TestTrue(TEXT("Poisoning"), Current().Conditions[1].Kind == EWorldSurvivalConditionKind::Poisoning);
     return true;
 }
 

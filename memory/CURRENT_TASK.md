@@ -29,7 +29,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 0. [x] Adopt group-a (250ce13, 85/85): new branch, merge simple-intent, fix 10 UHT + 6 C++ errors, run all tests, fix failures.
 1. [x] P1.1 calendar (88/88) (day/month/season/year from clock, days per month 5)
 2. [x] P1.2 monthly climate, snow depth, ground wetness (91/91)
-3. [ ] P2.1 water items (dirty/boiled), P2.2 sleep place, P2.4 spoilage modifiers, P2.5 condition triggers
+3. [~] P2.1 water items + P2.5 consume triggers done (92/92); P2.2 sleep place, P2.4 spoilage modifiers left
 4. [ ] P3.1 wet wood + charcoal fuel, P3.2 enclosure from graph
 5. [ ] P4.1-P4.4 gatherables, recipes, stations, tool requirements (needs data files P0.3/P0.4 first)
 6. [ ] P5.1 layer data
@@ -53,4 +53,4 @@ Order may change; record why here.
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 3: P2 survival partials. Read group-a WorldSurvivalSubsystem.h consumables/conditions/rest API (grep), then: P2.1 water items (dirty/boiled consumable defs + dirty -> Illness trigger), P2.2 rest place quality (sheltered/near fire), P2.4 spoilage speed modifiers (storage kind), P2.5 condition triggers. Keep each a small commit with tests in GameWorldTests.cpp.
+Step 3b: P2.2 rest place quality. Read TryBeginRest + rest recovery in AdvanceSurvivalStep (grep RestUntil, RestFatigueRecoveryMultiplier); scale recovery by shelter protection and heat at the profile location. Then 3c: P2.4 storage spoilage multiplier (item SpoilageAgeSeconds accrued on owner change; storage record multiplier; schema v22).

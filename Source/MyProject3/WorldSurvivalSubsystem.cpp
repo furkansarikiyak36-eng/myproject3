@@ -270,6 +270,7 @@ bool UWorldSurvivalSubsystem::RegisterConsumableDefinition(
         !FMath::IsFinite(Definition.FreshnessDurationSeconds) ||
         Definition.FreshnessDurationSeconds < 0.0 ||
         !InRange(Definition.SpoiledEnergyFraction, 0.0f, 1.0f) ||
+        !InRange(Definition.ConditionSeverity, 0.001f, 1.0f) ||
         MaxConsumableDefinitions <= 0 || MaxConsumableDefinitions > 4096)
     {
         return false;
@@ -347,6 +348,21 @@ bool UWorldSurvivalSubsystem::TryConsumeFoodItem(
     const float AppliedThirstRelief = Definition->ThirstRelief;
     if (AppliedCalories <= 0.0f && AppliedThirstRelief <= 0.0f)
         return false;
+    // Dirty water or spoiled food makes the eater ill. Check it before anything
+    // changes, so the whole action either happens with its condition or not at all.
+    const FName CausedConditionId = (bSpoiled && !Definition->ConditionWhenSpoiledId.IsNone())
+        ? Definition->ConditionWhenSpoiledId : Definition->ConditionOnConsumeId;
+    const FWorldSurvivalConditionDefinition* CausedCondition = nullptr;
+    double CausedConditionEndsAt = 0.0;
+    if (!CausedConditionId.IsNone())
+    {
+        CausedCondition = FindConditionDefinition(CausedConditionId);
+        if (!CausedCondition || Profile->Conditions.Num() >= 128)
+            return false;
+        CausedConditionEndsAt = CausedCondition->DurationSeconds > 0.0 ? Now + CausedCondition->DurationSeconds : 0.0;
+        if (CausedCondition->DurationSeconds > 0.0 && (!FMath::IsFinite(CausedConditionEndsAt) || CausedConditionEndsAt <= Now))
+            return false;
+    }
 
     UInventoryCraftingComponent* Inventory = nullptr;
     for (TActorIterator<AActor> It(World); It; ++It)
@@ -437,12 +453,31 @@ bool UWorldSurvivalSubsystem::TryConsumeFoodItem(
     Profile->CaloriesKcal = FMath::Min(MaxCaloriesKcal, Profile->CaloriesKcal + AppliedCalories);
     Profile->Hunger = 100.0f * (1.0f - Profile->CaloriesKcal / MaxCaloriesKcal);
     Profile->Thirst = FMath::Max(0.0f, Profile->Thirst - AppliedThirstRelief);
+    FWorldSurvivalConditionState CausedState;
+    if (CausedCondition)
+    {
+        CausedState.ConditionId = FGuid::NewGuid();
+        CausedState.DefinitionId = CausedCondition->DefinitionId;
+        CausedState.Kind = CausedCondition->Kind;
+        CausedState.StartedAtWorldTimeSeconds = Now;
+        CausedState.EndsAtWorldTimeSeconds = CausedConditionEndsAt;
+        CausedState.Severity = Definition->ConditionSeverity;
+        CausedState.Revision = 1;
+        Profile->Conditions.Add(CausedState);
+    }
     ++Profile->Revision;
 
     FWorldSurvivalActionReceipt Receipt;
     Receipt.OperationId = OperationId;
     Receipt.EntityId = EntityId;
     Receipt.Action = EWorldSurvivalActionKind::ConsumeFoodItem;
+    if (CausedCondition)
+    {
+        Receipt.RelatedConditionId = CausedState.ConditionId;
+        Receipt.ConditionDefinitionId = CausedState.DefinitionId;
+        Receipt.ConditionEndTimeSeconds = CausedConditionEndsAt;
+        Receipt.ConditionSeverity = CausedState.Severity;
+    }
     Receipt.ItemId = ItemId;
     Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
     Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
@@ -1313,7 +1348,8 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
             (Definition.CaloriesKcal <= 0.0f && Definition.ThirstRelief <= 0.0f) ||
             !FMath::IsFinite(Definition.FreshnessDurationSeconds) ||
             Definition.FreshnessDurationSeconds < 0.0 ||
-            !InRange(Definition.SpoiledEnergyFraction, 0.0f, 1.0f))
+            !InRange(Definition.SpoiledEnergyFraction, 0.0f, 1.0f) ||
+            !InRange(Definition.ConditionSeverity, 0.001f, 1.0f))
             return false;
         SeenDefinitions.Add(Definition.DefinitionId);
     }

@@ -32,11 +32,11 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P1.2 climate by month | Var | `UWorldClimateSubsystem`: 12-month table, daily weather from clock seed, 05:00/15:00 temperature curve, snow depth, ground wetness, pushes weather + air temperature to survival; in the coordinator step + rollback; save schema v21; 3 tests | VerticalSlice_C does not run the coordinator yet (own hours, own weather) -> P1.4 |
 | P1.3 event director | Yok | only raids have a warning phase [S] | natural events with signals: snowstorm, heavy rain, flood |
 | P1.4 date/signals on screen | Yok | — | HUD date/season, visible signs |
-| P2.1 water | Kısmi | thirst value [S]; consuming an item gives thirst relief [A] | dirty/boiled water items, drinking from the creek, container |
+| P2.1 water | Kısmi | thirst value [S]; consuming an item gives thirst relief [A]; dirty vs boiled water as consumable definitions, dirty causes illness (test) | drinking from the creek (interaction), water container item, boiling recipe (P4) |
 | P2.2 sleep/fatigue | Kısmi | fatigue value [S]; rest on the shared clock recovers fatigue/stamina [A] | sleep place quality, fatigue limiting actions |
 | P2.3 wetness | Yok | clothing water-resistance number [A] | wet state from rain/creek, drying at fire, cold from wet |
 | P2.4 spoilage | Kısmi | item creation time, freshness duration, spoiled energy fraction [A] | cellar, smoking, drying, heat and damp changing the speed |
-| P2.5 disease/injury | Kısmi | conditions Injury/Illness/Poisoning, duration, damage, treatment item [A]; physical health [S] | triggers: dirty water, spoiled food, toxic rain, falls, animals |
+| P2.5 disease/injury | Kısmi | conditions Injury/Illness/Poisoning, duration, damage, treatment item [A]; physical health [S]; triggers: dirty water (`ConditionOnConsumeId`), spoiled food (`ConditionWhenSpoiledId`) | triggers: toxic rain (P8), falls, animal attacks, long wet cold (P2.3) |
 | P2.6 clothing | Var [A] | slots Head/Body/Hands/Legs/Feet, insulation, water resistance, capabilities | (hide clothing recipe is P4) |
 | P3.1 fire fuel | Kısmi | fuel = seconds, a log thrown on adds seconds [S]; fuel items with burn time and receipts [A] | wet wood, charcoal item, player input |
 | P3.2 shelter enclosure | Kısmi | roof/wall cover by line traces [S]; shelter protection separate from clothing [A] | heat loss from the structural graph |

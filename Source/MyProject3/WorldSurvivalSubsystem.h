@@ -33,6 +33,11 @@ struct FWorldSurvivalConsumableDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0")) double FreshnessDurationSeconds = 0.0;
     /** Energy retained after the freshness duration expires; 0 makes spoiled food inedible. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0", ClampMax="1")) float SpoiledEnergyFraction = 0.0f;
+    /** Condition this item always causes (dirty water -> illness). None = harmless. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables") FName ConditionOnConsumeId = NAME_None;
+    /** Condition this item causes once spoiled (spoiled meat -> poisoning); replaces ConditionOnConsumeId then. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables") FName ConditionWhenSpoiledId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables", meta=(ClampMin="0.001", ClampMax="1")) float ConditionSeverity = 0.5f;
 };
 
 UENUM(BlueprintType)
