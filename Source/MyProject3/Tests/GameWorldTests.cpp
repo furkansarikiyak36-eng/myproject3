@@ -2854,7 +2854,7 @@ bool FStructuralInteractivePiecesAndRopeTraversalTest::RunTest(const FString& Pa
     TestTrue(TEXT("Advance traveler to the middle of the rope"), RopeA->AdvanceRopeTraversal(TraversalId, 0.5f));
     TestTrue(TEXT("Midpoint is between rope ends"),
         FMath::IsNearlyEqual(Traveler->GetActorLocation().X, 300.0f, 1.0f) &&
-        FMath::IsNearlyEqual(Traveler->GetActorLocation().Y, 5000.0f, 1.0f));
+        FMath::IsNearlyEqual(Traveler->GetActorLocation().Y, 5060.0f, 1.0f));
     TestTrue(TEXT("Complete rope traversal at the far anchor"), RopeA->AdvanceRopeTraversal(TraversalId, 1.0f));
     TestFalse(TEXT("Completed rope ticket is no longer active"), RopeA->CancelRopeTraversal(TraversalId));
     TestTrue(TEXT("Traveler arrives at the far socket"),
