@@ -473,6 +473,10 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
         Crop->HarvestUnits > 64 || Crop->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
         return false;
 
+    FWorldFieldCellState* FieldForHarvest = FieldCells.Find(Crop->PlotCell);
+    if (FieldForHarvest && FieldForHarvest->Revision >= MAX_int64 - 1)
+        return false;
+
     TArray<FName> Definitions;
     TArray<FVector> Locations;
     Definitions.Reserve(Crop->HarvestUnits);
@@ -501,17 +505,11 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     Receipt.RequestedOutputUnits = Crop->HarvestUnits;
     Receipt.OutputItemIds = CreatedItems;
 
-    if (FWorldFieldCellState* Field = FieldCells.Find(Crop->PlotCell))
+    if (FieldForHarvest)
     {
-        if (Field->Revision >= MAX_int64 - 1)
-        {
-            // The output registration is already committed. A field revision
-            // overflow must fail before output creation; keep this as a guard.
-            return false;
-        }
-        Field->Fertility = FMath::Max(0.0f, Field->Fertility - SoilExhaustionPerHarvest);
-        ++Field->HarvestCount;
-        ++Field->Revision;
+        FieldForHarvest->Fertility = FMath::Max(0.0f, FieldForHarvest->Fertility - SoilExhaustionPerHarvest);
+        ++FieldForHarvest->HarvestCount;
+        ++FieldForHarvest->Revision;
     }
     Crop->Stage = ECropGrowthStage::Harvested;
     Crop->HarvestOperationId = OperationId;
