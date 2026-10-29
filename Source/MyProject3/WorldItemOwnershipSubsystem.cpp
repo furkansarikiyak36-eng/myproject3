@@ -136,8 +136,10 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     EWorldItemOwnerKind ExpectedOwner, FName NewDefinitionId,
     FWorldOwnedItemRecord& OutRecord)
 {
+    const bool bSupportedDefinitionOwner = ExpectedOwner == EWorldItemOwnerKind::World ||
+        ExpectedOwner == EWorldItemOwnerKind::Inventory;
     if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
-        ExpectedOwner != EWorldItemOwnerKind::World || NewDefinitionId.IsNone())
+        !bSupportedDefinitionOwner || NewDefinitionId.IsNone())
     {
         return false;
     }
@@ -162,6 +164,7 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
 
     FWorldOwnedItemRecord* Item = Items.Find(ItemId);
     if (!Item || Item->Revision != ExpectedRevision || Item->OwnerKind != ExpectedOwner ||
+        (ExpectedOwner == EWorldItemOwnerKind::Inventory && !Item->OwnerId.IsValid()) ||
         Item->Revision == MAX_int64 || Item->DefinitionId == NewDefinitionId)
     {
         return false;
@@ -477,7 +480,17 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
 
         if (Receipt.bDefinitionChange)
         {
-            if (Receipt.ExpectedOwner != EWorldItemOwnerKind::World ||
+            const bool bWorldFuelStyleChange =
+                Receipt.ExpectedOwner == EWorldItemOwnerKind::World &&
+                Receipt.RequestedOwner == EWorldItemOwnerKind::World &&
+                !Receipt.RequestedOwnerId.IsValid() &&
+                !Receipt.ResultRecord.OwnerId.IsValid();
+            const bool bInventoryTransformation =
+                Receipt.ExpectedOwner == EWorldItemOwnerKind::Inventory &&
+                Receipt.RequestedOwner == EWorldItemOwnerKind::Inventory &&
+                Receipt.RequestedOwnerId.IsValid() &&
+                Receipt.ResultRecord.OwnerId == Receipt.RequestedOwnerId;
+            if ((!bWorldFuelStyleChange && !bInventoryTransformation) ||
                 Receipt.RequestedDefinitionId.IsNone() ||
                 Receipt.ResultRecord.DefinitionId != Receipt.RequestedDefinitionId)
             {
