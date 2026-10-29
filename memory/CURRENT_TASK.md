@@ -159,4 +159,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add a deterministic hostile-bite regression by exposing a small `AWildlifeActor::TryBiteTarget(APawn*)` method used by Tick and test: spawn player with survival profile + `Injury.AnimalBite`, put Enemy within attack distance, invoke once (health and condition change), invoke again during cooldown (no second hit). Afterward update plan/status for P2.1–P2.5.
+Extract the current inline Enemy bite into `TryBiteTarget(APawn*)` in `WildlifeActor.cpp`, and let the Tick branch call it when within 190 cm. The method must enforce kind/reach/cooldown and apply health + configured injury. Then add cooldown regression test.
