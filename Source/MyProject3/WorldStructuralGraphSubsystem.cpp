@@ -1,4 +1,5 @@
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldInfrastructureRouteLinkComponent.h"
 
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
@@ -799,6 +800,10 @@ bool UWorldStructuralGraphSubsystem::RepairDamage(FGuid NodeId, float Amount)
         return false;
     Node->Damage = FMath::Max(0.0f, Node->Damage - Amount);
     ++Node->Revision;
+    if (AActor* Actor = Node->Actor.Get())
+        if (UWorldInfrastructureRouteLinkComponent* RouteLink =
+            Actor->FindComponentByClass<UWorldInfrastructureRouteLinkComponent>())
+            RouteLink->HandleStructuralDamageChanged(Node->Damage, Node->DamageThreshold);
     return true;
 }
 
@@ -815,6 +820,10 @@ bool UWorldStructuralGraphSubsystem::ApplyDamage(
     Node->Damage = FMath::Min(Node->DamageThreshold, Node->Damage + DamageAmount);
     ++Node->Revision;
     bOutThresholdExceeded = Node->Damage >= Node->DamageThreshold;
+    if (AActor* Actor = Node->Actor.Get())
+        if (UWorldInfrastructureRouteLinkComponent* RouteLink =
+            Actor->FindComponentByClass<UWorldInfrastructureRouteLinkComponent>())
+            RouteLink->HandleStructuralDamageChanged(Node->Damage, Node->DamageThreshold);
     return true;
 }
 
