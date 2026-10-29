@@ -8,6 +8,7 @@ class UCameraComponent;
 class USceneComponent;
 class UStaticMeshComponent;
 class ULogCarryComponent;
+class UInventoryCraftingComponent;
 class UCarryLoadComponent;
 class ULogBuildToolsComponent;
 class UPhysicalHealthComponent;
@@ -64,6 +65,10 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Character|Axe")
     TObjectPtr<UStaticMeshComponent> AxeHead;
+
+    /** Canonical item inventory for survival consumables, tools and material items. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
+    TObjectPtr<UInventoryCraftingComponent> Inventory;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Building")
     TObjectPtr<ULogCarryComponent> LogCarry;
