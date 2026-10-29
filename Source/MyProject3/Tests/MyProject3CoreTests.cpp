@@ -2682,6 +2682,12 @@ bool FAgricultureConsumesInputsAndCollectsProductsTest::RunTest(const FString& P
     Definition.MinimumPlantMoisture = 0.2f;
     TestTrue(TEXT("Register crop recipe"), Agriculture->RegisterCropDefinition(Definition));
 
+    const FIntVector PreparedPlot(1, 2, 0);
+    TestTrue(TEXT("Clear field before planting"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), PreparedPlot, EWorldFieldActionKind::Clear, 0, 0.0f));
+    TestTrue(TEXT("Till cleared field before planting"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), PreparedPlot, EWorldFieldActionKind::Till, 1, 0.0f));
+
     const FGuid PlantOperationId = FGuid::NewGuid();
     FGuid CropId;
     TestTrue(TEXT("Planting consumes seed and creates crop record"), Agriculture->TryPlantCrop(
@@ -3559,6 +3565,72 @@ bool FSurvivalEquipmentConditionsAndDiscoveryTest::RunTest(const FString& Parame
         Survival->RestoreSnapshot(Profiles, Discoveries, Weather, Severity));
     TestTrue(TEXT("Restored discovery unlock persists"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Region.DeepCave")));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAgricultureFieldPreparationAndSnapshotTest,
+    "MyProject3.Farming.FieldActionsAreOrderedIdempotentAndPersistent", TestFlags)
+bool FAgricultureFieldPreparationAndSnapshotTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldAgricultureSubsystem* Agriculture = World
+        ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Agriculture subsystem"), Agriculture))
+        return false;
+
+    const FIntVector Cell(4, 2, 0);
+    TestFalse(TEXT("Tilling is rejected before clearing"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), Cell,
+            EWorldFieldActionKind::Till, 0, 0.0f));
+
+    const FGuid ClearOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Clear field cell"), Agriculture->TryApplyFieldAction(
+        ClearOperation, Cell, EWorldFieldActionKind::Clear, 0, 0.0f));
+    TestTrue(TEXT("Clear retry is idempotent"), Agriculture->TryApplyFieldAction(
+        ClearOperation, Cell, EWorldFieldActionKind::Clear, 0, 0.0f));
+
+    FWorldFieldCellState Field;
+    TestTrue(TEXT("Read cleared field"), Agriculture->GetFieldCell(Cell, Field));
+    TestTrue(TEXT("Cell marked cleared"), Field.bCleared);
+    TestEqual(TEXT("Clear increments revision once"), Field.Revision, static_cast<int64>(1));
+
+    TestTrue(TEXT("Till cleared cell"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), Cell, EWorldFieldActionKind::Till, 1, 0.0f));
+    TestTrue(TEXT("Fertilize prepared cell"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), Cell, EWorldFieldActionKind::Fertilize, 2, 0.25f));
+    TestTrue(TEXT("Water field cell"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), Cell, EWorldFieldActionKind::Water, 3, 0.2f));
+    TestTrue(TEXT("Add mulch"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), Cell, EWorldFieldActionKind::Mulch, 4, 0.2f));
+    TestTrue(TEXT("Fence field cell"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), Cell, EWorldFieldActionKind::Fence, 5, 0.0f));
+
+    TestTrue(TEXT("Read prepared field state"), Agriculture->GetFieldCell(Cell, Field));
+    TestTrue(TEXT("Field is tilled and fenced"), Field.bTilled && Field.bFenced);
+    TestTrue(TEXT("Fertilizer increases fertility"), Field.Fertility > 0.5f);
+    TestTrue(TEXT("Water increases moisture"), Field.Moisture > 0.5f);
+    TestTrue(TEXT("Mulch stored on field"), Field.Mulch > 0.0f);
+
+    TArray<FWorldCropState> Crops;
+    TArray<FWorldAnimalState> Animals;
+    TArray<FWorldFieldCellState> Fields;
+    Agriculture->ExportSnapshot(Crops, Animals, Fields);
+    TestEqual(TEXT("One field cell exported"), Fields.Num(), 1);
+    const int64 SavedRevision = Field.Revision;
+
+    TestTrue(TEXT("Mutate field after snapshot"), Agriculture->TryApplyFieldAction(
+        FGuid::NewGuid(), Cell, EWorldFieldActionKind::Water, SavedRevision, 0.1f));
+    TestTrue(TEXT("Restore crop, animal, and field snapshots"),
+        Agriculture->RestoreSnapshot(Crops, Animals, Fields));
+    FWorldFieldCellState Restored;
+    TestTrue(TEXT("Read restored field"), Agriculture->GetFieldCell(Cell, Restored));
+    TestEqual(TEXT("Field revision restored"), Restored.Revision, SavedRevision);
+    TestTrue(TEXT("Field operation receipts restored"),
+        Restored.ActionReceipts.ContainsByPredicate(
+            [&ClearOperation](const FWorldFieldActionReceipt& Receipt)
+            { return Receipt.OperationId == ClearOperation; }));
     return true;
 }
 
