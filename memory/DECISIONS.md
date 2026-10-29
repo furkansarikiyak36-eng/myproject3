@@ -2,6 +2,14 @@
 
 Newest first. Each: the decision, then why.
 
+- **2026-10-29 · Game plan (draft, awaiting approval): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`.**
+  World first, story last; every mechanic must feed another; time is the main resource.
+  Era 1 = primitive era with 9 material groups (stone/flint, wood/bark, bone/antler, fibre/rope/hide,
+  grass/reed, clay/soil/sand, resin, charcoal/ochre, shell/tooth/feather), max 2-3 items per group.
+  38 locked transformations: 30 item recipes (cheap) and 8 physical parts (expensive).
+  Physical assembly (SotF-style) is frozen until phase 10. Farming is a 15-step hand-tool chain.
+  12-month calendar with signalled, chained events. Exploration gates seeds, deposits and knowledge.
+  Why: avoid scope creep and build connected systems before costly geometry and story.
 - **2026-10-28 · Terrain for the first playable slice is hybrid.** Native Landscape owns the macro outdoor surface; bounded smooth voxel chunks own designated dig pockets. Use UE `FMarchingCubes` + `UProceduralMeshComponent`; no third-party voxel dependency by default. **This is an architecture choice, not gameplay acceptance.** The measured 32³ synchronous rebuild cost is above a 16.7 ms frame budget, so async mesh/collision, chunk seams, navigation and Landscape transitions remain release gates.
 - **2026-10-28 · Bounded excavation must fail closed.** Radius/region, material tool-strength threshold, expected density revision, unique operation receipt and grounded-structure clearance are checked before the edit. SaveGame v14 stores voxel density and receipts by stable actor identity. Physical voxel state and logical terrain-cell state are not yet one atomic transaction; do not claim that they are integrated until that gap is closed.
 - **2026-10-27 · Shared memory in the repo (`memory/`).** All assistants read and write it.

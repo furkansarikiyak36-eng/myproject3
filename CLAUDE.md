@@ -4,7 +4,10 @@ Unreal Engine 5.8 C++ survival/building game (Sons of the Forest style log build
 
 ## Read this first, then only the files the task needs
 
+First read `memory/CURRENT_TASK.md`: if a task is open, resume it and save after every step.
+
 Shared memory for every assistant: `memory/` (start with `memory/README.md` and `memory/STATE.md`; write a session file at the end).
+For "what code exists" read `memory/CODEBASE.md` instead of scanning; update it after every analysis.
 
 Do not scan the whole repo. Find the module in the map below, read its folder `CLAUDE.md` if there is one, and open only those files. Use Grep for a symbol instead of reading big files whole (`LogCarryComponent.cpp` and `LogBuildPiece.cpp` are 3000+ lines).
 

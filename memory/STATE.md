@@ -27,6 +27,8 @@ The phase map and remaining source/runtime gates are recorded in `Docs/Architect
 | `feature/global-snap-kernel` | Pushed. One placement kernel for all materials. |
 | `feature/contextual-interaction-resolver` | Another assistant's work on top of the kernel (contextual targets, aim cuts). |
 | `feature/simple-intent` | Newest. Contextual placement without modes, symmetric diagonals, bent end joints. |
+| `group-a-code-closure` | ChatGPT, +182 commits on simple-intent@321e55a: survival items, conditions, equipment, farming items, excavation yield, routes. **Does not compile** (see `CODEBASE.md`). |
+| `fix/vertical-slice-b-core-loop`, `phase-03…14-*-sequential` | Older separate lines without the placement kernel. Not merged anywhere. |
 | PR #34 `architecture/global-snap-variation-library` | Has a second, conflicting kernel. Recommended: close it. |
 
 ## Works (build + 68 automation tests)
@@ -39,6 +41,11 @@ The phase map and remaining source/runtime gates are recorded in `Docs/Architect
 - Symmetry: centred on a post top on a 45° grid, post-to-post spans, wall diagonals and their mirror,
   corner to corner, mirrored struts.
 - End to end joints bend 45 / 90 / 135 toward the carry direction.
+
+## Plan
+
+- Next work: `ROADMAP.md` (first open task P0.1 waits for the user: merge into `main`?).
+- Game plan (draft): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`. Physical assembly frozen until phase 10.
 
 ## Open
 
