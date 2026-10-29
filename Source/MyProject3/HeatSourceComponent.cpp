@@ -67,16 +67,37 @@ bool UHeatSourceComponent::TryAddFuelItem(
             Receipt.ExpectedItemRevision == ExpectedItemRevision &&
             Receipt.InventoryOwnerId == InventoryOwnerId;
     }
+
+    UWorld* World = GetWorld();
+    if (!World)
+        return false;
+    // Operation IDs are global across heat-source components. Without this
+    // guard, the ownership ledger's idempotent consume receipt could be replayed
+    // into a second fire and award the same burn time twice.
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        TArray<UHeatSourceComponent*> OtherSources;
+        if (IsValid(*It))
+            It->GetComponents<UHeatSourceComponent>(OtherSources);
+        for (UHeatSourceComponent* Other : OtherSources)
+        {
+            if (!IsValid(Other) || Other == this)
+                continue;
+            for (const FHeatFuelOperationReceipt& Receipt : Other->FuelReceipts)
+                if (Receipt.OperationId == OperationId)
+                    return false;
+        }
+    }
+
     if (MaxFuelReceipts <= 0 || MaxFuelReceipts > 4096 ||
         FuelReceipts.Num() >= MaxFuelReceipts ||
         !FMath::IsFinite(FuelSeconds) || !FMath::IsFinite(MaxFuelSeconds) ||
         FuelSeconds < 0.0f || MaxFuelSeconds <= 0.0f || FuelSeconds > MaxFuelSeconds)
         return false;
 
-    UWorld* World = GetWorld();
     UWorldItemOwnershipSubsystem* Ownership =
-        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
-    if (!World || !Ownership)
+        World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Ownership)
         return false;
 
     FWorldOwnedItemRecord Item;
@@ -86,13 +107,17 @@ bool UHeatSourceComponent::TryAddFuelItem(
         Item.OwnerId != InventoryOwnerId || Item.Quantity != 1)
         return false;
 
-    const FHeatFuelDefinition* Definition = FuelDefinitions.FindByPredicate(
-        [&Item](const FHeatFuelDefinition& Candidate)
-        {
-            return Candidate.ItemDefinitionId == Item.DefinitionId;
-        });
+    const FHeatFuelDefinition* Definition = nullptr;
+    for (const FHeatFuelDefinition& Candidate : FuelDefinitions)
+    {
+        if (Candidate.ItemDefinitionId != Item.DefinitionId)
+            continue;
+        if (Definition)
+            return false; // Duplicate authored definitions are ambiguous.
+        Definition = &Candidate;
+    }
     if (!Definition || !FMath::IsFinite(Definition->BurnSecondsPerItem) ||
-        Definition->BurnSecondsPerItem <= 0.0f ||
+        Definition->BurnSecondsPerItem <= 0.0f || Definition->BurnSecondsPerItem > 86400.0f ||
         Definition->BurnSecondsPerItem > MaxFuelSeconds - FuelSeconds)
         return false;
 
