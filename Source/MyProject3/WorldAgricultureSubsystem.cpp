@@ -36,8 +36,9 @@ bool UWorldAgricultureSubsystem::IsCropDefinitionConfigured(FName CropDefinition
 
 bool UWorldAgricultureSubsystem::IsPlotCellOccupied(FIntVector PlotCell) const
 {
-    return Crops.ContainsByPredicate([PlotCell](const TPair<FGuid, FWorldCropState>& Pair)
-        { return Pair.Value.PlotCell == PlotCell; });
+    for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
+        if (Pair.Value.PlotCell == PlotCell) return true;
+    return false;
 }
 
 bool UWorldAgricultureSubsystem::GetCropYield(
@@ -333,9 +334,9 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             !FMath::IsFinite(C.Moisture) || C.Moisture < 0.0f || C.Moisture > 1.0f ||
             !FMath::IsFinite(C.GrowthProgressSeconds) || C.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(C.SecondsPerStage) || C.SecondsPerStage <= 0.0 ||
-            NewCrops.Contains(C.CropId) ||
-            NewCrops.ContainsByPredicate([&C](const TPair<FGuid, FWorldCropState>& Pair)
-                { return Pair.Value.PlotCell == C.PlotCell; })) return false;
+            NewCrops.Contains(C.CropId)) return false;
+        for (const TPair<FGuid, FWorldCropState>& ExistingPair : NewCrops)
+            if (ExistingPair.Value.PlotCell == C.PlotCell) return false;
         NewCrops.Add(C.CropId, C);
     }
     for (const FWorldAnimalState& A : AnimalSnapshot)
