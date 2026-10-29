@@ -4,9 +4,9 @@
     {
       "id": "Illness.DirtyWater",
       "kind": "Illness",
-      "health_loss_h": 1.0,
-      "fatigue_h": 2.0,
-      "stamina_loss_h": 2.0,
+      "health_loss_h": 1,
+      "fatigue_h": 2,
+      "stamina_loss_h": 2,
       "duration_h": 48,
       "treatment": "Water.Boiled",
       "treatment_recovery": 5
@@ -15,41 +15,61 @@
       "id": "Illness.RawMeat",
       "kind": "Illness",
       "health_loss_h": 0.5,
-      "fatigue_h": 1.0,
-      "stamina_loss_h": 1.0,
+      "fatigue_h": 1,
+      "stamina_loss_h": 1,
       "duration_h": 24
     },
     {
       "id": "Illness.Cold",
       "kind": "Illness",
       "health_loss_h": 0.5,
-      "fatigue_h": 2.0,
-      "stamina_loss_h": 3.0,
+      "fatigue_h": 2,
+      "stamina_loss_h": 3,
       "duration_h": 72
     },
     {
       "id": "Poisoning.SpoiledFood",
       "kind": "Poisoning",
-      "health_loss_h": 3.0,
-      "fatigue_h": 2.0,
-      "stamina_loss_h": 4.0,
+      "health_loss_h": 3,
+      "fatigue_h": 2,
+      "stamina_loss_h": 4,
       "duration_h": 24
     },
     {
       "id": "Injury.Fall",
       "kind": "Injury",
-      "health_loss_h": 0.0,
-      "fatigue_h": 1.0,
-      "stamina_loss_h": 5.0,
+      "health_loss_h": 0,
+      "fatigue_h": 1,
+      "stamina_loss_h": 5,
       "duration_h": 96
     },
     {
       "id": "Injury.AnimalBite",
       "kind": "Injury",
-      "health_loss_h": 1.0,
-      "fatigue_h": 1.0,
-      "stamina_loss_h": 3.0,
+      "health_loss_h": 1,
+      "fatigue_h": 1,
+      "stamina_loss_h": 3,
       "duration_h": 72
+    },
+    {
+      "id": "Illness.ToxicRain",
+      "kind": "Illness",
+      "health_loss_h": 1.5,
+      "fatigue_h": 2,
+      "stamina_loss_h": 2,
+      "duration_h": 48,
+      "treatment": "Water.Boiled",
+      "treatment_recovery": 5
+    },
+    {
+      "id": "Illness.Epidemic",
+      "kind": "Illness",
+      "health_loss_h": 1,
+      "fatigue_h": 2,
+      "stamina_loss_h": 3,
+      "duration_h": 72,
+      "treatment": "Water.Boiled",
+      "treatment_recovery": 5
     }
   ]
 }
