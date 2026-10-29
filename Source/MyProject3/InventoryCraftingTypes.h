@@ -18,6 +18,13 @@ struct FInventoryItemDefinition
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Consumable") bool bConsumable = false;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Consumable", meta=(ClampMin="0.0", ClampMax="10000.0")) float CaloriesKcal = 0.0f;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Consumable", meta=(ClampMin="0.0", ClampMax="100.0")) float HydrationRelief = 0.0f;
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Medical", meta=(ClampMin="0.0", ClampMax="100.0")) float HealthRestore = 0.0f;
+ /** Optional exact affliction ID this item removes. Empty means no targeted cure. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Medical") FName TreatAfflictionId = NAME_None;
+ /** Optional crop ID planted by this seed. Empty means this item is not a plantable seed. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Farm") FName SeedCropDefinitionId = NAME_None;
+ /** Soil moisture fraction restored per use; 0 means not a watering item. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Farm", meta=(ClampMin="0.0", ClampMax="1.0")) float MoistureGain = 0.0f;
  /** 0 means non-perishable. Rates use the shared in-game simulation clock. */
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Spoilage", meta=(ClampMin="0.0")) double ShelfLifeSeconds = 0.0;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Spoilage") FName SpoiledDefinitionId = NAME_None;
