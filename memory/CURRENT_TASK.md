@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect `HeatSourceComponent.h/.cpp` fuel definition registration/consumption and survival/world coordinator step order. Implement weather wetting for loose world-owned Firewood via `TryUpdateItemDefinition`; define the boundary clearly so inventory-held wood isn't silently mutated by a world-only API. Then add a test for wet definition and reduced fuel heat/burn data.
+Inspect the complete `TryAddFuelItem` and `AdvanceFuel` implementations, then `WorldSurvivalSubsystem` item exposure/step and coordinator update order. Wet-fuel world conversion must occur before a fuel is loaded into a heat source; inventory wood must not be changed with the world-only `TryUpdateItemDefinition` API.
