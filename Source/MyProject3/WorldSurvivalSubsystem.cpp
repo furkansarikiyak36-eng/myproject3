@@ -544,8 +544,9 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
             return false;
         SeenDefinitions.Add(Definition.DefinitionId);
     }
+    if (LogicalTimeSeconds < DeltaSeconds) return false;
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
-        if (Pair.Value.Revision == MAX_int64) return false;
+        if (Pair.Value.Revision >= MAX_int64 - 1) return false;
     return true;
 }
 
@@ -609,8 +610,6 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         P.Stamina = FMath::Clamp(P.Stamina +
             (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours +
             RestStaminaRecoveryPerHour * RestHours, 0.0f, 100.0f);
-        if (P.Revision >= MAX_int64 - 1)
-            return false;
         ++P.Revision;
     }
     return true;
