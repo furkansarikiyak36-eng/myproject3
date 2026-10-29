@@ -679,6 +679,7 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
     int64 ExpectedStationRevision,
     FGuid& OutJobId)
 {
+    OutJobId.Invalidate();
     // The legacy/system path is deliberately unable to queue knowledge-gated work.
     if (!IsRecipeAvailableForPlayer(RecipeId, FGuid()))
         return false;
