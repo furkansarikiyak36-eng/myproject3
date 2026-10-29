@@ -244,6 +244,12 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCrop(
         const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
         TArray<FGuid>& OutItemIds);
+    /** Harvests a mature crop directly into a player's inventory as owned items; farm, ledger, inventory and work costs roll back together. */
+    bool TryHarvestCropToInventory(const FGuid& OperationId, const FGuid& CropId,
+        int64 ExpectedCropRevision, UInventoryCraftingComponent* Inventory,
+        const FGuid& SurvivalEntityId, TArray<FGuid>& OutItemIds);
+    /** Finds the unique active crop on a soil cell; false for an empty or ambiguous cell. */
+    bool GetCropAtPlotCell(const FIntVector& PlotCell, FWorldCropState& OutCrop) const;
     UFUNCTION(BlueprintCallable, Category="World|Animals|Pens") bool RegisterAnimalPen(const FWorldAnimalPenState& Pen);
     UFUNCTION(BlueprintPure, Category="World|Animals|Pens") bool GetAnimalPen(const FGuid& PenId, FWorldAnimalPenState& OutPen) const;
     UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryCaptureWildlife(
