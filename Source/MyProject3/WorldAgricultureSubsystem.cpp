@@ -17,6 +17,24 @@ bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
     return true;
 }
 
+bool UWorldAgricultureSubsystem::TryCollectAnimalProduct(
+    const FGuid& AnimalId, int64 ExpectedRevision,
+    FName& OutProductDefinitionId, int32& OutProductUnits)
+{
+    OutProductDefinitionId = NAME_None;
+    OutProductUnits = 0;
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    if (!Animal || Animal->Revision != ExpectedRevision || Animal->Revision == MAX_int64 ||
+        Animal->Health <= 0.0f || Animal->ProductDefinitionId.IsNone() ||
+        Animal->ProductUnits <= 0)
+        return false;
+    OutProductDefinitionId = Animal->ProductDefinitionId;
+    OutProductUnits = Animal->ProductUnits;
+    Animal->ProductUnits = 0;
+    ++Animal->Revision;
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::IsCropDefinitionConfigured(FName CropDefinitionId) const
 {
     if (CropDefinitionId.IsNone()) return false;
@@ -115,7 +133,8 @@ bool UWorldAgricultureSubsystem::FeedAnimal(
 {
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
     if (!Animal || Animal->Revision != ExpectedRevision || Animal->Revision == MAX_int64 ||
-        !FMath::IsFinite(HungerReduction) || HungerReduction <= 0.0f)
+        !FMath::IsFinite(HungerReduction) || HungerReduction <= 0.0f ||
+        HungerReduction > 100.0f || Animal->Health <= 0.0f || Animal->Hunger <= 0.0f)
     {
         return false;
     }
