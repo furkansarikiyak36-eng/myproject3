@@ -137,6 +137,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Terrain|Resources")
     TArray<FWorldTerrainResourceYieldRule> ResourceYieldRules;
 
+    /** Seeds one bounded solid logical terrain cell before player edits begin. */
+    UFUNCTION(BlueprintCallable, Category="World|Terrain")
+    bool RegisterSolidCell(const FWorldTerrainCellState& InitialCell);
+
     UFUNCTION(BlueprintCallable, Category="World|Terrain")
     bool TryApplyCellEdit(const FGuid& OperationId, const FIntVector& Cell,
         int32 DepthLayer, ETerrainCellEdit Edit, FName MaterialId,
