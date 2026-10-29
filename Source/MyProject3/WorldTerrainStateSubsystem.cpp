@@ -4,6 +4,9 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldObjectIdentityComponent.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Actor.h"
@@ -447,6 +450,7 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
     }
 
     TMap<FGuid, FWorldTerrainOperationReceipt> ProposedReceipts;
+    TSet<FGuid> SeenYieldOutputIds;
     for (const FWorldTerrainOperationReceipt& Receipt : ReceiptSnapshot)
     {
         const uint8 EditValue = static_cast<uint8>(Receipt.RequestedEdit);
@@ -478,6 +482,72 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
         if (Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial &&
             Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId)
             return false;
+
+        const bool bHasResourceYield = Receipt.YieldOutputDefinitionId != NAME_None ||
+            Receipt.YieldSourceMaterialId != NAME_None || Receipt.VoxelChunkActorIdentityId.IsValid() ||
+            Receipt.ExpectedDensityRevision != 0 || Receipt.ResultingDensityRevision != 0 ||
+            Receipt.RemovedVolumeCubicMetres != 0.0f || Receipt.YieldUnitsPerCubicMetre != 0.0f ||
+            Receipt.YieldOutputUnits != 0 || !Receipt.YieldOutputItemIds.IsEmpty();
+        if (bHasResourceYield)
+        {
+            if (Receipt.RequestedEdit != ETerrainCellEdit::Excavate ||
+                Receipt.YieldSourceMaterialId.IsNone() ||
+                Receipt.YieldSourceMaterialId != Receipt.RequestedMaterialId ||
+                Receipt.YieldOutputDefinitionId.IsNone() ||
+                !Receipt.VoxelChunkActorIdentityId.IsValid() ||
+                Receipt.ExpectedDensityRevision <= 0 ||
+                Receipt.ExpectedDensityRevision >= MAX_int64 ||
+                Receipt.ResultingDensityRevision != Receipt.ExpectedDensityRevision + 1 ||
+                !FMath::IsFinite(Receipt.RemovedVolumeCubicMetres) ||
+                Receipt.RemovedVolumeCubicMetres <= 0.0f ||
+                !FMath::IsFinite(Receipt.YieldUnitsPerCubicMetre) ||
+                Receipt.YieldUnitsPerCubicMetre <= 0.0f ||
+                Receipt.YieldOutputUnits < 0 || Receipt.YieldOutputUnits > 64 ||
+                Receipt.YieldOutputItemIds.Num() != Receipt.YieldOutputUnits)
+                return false;
+
+            UVoxelTerrainChunkComponent* MatchingChunk = nullptr;
+            if (UWorld* World = GetWorld())
+            {
+                for (TActorIterator<AActor> It(World); It; ++It)
+                {
+                    AActor* Candidate = *It;
+                    UWorldObjectIdentityComponent* Identity =
+                        IsValid(Candidate) ? Candidate->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+                    if (!IsValid(Identity) || !Identity->HasValidIdentity() ||
+                        Identity->GetInstanceId() != Receipt.VoxelChunkActorIdentityId)
+                        continue;
+                    if (MatchingChunk)
+                        return false;
+                    MatchingChunk = Candidate->FindComponentByClass<UVoxelTerrainChunkComponent>();
+                }
+            }
+            FVoxelTerrainDigReceipt PhysicalReceipt;
+            if (!IsValid(MatchingChunk) ||
+                !MatchingChunk->TryGetDigReceipt(Receipt.OperationId, PhysicalReceipt) ||
+                PhysicalReceipt.ExpectedRevision != Receipt.ExpectedDensityRevision ||
+                PhysicalReceipt.ResultingRevision != Receipt.ResultingDensityRevision ||
+                !FMath::IsNearlyEqual(PhysicalReceipt.RemovedVolumeCubicMetres,
+                    Receipt.RemovedVolumeCubicMetres, 0.001f))
+                return false;
+
+            UWorldItemOwnershipSubsystem* Ownership =
+                GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+            if (!Ownership && Receipt.YieldOutputUnits > 0)
+                return false;
+            for (const FGuid& OutputId : Receipt.YieldOutputItemIds)
+            {
+                FWorldOwnedItemRecord Output;
+                if (!OutputId.IsValid() || SeenYieldOutputIds.Contains(OutputId) ||
+                    !Ownership || !Ownership->TryGetItem(OutputId, Output))
+                    return false;
+                SeenYieldOutputIds.Add(OutputId);
+            }
+        }
+        else if (Receipt.YieldOutputUnits != 0 || !Receipt.YieldOutputItemIds.IsEmpty())
+        {
+            return false;
+        }
 
         ProposedReceipts.Add(Receipt.OperationId, Receipt);
     }
