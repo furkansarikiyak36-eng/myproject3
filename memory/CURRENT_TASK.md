@@ -63,6 +63,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: all production-recipe lookups use `ProductionRecipeId`; recipe payload comes from transformations data).
 - `memory/PLAN_STATUS.md` (P0.5 updated to Var; aggregate counts corrected from 9/22/12 to 10/21/12).
+- `Source/MyProject3/WorldAgricultureSubsystem.h` (current crop/animal/action receipts, API, and save-state definitions).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
 
 ### Findings
