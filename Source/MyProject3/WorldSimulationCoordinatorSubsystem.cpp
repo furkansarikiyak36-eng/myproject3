@@ -1,6 +1,8 @@
 #include "WorldSimulationCoordinatorSubsystem.h"
 
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "InventoryCraftingComponent.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldAgricultureSubsystem.h"
@@ -104,6 +106,21 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         return false;
     }
 
+    // Inventories join the shared fixed-step model so perishable stacks do not
+    // age on actor frame ticks or use a clock different from crops and production.
+    TArray<TWeakObjectPtr<UInventoryCraftingComponent>> InventoryComponents;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        TArray<UInventoryCraftingComponent*> Components;
+        It->GetComponents<UInventoryCraftingComponent>(Components);
+        for (UInventoryCraftingComponent* Component : Components)
+        {
+            if (!IsValid(Component) || !Component->CanAdvanceItemAging(DeltaSeconds))
+                return false;
+            InventoryComponents.Add(Component);
+        }
+    }
+
     const double TargetTime = Clock->GetSimulationTimeSeconds() + DeltaSeconds;
     const int64 TargetTick = Clock->GetTickIndex() + 1;
     if (!Agriculture->CanAdvanceAgricultureStep(DeltaSeconds) ||
@@ -153,6 +170,24 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     TArray<FWorldOperationLedgerEntry> BeforeOperationLedgerEntries;
     OperationLedger->ExportSnapshot(BeforeOperationLedgerEntries);
 
+    struct FInventoryAgingBeforeState
+    {
+        TWeakObjectPtr<UInventoryCraftingComponent> Component;
+        TArray<FInventoryStack> Items;
+        FName QuickAccessItemId = NAME_None;
+    };
+    TArray<FInventoryAgingBeforeState> BeforeInventoryStates;
+    BeforeInventoryStates.Reserve(InventoryComponents.Num());
+    for (const TWeakObjectPtr<UInventoryCraftingComponent>& WeakComponent : InventoryComponents)
+    {
+        UInventoryCraftingComponent* Component = WeakComponent.Get();
+        if (!IsValid(Component)) return false;
+        FInventoryAgingBeforeState& State = BeforeInventoryStates.AddDefaulted_GetRef();
+        State.Component = Component;
+        State.Items = Component->Items;
+        State.QuickAccessItemId = Component->QuickAccessItemId;
+    }
+
     auto RollbackStep = [&]() -> bool
     {
         bool bRollbackSucceeded = true;
@@ -172,6 +207,17 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
         bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
+        for (const FInventoryAgingBeforeState& State : BeforeInventoryStates)
+        {
+            UInventoryCraftingComponent* Component = State.Component.Get();
+            if (!IsValid(Component))
+            {
+                bRollbackSucceeded = false;
+                continue;
+            }
+            Component->Items = State.Items;
+            Component->QuickAccessItemId = State.QuickAccessItemId;
+        }
         if (!bRollbackSucceeded)
         {
             // A partially restored world must never continue consuming fixed
@@ -196,6 +242,16 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     {
         RollbackStep();
         return false;
+    }
+
+    for (const TWeakObjectPtr<UInventoryCraftingComponent>& WeakComponent : InventoryComponents)
+    {
+        UInventoryCraftingComponent* Component = WeakComponent.Get();
+        if (!IsValid(Component) || !Component->AdvanceItemAging(DeltaSeconds))
+        {
+            RollbackStep();
+            return false;
+        }
     }
 
     ++CompletedCoordinatorSteps;
