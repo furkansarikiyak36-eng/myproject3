@@ -2771,11 +2771,17 @@ bool FHeatFuelOwnershipReceiptTest::RunTest(const FString& Parameters)
         NewObject<UInventoryCraftingComponent>(InventoryActor);
     UHeatSourceComponent* Heat =
         NewObject<UHeatSourceComponent>(HeatActor);
+    UWorldObjectIdentityComponent* HeatIdentity =
+        NewObject<UWorldObjectIdentityComponent>(HeatActor);
     if (!TestNotNull(TEXT("Inventory component"), Inventory) ||
-        !TestNotNull(TEXT("Heat component"), Heat))
+        !TestNotNull(TEXT("Heat component"), Heat) ||
+        !TestNotNull(TEXT("Heat actor identity"), HeatIdentity))
         return false;
     InventoryActor->AddInstanceComponent(Inventory);
     Inventory->RegisterComponent();
+    HeatActor->AddInstanceComponent(HeatIdentity);
+    HeatIdentity->RegisterComponent();
+    TestTrue(TEXT("Heat actor has stable identity"), HeatIdentity->EnsureIdentity());
     HeatActor->AddInstanceComponent(Heat);
     Heat->RegisterComponent();
 
