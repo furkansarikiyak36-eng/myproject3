@@ -1238,7 +1238,7 @@ void AVerticalSliceCWorldActor::StationStartCollectInput()
     {
         if (GEngine)
             GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(120, 220, 150),
-                FString::Printf(TEXT("Collected %d finished job(s) into station stock. Press R to take an item."),
+                FString::Printf(TEXT("Collected %d finished job(s) into station stock. Press F4 to take an item."),
                     CollectedJobs));
         return;
     }
@@ -1291,7 +1291,7 @@ void AVerticalSliceCWorldActor::StationStartCollectInput()
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
             bWorking
-                ? TEXT("Station is already working. Press E again when a job finishes.")
+                ? TEXT("Station is already working. Press F2 again when a job finishes.")
                 : TEXT("No recipe is ready. Press F3 to deposit required items/tools; F4 takes station stock."));
 }
 
