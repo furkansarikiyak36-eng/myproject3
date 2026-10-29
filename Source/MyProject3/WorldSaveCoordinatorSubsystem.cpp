@@ -209,8 +209,10 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
             if (!IsValid(CarryOwner))
                 return false;
 
+            const FTransform CarryOwnerTransform = Carry->bHasSavedOwnerTransform
+                ? Carry->OwnerActorTransform : CarryOwner->GetActorTransform();
             const FTransform HeldWorldTransform =
-                Carry->HeldItemRelativeTransform * CarryOwner->GetActorTransform();
+                Carry->HeldItemRelativeTransform * CarryOwnerTransform;
             if (!HeldWorldTransform.IsValid())
                 return false;
             Item.WorldLocation = HeldWorldTransform.GetLocation();
@@ -265,6 +267,14 @@ bool CaptureCarryComponentSnapshots(
 
             FWorldCarryComponentSnapshot& State = OutSnapshots.AddDefaulted_GetRef();
             State.OwnerActorPath = FSoftObjectPath(OwnerActor);
+            if (const UWorldObjectIdentityComponent* OwnerIdentity =
+                OwnerActor->FindComponentByClass<UWorldObjectIdentityComponent>())
+            {
+                if (OwnerIdentity->HasValidIdentity())
+                    State.OwnerActorIdentityId = OwnerIdentity->GetInstanceId();
+            }
+            State.OwnerActorTransform = OwnerActor->GetActorTransform();
+            State.bHasSavedOwnerTransform = true;
             State.CarryComponentName = Carry->GetFName();
             State.CarryOwnerId = CarryOwnerId;
             State.HeldItemId = Identity->GetInstanceId();
@@ -274,6 +284,7 @@ bool CaptureCarryComponentSnapshots(
             const APawn* OwnerPawn = Cast<APawn>(OwnerActor);
             State.bPlayerControlledOwner = OwnerPawn && OwnerPawn->IsPlayerControlled();
             if (State.OwnerActorPath.IsNull() || State.CarryComponentName.IsNone() ||
+                !State.OwnerActorTransform.IsValid() ||
                 !State.HeldItemRelativeTransform.IsValid())
                 return false;
 
@@ -317,8 +328,19 @@ bool ValidateCarryComponentSnapshots(
         if (!Carry.CarryOwnerId.IsValid() || !Carry.HeldItemId.IsValid() ||
             Carry.OwnerActorPath.IsNull() || Carry.CarryComponentName.IsNone() ||
             !Carry.HeldItemRelativeTransform.IsValid() ||
+            (Carry.bHasSavedOwnerTransform && !Carry.OwnerActorTransform.IsValid()) ||
             CarryIds.Contains(Carry.CarryOwnerId) || HeldItemIds.Contains(Carry.HeldItemId))
             return false;
+
+        if (Carry.OwnerActorIdentityId.IsValid())
+        {
+            const FWorldPhysicalActorSnapshot* OwnerActorState =
+                ActorsById.FindRef(Carry.OwnerActorIdentityId);
+            if (!OwnerActorState ||
+                (Carry.bHasSavedOwnerTransform &&
+                 !OwnerActorState->ActorTransform.Equals(Carry.OwnerActorTransform, 0.1f)))
+                return false;
+        }
 
         const FWorldOwnedItemRecord* Item = ItemsById.FindRef(Carry.HeldItemId);
         const FWorldPhysicalActorSnapshot* Actor = ActorsById.FindRef(Carry.HeldItemId);
@@ -365,21 +387,45 @@ bool RestoreCarryComponentSnapshots(
     TSet<FGuid> RestoredItemIds;
     for (const FWorldCarryComponentSnapshot& State : CarrySnapshots)
     {
-        AActor* OwnerActor = Cast<AActor>(State.OwnerActorPath.ResolveObject());
-        if (!IsValid(OwnerActor) && State.bPlayerControlledOwner)
-            OwnerActor = UGameplayStatics::GetPlayerPawn(World, 0);
-        if (!IsValid(OwnerActor))
+        AActor* OwnerActor = nullptr;
+        if (State.OwnerActorIdentityId.IsValid())
         {
             for (TActorIterator<AActor> It(World); It; ++It)
             {
-                if (IsValid(*It) && It->GetPathName() == State.OwnerActorPath.ToString())
+                AActor* Candidate = *It;
+                const UWorldObjectIdentityComponent* Identity = IsValid(Candidate)
+                    ? Candidate->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+                if (!Identity || !Identity->HasValidIdentity() ||
+                    Identity->GetInstanceId() != State.OwnerActorIdentityId)
+                    continue;
+                if (OwnerActor)
+                    return false;
+                OwnerActor = Candidate;
+            }
+        }
+        else
+        {
+            OwnerActor = Cast<AActor>(State.OwnerActorPath.ResolveObject());
+            if (!IsValid(OwnerActor) && State.bPlayerControlledOwner)
+                OwnerActor = UGameplayStatics::GetPlayerPawn(World, 0);
+            if (!IsValid(OwnerActor))
+            {
+                for (TActorIterator<AActor> It(World); It; ++It)
                 {
-                    OwnerActor = *It;
-                    break;
+                    if (IsValid(*It) && It->GetPathName() == State.OwnerActorPath.ToString())
+                    {
+                        OwnerActor = *It;
+                        break;
+                    }
                 }
             }
         }
         if (!IsValid(OwnerActor))
+            return false;
+        if (State.bHasSavedOwnerTransform &&
+            (!State.OwnerActorTransform.IsValid() ||
+             !OwnerActor->SetActorTransform(
+                 State.OwnerActorTransform, false, nullptr, ETeleportType::TeleportPhysics)))
             return false;
 
         TArray<ULogCarryComponent*> CarryComponents;
