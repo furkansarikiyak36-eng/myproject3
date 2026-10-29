@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `memory/PLAN_STATUS.md`, `memory/CODEBASE.md`, and `memory/ROADMAP.md` to report P2.1 water fill, P2.2 fatigue/sprint/chop gate, P2.3 creek wetting/cold trigger, P2.5 still partial for fall/animal injury triggers, and schema v26. Maintain unbuilt/unrun caveat and then continue remaining partials.
+Update `memory/CODEBASE.md` and `memory/ROADMAP.md` to reflect P2 backend additions, I-key creek fill, and schema v26; note all tests authored but unrun. Then review/fix obvious source-level issues and continue P3.1 wet-fuel/fire input before other partials. Do not build until batch validation.
