@@ -644,9 +644,15 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
 
         if (Receipt.bDefinitionChange)
         {
-            if (Receipt.ExpectedOwner != EWorldItemOwnerKind::World ||
-                Receipt.RequestedDefinitionId.IsNone() ||
-                Receipt.ResultRecord.DefinitionId != Receipt.RequestedDefinitionId)
+            const bool bSupportedDefinitionOwner =
+                Receipt.ExpectedOwner == EWorldItemOwnerKind::World ||
+                Receipt.ExpectedOwner == EWorldItemOwnerKind::Held;
+            if (!bSupportedDefinitionOwner || Receipt.RequestedDefinitionId.IsNone() ||
+                Receipt.ResultRecord.DefinitionId != Receipt.RequestedDefinitionId ||
+                Receipt.ResultRecord.OwnerKind != Receipt.ExpectedOwner ||
+                Receipt.RequestedOwner != Receipt.ExpectedOwner ||
+                Receipt.ResultRecord.OwnerId != Receipt.RequestedOwnerId ||
+                !Receipt.ResultRecord.WorldLocation.Equals(Receipt.RequestedWorldLocation, 0.001f))
             {
                 return false;
             }
