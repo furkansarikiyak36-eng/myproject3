@@ -937,6 +937,18 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->FieldCells.Reset();
         Candidate->SchemaVersion = 23;
     }
+    if (Candidate->SchemaVersion == 23)
+    {
+        // Schema v24 records the seed definition and return count on each crop.
+        // Historical saves only tracked harvested yield; do not manufacture
+        // seed outputs for crops whose original harvest operation is already saved.
+        for (FWorldCropState& Crop : Candidate->Crops)
+        {
+            Crop.SeedDefinitionId = NAME_None;
+            Crop.SeedReturnUnits = 0;
+        }
+        Candidate->SchemaVersion = 24;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
