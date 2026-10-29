@@ -5,6 +5,7 @@
 #include "WorldStructuralGraphSubsystem.generated.h"
 
 class AActor;
+class UInventoryCraftingComponent;
 
 UENUM(BlueprintType)
 enum class EStructuralNodeKind : uint8
@@ -187,6 +188,16 @@ public:
     /** Takes up to Amount of damage off a piece; false when it had none. */
     UFUNCTION(BlueprintCallable, Category="Structure|Graph")
     bool RepairDamage(FGuid NodeId, float Amount);
+
+    /** Consumes the configured material and requires its reusable tool. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool TryRepairDamageWithInventory(FGuid NodeId, FName RepairId,
+        int64 ExpectedNodeRevision, UInventoryCraftingComponent* Inventory);
+
+    /** Dismantles only an unattached node with no dependents, returning its configured salvage. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool TryDismantleStandaloneNodeToInventory(FGuid NodeId, int64 ExpectedNodeRevision,
+        UInventoryCraftingComponent* Inventory);
 
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool GetNode(FGuid NodeId, FStructuralNodeRecord& OutNode) const;

@@ -6,6 +6,10 @@
 #include "MaterialConnectionSubsystem.h"
 #include "StructuralPieceInterface.h"
 #include "EngineUtils.h"
+#include "InventoryCraftingComponent.h"
+#include "InventoryCraftingTypes.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
 
 bool UWorldStructuralGraphSubsystem::ExportSnapshot(
     TArray<FWorldStructuralNodeSnapshot>& OutSnapshot) const
@@ -427,7 +431,7 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
     FStructuralNodeRecord* Child = Nodes.Find(ChildNodeId);
     if (!Parent || !Child || ParentNodeId == ChildNodeId ||
         ParentAnchorId.IsNone() || OwnAnchorId.IsNone() ||
-        Child->ParentNodeId.IsValid() || !GetDirectDependents(ChildNodeId).IsEmpty() ||
+        Child->ParentNodeId.IsValid() || !GetAllDependents(ChildNodeId).IsEmpty() ||
         !Parent->Actor.IsValid() || !Child->Actor.IsValid() ||
         WouldCreateCycle(ParentNodeId, ChildNodeId) ||
         !HasValidSupportPath(ParentNodeId) ||
@@ -438,7 +442,7 @@ bool UWorldStructuralGraphSubsystem::TryConnect(
 
     // Enforce one edge per physical anchor even when a caller bypasses the
     // actor-level snap-point reservation API.
-    if (IsAnchorInUse(ParentNodeId, ParentAnchorId))
+    if (IsAnchorInUse(ParentNodeId, ParentAnchorId) || IsAnchorInUse(ChildNodeId, OwnAnchorId))
         return false;
 
     TArray<FGuid> AncestorIds;
@@ -502,6 +506,15 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
     if (!Child || !Child->ParentNodeId.IsValid() || Child->Revision == MAX_int64)
         return false;
 
+    // The child is being detached from every support link. Reject first if a
+    // dependent would lose its only healthy path to the ground.
+    for (const FGuid& DependentId : GetAllDependents(ChildNodeId))
+    {
+        TSet<FGuid> SupportVisiting;
+        if (!HasValidSupportPathInternal(DependentId, ChildNodeId, SupportVisiting))
+            return false;
+    }
+
     const FGuid OldParentId = Child->ParentNodeId;
     TArray<FGuid> AncestorIds;
     TSet<FGuid> Visited;
@@ -520,11 +533,14 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
     // contacts go too, so actor-local detachment and graph state stay aligned.
     for (const FStructuralSupportLink& Link : Child->SecondarySupports)
     {
+        const FStructuralNodeRecord* Support = Nodes.Find(Link.SupportNodeId);
+        if (!Support || Support->Revision == MAX_int64)
+            return false;
+    }
+    for (const FStructuralSupportLink& Link : Child->SecondarySupports)
+    {
         if (FStructuralNodeRecord* Support = Nodes.Find(Link.SupportNodeId))
-        {
-            if (Support->Revision < MAX_int64)
-                ++Support->Revision;
-        }
+            ++Support->Revision;
     }
     Child->SecondarySupports.Reset();
     Child->ParentNodeId.Invalidate();
@@ -566,6 +582,7 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
         !Child->Actor.IsValid() || !Support->Actor.IsValid() ||
         Child->Revision == MAX_int64 || Support->Revision == MAX_int64 ||
         IsAnchorInUse(SupportNodeId, SupportAnchorId) ||
+        IsAnchorInUse(ChildNodeId, OwnAnchorId) ||
         WouldCreateCycle(SupportNodeId, ChildNodeId) ||
         !HasValidSupportPath(SupportNodeId))
     {
@@ -752,7 +769,7 @@ bool UWorldStructuralGraphSubsystem::CollectDependentsDepthFirst(
     if (!Node || Visited.Contains(NodeId)) return false;
     Visited.Add(NodeId);
 
-    TArray<FGuid> Children = GetDirectDependents(NodeId);
+    TArray<FGuid> Children = GetAllDependents(NodeId);
     Children.Sort([](const FGuid& A, const FGuid& B)
     {
         return A.ToString() < B.ToString();
@@ -823,6 +840,192 @@ bool UWorldStructuralGraphSubsystem::RepairDamage(FGuid NodeId, float Amount)
         return false;
     Node->Damage = FMath::Max(0.0f, Node->Damage - Amount);
     ++Node->Revision;
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::TryRepairDamageWithInventory(
+    FGuid NodeId, FName RepairId, int64 ExpectedNodeRevision,
+    UInventoryCraftingComponent* Inventory)
+{
+    if (!NodeId.IsValid() || RepairId.IsNone() || ExpectedNodeRevision <= 0 ||
+        !IsValid(Inventory) || !GetWorld())
+        return false;
+
+    const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+    const UWorldGameDataSubsystem* GameData =
+        GetWorld()->GetSubsystem<UWorldGameDataSubsystem>();
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    const FGameDataStructuralRepair* Repair =
+        GameData ? GameData->FindStructuralRepair(RepairId) : nullptr;
+    if (!Node || !Node->Actor.IsValid() || Node->Revision != ExpectedNodeRevision ||
+        Node->Revision == MAX_int64 || Node->Damage <= 0.0f ||
+        !GameData || !GameData->IsLoaded() || !Ownership || !Repair)
+        return false;
+
+    FName TargetKind = NAME_None;
+    switch (Node->Kind)
+    {
+    case EStructuralNodeKind::Wood: TargetKind = TEXT("Wood"); break;
+    case EStructuralNodeKind::Stone: TargetKind = TEXT("Stone"); break;
+    case EStructuralNodeKind::Stick: TargetKind = TEXT("Stick"); break;
+    default: return false;
+    }
+    const FGameDataItem* Material = GameData->GetItems().Find(Repair->MaterialItemId);
+    const FGameDataItem* Tool = GameData->GetItems().Find(Repair->ToolItemId);
+    if (Repair->TargetKind != TargetKind || !Material || !Tool ||
+        Tool->Category != TEXT("Tool") || Repair->MaterialUnits <= 0 ||
+        Repair->RepairAmount <= 0.0f ||
+        Inventory->GetItemCount(Repair->MaterialItemId) < Repair->MaterialUnits ||
+        Inventory->GetItemCount(Repair->ToolItemId) < 1)
+        return false;
+
+    FGuid InventoryActorId;
+    FGuid InventoryOwnerId;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorId, InventoryOwnerId,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (!InventoryOwnerId.IsValid() || InventoryOwnerId != Inventory->GetInventoryOwnerId())
+        return false;
+    (void)InventoryActorId;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+
+    if (!Inventory->TryRemoveItem(Repair->MaterialItemId, Repair->MaterialUnits))
+        return false;
+
+    if (RepairDamage(NodeId, Repair->RepairAmount))
+        return true;
+
+    // Restore the authoritative ledger before inventory rows so unique consumed
+    // IDs can be validated against their original owner when the snapshot returns.
+    const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+        OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+    const bool bInventoryRestored = Inventory->RestoreSnapshot(
+        InventoryOwnerId, InventoryItemsBefore, QuickAccessBefore);
+    if (!bOwnershipRestored || !bInventoryRestored)
+        UE_LOG(LogTemp, Error, TEXT("Structural repair rollback failed; item ownership and inventory require recovery."));
+    return false;
+}
+
+bool UWorldStructuralGraphSubsystem::TryDismantleStandaloneNodeToInventory(
+    FGuid NodeId, int64 ExpectedNodeRevision, UInventoryCraftingComponent* Inventory)
+{
+    if (!NodeId.IsValid() || ExpectedNodeRevision <= 0 ||
+        !IsValid(Inventory) || !GetWorld())
+        return false;
+
+    FStructuralNodeRecord Node;
+    if (!GetNode(NodeId, Node) || !Node.Actor.IsValid() ||
+        Node.Revision != ExpectedNodeRevision || Node.Revision == MAX_int64 ||
+        Node.ParentNodeId.IsValid() || !Node.SecondarySupports.IsEmpty() ||
+        !GetAllDependents(NodeId).IsEmpty())
+        return false;
+
+    AActor* Actor = Node.Actor.Get();
+    UWorldObjectIdentityComponent* Identity =
+        Actor ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldGameDataSubsystem* GameData =
+        GetWorld()->GetSubsystem<UWorldGameDataSubsystem>();
+    const FName KindName = Node.Kind == EStructuralNodeKind::Wood ? FName(TEXT("Wood")) :
+        Node.Kind == EStructuralNodeKind::Stone ? FName(TEXT("Stone")) :
+        Node.Kind == EStructuralNodeKind::Stick ? FName(TEXT("Stick")) : NAME_None;
+    const FGameDataStructuralRepair* Recovery = GameData
+        ? GameData->GetStructuralRepairs().FindByPredicate(
+            [&KindName](const FGameDataStructuralRepair& Candidate)
+            { return Candidate.TargetKind == KindName; })
+        : nullptr;
+    if (!Identity || !Identity->HasValidIdentity() || Identity->GetInstanceId() != NodeId ||
+        !Ownership || !GameData || !GameData->IsLoaded() || !Recovery ||
+        Recovery->RecoveryItemId.IsNone() || Recovery->RecoveryUnits <= 0 ||
+        (Identity->GetLifecycleState() != EWorldObjectLifecycleState::World &&
+         Identity->GetLifecycleState() != EWorldObjectLifecycleState::Placed))
+        return false;
+
+    FWorldOwnedItemRecord SourceItem;
+    if (!Ownership->TryGetItem(NodeId, SourceItem) ||
+        SourceItem.ItemId != NodeId || SourceItem.OwnerKind != EWorldItemOwnerKind::World ||
+        SourceItem.Quantity != 1 || SourceItem.Revision == MAX_int64)
+        return false;
+
+    const FGameDataItem* RecoveryDefinition = GameData->GetItems().Find(Recovery->RecoveryItemId);
+    if (!RecoveryDefinition || RecoveryDefinition->bConsumable ||
+        !GameData->ApplyToInventory(Inventory))
+        return false;
+
+    FInventoryStack Recovered;
+    Recovered.ItemId = Recovery->RecoveryItemId;
+    Recovered.Quantity = Recovery->RecoveryUnits;
+    Recovered.Category = RecoveryDefinition->Category == TEXT("Tool")
+        ? EInventoryItemCategory::Tool
+        : RecoveryDefinition->Category == TEXT("BuildingPart")
+            ? EInventoryItemCategory::BuildingPart
+            : RecoveryDefinition->Category == TEXT("Weapon")
+                ? EInventoryItemCategory::Weapon : EInventoryItemCategory::Resource;
+    Recovered.bIsTool = Recovered.Category == EInventoryItemCategory::Tool;
+    Recovered.MaxStack = Recovered.bIsTool ? 1 : 99;
+    if (Recovered.Quantity > Recovered.MaxStack || !Inventory->CanAddItems({Recovered}))
+        return false;
+
+    const EWorldObjectLifecycleState PreviousLifecycle = Identity->GetLifecycleState();
+    FGuid InventoryActorId;
+    FGuid InventoryOwnerId;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorId, InventoryOwnerId,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (!InventoryOwnerId.IsValid() || InventoryOwnerId != Inventory->GetInventoryOwnerId())
+        return false;
+    (void)InventoryActorId;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+    TArray<FWorldStructuralNodeSnapshot> GraphBefore;
+    if (!ExportSnapshot(GraphBefore))
+        return false;
+
+    auto Rollback = [this, Ownership, Inventory, &OwnershipItemsBefore,
+        &OwnershipTransfersBefore, &OwnershipSplitsBefore, &InventoryOwnerId,
+        &InventoryItemsBefore, &QuickAccessBefore, &GraphBefore]()
+    {
+        const bool bItemsRestored = Ownership->RestoreSnapshot(
+            OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerId, InventoryItemsBefore, QuickAccessBefore);
+        const bool bGraphRestored = RestoreSnapshot(GraphBefore);
+        if (!bItemsRestored || !bInventoryRestored || !bGraphRestored)
+            UE_LOG(LogTemp, Error, TEXT("Structural dismantle rollback failed; world state requires recovery."));
+        return false;
+    };
+
+    FWorldOwnedItemRecord ConsumedItem;
+    if (!Ownership->TryTransferItem(FGuid::NewGuid(), NodeId, SourceItem.Revision,
+        EWorldItemOwnerKind::World, EWorldItemOwnerKind::Consumed,
+        FGuid(), SourceItem.WorldLocation, ConsumedItem))
+        return false;
+
+    if (!UnregisterNode(NodeId, true))
+        return Rollback();
+
+    if (!Inventory->TryAddItem(Recovered))
+        return Rollback();
+
+    if (!Identity->TryTransitionLifecycle(PreviousLifecycle, EWorldObjectLifecycleState::Destroyed))
+        return Rollback();
+
+    Actor->SetActorHiddenInGame(true);
+    Actor->SetActorEnableCollision(false);
+    Actor->SetActorTickEnabled(false);
+    if (!Actor->Destroy())
+        UE_LOG(LogTemp, Warning, TEXT("Dismantled actor %s stayed inert after its world ownership was consumed."), *GetNameSafe(Actor));
     return true;
 }
 
