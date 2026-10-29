@@ -229,6 +229,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     }
 
     ++CompletedCoordinatorSteps;
+    Events->PublishEventNotifications();
     return true;
 }
 
