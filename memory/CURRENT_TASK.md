@@ -55,11 +55,12 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldDemoScenarioActor.h` (recipe is an editor-editable `FWorldProductionRecipe` property, not hard-coded ingredient literals).
 - `Source/MyProject3/WorldGameDataSubsystem.h` (data schemas: transformations, stations, crops; APIs `ApplyToWorld`, `ApplyToInventory`, `FindTransformation`).
 - `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
+- `Source/MyProject3/WorldGameDataSubsystem.cpp` (actual load, validation, recipe/station/crop application paths; relevant functions inspected by symbol).
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
 - `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`, so P0.5 should be resolved by making the game-data loader authoritative and not silently registering a parallel demo recipe.
-- `WorldGameDataSubsystem.h` exposes data transformations and application hooks, but actual wiring must be checked in the implementation; inventory header is next for exact item/recipe APIs.
+- `WorldGameDataSubsystem.cpp` is the authority to inspect for actual transform→recipe, station, crop, and survival definition registration; next review its symbol excerpts before changes.
 - `CODE_INDEX.md` is the authoritative filename/type map; survival API names are recorded. `WorldDemoScenarioActor.cpp` does not contain literal ingredient/output values; it registers a `ConfiguredRecipe` property. Inspect its header before deciding whether P0.5 is still open or the status note is stale.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
 - Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
