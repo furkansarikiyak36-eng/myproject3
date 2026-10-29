@@ -133,7 +133,7 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         }
         Candidates.Sort([](const FDefenseTargetCandidate& A, const FDefenseTargetCandidate& B)
         {
-            if (!FMath::IsNearlyEqual(A.DistanceCm, B.DistanceCm, 0.1f))
+            if (A.DistanceCm != B.DistanceCm)
                 return A.DistanceCm < B.DistanceCm;
             return A.NodeId.ToString() < B.NodeId.ToString();
         });
@@ -141,11 +141,16 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             SortedTargets.Add(Candidate.NodeId);
     }
 
-    SortedTargets.Sort([](const FGuid& A, const FGuid& B)
-        { return A.ToString() < B.ToString(); });
-    for (int32 Index = SortedTargets.Num() - 1; Index > 0; --Index)
-        if (SortedTargets[Index] == SortedTargets[Index - 1])
-            SortedTargets.RemoveAt(Index, 1, EAllowShrinking::No);
+    // Preserve distance order for automatic selection; configured targets use a
+    // stable GUID order so designer-authored target lists are deterministic.
+    if (!bAutoSelectBlockingTarget)
+    {
+        SortedTargets.Sort([](const FGuid& A, const FGuid& B)
+            { return A.ToString() < B.ToString(); });
+        for (int32 Index = SortedTargets.Num() - 1; Index > 0; --Index)
+            if (SortedTargets[Index] == SortedTargets[Index - 1])
+                SortedTargets.RemoveAt(Index, 1, EAllowShrinking::No);
+    }
 
     for (const FGuid& NodeId : SortedTargets)
     {
