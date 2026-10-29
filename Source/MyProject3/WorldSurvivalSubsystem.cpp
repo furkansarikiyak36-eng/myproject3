@@ -899,10 +899,12 @@ bool UWorldSurvivalSubsystem::TryEquipItem(
     {
         const bool bInventoryRestored = Inventory->RestoreSnapshot(
             PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
-        if (!bInventoryRestored)
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            PreviousItems, PreviousTransferReceipts, PreviousSplitReceipts);
+        if (!bInventoryRestored || !bOwnershipRestored)
             if (UWorldSimulationCoordinatorSubsystem* Coordinator =
                 World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
-                Coordinator->MarkSimulationFaulted(TEXT("Equipment inventory rollback failed."));
+                Coordinator->MarkSimulationFaulted(TEXT("Equipment transfer rollback failed."));
         return false;
     }
 
