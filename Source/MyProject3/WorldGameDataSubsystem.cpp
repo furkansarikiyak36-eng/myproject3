@@ -329,6 +329,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Event.Effect = NameField(Entry, TEXT("effect"));
         Event.WarningSeconds = NumberField(Entry, TEXT("warning_h")) * 3600.0;
         Event.DurationSeconds = NumberField(Entry, TEXT("duration_h")) * 3600.0;
+        Event.TriggerMinimum = static_cast<float>(NumberField(Entry, TEXT("trigger_min"), 0.0));
+        Event.TriggerMaximum = static_cast<float>(NumberField(Entry, TEXT("trigger_max"), 1.0));
         Event.MinimumSeverity = static_cast<float>(NumberField(Entry, TEXT("min_severity")));
         Event.MaximumSeverity = static_cast<float>(NumberField(Entry, TEXT("max_severity"), 1.0));
         Event.CounterItemId = NameField(Entry, TEXT("counter_item"));
@@ -337,7 +339,10 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Event.Trigger.IsNone() || Event.Signal.IsNone() || Event.Effect.IsNone() ||
             !FMath::IsFinite(Event.WarningSeconds) || Event.WarningSeconds < 0.0 ||
             !FMath::IsFinite(Event.DurationSeconds) || Event.DurationSeconds <= 0.0 ||
+            !FMath::IsFinite(Event.TriggerMinimum) || !FMath::IsFinite(Event.TriggerMaximum) ||
             !FMath::IsFinite(Event.MinimumSeverity) || !FMath::IsFinite(Event.MaximumSeverity) ||
+            Event.TriggerMinimum < 0.0f || Event.TriggerMaximum > 1.0f ||
+            Event.TriggerMinimum > Event.TriggerMaximum ||
             Event.MinimumSeverity < 0.0f || Event.MaximumSeverity > 1.0f ||
             Event.MinimumSeverity > Event.MaximumSeverity ||
             ((!Event.CounterItemId.IsNone()) &&
