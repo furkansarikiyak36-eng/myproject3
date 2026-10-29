@@ -172,6 +172,7 @@ public:
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
+    bool IsDiscoveryGatedDefinition(FName DefinitionId) const;
     const FGameDataZone* FindZone(FName ZoneId) const;
     /** Best-fitting containing region in 2D world space; null when outside every region. */
     const FGameDataZone* FindZoneAtLocation(const FVector& WorldLocation) const;
