@@ -911,9 +911,6 @@ bool UWorldGameDataSubsystem::TryRecordZoneEntry(
         return false;
     }
 
-    if (!CanEnterZone(PlayerEntityId, ZoneId, OutReason))
-        return false;
-
     const FGameDataZone* Zone = Zones.FindByPredicate([ZoneId](const FGameDataZone& Candidate)
     {
         return Candidate.Id == ZoneId;
@@ -923,11 +920,27 @@ bool UWorldGameDataSubsystem::TryRecordZoneEntry(
         World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     UWorldSurvivalSubsystem* Survival =
         World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
-    FWorldSurvivalProfile Profile;
-    if (!Zone || Zone->DiscoveryId.IsNone() || !Clock || !Clock->IsClockInitialized() ||
-        !Survival || !Survival->GetProfile(PlayerEntityId, Profile))
+    if (!bLoaded || !bApplied || !Zone || Zone->DiscoveryId.IsNone() || !Clock ||
+        !Survival)
     {
-        OutReason = TEXT("Zone entry could not resolve its discovery, initialized clock or player profile.");
+        OutReason = TEXT("Zone entry could not resolve loaded data, its discovery or required world subsystems.");
+        return false;
+    }
+
+    // An exact retry replays its committed success even if the season or equipment
+    // has since changed. A reused operation ID with a different zone/discovery/
+    // location is not treated as a retry and will be rejected by the ledger.
+    if (Survival->HasDiscoveryOperationReceipt(
+        OperationId, PlayerEntityId, Zone->DiscoveryId, EntryLocation))
+        return true;
+
+    if (!CanEnterZone(PlayerEntityId, ZoneId, OutReason))
+        return false;
+
+    FWorldSurvivalProfile Profile;
+    if (!Clock->IsClockInitialized() || !Survival->GetProfile(PlayerEntityId, Profile))
+    {
+        OutReason = TEXT("Zone entry requires an initialized clock and registered player profile.");
         return false;
     }
 
