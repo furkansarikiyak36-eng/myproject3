@@ -5,6 +5,7 @@
 #include "ShelterSensorComponent.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldClimateSubsystem.h"
 #include "TerrainDigToolComponent.h"
 
 #include "Camera/CameraComponent.h"
@@ -376,6 +377,41 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
 
     UWorldSurvivalSubsystem* Survival = GetWorld()
         ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UCarryLoadComponent* CarryLoad = FindComponentByClass<UCarryLoadComponent>();
+    const float CarriedMassKg = CarryLoad ? CarryLoad->GetCarriedMassKg() : 0.0f;
+    const float CarrySpeedFactor = CarryLoad
+        ? FMath::Clamp(CarryLoad->GetSpeedMultiplier(), 0.05f, 1.0f) : 1.0f;
+    float SlopeSpeedFactor = 1.0f;
+    FHitResult GroundHit;
+    FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(PlayerSlopeCost), false, this);
+    const FVector GroundStart = GetActorLocation() + FVector(0.0f, 0.0f, 20.0f);
+    const FVector GroundEnd = GetActorLocation() - FVector(0.0f, 0.0f, 180.0f);
+    if (GetWorld() && GetWorld()->LineTraceSingleByChannel(
+        GroundHit, GroundStart, GroundEnd, ECC_Visibility, GroundParams))
+    {
+        const float GroundNormalZ = FMath::Clamp(GroundHit.ImpactNormal.Z, 0.0f, 1.0f);
+        SlopeSpeedFactor = FMath::Lerp(0.65f, 1.0f, GroundNormalZ);
+    }
+
+    float WeatherSpeedFactor = 1.0f;
+    if (Climate && Climate->IsClimateInitialized())
+    {
+        const float Severity = FMath::Clamp(Climate->GetWeatherSeverity(), 0.0f, 1.0f);
+        switch (Climate->GetWeather())
+        {
+        case EWorldWeatherState::Rain: WeatherSpeedFactor = 1.0f - 0.12f * Severity; break;
+        case EWorldWeatherState::Wind: WeatherSpeedFactor = 1.0f - 0.06f * Severity; break;
+        case EWorldWeatherState::Snow: WeatherSpeedFactor = 1.0f - 0.18f * Severity; break;
+        case EWorldWeatherState::Storm: WeatherSpeedFactor = 1.0f - 0.24f * Severity; break;
+        case EWorldWeatherState::Heatwave: WeatherSpeedFactor = 1.0f - 0.05f * Severity; break;
+        default: break;
+        }
+        const float SnowRatio = FMath::Clamp(Climate->GetSnowDepthCm() / 100.0f, 0.0f, 1.0f);
+        WeatherSpeedFactor *= 1.0f - 0.12f * SnowRatio;
+    }
+
     FWorldSurvivalProfile SurvivalProfile;
     const bool bHasSurvivalProfile = Survival && IsValid(ShelterSensor) &&
         ShelterSensor->SurvivalEntityId.IsValid() &&
@@ -394,7 +430,8 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
             PlayerController->IsInputKeyDown(EKeys::LeftShift) &&
             SurvivalProfile.Stamina > 20.0f && SurvivalProfile.Fatigue < 85.0f;
         if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-            Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor * (bSprintActive ? 1.5f : 1.0f);
+            Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor * CarrySpeedFactor *
+                SlopeSpeedFactor * WeatherSpeedFactor * (bSprintActive ? 1.5f : 1.0f);
 
         if (bIsResting)
         {
@@ -410,12 +447,13 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
                 const bool bRecorded = Survival->RecordActivity(
                     ShelterSensor->SurvivalEntityId,
                     bSprintActive ? ESurvivalActivity::Run : ESurvivalActivity::Walk,
-                    ActivitySeconds, 0.0f);
+                    ActivitySeconds, CarriedMassKg);
                 if (bSprintActive && !bRecorded)
                 {
                     bSprintActive = false;
                     if (UCharacterMovementComponent* Movement = GetCharacterMovement())
-                        Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor;
+                        Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor * CarrySpeedFactor *
+                            SlopeSpeedFactor * WeatherSpeedFactor;
                 }
             }
         }
