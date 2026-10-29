@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect existing `UWorldGameDataSubsystem` automation fixture and `FScopedTestWorld` setup. Add `AProductionStationActor` regression using data-loaded `workbench_log` + `make_plank`: generic inventory stacks for HalfLog/Wedge/Chisel, deposit required quantities, start job, advance production, collect, take plank and verify returned tool categories. Then update P4.3 status and docs.
+Inspect `UWorldProductionSubsystem::CanAdvanceProductionStep` and game-data loader `LoadDefault` before composing a station integration test. The test should explicitly load/apply GameData, create inventory after applying or call `ApplyToInventory`, set an actor's `StationDataId=workbench_log`, deposit HalfLog/Wedge/Chisel generic stacks, start/advance/collect `make_plank`, take plank and verify the returned tool stack retains Tool category.
