@@ -1483,20 +1483,45 @@ void ULogBuildToolsComponent::DismantleInput()
     FHitResult Hit;
     if (!TraceView(InteractRange, Hit))
         return;
-    ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Hit.GetActor());
-    if (!Piece)
+
+    AActor* TargetActor = Hit.GetActor();
+    IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(TargetActor);
+    UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        GetOwner() ? GetOwner()->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    if (!IsValid(TargetActor) || !Piece || !Graph || !Inventory ||
+        !Piece->IsStructurallyPlaced())
     {
-        DismantlePiece(nullptr);
+        SetStatus(TEXT("Aim at a placed structural piece; loose pieces can be picked up or dropped."));
+        return;
+    }
+
+    FStructuralNodeRecord Node;
+    if (!Graph->GetNode(Piece->GetStructuralNodeId(), Node) || Node.Actor.Get() != TargetActor)
+    {
+        SetStatus(TEXT("This piece is not registered in the shared structural graph."));
         return;
     }
     if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
     {
-        SetStatus(TEXT("Too exhausted or resting to dismantle this piece."));
+        SetStatus(TEXT("Too exhausted or resting to dismantle this structure."));
         return;
     }
-    if (DismantlePiece(Piece, false) &&
-        !RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
-        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after dismantling committed."));
+
+    // Deletion now goes through one graph/actor/ownership/salvage transaction.
+    // If any dependent loses its only healthy support, that dependant is
+    // included in the same leaf-first dismantle; alternate supports are promoted.
+    if (!Graph->TryDismantleConnectedStructureToInventory(
+        Node.NodeId, Node.Revision, Inventory))
+    {
+        SetStatus(TEXT("Dismantle blocked: check support links, item ownership and inventory capacity."));
+        return;
+    }
+
+    if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after connected dismantle committed."));
+    SetStatus(TEXT("Structure dismantled; recoverable materials returned to inventory."), 2.5f);
 }
 
 void ULogBuildToolsComponent::ThrowInput()
