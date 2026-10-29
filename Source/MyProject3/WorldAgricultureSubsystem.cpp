@@ -5,6 +5,7 @@
 bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
 {
     if (!Crop.CropId.IsValid() || Crop.CropDefinitionId.IsNone() ||
+        IsPlotCellOccupied(Crop.PlotCell) ||
         !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
         !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
         !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
