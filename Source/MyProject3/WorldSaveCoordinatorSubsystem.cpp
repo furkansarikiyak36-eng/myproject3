@@ -1453,20 +1453,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             TEXT("World save refused because held-item/carry-component state could not be captured consistently."));
         return false;
     }
-    for (const FWorldOwnedItemRecord& Item : OutSave->Items)
-    {
-        if (Item.OwnerKind == EWorldItemOwnerKind::Held &&
-            !OutSave->CarryComponents.ContainsByPredicate([&Item](const FWorldCarryComponentSnapshot& Carry)
-            {
-                return Carry.HeldItemId == Item.ItemId && Carry.CarryOwnerId == Item.OwnerId;
-            }))
-        {
-            UE_LOG(LogTemp, Warning,
-                TEXT("World save refused: held item %s has no matching carry component."),
-                *Item.ItemId.ToString());
-            return false;
-        }
-    }
+    // The complete carry-to-item-to-actor relation is checked after the physical
+    // actor manifest is captured, because Held is now a valid persisted owner kind.
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!CapturePhysicalActorSnapshots(World, OutSave->PhysicalActors) ||
         !ValidatePhysicalActorSnapshotSet(World, OutSave->PhysicalActors) ||
