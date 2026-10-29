@@ -379,10 +379,10 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
         ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     UWorldClimateSubsystem* Climate = GetWorld()
         ? GetWorld()->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
-    UCarryLoadComponent* CarryLoad = FindComponentByClass<UCarryLoadComponent>();
-    const float CarriedMassKg = CarryLoad ? CarryLoad->GetCarriedMassKg() : 0.0f;
-    const float CarrySpeedFactor = CarryLoad
-        ? FMath::Clamp(CarryLoad->GetSpeedMultiplier(), 0.05f, 1.0f) : 1.0f;
+    UCarryLoadComponent* Load = FindComponentByClass<UCarryLoadComponent>();
+    const float CarriedMassKg = Load ? Load->GetCarriedMassKg() : 0.0f;
+    const float CarrySpeedFactor = Load
+        ? FMath::Clamp(Load->GetSpeedMultiplier(), 0.05f, 1.0f) : 1.0f;
     float SlopeSpeedFactor = 1.0f;
     FHitResult GroundHit;
     FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(PlayerSlopeCost), false, this);

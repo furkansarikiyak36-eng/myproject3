@@ -263,6 +263,7 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
     const UWorldSurvivalSubsystem* Survival = GetSurvival();
     const UWorldProductionSubsystem* Production = GetProduction();
     const UWorldCargoTransportSubsystem* Cargo = GetCargo();
+    const UWorldEventDirectorSubsystem* Events = GetEvents();
     const UWorld* World = GetWorld();
     const UWorldItemOwnershipSubsystem* Ownership =
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;

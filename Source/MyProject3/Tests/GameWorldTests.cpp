@@ -18,6 +18,7 @@
 #include "WorldDiscoveryMarkerActor.h"
 #include "LogSnapCharacter.h"
 #include "ShelterSensorComponent.h"
+#include "WorldHudDataSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "LogContainerActor.h"
@@ -1071,10 +1072,10 @@ bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Signal time precedes effect time"), Signal->SignalStartedAtSeconds < Signal->StartsAtSeconds);
     }
 
-    TestTrue(TEXT("Preflight at effect start"), Events->CanAdvanceEventStep(1800.0, 1860.0, 2));
     // The first 60-second event step was prospective; advance the shared clock
-    // only to its committed boundary, then preflight the next 1,800-second step.
+    // to its committed boundary first: the step needs TargetTime = clock + delta.
     TestTrue(TEXT("Advance clock to first event boundary"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Preflight at effect start"), Events->CanAdvanceEventStep(1800.0, 1860.0, 2));
     TestTrue(TEXT("Advance into effect phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
     const TArray<FWorldNaturalEventInstance> Active = Events->GetActiveNaturalEvents();
     const FWorldNaturalEventInstance* ActiveSnow = Active.FindByPredicate(
@@ -1122,6 +1123,7 @@ bool FWallCoatingConsumesPlasterAndSealsGapsTest::RunTest(const FString& Paramet
     UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwner);
     InventoryOwner->AddInstanceComponent(Inventory);
     Inventory->RegisterComponent();
+    Inventory->ItemWeightGrams.Add(TEXT("Plaster"), 2000); // An inventory refuses items of unknown weight.
     FInventoryStack Plaster;
     Plaster.ItemId = TEXT("Plaster");
     Plaster.Quantity = 2;
@@ -1147,7 +1149,7 @@ bool FWallCoatingConsumesPlasterAndSealsGapsTest::RunTest(const FString& Paramet
 }
 
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FloodClosesAndRestoresFloodProneRoutesTest,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFloodClosesAndRestoresFloodProneRoutesTest,
     "MyProject3.World.Logistics.FloodClosuresAndRouteSnapshot", Flags)
 bool FFloodClosesAndRestoresFloodProneRoutesTest::RunTest(const FString& Parameters)
 {
@@ -1296,10 +1298,24 @@ bool FForestFireDamagesNearbyWoodStructuresTest::RunTest(const FString& Paramete
     TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
     TestTrue(TEXT("Initialize event director"), Events->InitializeEventDirector());
 
-    AActor* WoodA = World->SpawnActor<AActor>(
-        AActor::StaticClass(), FVector(100.0, 0.0, 0.0), FRotator::ZeroRotator);
-    AActor* WoodB = World->SpawnActor<AActor>(
-        AActor::StaticClass(), FVector(650.0, 0.0, 0.0), FRotator::ZeroRotator);
+    // Like real pieces: a root so the location sticks, an identity so the graph can export it.
+    auto SpawnWood = [World](const FVector& Location) -> AActor*
+    {
+        AActor* Actor = World->SpawnActor<AActor>();
+        if (!Actor)
+            return nullptr;
+        USceneComponent* Root = NewObject<USceneComponent>(Actor);
+        Actor->SetRootComponent(Root);
+        Root->RegisterComponent();
+        Actor->SetActorLocation(Location);
+        UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(Actor);
+        Actor->AddInstanceComponent(Identity);
+        Identity->RegisterComponent();
+        Identity->EnsureIdentity();
+        return Actor;
+    };
+    AActor* WoodA = SpawnWood(FVector(100.0, 0.0, 0.0));
+    AActor* WoodB = SpawnWood(FVector(650.0, 0.0, 0.0));
     if (!TestNotNull(TEXT("First wooden structure"), WoodA) ||
         !TestNotNull(TEXT("Second wooden structure"), WoodB))
         return false;
@@ -1437,7 +1453,7 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     // not by editing crop state or bypassing the calendar.
     FWorldCalendarDate Date;
     TestTrue(TEXT("Read initial calendar date"), Clock->GetCalendarDate(Date));
-    for (int32 Day = 0; Day < 6 && Date.Month != 4; ++Day)
+    for (int32 DayStep = 0; DayStep < 6 && Date.Month != 4; ++DayStep)
     {
         TestTrue(TEXT("Advance one whole game day"), Clock->AdvanceSimulation(86400.0));
         TestTrue(TEXT("Read updated calendar date"), Clock->GetCalendarDate(Date));
@@ -1885,6 +1901,31 @@ bool FSledTowOngoingCostTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Towing reports activity energy"), After.PendingActivityKcal > 0.0f);
     TestFalse(TEXT("The sled remains towed when the puller has stamina"), !Sled->IsTowed());
     TestTrue(TEXT("Release towing"), Sled->ToggleTow(Puller));
+    return true;
+}
+
+// P1.4: the HUD data reads date, season and weather from the shared clock and climate.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHudDataSnapshotTest,
+    "MyProject3.World.Hud.SnapshotShowsDateAndWeather", Flags)
+bool FHudDataSnapshotTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldHudDataSubsystem* Hud = World ? World->GetSubsystem<UWorldHudDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) || !TestNotNull(TEXT("Hud"), Hud))
+        return false;
+    FWorldHudDataSnapshot Snapshot;
+    TestFalse(TEXT("Nothing before the clock starts"), Hud->GetSnapshot(Snapshot));
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(9, 0.0));
+    TestTrue(TEXT("Climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Snapshot"), Hud->GetSnapshot(Snapshot));
+    TestTrue(TEXT("Valid"), Snapshot.bValid);
+    TestEqual(TEXT("March"), Snapshot.Calendar.Month, 3);
+    TestTrue(TEXT("Spring"), Snapshot.Calendar.Season == EWorldSeason::Spring);
+    TestTrue(TEXT("Weather from the climate"), Snapshot.Weather == Climate->GetWeather());
+    TestEqual(TEXT("Air from the climate"), Snapshot.AirTemperatureCelsius, Climate->GetTemperatureCelsius());
     return true;
 }
 
