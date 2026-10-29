@@ -177,6 +177,13 @@ public:
     UFUNCTION(BlueprintPure, Category = "Log Carry|State")
     bool IsHoldingMaterialPiece() const { return HeldMaterialPiece.Get() != nullptr; }
 
+    /** Snapshot hooks used by the world coordinator; they do not mutate ownership. */
+    FGuid GetCarryOwnerIdForSnapshot() const { return CarryOwnerId; }
+    bool GetHeldItemForSnapshot(AActor*& OutItem, bool& bOutIsMaterial) const;
+    void ClearHeldStateForSnapshotRestore();
+    bool RestoreHeldItemFromSnapshot(const FGuid& InCarryOwnerId, AActor* Item,
+        bool bIsMaterial, const FTransform& ItemRelativeTransform);
+
     /** Short player-facing status of the current placement or the last action. */
     UFUNCTION(BlueprintPure, Category = "Log Carry|State")
     FString GetPlacementStatus() const { return PlacementStatus; }
