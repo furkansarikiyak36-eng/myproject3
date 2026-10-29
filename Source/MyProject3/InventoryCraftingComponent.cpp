@@ -11,6 +11,8 @@
 #include "StickPrimitivePiece.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -22,6 +24,27 @@ void UInventoryCraftingComponent::BeginPlay()
 {
  Super::BeginPlay();
  if (!InventoryOwnerId.IsValid()) InventoryOwnerId = FGuid::NewGuid();
+}
+
+const FInventoryItemDefinition* UInventoryCraftingComponent::FindItemDefinition(FName ItemId) const
+{
+ if (ItemId.IsNone()) return nullptr;
+ const FInventoryItemDefinition* Found = nullptr;
+ for (const FInventoryItemDefinition& Definition : ItemDefinitions)
+ {
+  if (Definition.ItemId != ItemId) continue;
+  if (Found) return nullptr;
+  Found = &Definition;
+ }
+ return Found;
+}
+
+int32 UInventoryCraftingComponent::GetConfiguredWeightGrams(FName ItemId) const
+{
+ if (const int32* Configured = ItemWeightGrams.Find(ItemId))
+  return *Configured > 0 ? *Configured : 0;
+ const FInventoryItemDefinition* Definition = FindItemDefinition(ItemId);
+ return Definition && Definition->UnitWeightGrams > 0 ? Definition->UnitWeightGrams : 0;
 }
 
 int32 UInventoryCraftingComponent::GetItemCount(FName ItemId) const
@@ -37,10 +60,10 @@ int32 UInventoryCraftingComponent::GetCurrentWeightGrams() const
  int64 Total = 0;
  for (const FInventoryStack& Stack : Items)
  {
-  const int32* Weight = ItemWeightGrams.Find(Stack.ItemId);
+  const int32 Weight = GetConfiguredWeightGrams(Stack.ItemId);
   // Unknown/invalid weight must never make an item silently weightless.
-  if (!Weight || *Weight <= 0 || Stack.Quantity < 0) return MAX_int32;
-  Total += static_cast<int64>(*Weight) * Stack.Quantity;
+  if (Weight <= 0 || Stack.Quantity < 0) return MAX_int32;
+  Total += static_cast<int64>(Weight) * Stack.Quantity;
   if (Total > MAX_int32) return MAX_int32;
  }
  return static_cast<int32>(Total);
@@ -52,12 +75,19 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
  for (const FInventoryStack& Addition : Additions)
  {
   if (Addition.ItemId.IsNone() || Addition.Quantity <= 0 || Addition.MaxStack <= 0 ||
+      !FMath::IsFinite(Addition.AgeSeconds) || Addition.AgeSeconds < 0.0 ||
+      (!Addition.EquippedSlotId.IsNone() &&
+       (Addition.Quantity != 1 || Addition.MaxStack != 1 || Addition.OwnedWorldItemId.IsValid() || Addition.bSpoiled)) ||
       (Addition.OwnedWorldItemId.IsValid() && (Addition.Quantity != 1 || Addition.MaxStack != 1 ||
        Simulated.ContainsByPredicate([&Addition](const FInventoryStack& S) { return S.OwnedWorldItemId == Addition.OwnedWorldItemId; })))) return false;
   int32 Remaining = Addition.Quantity;
   for (FInventoryStack& Existing : Simulated)
   {
-   if (Existing.ItemId == Addition.ItemId && !Existing.OwnedWorldItemId.IsValid() && !Addition.OwnedWorldItemId.IsValid() && Existing.Quantity < Existing.MaxStack)
+   if (Existing.ItemId == Addition.ItemId && !Existing.OwnedWorldItemId.IsValid() &&
+       !Addition.OwnedWorldItemId.IsValid() && Existing.EquippedSlotId.IsNone() &&
+       Addition.EquippedSlotId.IsNone() && Existing.bSpoiled == Addition.bSpoiled &&
+       FMath::IsNearlyEqual(Existing.AgeSeconds, Addition.AgeSeconds, 1.0e-6) &&
+       Existing.Quantity < Existing.MaxStack)
    {
     const int32 Delta = FMath::Min(Remaining, Existing.MaxStack - Existing.Quantity);
     Existing.Quantity += Delta; Remaining -= Delta;
@@ -75,10 +105,10 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
  int64 Weight = 0;
  for (const FInventoryStack& Stack : Simulated)
  {
-  const int32* ItemWeight = ItemWeightGrams.Find(Stack.ItemId);
+  const int32 ItemWeight = GetConfiguredWeightGrams(Stack.ItemId);
   // Fail closed until every item has a positive, configured weight.
-  if (!ItemWeight || *ItemWeight <= 0 || Stack.Quantity <= 0) return false;
-  Weight += static_cast<int64>(*ItemWeight) * Stack.Quantity;
+  if (ItemWeight <= 0 || Stack.Quantity <= 0) return false;
+  Weight += static_cast<int64>(ItemWeight) * Stack.Quantity;
   if (Weight > MaxCarryWeightGrams) return false;
  }
  return true;
@@ -87,13 +117,20 @@ bool UInventoryCraftingComponent::HasCapacityFor(const TArray<FInventoryStack>& 
 bool UInventoryCraftingComponent::TryAddItem(const FInventoryStack& Incoming)
 {
  if (Incoming.ItemId.IsNone() || Incoming.Quantity <= 0 || Incoming.MaxStack <= 0 ||
+     !FMath::IsFinite(Incoming.AgeSeconds) || Incoming.AgeSeconds < 0.0 ||
+     (!Incoming.EquippedSlotId.IsNone() &&
+      (Incoming.Quantity != 1 || Incoming.MaxStack != 1 || Incoming.OwnedWorldItemId.IsValid() || Incoming.bSpoiled)) ||
      (Incoming.OwnedWorldItemId.IsValid() && (Incoming.Quantity != 1 || Incoming.MaxStack != 1 ||
       Items.ContainsByPredicate([&Incoming](const FInventoryStack& S) { return S.OwnedWorldItemId == Incoming.OwnedWorldItemId; }))) ||
      !HasCapacityFor({Incoming})) return false;
  int32 Remaining = Incoming.Quantity;
  for (FInventoryStack& Existing : Items)
  {
-  if (Existing.ItemId == Incoming.ItemId && !Existing.OwnedWorldItemId.IsValid() && !Incoming.OwnedWorldItemId.IsValid() && Existing.Quantity < Existing.MaxStack)
+  if (Existing.ItemId == Incoming.ItemId && !Existing.OwnedWorldItemId.IsValid() &&
+      !Incoming.OwnedWorldItemId.IsValid() && Existing.EquippedSlotId.IsNone() &&
+      Incoming.EquippedSlotId.IsNone() && Existing.bSpoiled == Incoming.bSpoiled &&
+      FMath::IsNearlyEqual(Existing.AgeSeconds, Incoming.AgeSeconds, 1.0e-6) &&
+      Existing.Quantity < Existing.MaxStack)
   {
    const int32 Delta = FMath::Min(Remaining, Existing.MaxStack - Existing.Quantity);
    Existing.Quantity += Delta; Remaining -= Delta;
