@@ -181,7 +181,7 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
     if (ExpectedRevision != DensityRevision ||
         ToolStrength < GetRequiredToolStrength() ||
         DigReceipts.Num() >= MaxRememberedDigOperations ||
-        !EditableBoundsLocal.IsValid())
+        !EditableBoundsLocal.IsValid)
         return false;
 
     const FVector RadiusVector(RadiusCm);
@@ -366,7 +366,7 @@ bool UVoxelTerrainChunkComponent::ValidateDensitySnapshot(
         const FVector Min = Receipt.LocalCenter - R;
         const FVector Max = Receipt.LocalCenter + R;
         const FBox ChunkBounds(FVector::ZeroVector, FVector(InCellsPerAxis * InVoxelSizeCm));
-        if (!EditableBoundsLocal.IsValid() ||
+        if (!EditableBoundsLocal.IsValid ||
             !EditableBoundsLocal.IsInsideOrOn(Min) || !EditableBoundsLocal.IsInsideOrOn(Max) ||
             !ChunkBounds.IsInsideOrOn(Min) || !ChunkBounds.IsInsideOrOn(Max))
             return false;

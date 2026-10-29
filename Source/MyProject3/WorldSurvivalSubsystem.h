@@ -308,16 +308,16 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Survival") TMap<FGuid, FWorldSurvivalProfile> Profiles;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Exploration") TArray<FWorldDiscoveryRecord> Discoveries;
     UPROPERTY(Transient) TArray<TWeakObjectPtr<UHeatSourceComponent>> HeatSources;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables") TArray<FWorldSurvivalConsumableDefinition> ConsumableDefinitions;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="1", ClampMax="1024")) int32 MaxConditionDefinitions = 128;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions") TArray<FWorldSurvivalConditionDefinition> ConditionDefinitions;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquipmentDefinitions = 128;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment") TArray<FWorldSurvivalEquipmentDefinition> EquipmentDefinitions;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquippedItemsPerProfile = 5;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration", meta=(ClampMin="1", ClampMax="4096")) int32 MaxDiscoveryDefinitions = 512;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") TArray<FWorldDiscoveryDefinition> DiscoveryDefinitions;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration", meta=(ClampMin="1", ClampMax="16384")) int32 MaxDiscoveryRecords = 4096;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Receipts", meta=(ClampMin="1", ClampMax="8192")) int32 MaxDiscoveryReceiptsPerProfile = 512;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Consumables") TArray<FWorldSurvivalConsumableDefinition> ConsumableDefinitions;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Conditions", meta=(ClampMin="1", ClampMax="1024")) int32 MaxConditionDefinitions = 128;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Conditions") TArray<FWorldSurvivalConditionDefinition> ConditionDefinitions;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquipmentDefinitions = 128;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Equipment") TArray<FWorldSurvivalEquipmentDefinition> EquipmentDefinitions;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquippedItemsPerProfile = 5;
+    UPROPERTY(EditAnywhere, Category="World|Exploration", meta=(ClampMin="1", ClampMax="4096")) int32 MaxDiscoveryDefinitions = 512;
+    UPROPERTY(EditAnywhere, Category="World|Exploration") TArray<FWorldDiscoveryDefinition> DiscoveryDefinitions;
+    UPROPERTY(EditAnywhere, Category="World|Exploration", meta=(ClampMin="1", ClampMax="16384")) int32 MaxDiscoveryRecords = 4096;
+    UPROPERTY(EditAnywhere, Category="World|Survival|Receipts", meta=(ClampMin="1", ClampMax="8192")) int32 MaxDiscoveryReceiptsPerProfile = 512;
 
     bool IsValidProfile(const FWorldSurvivalProfile& Profile) const;
     const FWorldSurvivalConditionDefinition* FindConditionDefinition(FName DefinitionId) const;

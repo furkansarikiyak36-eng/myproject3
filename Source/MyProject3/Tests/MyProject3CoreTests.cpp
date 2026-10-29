@@ -678,7 +678,7 @@ bool FCoreTemperatureCaloriesTest::RunTest(const FString& Parameters)
     Fire->Ignite();
 
     for (int32 Hour = 0; Hour < 3; ++Hour)
-        TestTrue(TEXT("Advance one hour"), Survival->AdvanceSurvivalStep(3600.0, Hour * 3600.0));
+        TestTrue(TEXT("Advance one hour"), Survival->AdvanceSurvivalStep(3600.0, (Hour + 1) * 3600.0));
 
     FWorldSurvivalProfile ExposedAfter, FireAfter;
     Survival->GetProfile(Exposed.EntityId, ExposedAfter);
@@ -731,12 +731,12 @@ bool FHeatSourceWeatherTest::RunTest(const FString& Parameters)
     Hearth->Ignite();
 
     Survival->SetWeather(EWorldWeatherState::Rain, 0.8f);
-    Survival->AdvanceSurvivalStep(600.0, 0.0);
+    Survival->AdvanceSurvivalStep(600.0, 600.0);
     TestFalse(TEXT("Open fire drowned"), OpenFire->IsLit());
     TestTrue(TEXT("Hearth still burns"), Hearth->IsLit());
     TestEqual(TEXT("Hearth burned ten minutes of fuel"), Hearth->GetFuelSeconds(), 1200.0f);
 
-    Survival->AdvanceSurvivalStep(1200.0, 600.0);
+    Survival->AdvanceSurvivalStep(1200.0, 1800.0);
     TestFalse(TEXT("Hearth goes out when fuel runs out"), Hearth->IsLit());
     TestFalse(TEXT("An empty hearth cannot be relit"), Hearth->Ignite());
     return true;
@@ -861,8 +861,9 @@ bool FVoxelBoundedDigPolicyTest::RunTest(const FString& Parameters)
         Chunk->GetDensityRevision(), InitialRevision + 1);
     TestEqual(TEXT("Result revision matches committed revision"), ResultRevision, Chunk->GetDensityRevision());
     FVector GroundHitAfterDig;
+    // Trace beside the pit centre: a line through an exact mesh vertex can miss.
     TestTrue(TEXT("Bounded dig publishes new collision immediately"),
-        TraceDown(TestWorld.World, FVector(800.0f, 800.0f, 1500.0f), GroundHitAfterDig));
+        TraceDown(TestWorld.World, FVector(812.0f, 793.0f, 1500.0f), GroundHitAfterDig));
     TestTrue(TEXT("New collision surface is lower inside the pit"),
         GroundHitAfterDig.Z < GroundHitBeforeDig.Z - 20.0f);
 
@@ -921,6 +922,10 @@ bool FVoxelStructureSupportGuardTest::RunTest(const FString& Parameters)
     AActor* SupportActor = TestWorld.World->SpawnActor<AActor>();
     if (!TestNotNull(TEXT("Grounded support actor"), SupportActor))
         return false;
+    // A bare AActor has no root component, so it cannot hold a location without one.
+    USceneComponent* SupportRoot = NewObject<USceneComponent>(SupportActor);
+    SupportActor->SetRootComponent(SupportRoot);
+    SupportRoot->RegisterComponent();
     SupportActor->SetActorLocation(FVector(800.0f, 800.0f, 800.0f));
     UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(SupportActor);
     if (!TestNotNull(TEXT("Support identity component"), Identity))

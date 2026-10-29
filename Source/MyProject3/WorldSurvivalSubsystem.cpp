@@ -921,7 +921,7 @@ bool UWorldSurvivalSubsystem::TryEquipItem(
     Receipt.EntityId = EntityId;
     Receipt.Action = EWorldSurvivalActionKind::EquipItem;
     Receipt.ItemId = ItemId;
-    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
     Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
     Receipt.ExpectedItemRevision = ExpectedItemRevision;
     Receipt.ResultingProfileRevision = Profile->Revision;
@@ -943,7 +943,7 @@ bool UWorldSurvivalSubsystem::TryUnequipItem(
     if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
         return Existing->Action == EWorldSurvivalActionKind::UnequipItem &&
             Existing->EntityId == EntityId && Existing->EquipmentSlot == Slot &&
-            Existing->ExpectedInventoryOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedItemOwnerId == ExpectedInventoryOwnerId &&
             Existing->ExpectedProfileRevision == ExpectedProfileRevision;
 
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
@@ -1013,7 +1013,7 @@ bool UWorldSurvivalSubsystem::TryUnequipItem(
     Receipt.EntityId = EntityId;
     Receipt.Action = EWorldSurvivalActionKind::UnequipItem;
     Receipt.ItemId = Item.ItemId;
-    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
     Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
     Receipt.ExpectedItemRevision = Item.Revision;
     Receipt.ResultingProfileRevision = Profile->Revision;
