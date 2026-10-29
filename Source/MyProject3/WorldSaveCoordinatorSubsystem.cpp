@@ -17,6 +17,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
@@ -642,7 +643,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         return false;
     }
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!StructuralGraph || !StructuralGraph->ExportSnapshot(OutSave->StructuralGraph))
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
+    if (!StructuralGraph || !Routes || !StructuralGraph->ExportSnapshot(OutSave->StructuralGraph))
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused because structural graph snapshot export failed."));
         return false;
@@ -665,6 +667,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
     Cargo->ExportSnapshot(OutSave->Cargo);
+    Routes->ExportSnapshot(OutSave->Routes);
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!ValidateProductionReceiptItemReferences(OutSave->Items, OutSave->ProductionStations))
     {
@@ -696,7 +699,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
+    if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph || !Routes)
         return false;
 
     if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
@@ -794,6 +798,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!Storage->RestoreSnapshot(Snapshot->StorageContainers, Snapshot->StorageReservations)) return false;
     if (!Cargo->RestoreSnapshot(Snapshot->Cargo)) return false;
     if (!Threat->RestoreSnapshot(Snapshot->Threat)) return false;
+    if (!Routes->RestoreSnapshot(Snapshot->Routes)) return false;
     if (!Events->RestoreSnapshot(Snapshot->Events)) return false;
     return true;
 }
@@ -1011,6 +1016,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // trigger guards. Older saves start a fresh event history from restored time.
         Candidate->Events = FWorldEventDirectorSnapshot();
         Candidate->SchemaVersion = 28;
+    }
+    if (Candidate->SchemaVersion == 28)
+    {
+        // Schema v29 records the route graph. Older saves did not persist route topology.
+        Candidate->Routes = FWorldLogisticsRouteSnapshot();
+        Candidate->SchemaVersion = 29;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
