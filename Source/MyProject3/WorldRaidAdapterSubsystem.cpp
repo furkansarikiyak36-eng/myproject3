@@ -463,6 +463,13 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     {
         return !Pawn.IsValid();
     });
+    while (ActiveRaidPawns.Num() > RaidWaveSize)
+    {
+        const TWeakObjectPtr<APawn> ExcessPawn = ActiveRaidPawns.Last();
+        if (ExcessPawn.IsValid() && !ExcessPawn->Destroy())
+            return false;
+        ActiveRaidPawns.Pop();
+    }
     const bool bNeedsWave = Raid.State == EThreatRaidState::Warning ||
         Raid.State == EThreatRaidState::Active;
     if (bNeedsWave && (!bSameRaid || ActiveRaidPawns.Num() < RaidWaveSize))
