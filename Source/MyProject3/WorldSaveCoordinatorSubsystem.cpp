@@ -1851,6 +1851,30 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->SchemaVersion = 19;
     }
 
+    if (Candidate->SchemaVersion == 19)
+    {
+        // Schema v20 adds persistent inventory age/spoilage/equipment state,
+        // survival rest/afflictions and discovery unlock results. Legacy saves
+        // did not store those rules, so migration starts them from neutral state.
+        for (FWorldInventorySnapshot& Inventory : Candidate->Inventories)
+        {
+            for (FInventoryStack& Stack : Inventory.Items)
+            {
+                Stack.AgeSeconds = 0.0;
+                Stack.bSpoiled = false;
+                Stack.EquippedSlotId = NAME_None;
+            }
+        }
+        for (FWorldSurvivalProfile& Profile : Candidate->SurvivalProfiles)
+        {
+            Profile.bResting = false;
+            Profile.Afflictions.Reset();
+        }
+        for (FWorldDiscoveryRecord& Discovery : Candidate->Discoveries)
+            Discovery.UnlockedContentIds.Reset();
+        Candidate->SchemaVersion = 20;
+    }
+
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
