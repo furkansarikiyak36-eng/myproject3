@@ -3846,10 +3846,15 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
         ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     UWorldItemOwnershipSubsystem* Ownership = World
         ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData = World
+        ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Clock"), Clock) ||
         !TestNotNull(TEXT("Survival subsystem"), Survival) ||
-        !TestNotNull(TEXT("Ownership subsystem"), Ownership))
+        !TestNotNull(TEXT("Ownership subsystem"), Ownership) ||
+        !TestNotNull(TEXT("Game-data subsystem"), GameData))
         return false;
+    TestTrue(TEXT("Load authored water, recipe and condition definitions"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply data-defined survival consumables"), GameData->ApplyToWorld());
     TestTrue(TEXT("Initialize common clock"), Clock->InitializeClock(8125, 1000.0));
 
     AActor* InventoryActor = World->SpawnActor<AActor>();
@@ -3951,6 +3956,107 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
         FillOperationId, Profile.EntityId, Profile.Revision, PotId, 1,
         InventoryOwnerId, CreekLocation, PostRestoreWaterId));
     TestEqual(TEXT("Post-restore retry returns original water ID"), PostRestoreWaterId, WaterItemId);
+
+    // Boiling is a timed transformation of the same unique item: the pot and
+    // water identities persist, ownership remains Inventory, and the shared
+    // simulation clock controls completion.
+    AActor* FireActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Fire actor"), FireActor))
+        return false;
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor);
+    if (!TestNotNull(TEXT("Fire heat component"), Fire))
+        return false;
+    FireActor->AddInstanceComponent(Fire);
+    FireActor->SetRootComponent(Fire);
+    Fire->RegisterComponent();
+    TestTrue(TEXT("Fuel the test fire"), Fire->AddFuel(3600.0f));
+    TestTrue(TEXT("Light the test fire"), Fire->Ignite());
+
+    FWorldSurvivalProfile BeforeBoil;
+    TestTrue(TEXT("Read profile after creek fill"), Survival->GetProfile(Profile.EntityId, BeforeBoil));
+    FWorldOwnedItemRecord BeforeBoilingWater;
+    TestTrue(TEXT("Read dirty water ledger item"), Ownership->TryGetItem(WaterItemId, BeforeBoilingWater));
+    const FGuid StartBoilOperation = FGuid::NewGuid();
+    bool bStarted = false;
+    TestTrue(TEXT("Start water boiling at a lit fire"), Survival->TryBoilWaterAtFire(
+        StartBoilOperation, Profile.EntityId, BeforeBoil.Revision,
+        WaterItemId, BeforeBoilingWater.Revision, PotId, PotAfterFill.Revision,
+        InventoryOwnerId, bStarted));
+    TestTrue(TEXT("First boil request reports the start phase"), bStarted);
+
+    FWorldOwnedItemRecord BoilingWater;
+    TestTrue(TEXT("Water item survives as the intermediate state"), Ownership->TryGetItem(WaterItemId, BoilingWater));
+    TestEqual(TEXT("Intermediate definition is Water.Boiling"), BoilingWater.DefinitionId,
+        FName(TEXT("Water.Boiling")));
+    TestEqual(TEXT("Intermediate item remains inventory-owned"), BoilingWater.OwnerId, InventoryOwnerId);
+    TestEqual(TEXT("Boiling preserves the unique water identity"), BoilingWater.ItemId, WaterItemId);
+    TestEqual(TEXT("Inventory stack follows the intermediate state"),
+        Inventory->Items[Inventory->Items.IndexOfByPredicate([&WaterItemId](const FInventoryStack& Stack)
+            { return Stack.OwnedWorldItemId == WaterItemId; })].ItemId, FName(TEXT("Water.Boiling")));
+
+    FWorldSurvivalProfile AfterBoilStart;
+    TestTrue(TEXT("Read profile after boiling begins"), Survival->GetProfile(Profile.EntityId, AfterBoilStart));
+    const FGameDataTransformation* BoilRecipe =
+        GameData->FindTransformation(FName(TEXT("boil_water")));
+    if (!TestNotNull(TEXT("Authored boil transformation"), BoilRecipe))
+        return false;
+    TestTrue(TEXT("Authored boil duration is bounded and positive"),
+        FMath::IsFinite(BoilRecipe->DurationSeconds) && BoilRecipe->DurationSeconds > 0.0);
+    const FGuid FinishBoilOperation = FGuid::NewGuid();
+    TestFalse(TEXT("Water cannot finish before its authored duration"), Survival->TryBoilWaterAtFire(
+        FGuid::NewGuid(), Profile.EntityId, AfterBoilStart.Revision,
+        WaterItemId, BoilingWater.Revision, PotId, PotAfterFill.Revision,
+        InventoryOwnerId, bStarted));
+
+    TestTrue(TEXT("Advance only the shared logical clock by the recipe duration"),
+        Clock->AdvanceSimulation(BoilRecipe->DurationSeconds));
+    FWorldSurvivalProfile BeforeBoilFinish;
+    TestTrue(TEXT("Read current profile before boil completion"), Survival->GetProfile(Profile.EntityId, BeforeBoilFinish));
+    TestTrue(TEXT("Finish boiling after the full duration"), Survival->TryBoilWaterAtFire(
+        FinishBoilOperation, Profile.EntityId, BeforeBoilFinish.Revision,
+        WaterItemId, BoilingWater.Revision, PotId, PotAfterFill.Revision,
+        InventoryOwnerId, bStarted));
+    TestFalse(TEXT("Completion is not another start phase"), bStarted);
+
+    FWorldOwnedItemRecord BoiledWater;
+    TestTrue(TEXT("Boiled water ledger record exists"), Ownership->TryGetItem(WaterItemId, BoiledWater));
+    TestEqual(TEXT("Final definition is Water.Boiled"), BoiledWater.DefinitionId,
+        FName(TEXT("Water.Boiled")));
+    TestEqual(TEXT("Boiled water identity is unchanged"), BoiledWater.ItemId, WaterItemId);
+    TestEqual(TEXT("Boiled water still belongs to inventory"), BoiledWater.OwnerKind,
+        EWorldItemOwnerKind::Inventory);
+    TestEqual(TEXT("Reusable pot remains present"), Inventory->GetItemCount(TEXT("Pot.Fired")), 1);
+
+    FWorldSurvivalProfile AfterBoilFinish;
+    TestTrue(TEXT("Read profile after boil completion"), Survival->GetProfile(Profile.EntityId, AfterBoilFinish));
+    TArray<FWorldSurvivalProfile> ProfilesAfterBoil;
+    TArray<FWorldDiscoveryRecord> DiscoveriesAfterBoil;
+    EWorldWeatherState WeatherAfterBoil = EWorldWeatherState::Clear;
+    float SeverityAfterBoil = 0.0f;
+    Survival->ExportSnapshot(ProfilesAfterBoil, DiscoveriesAfterBoil, WeatherAfterBoil, SeverityAfterBoil);
+    TestTrue(TEXT("Boiling receipts restore from survival snapshot"), Survival->RestoreSnapshot(
+        ProfilesAfterBoil, DiscoveriesAfterBoil, WeatherAfterBoil, SeverityAfterBoil));
+    bool bRetryStarted = true;
+    TestTrue(TEXT("Finish retry is idempotent after snapshot restore"), Survival->TryBoilWaterAtFire(
+        FinishBoilOperation, Profile.EntityId, AfterBoilStart.Revision,
+        WaterItemId, BoilingWater.Revision, PotId, PotAfterFill.Revision,
+        InventoryOwnerId, bRetryStarted));
+    TestFalse(TEXT("Boil finish retry remains a finish result"), bRetryStarted);
+    FWorldSurvivalProfile BeforeDrink;
+    TestTrue(TEXT("Read profile before drinking boiled water"), Survival->GetProfile(Profile.EntityId, BeforeDrink));
+    TestTrue(TEXT("Drink the unique boiled-water item"), Survival->TryConsumeFoodItem(
+        FGuid::NewGuid(), Profile.EntityId, BeforeDrink.Revision,
+        WaterItemId, BoiledWater.Revision, InventoryOwnerId));
+    FWorldSurvivalProfile AfterDrink;
+    TestTrue(TEXT("Read profile after drinking"), Survival->GetProfile(Profile.EntityId, AfterDrink));
+    TestTrue(TEXT("Boiled water relieves thirst"), AfterDrink.Thirst < BeforeDrink.Thirst);
+    TestFalse(TEXT("Boiled water does not create dirty-water illness"),
+        AfterDrink.Conditions.ContainsByPredicate([](const FWorldSurvivalConditionState& Condition)
+            { return Condition.DefinitionId == FName(TEXT("Illness.DirtyWater")); }));
+    FWorldOwnedItemRecord ConsumedWater;
+    TestTrue(TEXT("Consumed boiled-water ledger record remains auditable"),
+        Ownership->TryGetItem(WaterItemId, ConsumedWater));
+    TestEqual(TEXT("Drinking marks water as consumed"), ConsumedWater.OwnerKind, EWorldItemOwnerKind::Consumed);
     return true;
 }
 
