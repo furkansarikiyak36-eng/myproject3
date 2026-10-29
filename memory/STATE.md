@@ -46,6 +46,8 @@ Last built and tested: `bbc57b3` = 102/102.
 - Added P1.4 read-only HUD data aggregation + Canvas display and made VerticalSlice_C sun presentation use the shared simulation clock.
 - Added save schema v28 with v27 migration, plus one focused Automation test source. Commit chain: `0c2f1e0` → `cd76c57` → `07dfb57` after checkpoint `f5c44c5`.
 - These P1 changes are **code-written only**; Unreal 5.8 build, automation, PIE and save/load validation have not run.
+- P5.1: added deterministic geology-by-region/depth/cell/shared seed, configured weighted material regions in `layers.json`, persisted resolved material in the cell ledger, and routed the N-key dig adapter through that resolver (`e48c3c4`, `ffcb364`). Automation source added, not executed.
+- P2.2: direct structure dismantle calls now enforce shared survival-cost checks unless called by a multi-piece operation with an aggregate charge; sled tow movement charges Carry stamina/energy from shared logical-time elapsed seconds (`609f445`, `28755f3`). Automation source added, not executed.
 
 ## Open
 

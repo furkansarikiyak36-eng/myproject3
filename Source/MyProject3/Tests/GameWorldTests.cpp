@@ -1073,7 +1073,7 @@ bool FSledTowOngoingCostTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read charged profile"), Survival->GetProfile(Profile.EntityId, After));
     TestEqual(TEXT("One minute of towing costs two stamina"), After.Stamina, 98.0f, 0.01f);
     TestTrue(TEXT("Towing reports activity energy"), After.PendingActivityKcal > 0.0f);
-    TestFalse(TEXT("The sled remains towed when the puller has stamina"), !Sled->IsTowed());
+    TestTrue(TEXT("The sled remains towed when the puller has stamina"), Sled->IsTowed());
     TestTrue(TEXT("Release towing"), Sled->ToggleTow(Puller));
     return true;
 }

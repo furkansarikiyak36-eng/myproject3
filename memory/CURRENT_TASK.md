@@ -31,6 +31,8 @@ Baseline: latest source changes are documented as unbuilt/unrun. Prior build/tes
 - P1.3/P1.4 source code is committed: nine `events.json` definitions, deterministic event lifecycle/chains, coordinator transactional advance and deferred signal publishing, schema v28 snapshot/migration, read-only HUD data contract and Canvas readout.
 - `EffectId` is a future domain-adapter contract, not yet a world-effect implementation; those mutations remain P8.1.
 - All P1 integration/test source is code-written only. No Unreal build, automation test, PIE or save/load roundtrip was run in this session.
+- P5.1 now has a deterministic region/depth/cell/seed geology resolver, and the N-key dig adapter requests the material from this resolver rather than passing its deprecated MaterialId field. The cell remembers the first resolved material.
+- P2.2 now gates direct `DismantlePiece` calls with shared activity cost unless an enclosing multi-piece action supplies its aggregate cost; sled towing charges Carry activity by shared-clock elapsed time and releases if the puller rests/exhausts. Focused test source was authored.
 - Existing systems include item ownership/operation ledger, production, storage, terrain/voxel, agriculture/wildlife, survival, structural graph, logistics/cargo, raid director, helper and save coordinator.
 - Current gap ledger overstates whole-task completion if source presence is read as gameplay acceptance; treat runtime integration as a separate gate.
 
@@ -41,5 +43,10 @@ Baseline: latest source changes are documented as unbuilt/unrun. Prior build/tes
 - Authored `MyProject3.World.Events.DeterministicLifecycleChainAndSnapshot` for warning/active/end/chaining/snapshot/HUD coverage.
 - Three code commits are on `game/p00-adopt-group-a`; the P1 source changes are unbuilt/unrun.
 
+## Recent code changes
+- P5.1 commits `e48c3c4` and `ffcb364`: region/depth/cell-seed material resolver, `layers.json` region weights, world-clock seeded player dig path, geology resolution automation source.
+- P2.2 commits `609f445` and `28755f3`: direct dismantle calls enforce shared costs (multi-piece door/window calls avoid duplicate charges); sled tow has bounded shared-time carry cost; `MyProject3.World.Needs.SledTowChargesSharedClockActivity` authored.
+- These changes and their tests remain unbuilt/unrun.
+
 ## Next step
-Continue with the requested Phase 2–7 and Phase 9 backend gaps in bounded, source-reviewed batches. Do not claim UE compile, Automation, PIE or save/load success.
+Continue backend blind coding for P2–P7 and P9 in bounded commits; inspect remaining shared-action gates, then production/station/tool and crop/animal chains. Keep P10 frozen. Do not claim UE compile, Automation, PIE or save/load success.
