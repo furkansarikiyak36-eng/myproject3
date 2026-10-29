@@ -240,6 +240,17 @@ float UHeatSourceComponent::GetHeatAt(const FVector& WorldLocation) const
     return HeatOutputCelsius * Closeness * Closeness;
 }
 
+bool UHeatSourceComponent::RestoreSimulationFuelState(float InFuelSeconds, bool bInLit)
+{
+    if (!FMath::IsFinite(InFuelSeconds) || InFuelSeconds < 0.0f ||
+        !FMath::IsFinite(MaxFuelSeconds) || MaxFuelSeconds <= 0.0f ||
+        InFuelSeconds > MaxFuelSeconds || (bInLit && InFuelSeconds <= 0.0f))
+        return false;
+    FuelSeconds = InFuelSeconds;
+    bLit = bInLit;
+    return true;
+}
+
 void UHeatSourceComponent::AdvanceFuel(double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity)
 {
     if (!bLit || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0)
