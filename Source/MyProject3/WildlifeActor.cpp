@@ -2,6 +2,7 @@
 
 #include "ConstructionHelpers.h"
 #include "PhysicalHealthComponent.h"
+#include "WorldObjectIdentityComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -15,6 +16,7 @@ AWildlifeActor::AWildlifeActor()
     Body->SetCollisionProfileName(TEXT("BlockAll"));
     Body->SetNotifyRigidBodyCollision(true);
     Health = CreateDefaultSubobject<UPhysicalHealthComponent>(TEXT("Health"));
+    Identity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldIdentity"));
 }
 
 void AWildlifeActor::ConfigureKind(EWildlifeKind NewKind)
@@ -46,6 +48,14 @@ void AWildlifeActor::ConfigureKind(EWildlifeKind NewKind)
         MoveSpeed = 0.0f;
         break;
     }
+
+    if (IsValid(Identity))
+    {
+        const FName IdentityDefinition = Kind == EWildlifeKind::SmallAnimal
+            ? FName(TEXT("Wildlife.SmallAnimal"))
+            : (Kind == EWildlifeKind::Enemy ? FName(TEXT("Wildlife.Enemy")) : FName(TEXT("Wildlife.Plant")));
+        Identity->SetDefinitionId(IdentityDefinition);
+    }
 }
 
 void AWildlifeActor::BeginPlay()
@@ -53,15 +63,40 @@ void AWildlifeActor::BeginPlay()
     Super::BeginPlay();
     if (!Body->GetStaticMesh())
         ConfigureKind(Kind);
+    if (IsValid(Identity))
+        Identity->EnsureIdentity();
     Home = GetActorLocation();
     WanderTarget = Home;
     Health->OnDied.AddUniqueDynamic(this, &AWildlifeActor::HandleDied);
 }
 
+bool AWildlifeActor::ApplyAnimalManagementState(
+    const FGuid& AnimalId, const FGuid& PenId, const FVector& TargetLocation)
+{
+    if (!AnimalId.IsValid() || TargetLocation.ContainsNaN() ||
+        !IsValid(Identity) || !Identity->EnsureIdentity() ||
+        !IsValid(Body) || !IsValid(Health) || Health->IsDead() ||
+        Kind != EWildlifeKind::SmallAnimal)
+        return false;
+
+    if (bCapturedForAnimalManagement && CapturedAnimalId != AnimalId)
+        return false;
+
+    SetActorLocation(TargetLocation, false, nullptr, ETeleportType::TeleportPhysics);
+    bCapturedForAnimalManagement = true;
+    CapturedAnimalId = AnimalId;
+    AnimalPenId = PenId;
+    MoveSpeed = 0.0f;
+    TimeToNewTarget = 0.0f;
+    WanderTarget = GetActorLocation();
+    return true;
+}
+
 void AWildlifeActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if (Health->IsDead() || Health->IsStaggered() || MoveSpeed <= 0.0f || !GetWorld())
+    if (bCapturedForAnimalManagement || Health->IsDead() || Health->IsStaggered() ||
+        MoveSpeed <= 0.0f || !GetWorld())
         return;
 
     FVector Target = WanderTarget;
