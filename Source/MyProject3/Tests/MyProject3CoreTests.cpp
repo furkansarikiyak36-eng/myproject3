@@ -36,6 +36,8 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "WorldProductionSubsystem.h"
+#include "WorldThreatDirectorSubsystem.h"
 
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -2957,6 +2959,152 @@ bool FSurvivalConsumesOwnedFoodAndAppliesFreshnessTest::RunTest(const FString& P
     TestTrue(TEXT("Consumed food retry remains successful after restore"),
         Survival->TryConsumeFoodItem(EatOperationId, Profile.EntityId, Profile.Revision,
             MealId, 1, InventoryOwnerId));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProductionResourceIntakeRecipeLoopTest,
+    "MyProject3.Production.ResourceIntakeFeedsRecipeAndOutputDoesNotDuplicate", TestFlags)
+bool FProductionResourceIntakeRecipeLoopTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldProductionSubsystem* Production = World
+        ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Ownership"), Ownership) ||
+        !TestNotNull(TEXT("Production"), Production))
+        return false;
+
+    FWorldOwnedItemRecord Ore;
+    Ore.ItemId = FGuid::NewGuid();
+    Ore.DefinitionId = TEXT("Test.CopperOre");
+    Ore.BaseDefinitionId = Ore.DefinitionId;
+    Ore.OwnerKind = EWorldItemOwnerKind::World;
+    Ore.Quantity = 1;
+    Ore.WorldLocation = FVector(20, 30, 40);
+    TestTrue(TEXT("Register mine output as an authoritative world item"), Ownership->RegisterItem(Ore));
+
+    FWorldProductionStation Station;
+    Station.StationId = FGuid::NewGuid();
+    Station.StationTag = TEXT("Test.Smelter");
+    Station.StorageCapacityUnits = 8;
+    Station.Revision = 1;
+    TestTrue(TEXT("Register bounded smelting station"), Production->RegisterStation(Station));
+
+    const FGuid IntakeOperationId = FGuid::NewGuid();
+    FName StockItemId = NAME_None;
+    TestTrue(TEXT("Ingest ledger-only ore into station stock"), Production->TryIngestWorldOwnedItem(
+        Station.StationId, IntakeOperationId, Ore.ItemId, 1, 1, StockItemId));
+    TestEqual(TEXT("Stock key is the resource definition"), StockItemId, Ore.DefinitionId);
+    FWorldOwnedItemRecord IngestedOre;
+    TestTrue(TEXT("Ore identity remains in ownership history"), Ownership->TryGetItem(Ore.ItemId, IngestedOre));
+    TestEqual(TEXT("Station intake transforms the source owner"), IngestedOre.OwnerKind, EWorldItemOwnerKind::Transformed);
+
+    FName RetryStockId = NAME_None;
+    TestTrue(TEXT("Intake retry replays the receipt after station revision changed"),
+        Production->TryIngestWorldOwnedItem(
+            Station.StationId, IntakeOperationId, Ore.ItemId, 1, 1, RetryStockId));
+    TestEqual(TEXT("Intake retry returns the same stock key"), RetryStockId, StockItemId);
+    FWorldProductionStation AfterIntake;
+    TestTrue(TEXT("Read station after intake"), Production->GetStation(Station.StationId, AfterIntake));
+    TestEqual(TEXT("Ore stock added once"), AfterIntake.Stock.FindRef(Ore.DefinitionId), 1);
+
+    FWorldProductionRecipe Recipe;
+    Recipe.RecipeId = TEXT("Test.SmeltCopper");
+    Recipe.DurationSeconds = 1.0;
+    Recipe.RequiredStationTag = Station.StationTag;
+    FProductionIngredient Input;
+    Input.ItemId = TEXT("Test.CopperOre");
+    Input.Quantity = 1;
+    Recipe.Inputs.Add(Input);
+    FProductionIngredient Output;
+    Output.ItemId = TEXT("Test.CopperIngot");
+    Output.Quantity = 2;
+    Recipe.Outputs.Add(Output);
+    TestTrue(TEXT("Register ore-to-ingot recipe"), Production->RegisterRecipe(Recipe));
+
+    const FGuid EnqueueOperationId = FGuid::NewGuid();
+    FGuid JobId;
+    TestTrue(TEXT("Enqueue reserves inputs and records the job"), Production->TryEnqueueJob(
+        EnqueueOperationId, Station.StationId, Recipe.RecipeId,
+        AfterIntake.Revision, JobId));
+    FWorldProductionStation AfterEnqueue;
+    TestTrue(TEXT("Read station after enqueue"), Production->GetStation(Station.StationId, AfterEnqueue));
+    TestEqual(TEXT("Input stock is consumed exactly once"), AfterEnqueue.Stock.FindRef(Ore.DefinitionId), 0);
+    TestTrue(TEXT("One shared fixed step completes the deterministic recipe"),
+        Production->AdvanceProductionStep(1.0));
+
+    FWorldProductionStation Completed;
+    TestTrue(TEXT("Read completed station"), Production->GetStation(Station.StationId, Completed));
+    TestEqual(TEXT("Configured output quantity becomes station stock"),
+        Completed.Stock.FindRef(TEXT("Test.CopperIngot")), 2);
+    TestTrue(TEXT("Completed job state is durable"),
+        Completed.Jobs.ContainsByPredicate([JobId](const FWorldProductionJob& Job)
+        {
+            return Job.JobId == JobId && Job.State == EProductionJobState::Completed;
+        }));
+
+    FGuid RetryJobId;
+    TestTrue(TEXT("Enqueue retry replays original job after revisions advance"),
+        Production->TryEnqueueJob(EnqueueOperationId, Station.StationId, Recipe.RecipeId,
+            AfterIntake.Revision, RetryJobId));
+    TestEqual(TEXT("Enqueue retry returns the same job"), RetryJobId, JobId);
+    TestTrue(TEXT("Advancing after completion does not duplicate output"),
+        Production->AdvanceProductionStep(1.0));
+    FWorldProductionStation AfterDuplicateStep;
+    TestTrue(TEXT("Read station after duplicate step"),
+        Production->GetStation(Station.StationId, AfterDuplicateStep));
+    TestEqual(TEXT("Output quantity remains two"),
+        AfterDuplicateStep.Stock.FindRef(TEXT("Test.CopperIngot")), 2);
+
+    TArray<FWorldProductionStation> Stations;
+    TArray<FWorldProductionRecipe> Recipes;
+    Production->ExportSnapshot(Stations, Recipes);
+    TestTrue(TEXT("Station restore validates item-intake receipt history"),
+        Production->RestoreSnapshot(Stations, Recipes));
+    FName PostRestoreStockKey = NAME_None;
+    TestTrue(TEXT("Item intake retry remains idempotent after snapshot restore"),
+        Production->TryIngestWorldOwnedItem(
+            Station.StationId, IntakeOperationId, Ore.ItemId, 1, 1, PostRestoreStockKey));
+    TestEqual(TEXT("Post-restore receipt still identifies original stock"), PostRestoreStockKey, Ore.DefinitionId);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FThreatDamagePulseReceiptTest,
+    "MyProject3.Threat.DamagePulseClaimIsIdempotentAcrossRestore", TestFlags)
+bool FThreatDamagePulseReceiptTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldThreatDirectorSubsystem* Threat = World
+        ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Threat director"), Threat))
+        return false;
+
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(5555, 0.0));
+    TestTrue(TEXT("Initialize director with immediate warning"), Threat->InitializeDirector(0.0));
+    TestTrue(TEXT("Create warning state"), Threat->AdvanceDirectorAtTime(0.0, 0));
+    FThreatRaidRecord Warning;
+    TestTrue(TEXT("Read current raid"), Threat->GetCurrentRaid(Warning));
+    TestEqual(TEXT("Raid starts in warning state"), Warning.State, EThreatRaidState::Warning);
+    TestTrue(TEXT("Advance to raid active time"),
+        Threat->AdvanceDirectorAtTime(Warning.ActiveStartTime, 1));
+    FThreatRaidRecord Active;
+    TestTrue(TEXT("Read active raid"), Threat->GetCurrentRaid(Active));
+    TestEqual(TEXT("Raid reaches active state"), Active.State, EThreatRaidState::Active);
+    TestTrue(TEXT("First pulse claim succeeds"), Threat->TryClaimDamagePulse(Active.RaidId, 0));
+    TestFalse(TEXT("Same pulse cannot be claimed twice"), Threat->TryClaimDamagePulse(Active.RaidId, 0));
+
+    const FWorldThreatDirectorSnapshot Snapshot = Threat->ExportSnapshot();
+    TestTrue(TEXT("Restore retains pulse receipt"), Threat->RestoreSnapshot(Snapshot));
+    TestFalse(TEXT("Restored director rejects replay of the claimed pulse"),
+        Threat->TryClaimDamagePulse(Active.RaidId, 0));
+    TestTrue(TEXT("Next pulse can be claimed"), Threat->TryClaimDamagePulse(Active.RaidId, 1));
+    TestFalse(TEXT("Unknown raid cannot claim a pulse"), Threat->TryClaimDamagePulse(FGuid::NewGuid(), 2));
     return true;
 }
 
