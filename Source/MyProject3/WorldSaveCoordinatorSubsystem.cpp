@@ -639,7 +639,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         }
     }
     Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
-    Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals);
+    Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals, OutSave->FieldCells);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
@@ -765,7 +765,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
 
     if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells, Snapshot->TerrainReceipts)) return false;
-    if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals)) return false;
+    if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals, Snapshot->FieldCells)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
     if (!Production->RestoreSnapshot(Snapshot->ProductionStations, Snapshot->ProductionRecipes)) return false;
@@ -930,6 +930,23 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // defaults (rate 1, age 0 counted from creation) give the old behaviour.
         Candidate->SchemaVersion = 22;
     }
+    if (Candidate->SchemaVersion == 22)
+    {
+        // Schema v23 adds persisted farm-field cells and seed-return receipts.
+        // Older crop records have no field-cell history or harvested-seed item IDs;
+        // preserve their harvest outputs but do not invent field preparation or seed output history.
+        Candidate->FieldCells.Reset();
+        for (FWorldCropState& Crop : Candidate->Crops)
+        {
+            Crop.SeedReturnUnits = 0;
+            Crop.SeedOutputDefinitionId = NAME_None;
+            Crop.SeedOutputItemIds.Reset();
+            Crop.SoilExhaustionPerHarvest = 0.0f;
+            Crop.MinimumFertility = 0.0f;
+        }
+        Candidate->SchemaVersion = 23;
+    }
+
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
