@@ -616,6 +616,18 @@ bool UWorldSurvivalSubsystem::RecordActivity(
     {
         return false;
     }
+
+    // Player adapters call this before a costly action. Sprinting stops earlier
+    // than ordinary work; severe exhaustion also blocks strenuous actions.
+    if (Activity == ESurvivalActivity::Run &&
+        (Profile->Stamina <= 20.0f || Profile->Fatigue >= 85.0f))
+        return false;
+    const bool bStrenuous = Activity == ESurvivalActivity::Chop ||
+        Activity == ESurvivalActivity::Dig || Activity == ESurvivalActivity::Build ||
+        Activity == ESurvivalActivity::Carry;
+    if (bStrenuous && (Profile->Stamina <= 5.0f || Profile->Fatigue >= 95.0f))
+        return false;
+
     const float Hours = DurationSeconds / 3600.0f;
     const float Kcal = (GetActivityKcalPerHour(Activity) + CarriedMassKg * CarryKcalPerKgHour) * Hours;
     Profile->PendingActivityKcal = FMath::Min(100000.0f, Profile->PendingActivityKcal + Kcal);
