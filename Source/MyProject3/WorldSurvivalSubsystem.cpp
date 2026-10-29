@@ -1063,7 +1063,11 @@ bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
 
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
     const FWorldDiscoveryDefinition* Definition = FindDiscoveryDefinition(DiscoveryId);
-    if (!Profile || !Definition || Profile->Revision != ExpectedProfileRevision ||
+    UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Profile || !Definition || !Clock || !Clock->IsClockInitialized() ||
+        !FMath::IsNearlyEqual(Clock->GetSimulationTimeSeconds(), LogicalTimeSeconds, 0.001) ||
+        Profile->Revision != ExpectedProfileRevision ||
         Profile->Revision >= MAX_int64 - 1 || Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
         MaxDiscoveryRecords <= 0 || MaxDiscoveryRecords > 16384)
         return false;
