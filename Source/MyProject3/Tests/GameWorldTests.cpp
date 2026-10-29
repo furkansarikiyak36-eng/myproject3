@@ -15,6 +15,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "WorldInfrastructureRouteLinkComponent.h"
 #include "WorldAgricultureSubsystem.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
@@ -931,8 +932,17 @@ bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
         BeforePath.Contains(TEXT("Route.Ford.WestBank")) &&
         BeforePath.Contains(TEXT("Route.Ford.EastBank")));
 
-    TestTrue(TEXT("Bridge construction marks its two route directions built"),
-        Routes->SetInfrastructureBuilt(TEXT("Infrastructure.CreekBridge"), true));
+    AActor* BridgeRoot = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Bridge route-level root actor"), BridgeRoot))
+        return false;
+    UWorldInfrastructureRouteLinkComponent* RouteLink =
+        NewObject<UWorldInfrastructureRouteLinkComponent>(BridgeRoot);
+    BridgeRoot->AddInstanceComponent(RouteLink);
+    RouteLink->InfrastructureId = TEXT("Infrastructure.CreekBridge");
+    RouteLink->RegisterComponent();
+    TestTrue(TEXT("Completed bridge root marks both route directions usable"),
+        RouteLink->SetInfrastructureUsable(true));
+    TestTrue(TEXT("Bridge root retains usable state"), RouteLink->IsInfrastructureUsable());
     TArray<FName> AfterPath;
     float AfterCost = 0.0f;
     TestTrue(TEXT("Find route after bridge construction"),
@@ -946,8 +956,8 @@ bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
     TArray<FLogisticsRouteNode> SavedNodes;
     TArray<FLogisticsRouteEdge> SavedEdges;
     Routes->ExportSnapshot(SavedNodes, SavedEdges);
-    TestTrue(TEXT("Temporarily remove bridge state"),
-        Routes->SetInfrastructureBuilt(TEXT("Infrastructure.CreekBridge"), false));
+    TestTrue(TEXT("Simulate bridge damage by disabling the route root"),
+        RouteLink->SetInfrastructureUsable(false));
     TArray<FName> UnbuiltPath;
     float UnbuiltCost = 0.0f;
     TestTrue(TEXT("Find route while bridge is marked absent"),
