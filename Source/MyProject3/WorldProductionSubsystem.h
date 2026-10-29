@@ -155,6 +155,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryMaterializeStockAsWorldLog(FGuid StationId, FGuid OperationId, FName StockItemId, FName DefinitionId, FName BaseDefinitionId, FName MeshVariantSetId, int64 ExpectedStationRevision, const FTransform& SpawnTransform, TSubclassOf<ALogBuildPiece> LogActorClass, FGuid& OutWorldItemId);
     /** Retry-safe enqueue; caller must reuse OperationId when retrying the same request. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryEnqueueJob(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid& OutJobId);
+    /** Player-bound enqueue. Any recipe/input/output listed in discovery unlocks is gated by the player's saved knowledge. */
+    UFUNCTION(BlueprintCallable, Category="World|Production|Progression") bool TryEnqueueJobForPlayer(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid PlayerEntityId, FGuid& OutJobId);
     /** Legacy convenience wrapper. Use TryEnqueueJob for retry-safe callers. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool EnqueueJob(const FGuid& StationId, FName RecipeId, FGuid& OutJobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool CanAdvanceProductionStep(double DeltaSeconds) const;
@@ -171,4 +173,7 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") TArray<FWorldProductionRecipe> Recipes;
     int32 FindRecipe(FName RecipeId) const;
     int64 CountStockUnits(const TMap<FName, int32>& Stock) const;
+    bool IsRecipeAvailableForPlayer(FName RecipeId, const FGuid& PlayerEntityId) const;
+    bool TryEnqueueJobInternal(FGuid OperationId, FGuid StationId, FName RecipeId,
+        int64 ExpectedStationRevision, FGuid& OutJobId);
 };
