@@ -1803,7 +1803,10 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             if (!Receipt.OperationId.IsValid() || SeenOperationIds.Contains(Receipt.OperationId) ||
                 Receipt.EntityId != Animal.AnimalId ||
                 (Receipt.Action != EWorldAgricultureActionKind::FeedAnimal &&
-                 Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts) ||
+                 Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts &&
+                 Receipt.Action != EWorldAgricultureActionKind::CaptureAnimal &&
+                 Receipt.Action != EWorldAgricultureActionKind::AssignAnimalToPen &&
+                 Receipt.Action != EWorldAgricultureActionKind::SlaughterAnimal) ||
                 Receipt.ExpectedEntityRevision <= 0 ||
                 Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
                 Receipt.ResultingEntityRevision > Animal.Revision)
@@ -1817,14 +1820,16 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                     Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.FeedDefinitionId ||
                     !FMath::IsFinite(Receipt.HungerReduction) ||
                     Receipt.HungerReduction <= 0.0f || Receipt.HungerReduction > 100.0f ||
-                    !Receipt.OutputItemIds.IsEmpty())
+                    !Receipt.OutputItemIds.IsEmpty() || Receipt.RelatedEntityId.IsValid())
                     return false;
+                bNeedsItemValidation = true;
             }
-            else
+            else if (Receipt.Action == EWorldAgricultureActionKind::CollectAnimalProducts)
             {
                 if (Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.ProductDefinitionId ||
                     Receipt.RequestedOutputUnits <= 0 || Receipt.RequestedOutputUnits > 64 ||
-                    Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits)
+                    Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits ||
+                    Receipt.RelatedEntityId.IsValid())
                     return false;
                 for (const FGuid& ItemId : Receipt.OutputItemIds)
                 {
@@ -1832,8 +1837,60 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                         return false;
                     SeenOutputIds.Add(ItemId);
                 }
+                bNeedsItemValidation = true;
             }
-            bNeedsItemValidation = true;
+            else if (Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal)
+            {
+                if (!Animal.bCaptured || Receipt.OperationId != Animal.CaptureOperationId ||
+                    Receipt.InputItemId != Animal.CaptureToolItemId ||
+                    Receipt.ExpectedInventoryOwnerId != Animal.CaptureInventoryOwnerId ||
+                    Receipt.ExpectedItemRevision != Animal.CaptureToolExpectedRevision ||
+                    Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision ||
+                    Receipt.DefinitionId != Animal.AnimalDefinitionId ||
+                    !Receipt.InputItemId.IsValid() || !Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    !Receipt.OutputItemIds.IsEmpty() || Receipt.RelatedEntityId.IsValid() ||
+                    Receipt.ExpectedRelatedEntityRevision != 0 ||
+                    Receipt.ResultingRelatedEntityRevision != 0)
+                    return false;
+                bNeedsItemValidation = true;
+            }
+            else if (Receipt.Action == EWorldAgricultureActionKind::AssignAnimalToPen)
+            {
+                const FWorldAnimalPenState* RelatedPen = NewPens.Find(Receipt.RelatedEntityId);
+                if (!Animal.bCaptured || !Receipt.RelatedEntityId.IsValid() || !RelatedPen ||
+                    Receipt.DefinitionId != TEXT("AnimalPen") ||
+                    Receipt.ExpectedRelatedEntityRevision <= 0 ||
+                    Receipt.ResultingRelatedEntityRevision != Receipt.ExpectedRelatedEntityRevision + 1 ||
+                    Receipt.ResultingRelatedEntityRevision > RelatedPen->Revision ||
+                    Receipt.InputItemId.IsValid() || Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    Receipt.ExpectedItemRevision != 0 || Receipt.ResultingItemRevision != 0 ||
+                    !Receipt.OutputItemIds.IsEmpty() ||
+                    (!Animal.bSlaughtered && Animal.PenId != Receipt.RelatedEntityId))
+                    return false;
+            }
+            else
+            {
+                const FWorldAnimalPenState* RelatedPen = NewPens.Find(Receipt.RelatedEntityId);
+                if (!Animal.bSlaughtered || Receipt.OperationId != Animal.SlaughterOperationId ||
+                    !Receipt.RelatedEntityId.IsValid() || !RelatedPen ||
+                    Receipt.DefinitionId != Animal.AnimalDefinitionId ||
+                    Receipt.ExpectedRelatedEntityRevision <= 0 ||
+                    Receipt.ResultingRelatedEntityRevision != Receipt.ExpectedRelatedEntityRevision + 1 ||
+                    Receipt.ResultingRelatedEntityRevision > RelatedPen->Revision ||
+                    Receipt.RequestedOutputUnits <= 0 || Receipt.RequestedOutputUnits > 64 ||
+                    Receipt.OutputItemIds != Animal.SlaughterOutputItemIds ||
+                    Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits ||
+                    Receipt.InputItemId.IsValid() || Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    Receipt.ExpectedItemRevision != 0 || Receipt.ResultingItemRevision != 0)
+                    return false;
+                for (const FGuid& ItemId : Receipt.OutputItemIds)
+                {
+                    if (!ItemId.IsValid() || SeenOutputIds.Contains(ItemId))
+                        return false;
+                    SeenOutputIds.Add(ItemId);
+                }
+                bNeedsItemValidation = true;
+            }
             SeenOperationIds.Add(Receipt.OperationId);
         }
     }
