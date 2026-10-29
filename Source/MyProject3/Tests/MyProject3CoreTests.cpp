@@ -1609,6 +1609,24 @@ bool FShelterCoverTest::RunTest(const FString& Parameters)
     SpawnBeam(World, FVector(0, 0, 300), FRotator::ZeroRotator, 2000.0f, 2000.0f, true)->SetActorScale3D(FVector(20.0f, 20.0f, 0.2f));
     UShelterSensorComponent::MeasureAt(World, FVector(0, 0, 100), nullptr, Roof, Walls);
     TestTrue(FString::Printf(TEXT("Under a roof (%.2f)"), Roof), Roof > 0.8f);
+
+    // An empty door frame blocks Visibility for aiming, but isn't a wall.
+    AConstructionOpeningActor* Opening = World->SpawnActor<AConstructionOpeningActor>(
+        FVector(300.0f, 0.0f, 100.0f), FRotator(0.0f, 90.0f, 0.0f));
+    if (!TestNotNull(TEXT("Empty door opening"), Opening))
+        return false;
+    Opening->InitializeOpening(EConstructionOpeningKind::Door, 100.0f, 200.0f);
+    UShelterSensorComponent::MeasureAt(World, FVector(0, 0, 100), nullptr, Roof, Walls);
+    TestTrue(FString::Printf(TEXT("Empty doorway does not count as a wall (%.2f)"), Walls),
+        Walls < 0.001f);
+
+    // A real placed wall behind the opening must remain detectable after the
+    // sensor ignores the opening frame and traces farther along the same ray.
+    SpawnBeam(World, FVector(500.0f, 0.0f, 100.0f),
+        FRotator(0.0f, 90.0f, 0.0f), 200.0f, 30.0f, true);
+    UShelterSensorComponent::MeasureAt(World, FVector(0, 0, 100), nullptr, Roof, Walls);
+    TestTrue(FString::Printf(TEXT("Placed wall behind the doorway still shelters (%.2f)"), Walls),
+        Walls >= 0.12f);
     return true;
 }
 
