@@ -37,7 +37,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool", meta=(ClampMin="0"))
     int32 DepthLayer = 0;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool")
+    /** Region used by the deterministic geology resolver; set this per region-specific tool/adapter. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool|Geology")
+    FName RegionId = TEXT("Zone0");
+
+    /** Legacy serialized field. Geology now comes from region/depth/cell; this value is ignored. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool", meta=(DeprecatedProperty, DeprecationMessage="Material is resolved by the region/depth geology rules."))
     FName MaterialId = NAME_None;
 
     void BindDefaultInput(UInputComponent* InputComponent);

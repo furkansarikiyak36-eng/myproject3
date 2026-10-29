@@ -1805,4 +1805,36 @@ bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Par
     return true;
 }
 
+
+// P5.1: region/depth geology is resolved from stable cell coordinates and world seed, not a material argument.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGeologyResolverTest,
+    "MyProject3.World.Dig.GeologyResolvesByRegionDepthAndStableSeed", Flags)
+bool FGeologyResolverTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldTerrainStateSubsystem* Terrain = World ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Terrain"), Terrain))
+        return false;
+    TestTrue(TEXT("Load and apply geology data"), Data->LoadDefault() && Data->ApplyToWorld());
+
+    FName First, Repeat, DeepZone4;
+    const FIntVector Cell(12, -3, 2);
+    TestTrue(TEXT("Zone0 surface resolves"), Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone0"), 0, 981, First));
+    TestTrue(TEXT("Same cell/seed is stable"), Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone0"), 0, 981, Repeat));
+    TestEqual(TEXT("Stable material"), Repeat, First);
+    TestTrue(TEXT("Zone0 surface only uses configured materials"),
+        First == TEXT("Soil") || First == TEXT("Sand"));
+
+    TestTrue(TEXT("Zone4 deep geology resolves"), Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone4"), 3, 981, DeepZone4));
+    TestTrue(TEXT("Zone4 deep material is region-limited"),
+        DeepZone4 == TEXT("Stone") || DeepZone4 == TEXT("Flint") || DeepZone4 == TEXT("Ochre"));
+    TestFalse(TEXT("Unknown region fails closed"),
+        Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone99"), 0, 981, Repeat));
+    TestFalse(TEXT("Depth outside editable range fails"),
+        Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone0"), 4, 981, Repeat));
+    return true;
+}
+
 #endif
