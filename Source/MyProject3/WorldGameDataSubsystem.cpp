@@ -785,6 +785,78 @@ const FGameDataTransformation* UWorldGameDataSubsystem::FindTransformation(FName
     return Transformations.FindByPredicate([Id](const FGameDataTransformation& T) { return T.Id == Id; });
 }
 
+bool UWorldGameDataSubsystem::CanEnterZone(
+    const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const
+{
+    OutReason.Reset();
+    if (!bLoaded || !bApplied || !PlayerEntityId.IsValid() || ZoneId.IsNone())
+    {
+        OutReason = TEXT("Zone access needs loaded/applied game data and a registered player profile.");
+        return false;
+    }
+
+    const FGameDataZone* Zone = Zones.FindByPredicate([ZoneId](const FGameDataZone& Candidate)
+    {
+        return Candidate.Id == ZoneId;
+    });
+    if (!Zone)
+    {
+        OutReason = FString::Printf(TEXT("Unknown zone %s."), *ZoneId.ToString());
+        return false;
+    }
+
+    UWorld* World = GetWorld();
+    const UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    const UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!Clock || !Survival)
+    {
+        OutReason = TEXT("Zone access requires the simulation clock and survival subsystem.");
+        return false;
+    }
+
+    if (!Zone->SeasonalMonths.IsEmpty())
+    {
+        FWorldCalendarDate Date;
+        if (!Clock->IsClockInitialized() || !Clock->GetCalendarDate(Date))
+        {
+            OutReason = TEXT("Zone access requires an initialized world calendar.");
+            return false;
+        }
+        if (!Zone->SeasonalMonths.Contains(Date.Month))
+        {
+            OutReason = FString::Printf(TEXT("%s is seasonally closed in month %d."),
+                *Zone->Name, Date.Month);
+            return false;
+        }
+    }
+
+    for (const FName CapabilityId : Zone->RequiredCapabilityIds)
+    {
+        if (!Survival->HasEquippedCapability(PlayerEntityId, CapabilityId))
+        {
+            OutReason = FString::Printf(TEXT("%s requires equipped capability %s."),
+                *Zone->Name, *CapabilityId.ToString());
+            return false;
+        }
+    }
+
+    const TArray<FWorldDiscoveryRecord> RecordedDiscoveries = Survival->GetDiscoveries();
+    for (const FName DiscoveryId : Zone->RequiredDiscoveryIds)
+    {
+        if (!RecordedDiscoveries.ContainsByPredicate([DiscoveryId](const FWorldDiscoveryRecord& Record)
+            { return Record.DiscoveryId == DiscoveryId; }))
+        {
+            OutReason = FString::Printf(TEXT("%s requires discovery %s."),
+                *Zone->Name, *DiscoveryId.ToString());
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool UWorldGameDataSubsystem::ApplyToWorld()
 {
     UWorld* World = GetWorld();
@@ -864,6 +936,7 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         ToSlot(E.Slot, Definition.Slot);
         Definition.Insulation = E.Insulation;
         Definition.WaterResistance = E.WaterResistance;
+        Definition.GrantedCapabilityIds = E.GrantedCapabilities;
         if (!Survival->RegisterEquipmentDefinition(Definition))
             return Fail(FString::Printf(TEXT("Survival refused equipment %s"), *E.ItemId.ToString()));
     }
