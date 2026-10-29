@@ -58,6 +58,7 @@ Branch: feature/simple-intent · Commits: 7de76ff, eaf6d8d
 |---|---|
 | `STATE.md` | Current state: branches, what works, what is open. |
 | `CURRENT_TASK.md` | Checkpoint of the task in progress; saved after every step so a new session resumes. |
+| `PLAN_STATUS.md` | Per plan task: exists / partial / missing, and exactly what is missing. |
 | `ROADMAP.md` | Ordered tasks of the game plan, honest status, how to continue. |
 | `CODEBASE.md` | Living analysis: every area, its files, status and gap vs the plan. |
 | `CODE_INDEX.md` | Generated list of every C++ file, type, enum, UFUNCTION (`tools/memory_code_index.py`). |

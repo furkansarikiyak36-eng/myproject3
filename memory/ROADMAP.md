@@ -47,6 +47,8 @@ Never write a higher status than you proved. A web assistant that cannot build m
   not in C++ (after P0.3).
 - Add an automation test with every behaviour change.
 
+Exact per-task status (exists / partial / missing): `PLAN_STATUS.md`.
+
 ## What `group-a-code-closure` gives each task (if adopted, Q00)
 
 Checked 2026-10-29 from its headers. "Fits" = matches the plan; "partly" = a base, plan needs more.
