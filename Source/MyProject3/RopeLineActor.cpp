@@ -59,7 +59,17 @@ bool ARopeLineActor::TrySendAlong(AActor* Piece)
 {
     if (!IsValid(Piece) || !GetWorld() || !IsZipline() ||
         !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f ||
+        !FMath::IsFinite(MaxLoadMassKg) || MaxLoadMassKg <= 0.0f ||
+        !FMath::IsFinite(SlidingFrictionCoefficient) ||
+        SlidingFrictionCoefficient < 0.0f || SlidingFrictionCoefficient > 1.0f ||
         Riders.ContainsByPredicate([Piece](const FRider& Rider) { return Rider.Piece.Get() == Piece; }))
+        return false;
+
+    // Use the shared nominal-volume/density estimate; a non-simulating mesh's
+    // engine mass can be unset and must not bypass the authored rope capacity.
+    const float PieceMassKg = EstimateMassKg(Piece);
+    if (!FMath::IsFinite(PieceMassKg) || PieceMassKg <= 0.0f ||
+        PieceMassKg > MaxLoadMassKg)
         return false;
 
     UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent());
@@ -109,7 +119,10 @@ void ARopeLineActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if (Riders.IsEmpty() || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0f ||
-        !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f)
+        !FMath::IsFinite(MaxRideSpeed) || MaxRideSpeed <= 0.0f ||
+        !FMath::IsFinite(MaxLoadMassKg) || MaxLoadMassKg <= 0.0f ||
+        !FMath::IsFinite(SlidingFrictionCoefficient) ||
+        SlidingFrictionCoefficient < 0.0f || SlidingFrictionCoefficient > 1.0f)
         return;
 
     const FVector Upper = GetUpperPoint();
@@ -119,9 +132,16 @@ void ARopeLineActor::Tick(float DeltaSeconds)
         return;
 
     const float SlopeRadians = FMath::DegreesToRadians(GetSlopeDegrees());
-    const float GravityAlongRope = 980.0f * FMath::Sin(SlopeRadians);
-    constexpr float FrictionAccelerationCmPerSecondSquared = 60.0f;
-    const float NetAcceleration = GravityAlongRope - FrictionAccelerationCmPerSecondSquared;
+    constexpr float GravityCmPerSecondSquared = 980.0f;
+    const float GravityAlongRope = GravityCmPerSecondSquared * FMath::Sin(SlopeRadians);
+    const float NormalAcceleration = GravityCmPerSecondSquared * FMath::Cos(SlopeRadians);
+    // Coulomb friction scales with the normal force. Mass cancels from sliding
+    // acceleration, while the nominal mass cap above still bounds rope loading.
+    const float FrictionAcceleration =
+        SlidingFrictionCoefficient * FMath::Max(0.0f, NormalAcceleration);
+    const float NetAcceleration = GravityAlongRope - FrictionAcceleration;
+    if (!FMath::IsFinite(NetAcceleration))
+        return;
     const FVector Down = (Lower - Upper).GetSafeNormal();
     if (!FMath::IsFinite(Down.X) || !FMath::IsFinite(Down.Y) || !FMath::IsFinite(Down.Z))
         return;
