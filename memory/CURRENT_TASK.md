@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `FillCreekWaterInput()` to `VerticalSliceCWorldActor.h`, then implement `I` key binding and handler in `.cpp`: require `IsInCreek`, locate an owned `Pot.Fired` stack and its ledger revision, get current survival profile revision, call `TryFillWaterFromCreek`, and show clear feedback. Then add wetness/cold and fill test rows to `PLAN_STATUS.md`/`ROADMAP.md`, and continue remaining partial tasks. No build/PIE yet.
+Implement the VerticalSlice_C handler and bind `I` with `bConsumeInput=false`. Ensure it validates creek position and exact pot ledger ownership before calling the survival fill transaction; display dirty-water and no-pot feedback. Then add the tests for wet/cold trigger.
