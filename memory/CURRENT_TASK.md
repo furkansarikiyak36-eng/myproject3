@@ -25,36 +25,39 @@ Goal: Close the remaining partial tasks listed in `memory/PLAN_STATUS.md` on `ga
 Asked by the user: "bu kısmileri bitirelim" (2026-10-29)
 Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
-### Plan (write code and tests; do not build per small task; status ceiling is code-written until batch build)
+### Plan (write code and tests; do not build per small task; status ceiling is code-written)
 
-0. [x] Update this checkpoint before reading source code; scope is current `PLAN_STATUS.md`, not the stale count of 27 in older notes.
-1. [ ] P0.5 + P2.1–P2.5: remove hard-coded demo recipe; complete water, fatigue action effects, wetness/cold triggers, illness/injury triggers; review ledger item ownership.
+0. [x] Update checkpoint before source reads; scope from current `PLAN_STATUS.md`, not stale count of 27.
+1. [ ] P0.5 + P2.1–P2.5: remove hard-coded demo recipe; complete water, fatigue action effects, wetness/cold triggers, illness/injury triggers; check ledger item ownership.
 2. [ ] P3.1–P3.2 + P4.1/P4.3/P4.4: fuel wetness and fire interaction, enclosure heat-loss gaps, resource placement hooks, station interaction, tool-item strength links.
-3. [ ] P6.1–P6.4: field-cell states, calendar-gated planting, all crop steps supported by current architecture, soil exhaustion/seed return, animal capture/pen/slaughter chain; register definitions from data.
+3. [ ] P6.1–P6.4: field-cell states, calendar-gated planting, crop steps, soil exhaustion/seed return, animal capture/pen/slaughter chain; register definitions from data.
 4. [ ] P7.1–P7.4: player route cost, populated zones, physical discovery placement and unlock gates, missing primitive infrastructure and weather maintenance.
 5. [ ] P8.2–P8.3: raid signals, snow load/avalanche/fire spread, material-based repair.
-6. [ ] P9.2 + Save: helper station usage and persistence of all relevant actor transforms/system state.
-7. [ ] Do not implement P10 now (explicitly frozen); do not invent work for completed tasks. Keep existing physical snap kernel unchanged.
-8. [ ] Add/update targeted automation tests for the changed logic and a headless whole-world year/save-load test, without invoking a build at each step.
-9. [ ] Update `PLAN_STATUS.md`, `CODEBASE.md`, this checkpoint and roadmap truthfully. Mark code only as `code-written`; do not claim compile/PIE verified until batch validation is run.
-10. [ ] Once all intended edits are in, prepare one batch build/fix session and then wire/inspect the scene; scene remains last.
+6. [ ] P9.2 + Save: helper station usage and persistence of actor transforms/system state.
+7. [ ] P10 frozen: skip; do not extend physical snap kernel.
+8. [ ] Add/update targeted automation tests and headless whole-world year/save-load test; no build after each step.
+9. [ ] Update `PLAN_STATUS.md`, `CODEBASE.md`, this checkpoint and roadmap truthfully; do not claim compile/PIE verified.
+10. [ ] When edits are done, prepare batch build/fix, then scene work last.
 
-### Rules inherited from user
-- No build after each task: write code and tests, batch build/fix at the end (`memory/ROADMAP.md`).
-- Backend first; scene last; include a headless full-year simulation test.
-- P10 physical assembly is frozen: skip it rather than extending the scope now.
-- Use names/signatures from headers read in this session; do not guess Unreal reflection/API names.
-- After every repository step, update this file with Findings/Changes and Next step.
+### User constraints
+- No build after each task; write code/tests and batch build/fix at the end (`memory/ROADMAP.md`).
+- Backend first; scene last; include a headless whole-world year test.
+- P10 is frozen; skip it.
+- Never guess Unreal API names; use headers read in this session.
+- After every repository step, update Findings/Changes and Next step here.
 
 ### Read
-- `memory/CURRENT_TASK.md` (this checkpoint only; no gameplay source read yet).
+- `memory/CURRENT_TASK.md` (checkpoint only).
+- `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
 
 ### Findings
-- Current status source lists 22 partial tasks (not 27); P10 is one row but explicitly frozen.
-- Working branch is `game/p00-adopt-group-a`; `memory/ROADMAP.md` says code status must remain `code-written` until batch validation.
+- Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
+- `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
+- Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
 
 ### Changes
-- Replaced the previous stale checkpoint with this user's current task and plan before opening gameplay source.
+- Replaced stale checkpoint for the current request before gameplay source reads.
+- After reading `CODEBASE.md`, recorded its stale branch scope and the current roadmap's newer test-count reference.
 
 ### Next step
-Read `memory/CODEBASE.md` and `memory/CODE_INDEX.md` only to identify the exact source/header paths for P0.5/P2, then fetch and inspect the relevant headers before writing code. Update this checkpoint after each read/edit.
+Read `memory/CODE_INDEX.md` to map exact headers/sources for the first task batch (P0.5 + P2.1–P2.5), then fetch only the headers identified there. Update this checkpoint after each read/edit.
