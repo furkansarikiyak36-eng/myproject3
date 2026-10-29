@@ -129,12 +129,14 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
+        !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
         !ReadJson(Directory, TEXT("events.json"), EventsJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
@@ -287,6 +289,55 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             return Fail(FString::Printf(TEXT("Equipment %s has an unknown slot"), *E.ItemId.ToString()));
     }
 
+    TArray<FGameDataZone> NewZones;
+    const TArray<TSharedPtr<FJsonValue>>* ZoneValues = ArrayField(ZonesJson, TEXT("zones"));
+    if (!ZoneValues || ZoneValues->IsEmpty())
+        return Fail(TEXT("zones.json needs at least one zone"));
+    TSet<FName> ZoneIds;
+    TSet<int32> ZoneIndices;
+    for (const TSharedPtr<FJsonValue>& Value : *ZoneValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataZone Zone;
+        Zone.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Zone.Name);
+        Zone.Index = static_cast<int32>(NumberField(Entry, TEXT("index"), -1.0));
+        Zone.Center.X = NumberField(Entry, TEXT("center_x"));
+        Zone.Center.Y = NumberField(Entry, TEXT("center_y"));
+        Zone.Center.Z = NumberField(Entry, TEXT("center_z"));
+        Zone.RadiusCm = static_cast<float>(NumberField(Entry, TEXT("radius_cm"), 1000.0));
+        Entry->TryGetStringField(TEXT("obstacle"), Zone.Obstacle);
+        Entry->TryGetStringField(TEXT("solution"), Zone.PermanentSolution);
+        if (const TArray<TSharedPtr<FJsonValue>>* Resources = ArrayField(Entry, TEXT("resources")))
+        {
+            for (const TSharedPtr<FJsonValue>& Resource : *Resources)
+            {
+                if (!Resource.IsValid() || Resource->Type != EJson::String)
+                    return Fail(FString::Printf(TEXT("Zone %s contains a non-string resource"),
+                        *Zone.Id.ToString()));
+                const FName ResourceId(*Resource->AsString());
+                if (ResourceId.IsNone() || Zone.ResourceItemIds.Contains(ResourceId))
+                    return Fail(FString::Printf(TEXT("Zone %s has an empty or duplicate resource"),
+                        *Zone.Id.ToString()));
+                if (!NewItems.Contains(ResourceId))
+                    return Fail(FString::Printf(TEXT("Zone %s names unknown resource item %s"),
+                        *Zone.Id.ToString(), *ResourceId.ToString()));
+                Zone.ResourceItemIds.Add(ResourceId);
+            }
+        }
+        if (Zone.Id.IsNone() || ZoneIds.Contains(Zone.Id) || Zone.Name.IsEmpty() ||
+            Zone.Index < 0 || Zone.Index > 4 || ZoneIndices.Contains(Zone.Index) ||
+            !FMath::IsFinite(Zone.Center.X) || !FMath::IsFinite(Zone.Center.Y) ||
+            !FMath::IsFinite(Zone.Center.Z) ||
+            !FMath::IsFinite(Zone.RadiusCm) || Zone.RadiusCm < 100.0f ||
+            Zone.RadiusCm > 50000.0f || Zone.ResourceItemIds.IsEmpty() ||
+            Zone.Obstacle.IsEmpty() || Zone.PermanentSolution.IsEmpty())
+            return Fail(FString::Printf(TEXT("Bad or duplicate zone %s"), *Zone.Id.ToString()));
+        ZoneIds.Add(Zone.Id);
+        ZoneIndices.Add(Zone.Index);
+        NewZones.Add(Zone);
+    }
+
     TArray<FGameDataCrop> NewCrops;
     if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(CropsJson, TEXT("crops")))
         for (const TSharedPtr<FJsonValue>& Value : *Values)
@@ -311,6 +362,13 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
                 return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
             NewCrops.Add(Crop);
         }
+
+    for (const FGameDataCrop& Crop : NewCrops)
+    {
+        if (!ZoneIndices.Contains(Crop.FoundInZone))
+            return Fail(FString::Printf(TEXT("Crop %s names unknown zone index %d"),
+                *Crop.Id.ToString(), Crop.FoundInZone));
+    }
 
     // Natural-event contracts are data-driven and validated before replacing live data.
     TArray<FGameDataWorldEvent> NewWorldEvents;
@@ -356,6 +414,118 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     }
     if (NewWorldEvents.IsEmpty())
         return Fail(TEXT("events.json needs at least one event"));
+
+    TArray<FGameDataDiscovery> NewDiscoveries;
+    TSet<FName> DiscoveryIds;
+    const TArray<TSharedPtr<FJsonValue>>* DiscoveryValues = ArrayField(DiscoveriesJson, TEXT("discoveries"));
+    if (!DiscoveryValues || DiscoveryValues->IsEmpty())
+        return Fail(TEXT("discoveries.json needs at least one discovery"));
+
+    for (const TSharedPtr<FJsonValue>& Value : *DiscoveryValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataDiscovery Discovery;
+        Discovery.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Discovery.Name);
+        Discovery.ZoneId = NameField(Entry, TEXT("zone"));
+        Discovery.Location.X = NumberField(Entry, TEXT("location_x"));
+        Discovery.Location.Y = NumberField(Entry, TEXT("location_y"));
+        Discovery.Location.Z = NumberField(Entry, TEXT("location_z"));
+        Discovery.RevealRadiusCm = static_cast<float>(NumberField(Entry, TEXT("reveal_radius_cm"), 300.0));
+        Discovery.RewardItemId = NameField(Entry, TEXT("reward_item"));
+        Discovery.RewardQuantity = static_cast<int32>(NumberField(Entry, TEXT("reward_qty"), 0.0));
+
+        auto ReadNameArray = [&Entry](const TCHAR* FieldName, TArray<FName>& OutNames) -> bool
+        {
+            const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+            if (!Entry->TryGetArrayField(FieldName, Values))
+                return false;
+            TSet<FName> Seen;
+            for (const TSharedPtr<FJsonValue>& ArrayValue : *Values)
+            {
+                if (!ArrayValue.IsValid() || ArrayValue->Type != EJson::String)
+                    return false;
+                const FName Id(*ArrayValue->AsString());
+                if (Id.IsNone() || Seen.Contains(Id))
+                    return false;
+                Seen.Add(Id);
+                OutNames.Add(Id);
+            }
+            return true;
+        };
+        if (!ReadNameArray(TEXT("prerequisites"), Discovery.PrerequisiteDiscoveryIds) ||
+            !ReadNameArray(TEXT("required_equipment"), Discovery.RequiredEquipmentDefinitionIds) ||
+            !ReadNameArray(TEXT("unlocks"), Discovery.UnlockedDefinitionIds))
+            return Fail(FString::Printf(TEXT("Discovery %s has malformed name arrays"),
+                *Discovery.Id.ToString()));
+
+        const FGameDataZone* Zone = NewZones.FindByPredicate(
+            [&Discovery](const FGameDataZone& Candidate) { return Candidate.Id == Discovery.ZoneId; });
+        const double DistanceSquared = Zone
+            ? FVector::DistSquared2D(Zone->Center, Discovery.Location)
+            : TNumericLimits<double>::Max();
+        if (Discovery.Id.IsNone() || DiscoveryIds.Contains(Discovery.Id) ||
+            Discovery.Name.IsEmpty() || !Zone ||
+            !FMath::IsFinite(Discovery.Location.X) || !FMath::IsFinite(Discovery.Location.Y) ||
+            !FMath::IsFinite(Discovery.Location.Z) ||
+            !FMath::IsFinite(Discovery.RevealRadiusCm) ||
+            Discovery.RevealRadiusCm < 50.0f || Discovery.RevealRadiusCm > 2500.0f ||
+            DistanceSquared > FMath::Square(static_cast<double>(Zone->RadiusCm)) ||
+            Discovery.RewardQuantity < 0 || Discovery.RewardQuantity > 64 ||
+            (Discovery.RewardItemId.IsNone() != (Discovery.RewardQuantity == 0)) ||
+            (!Discovery.RewardItemId.IsNone() && !NewItems.Contains(Discovery.RewardItemId)))
+            return Fail(FString::Printf(TEXT("Bad or duplicate discovery %s"), *Discovery.Id.ToString()));
+
+        for (const FName EquipmentId : Discovery.RequiredEquipmentDefinitionIds)
+        {
+            if (!NewEquipment.ContainsByPredicate(
+                [&EquipmentId](const FEquipment& Equipment) { return Equipment.ItemId == EquipmentId; }))
+                return Fail(FString::Printf(TEXT("Discovery %s requires unknown equipment %s"),
+                    *Discovery.Id.ToString(), *EquipmentId.ToString()));
+        }
+        for (const FName UnlockId : Discovery.UnlockedDefinitionIds)
+        {
+            if (!NewItems.Contains(UnlockId) && !TransformationIds.Contains(UnlockId))
+                return Fail(FString::Printf(TEXT("Discovery %s unlocks unknown definition %s"),
+                    *Discovery.Id.ToString(), *UnlockId.ToString()));
+        }
+        DiscoveryIds.Add(Discovery.Id);
+        NewDiscoveries.Add(Discovery);
+    }
+
+    // Require every prerequisite to exist and order definitions topologically,
+    // because UWorldSurvivalSubsystem registers prerequisite definitions first.
+    for (const FGameDataDiscovery& Discovery : NewDiscoveries)
+    {
+        for (const FName Required : Discovery.PrerequisiteDiscoveryIds)
+        {
+            if (Required == Discovery.Id || !DiscoveryIds.Contains(Required))
+                return Fail(FString::Printf(TEXT("Discovery %s has unknown/self prerequisite %s"),
+                    *Discovery.Id.ToString(), *Required.ToString()));
+        }
+    }
+    TArray<FGameDataDiscovery> TopologicalDiscoveries;
+    TSet<FName> RegisteredDiscoveryIds;
+    while (TopologicalDiscoveries.Num() < NewDiscoveries.Num())
+    {
+        bool bAddedInPass = false;
+        for (const FGameDataDiscovery& Discovery : NewDiscoveries)
+        {
+            if (RegisteredDiscoveryIds.Contains(Discovery.Id))
+                continue;
+            bool bPrerequisitesMet = true;
+            for (const FName Required : Discovery.PrerequisiteDiscoveryIds)
+                if (!RegisteredDiscoveryIds.Contains(Required))
+                    bPrerequisitesMet = false;
+            if (!bPrerequisitesMet)
+                continue;
+            RegisteredDiscoveryIds.Add(Discovery.Id);
+            TopologicalDiscoveries.Add(Discovery);
+            bAddedInPass = true;
+        }
+        if (!bAddedInPass)
+            return Fail(TEXT("discoveries.json contains a prerequisite cycle"));
+    }
 
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
@@ -414,6 +584,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
+    Zones = MoveTemp(NewZones);
+    Discoveries = MoveTemp(TopologicalDiscoveries);
     WorldEvents = MoveTemp(NewWorldEvents);
     Calendar = NewCalendar;
     ClimateMonths = MoveTemp(NewMonths);
@@ -422,6 +594,41 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     bLoaded = true;
     bApplied = false;
     return true;
+}
+
+
+const FGameDataZone* UWorldGameDataSubsystem::FindZone(FName ZoneId) const
+{
+    if (ZoneId.IsNone())
+        return nullptr;
+    return Zones.FindByPredicate([ZoneId](const FGameDataZone& Zone)
+    {
+        return Zone.Id == ZoneId;
+    });
+}
+
+const FGameDataZone* UWorldGameDataSubsystem::FindZoneAtLocation(const FVector& WorldLocation) const
+{
+    if (!FMath::IsFinite(WorldLocation.X) || !FMath::IsFinite(WorldLocation.Y) ||
+        !FMath::IsFinite(WorldLocation.Z))
+        return nullptr;
+
+    const FGameDataZone* Best = nullptr;
+    double BestNormalizedDistance = TNumericLimits<double>::Max();
+    for (const FGameDataZone& Zone : Zones)
+    {
+        const double DistanceSquared = FVector::DistSquared2D(WorldLocation, Zone.Center);
+        const double RadiusSquared = FMath::Square(static_cast<double>(Zone.RadiusCm));
+        if (DistanceSquared > RadiusSquared)
+            continue;
+        const double NormalizedDistance = DistanceSquared / RadiusSquared;
+        if (NormalizedDistance < BestNormalizedDistance)
+        {
+            Best = &Zone;
+            BestNormalizedDistance = NormalizedDistance;
+        }
+    }
+    return Best;
 }
 
 bool UWorldGameDataSubsystem::GetToolStrength(FName ItemId, float& OutStrength) const
