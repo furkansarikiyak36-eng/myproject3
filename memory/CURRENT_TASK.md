@@ -1,64 +1,36 @@
 # Current task (checkpoint)
 
-**Every assistant reads this file FIRST.** If the status below is `open`, continue from "Next step".
+**Read this file first.** Status: open. Continue from “Next step”.
 
 ## Rules
-1. For a new task, update this checkpoint before source reads.
-2. After each meaningful repository step, record findings/changes and the next step.
-3. Never claim build, automation, or PIE success unless run and evidenced.
-4. Keep scene/mesh placement until the backend batch is complete.
-5. P10 is frozen; do not work on it.
-
----
+1. Keep work on `game/p00-adopt-group-a`; do not modify `main`.
+2. Backend/mechanics first. Do not place scene actors or alter physical snap geometry.
+3. P10 physical assembly is frozen.
+4. Write focused automation-test source with behaviour changes; never claim it passed unless executed.
+5. Keep the result at `code-written` if Unreal build/test is unavailable. No blind guesses about Unreal APIs; inspect headers first.
+6. Update `memory/PLAN_STATUS.md`, `memory/ROADMAP.md`, `memory/STATE.md`, and a dated session note as implementation advances.
 
 ## Task
 
-Status: `open`
-Goal: Continue Phase 2 survival mechanics on `game/p00-adopt-group-a`: close P2.1 water consumption/boiling, P2.2 rest and fatigue effects, P2.3 wetness/drying feedback and P2.5 environmental condition integration where safely supported. Add focused automation coverage, sync status/docs, and do not build after each small change.
-Asked by user: "faz 2 ile devam"
-Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
+Status: `in-progress`
+Goal: Close the user-selected blind-coding tasks for P1.1–P1.4, P2.1–P2.6, P3.1–P3.4, P4.1–P4.4, P5.1–P5.3, P6.1–P6.4, P7.1–P7.4 and P9.1–P9.3 on `game/p00-adopt-group-a`. P8 is a dependency only where event simulation is needed; P10 remains frozen.
 
-### Plan
-0. [x] Refresh this checkpoint before reviewing gameplay source.
-1. [x] Re-check exact current Phase 2 APIs and current status ledger.
-2. [x] Implement timed ledger-owned water boiling, schema v27 migration, and player-facing M/F5/F6/F7 controls already present on this branch; add low-noise wetness-band feedback.
-3. [x] Audit rest/fatigue hooks, existing water transaction tests and climate-driven wetness/drying paths; closed door-bar/unlock and sled-tow-start cost gates, with ongoing tow cost and direct dismantle calls still open.
-4. [x] Update `PLAN_STATUS.md`, `ROADMAP.md`, `CODEBASE.md`, and this checkpoint.
-5. [x] Mark new code as `code-written / unbuilt-unrun`; batch validation comes later.
+Started: 2026-10-29
+Branch base inspected: `ea00757dec03300f8214a3c31fb90b3f5efb6122`
+Baseline: latest source changes are documented as unbuilt/unrun. Prior build/test count must not be attributed to unbuilt changes.
 
-### User constraints
-- Backend/mechanics first, scene last.
-- No build/test run after each small task; tests may be authored but never described as passed unless executed.
-- Don’t make disconnected mechanics; keep inventory ownership, world clock, weather, conditions and UI hooks coherent.
-- Don’t expand P10 physical snap work.
+## Planned work
+1. Reconcile current APIs with the gap ledger and use existing domain owners instead of adding duplicate systems.
+2. Close the highest-leverage shared contracts first: data-driven calendar/events and HUD signals; transaction/ownership and common action costs; fuel/shelter/plaster/production; tool durability/resource geology/stability; field/crop/animal lifecycle; player movement/zone/discovery/infrastructure; time budget/helper station reservations/year simulation.
+3. Add or update data files and focused automation test sources for each changed subsystem.
+4. Update task statuses conservatively to `code-written` until local Unreal build/test/PIE evidence exists.
+5. Batch compile/test remains deferred to the user's UE 5.8 environment.
 
-### Read
-- `memory/PLAN_STATUS.md` (current branch task state and P2 gaps).
-- `memory/CURRENT_TASK.md` (prior checkpoint replaced for this request).
-- Previously inspected in earlier work: `WorldSurvivalSubsystem.h/.cpp`, `VerticalSliceCWorldActor.h/.cpp`, `LogSnapCharacter.h/.cpp`, `Config/GameData/conditions.json`, `Tests/MyProject3CoreTests.cpp`. Refresh the exact portions needed before editing.
+## Findings
+- Current work branch contains shared logical clock, calendar, climate and coordinator; natural event director and event HUD are missing/incomplete.
+- Save schema is v27. Any persisted field requires validation and a migration.
+- Existing systems include item ownership/operation ledger, production, storage, terrain/voxel, agriculture/wildlife, survival, structural graph, logistics/cargo, raid director, helper and save coordinator.
+- Current gap ledger overstates whole-task completion if source presence is read as gameplay acceptance; treat runtime integration as a separate gate.
 
-### Findings
-- The status ledger was refreshed for P2.3 feedback: branch has creek fill, timed boiling, ledger-owned drinking, direct player controls, status feedback and transition-only wetness messages.
-- P2.2 now has F6 rest on the shared clock; active rest blocks movement, jump is next to audit, and fatigue effectiveness scales tree chop, log processing and voxel digging.
-- P2.3 has rain/creek wetness, shelter/warmth drying, wet-cold illness and F7 wetness status; a warm-shelter drying test was authored, with thresholds still requiring batch/PIE tuning.
-- P2.5 has dirty-water/spoiled-food/wet-cold, fall and bite triggers; F7 lists condition IDs and survival health. Toxic rain remains part of P8.1; all new tests remain unrun.
-- Recent source changes on this branch are code-written, not built or PIE-verified.
-- Current branch includes a receipt-backed `TryBoilWaterAtFire`, M-key drinking, F5 boiling, F6 rest and F7 survival-status wiring, plus a water automation test. `items.json` now contains `Water.Boiling` as a non-consumable intermediate item (89 items; JSON parse checked). `TryBoilWaterAtFire` is defined once and uses the authored `boil_water` duration (1188 logical seconds).
-- The single water-boiling implementation stores start time/duration in the survival action receipt, retains the same unique item ID, synchronizes inventory/ownership state, and uses the v27 save migration. Water automation now covers fill/retry, start/wait/finish, snapshot restore, and drinking. Source-only audit confirms one implementation; no build or test was run.
-- Inventory item definition transitions are now accepted by the ownership ledger only when the item retains a valid Inventory owner; snapshot validation accepts this new same-owner transformation receipt. Save schema was advanced to v27 for boiling receipt fields.
-- `TryConsumeFoodItem` requires a unique item present in both inventory and ownership ledger; its condition and thirst effect are transactional. Creek water and its processed state retain a unique ledger identity throughout the boil.
-- `TryBeginRest` uses `UWorldSimulationClockSubsystem`; VerticalSlice_C binds I=fill, M=drink, F5=boil, F6=rest and F7=status. The bootstrap advances the shared clock. `RecordActivity` blocks activity during rest; `GetWorkEffectiveness` scales tree chop, log-cut work and digging. A rest/fatigue regression assertion and warm-shelter drying test are authored/unrun.
-
-### Changes
-- Confirmed receipt-backed inventory-owned water processing transitions and schema v27 migration; checked timed completion against the shared logical clock.
-- Added transition-only dry/damp/wet/soaked feedback in `AVerticalSliceCWorldActor::Tick`; it reports exposure changes but does not alter survival state.
-- `LogBuildToolsComponent::LockInput` preflights/charges Build after successful bar removal or unlocking; `TowInput` preflights/charges Carry when towing starts, but release remains free.
-- Source audit verified rest blocks jump and that log-cut/dig already use survival activity hooks. Added `CanRecordActivity` as the shared pure preflight; `RecordActivity` now uses that same preflight.
-- `LogCarryComponent` now gates and charges stamina/energy for regular log/material pickup and central log/material placement commit paths. Preflight coverage was added to the existing rest test; test remains unrun.
-- Other `LogBuildToolsComponent` direct placement/action paths were not exhaustively converted; keep P2.2 partial.
-- Bound player M/F5/F6/F7 interactions for drink, boil, rest and survival status; water tests now cover the complete source-level loop.
-- Added fatigue work-effectiveness API, active-rest action gate, scaling for tree chop/log cut/dig/repair, plus tests for rest/work scaling and warm-shelter drying.
-- Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
-
-### Next step
-Next: inspect remaining P2.2 direct `DismantlePiece` call path and sustained sled movement cost, then reconcile the status summary counts. Batch compile/automation and PIE remain deferred; all new changes are unbuilt/unrun.
+## Next step
+Inspect the remaining exact declarations and caller paths; implement cohesive changes in bounded batches, then update the status ledger and dated session log. Do not claim UE compile, Automation, PIE or save/load success.
