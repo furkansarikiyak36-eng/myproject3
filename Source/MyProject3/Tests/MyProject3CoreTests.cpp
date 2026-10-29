@@ -3812,4 +3812,118 @@ bool FWildlifeCapturePenSlaughterSnapshotTest::RunTest(const FString& Parameters
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCreekWaterFillWithReusablePotTest,
+    "MyProject3.Survival.CreekFillRequiresFiredPotAndIsIdempotent", TestFlags)
+bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Survival subsystem"), Survival) ||
+        !TestNotNull(TEXT("Ownership subsystem"), Ownership))
+        return false;
+    TestTrue(TEXT("Initialize common clock"), Clock->InitializeClock(8125, 1000.0));
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!TestTrue(TEXT("Inventory owner ID is valid"), InventoryOwnerId.IsValid()))
+        return false;
+
+    Inventory->ItemWeightGrams.Add(TEXT("Pot.Fired"), 2000);
+    Inventory->ItemWeightGrams.Add(TEXT("Water.Dirty"), 1000);
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector::ZeroVector;
+    Profile.Thirst = 40.0f;
+    TestTrue(TEXT("Register player survival profile"), Survival->RegisterProfile(Profile));
+
+    const FVector CreekLocation(0.0, 0.0, 0.0);
+    const FGuid MissingPotId = FGuid::NewGuid();
+    FGuid MissingOutputId;
+    TestFalse(TEXT("Filling fails without a ledger-owned vessel"), Survival->TryFillWaterFromCreek(
+        FGuid::NewGuid(), Profile.EntityId, Profile.Revision, MissingPotId, 1,
+        InventoryOwnerId, CreekLocation, MissingOutputId));
+    TestFalse(TEXT("Failed fill returns no water identity"), MissingOutputId.IsValid());
+    TestEqual(TEXT("Failed fill creates no water stack"), Inventory->GetItemCount(TEXT("Water.Dirty")), 0);
+
+    const FGuid PotId = FGuid::NewGuid();
+    FWorldOwnedItemRecord Pot;
+    Pot.ItemId = PotId;
+    Pot.DefinitionId = TEXT("Pot.Fired");
+    Pot.BaseDefinitionId = Pot.DefinitionId;
+    Pot.Quantity = 1;
+    Pot.OwnerKind = EWorldItemOwnerKind::Inventory;
+    Pot.OwnerId = InventoryOwnerId;
+    TestTrue(TEXT("Register reusable fired pot in ownership ledger"), Ownership->RegisterItem(Pot));
+
+    FInventoryStack PotStack;
+    PotStack.ItemId = TEXT("Pot.Fired");
+    PotStack.Quantity = 1;
+    PotStack.MaxStack = 1;
+    PotStack.bIsTool = true;
+    PotStack.Category = EInventoryItemCategory::Tool;
+    PotStack.OwnedWorldItemId = PotId;
+    TestTrue(TEXT("Put exact owned pot in inventory"), Inventory->RestoreSnapshot(
+        InventoryOwnerId, { PotStack }, NAME_None));
+
+    const FGuid FillOperationId = FGuid::NewGuid();
+    FGuid WaterItemId;
+    TestTrue(TEXT("Fill fired pot from creek"), Survival->TryFillWaterFromCreek(
+        FillOperationId, Profile.EntityId, Profile.Revision, PotId, 1,
+        InventoryOwnerId, CreekLocation, WaterItemId));
+    TestTrue(TEXT("Fill creates a unique water item ID"), WaterItemId.IsValid());
+    TestEqual(TEXT("Reusable pot remains in inventory"), Inventory->GetItemCount(TEXT("Pot.Fired")), 1);
+    TestEqual(TEXT("One dirty-water item is added"), Inventory->GetItemCount(TEXT("Water.Dirty")), 1);
+
+    FWorldOwnedItemRecord Water;
+    TestTrue(TEXT("Dirty-water record exists"), Ownership->TryGetItem(WaterItemId, Water));
+    TestEqual(TEXT("Filled water is dirty"), Water.DefinitionId, FName(TEXT("Water.Dirty")));
+    TestEqual(TEXT("Filled water has the inventory owner"), Water.OwnerKind, EWorldItemOwnerKind::Inventory);
+    TestEqual(TEXT("Filled water belongs to this inventory"), Water.OwnerId, InventoryOwnerId);
+    FWorldOwnedItemRecord PotAfterFill;
+    TestTrue(TEXT("Pot ledger record still exists"), Ownership->TryGetItem(PotId, PotAfterFill));
+    TestEqual(TEXT("Pot stays inventory-owned"), PotAfterFill.OwnerKind, EWorldItemOwnerKind::Inventory);
+    TestEqual(TEXT("Pot revision is unchanged"), PotAfterFill.Revision, static_cast<int64>(1));
+
+    FGuid RetryWaterItemId;
+    TestTrue(TEXT("Fill retry returns committed success"), Survival->TryFillWaterFromCreek(
+        FillOperationId, Profile.EntityId, Profile.Revision, PotId, 1,
+        InventoryOwnerId, CreekLocation, RetryWaterItemId));
+    TestEqual(TEXT("Fill retry returns the original water ID"), RetryWaterItemId, WaterItemId);
+    TestEqual(TEXT("Fill retry doesn't duplicate water"), Inventory->GetItemCount(TEXT("Water.Dirty")), 1);
+    FWorldSurvivalProfile AfterFill;
+    TestTrue(TEXT("Read profile after fill"), Survival->GetProfile(Profile.EntityId, AfterFill));
+    TestEqual(TEXT("Fill receipt advances profile exactly once"), AfterFill.Revision,
+        static_cast<int64>(Profile.Revision + 1));
+
+    TArray<FWorldSurvivalProfile> Profiles;
+    TArray<FWorldDiscoveryRecord> Discoveries;
+    EWorldWeatherState Weather = EWorldWeatherState::Clear;
+    float Severity = 0.0f;
+    Survival->ExportSnapshot(Profiles, Discoveries, Weather, Severity);
+    TestTrue(TEXT("Fill receipt and output reference survive snapshot validation"),
+        Survival->RestoreSnapshot(Profiles, Discoveries, Weather, Severity));
+    FGuid PostRestoreWaterId;
+    TestTrue(TEXT("Fill retry remains idempotent after snapshot restore"), Survival->TryFillWaterFromCreek(
+        FillOperationId, Profile.EntityId, Profile.Revision, PotId, 1,
+        InventoryOwnerId, CreekLocation, PostRestoreWaterId));
+    TestEqual(TEXT("Post-restore retry returns original water ID"), PostRestoreWaterId, WaterItemId);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
