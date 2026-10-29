@@ -126,12 +126,13 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("animals.json"), AnimalsJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
         !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
@@ -345,6 +346,73 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         NewCrops.Add(Crop);
     }
 
+    TArray<FGameDataAnimal> NewAnimals;
+    const TArray<TSharedPtr<FJsonValue>>* AnimalValues = ArrayField(AnimalsJson, TEXT("animals"));
+    if (!AnimalValues || AnimalValues->IsEmpty())
+        return Fail(TEXT("animals.json has no animals"));
+    TSet<FName> SeenAnimalIds;
+    for (const TSharedPtr<FJsonValue>& Value : *AnimalValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataAnimal Animal;
+        Animal.Id = NameField(Entry, TEXT("id"));
+        Animal.FeedItemId = NameField(Entry, TEXT("feed"));
+        Animal.ProductItemId = NameField(Entry, TEXT("product"));
+        const double ProductIntervalHours = NumberField(Entry, TEXT("product_interval_hours"), 1.0);
+        const double ProductUnitsValue = NumberField(Entry, TEXT("product_units"), 1.0);
+        if (Animal.Id.IsNone() || SeenAnimalIds.Contains(Animal.Id) ||
+            !HasItem(Animal.FeedItemId) ||
+            (!Animal.ProductItemId.IsNone() && !HasItem(Animal.ProductItemId)) ||
+            !FMath::IsFinite(ProductIntervalHours) || ProductIntervalHours <= 0.0 ||
+            !FMath::IsFinite(ProductUnitsValue) || FMath::FloorToDouble(ProductUnitsValue) != ProductUnitsValue ||
+            ProductUnitsValue < 1.0 || ProductUnitsValue > 64.0)
+            return Fail(FString::Printf(TEXT("Bad animal %s"), *Animal.Id.ToString()));
+
+        Animal.ProductIntervalSeconds = ProductIntervalHours * 3600.0;
+        Animal.ProductUnitsPerInterval = static_cast<int32>(ProductUnitsValue);
+        const TArray<TSharedPtr<FJsonValue>>* CaptureTools = ArrayField(Entry, TEXT("capture_tools"));
+        if (CaptureTools)
+        {
+            TSet<FName> SeenTools;
+            for (const TSharedPtr<FJsonValue>& ToolValue : *CaptureTools)
+            {
+                const FString ToolString = ToolValue->AsString();
+                const FName ToolId(*ToolString);
+                if (ToolId.IsNone() || !HasItem(ToolId) || SeenTools.Contains(ToolId))
+                    return Fail(FString::Printf(TEXT("Animal %s has an invalid capture tool"), *Animal.Id.ToString()));
+                SeenTools.Add(ToolId);
+                Animal.CaptureToolItemIds.Add(ToolId);
+            }
+        }
+        if (Animal.CaptureToolItemIds.IsEmpty())
+            return Fail(FString::Printf(TEXT("Animal %s requires at least one capture tool"), *Animal.Id.ToString()));
+
+        const TArray<TSharedPtr<FJsonValue>>* Yields = ArrayField(Entry, TEXT("slaughter_yields"));
+        if (!Yields || Yields->IsEmpty())
+            return Fail(FString::Printf(TEXT("Animal %s has no slaughter yields"), *Animal.Id.ToString()));
+        TSet<FName> SeenYieldItems;
+        int32 TotalYieldUnits = 0;
+        for (const TSharedPtr<FJsonValue>& YieldValue : *Yields)
+        {
+            const FJson Yield = YieldValue->AsObject();
+            const FName ItemId = NameField(Yield, TEXT("item"));
+            const double UnitsValue = NumberField(Yield, TEXT("units"), 1.0);
+            if (ItemId.IsNone() || !HasItem(ItemId) ||
+                !FMath::IsFinite(UnitsValue) || FMath::FloorToDouble(UnitsValue) != UnitsValue ||
+                UnitsValue < 1.0 || UnitsValue > 64.0 ||
+                SeenYieldItems.Contains(ItemId) || TotalYieldUnits > 64 - static_cast<int32>(UnitsValue))
+                return Fail(FString::Printf(TEXT("Animal %s has invalid slaughter yields"), *Animal.Id.ToString()));
+            FGameDataItemAmount& YieldAmount = Animal.SlaughterYields.AddDefaulted_GetRef();
+            YieldAmount.ItemId = ItemId;
+            YieldAmount.Quantity = static_cast<int32>(UnitsValue);
+            TotalYieldUnits += YieldAmount.Quantity;
+            SeenYieldItems.Add(ItemId);
+        }
+
+        SeenAnimalIds.Add(Animal.Id);
+        NewAnimals.Add(Animal);
+    }
+
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
     NewCalendar.DaysPerMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("days_per_month"), NewCalendar.DaysPerMonth));
@@ -402,6 +470,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
+    Animals = MoveTemp(NewAnimals);
     Calendar = NewCalendar;
     ClimateMonths = MoveTemp(NewMonths);
     Layers = MoveTemp(NewLayers);
@@ -500,6 +569,26 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
 
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
+
+    for (const FGameDataAnimal& Animal : Animals)
+    {
+        FWorldAnimalDefinition Definition;
+        Definition.AnimalDefinitionId = Animal.Id;
+        Definition.FeedDefinitionId = Animal.FeedItemId;
+        Definition.ProductDefinitionId = Animal.ProductItemId;
+        Definition.ProductUnitsPerInterval = Animal.ProductUnitsPerInterval;
+        Definition.ProductIntervalSeconds = Animal.ProductIntervalSeconds;
+        Definition.CaptureToolDefinitionIds = Animal.CaptureToolItemIds;
+        for (const FGameDataItemAmount& Yield : Animal.SlaughterYields)
+        {
+            FWorldAnimalYieldDefinition OutYield;
+            OutYield.ItemDefinitionId = Yield.ItemId;
+            OutYield.Units = Yield.Quantity;
+            Definition.SlaughterYields.Add(OutYield);
+        }
+        if (!Agriculture->RegisterAnimalDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Agriculture refused animal %s"), *Animal.Id.ToString()));
+    }
 
     for (const FGameDataCrop& Crop : Crops)
     {
