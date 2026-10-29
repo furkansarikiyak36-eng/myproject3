@@ -976,6 +976,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // so their new output IDs remain invalid by default.
         Candidate->SchemaVersion = 26;
     }
+    if (Candidate->SchemaVersion == 26)
+    {
+        // Schema v27 adds related-item identities/revisions to survival receipts for
+        // reusable-vessel water boiling. Existing v26 receipts never use this action.
+        Candidate->SchemaVersion = 27;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
