@@ -729,14 +729,18 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
     UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production) ||
         !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Climate"), Climate) ||
-        !TestNotNull(TEXT("Agriculture"), Agriculture) || !TestNotNull(TEXT("Routes"), Routes))
+        !TestNotNull(TEXT("Agriculture"), Agriculture) || !TestNotNull(TEXT("Routes"), Routes) ||
+        !TestNotNull(TEXT("Survival"), Survival) || !TestNotNull(TEXT("Clock"), Clock))
         return false;
     TestTrue(TEXT("Load"), Data->LoadDefault());
     TestTrue(FString::Printf(TEXT("Apply (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
     TestFalse(TEXT("Apply only once"), Data->ApplyToWorld());
     TestEqual(TEXT("Exactly five zone definitions load"), Data->GetZones().Num(), 5);
+    TestEqual(TEXT("Five ordered discovery definitions load"), Data->GetDiscoveries().Num(), 5);
     TestEqual(TEXT("Five zone catalog matches IDs 0 through 4"), Data->GetZones().Num(),
         Data->GetZones().FilterByPredicate([](const FGameDataZone& Z) { return Z.Number >= 0 && Z.Number <= 4; }).Num());
     TestTrue(TEXT("Route graph loaded into the world"), Routes->GetNodeCount() == Data->GetRouteNodes().Num() &&
@@ -762,6 +766,26 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Goat milk item"), GoatDefinition->ProductDefinitionId, FName(TEXT("Milk.Raw")));
         TestEqual(TEXT("Goat milk interval is six hours"), GoatDefinition->ProductIntervalSeconds, 21600.0);
     }
+
+    TestTrue(TEXT("Initialize shared clock for discovery recording"), Clock->InitializeClock(2048, 0.0));
+    FWorldSurvivalProfile Explorer;
+    Explorer.EntityId = FGuid::NewGuid();
+    TestTrue(TEXT("Register exploration profile"), Survival->RegisterProfile(Explorer));
+    TestFalse(TEXT("Creek discovery is locked before the camp discovery"), Survival->TryRecordConfiguredDiscovery(
+        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone1.Creek"),
+        FVector(760.0, -1200.0, 0.0), 0.0));
+    TestTrue(TEXT("Record the base-camp discovery"), Survival->TryRecordConfiguredDiscovery(
+        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone0.Camp"),
+        FVector::ZeroVector, 0.0));
+    TestTrue(TEXT("Base discovery unlocks grain seed knowledge"),
+        Survival->IsDefinitionUnlocked(Explorer.EntityId, TEXT("Seed.Grain")));
+    TestTrue(TEXT("Read updated explorer profile"), Survival->GetProfile(Explorer.EntityId, Explorer));
+    TestTrue(TEXT("Prerequisite allows creek discovery"), Survival->TryRecordConfiguredDiscovery(
+        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone1.Creek"),
+        FVector(760.0, -1200.0, 0.0), 0.0));
+    TestTrue(TEXT("Creek discovery unlocks bridge infrastructure"), Survival->IsDefinitionUnlocked(
+        Explorer.EntityId, TEXT("Infrastructure.CreekBridge")));
+
     const FWorldCropDefinition* GrainDefinition = Agriculture->CropDefinitions.FindByPredicate(
         [](const FWorldCropDefinition& D) { return D.CropDefinitionId == TEXT("Crop.Grain"); });
     TestNotNull(TEXT("Grain crop definition"), GrainDefinition);
