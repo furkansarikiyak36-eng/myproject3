@@ -6,7 +6,7 @@ this GitHub repo can continue from here: Claude Code, Claude web, another accoun
 
 ## Writing code without a compiler (all assistants, from 2026-10-29)
 
-Work branch: `game/p00-adopt-group-a`; baseline build/test evidence is 102/102 at `bbc57b3`. The current partial-task edits after that commit are **not compiled or tested**. Status ceiling: `code-written`.
+Active blind-code closure branch: `work/phase-3-4-closure`. Historical baseline build/test evidence is 102/102 at parent commit `bbc57b3` on `game/p00-adopt-group-a`; the current branch's edits are **not compiled or tested**. Status ceiling: `code-written`.
 Most errors in unbuilt code are names that do not exist (group-a had 16). So:
 
 1. **Read the header before you use anything.** Copy field, function and enum names from the `.h` file you read
@@ -17,7 +17,7 @@ Most errors in unbuilt code are names that do not exist (group-a had 16). So:
    every new `.h` needs `#include "X.generated.h"` as its last include.
 3. Survival steps take the step's **end** time (`AdvanceSurvivalStep(Delta, EndTime)`).
 4. A new saved field: add it to the struct, to the restore validation, and a save schema migration step
-   (`WorldSaveCoordinatorSubsystem.cpp`, current schema 27 on `game/p00-adopt-group-a`; retain migrations from v22 through v26).
+   (`WorldSaveCoordinatorSubsystem.cpp`, current schema v29 on `work/phase-3-4-closure`; retain the complete migration chain from earlier schemas through v29).
 5. Keep a change small and in one place; do not refactor files you are not changing.
 6. **Write the test with the code** (in `Tests/GameWorldTests.cpp`), even though you cannot run it.
    Name: `MyProject3.World.<Area>.<What>`.
@@ -85,7 +85,7 @@ Exact per-task status (exists / partial / missing): `PLAN_STATUS.md`.
 ## What `group-a-code-closure` gives each task (if adopted, Q00)
 
 Checked 2026-10-29 from its headers. "Fits" = matches the plan; "partly" = a base, plan needs more.
-Everything below is backend only: no input or HUD for the player unless stated. Builds and passes tests on `game/p00-adopt-group-a` (2026-10-29).
+Everything below is backend-first unless stated. The **historical parent branch** built and passed the documented 102/102 baseline; the active `work/phase-3-4-closure` changes are code-written and unbuilt-unrun.
 
 | group-a piece | Task | Fit | Build on top (our work) |
 |---|---|---|---|
