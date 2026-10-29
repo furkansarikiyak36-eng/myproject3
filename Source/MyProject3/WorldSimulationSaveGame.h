@@ -160,7 +160,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 23;
+    static constexpr int32 CurrentSchemaVersion = 24;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     /** Schema v21: weather of the day, snow depth, ground wetness. */
@@ -178,6 +178,7 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldAnimalState> Animals;
     /** Schema v23: prepared soil/field-cell state and idempotent field action receipts. */
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldFieldCellState> FieldCells;
+    /** Schema v24: crop records persist seed item definition and seed-return units for deterministic harvest. */
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldSurvivalProfile> SurvivalProfiles;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldDiscoveryRecord> Discoveries;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") EWorldWeatherState Weather = EWorldWeatherState::Clear;
