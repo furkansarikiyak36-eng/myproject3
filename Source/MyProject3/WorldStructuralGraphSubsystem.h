@@ -199,6 +199,14 @@ public:
     bool TryDismantleStandaloneNodeToInventory(FGuid NodeId, int64 ExpectedNodeRevision,
         UInventoryCraftingComponent* Inventory);
 
+    /** Atomically detaches a fully-removable connected structure, consumes source ownership, and returns configured salvage. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Graph")
+    bool TryDismantleConnectedStructureToInventory(FGuid RootNodeId, int64 ExpectedRootRevision,
+        UInventoryCraftingComponent* Inventory);
+
+    /** Removes a collapsed connected structure without salvage; used by raid damage resolution. */
+    bool TryCollapseConnectedStructure(FGuid RootNodeId, int64 ExpectedRootRevision);
+
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     bool GetNode(FGuid NodeId, FStructuralNodeRecord& OutNode) const;
 
@@ -225,4 +233,7 @@ private:
         TArray<FGuid>& OutOrder) const;
     float ComputeAggregateLoad(FGuid NodeId, TSet<FGuid>& Visiting,
         bool& bOutValid) const;
+    bool TryRemoveConnectedStructure(FGuid RootNodeId, int64 ExpectedRootRevision,
+        UInventoryCraftingComponent* Inventory, bool bReturnSalvage);
+    bool RemoveNodesAtomically(const TArray<FGuid>& NodeIds);
 };

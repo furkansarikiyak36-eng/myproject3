@@ -130,31 +130,11 @@ bool UWorldRaidAdapterSubsystem::ResolveCollapsedSubtree(FGuid RootNodeId)
 {
     UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
     if (!Graph) return false;
-    TArray<FGuid> LeafFirstOrder;
-    if (!Graph->BuildDependentRemovalOrder(RootNodeId, LeafFirstOrder)) return false;
-
-    // Validate every actor before the first destructive action.
-    TArray<TWeakObjectPtr<AActor>> Actors;
-    Actors.Reserve(LeafFirstOrder.Num());
-    for (const FGuid& NodeId : LeafFirstOrder)
-    {
-        FStructuralNodeRecord Node;
-        if (!Graph->GetNode(NodeId, Node) || !Node.Actor.IsValid()) return false;
-        Actors.Add(Node.Actor);
-    }
-
-    // Leaf-first order means each actor's EndPlay cleanup sees no remaining
-    // dependents. Unreal actor destruction itself cannot be rolled back, so this
-    // operation is preflighted and stops on the first unexpected failure.
-    for (int32 Index = 0; Index < LeafFirstOrder.Num(); ++Index)
-    {
-        const FGuid NodeId = LeafFirstOrder[Index];
-        AActor* Actor = Actors[Index].Get();
-        if (IsValid(Actor) && !Actor->Destroy()) return false;
-
-        FStructuralNodeRecord Remaining;
-        if (Graph->GetNode(NodeId, Remaining) && !Graph->UnregisterNode(NodeId, true))
-            return false;
-    }
-    return true;
+    FStructuralNodeRecord Root;
+    if (!Graph->GetNode(RootNodeId, Root))
+        return false;
+    // The graph owns the destructive transaction: it preflights every child,
+    // consumes unique source ownership, clears actor anchors and removes all
+    // graph nodes before any actor is destroyed. Raid collapse yields no salvage.
+    return Graph->TryCollapseConnectedStructure(RootNodeId, Root.Revision);
 }

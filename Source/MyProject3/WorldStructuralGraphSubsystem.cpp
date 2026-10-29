@@ -5,6 +5,8 @@
 #include "LogBuildPiece.h"
 #include "StoneBuildingPiece.h"
 #include "StickPrimitivePiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StructuralPieceInterface.h"
 #include "EngineUtils.h"
@@ -671,6 +673,11 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
     FStructuralAnchorView ChildAnchor;
     FStructuralAnchorView SupportAnchor;
     const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+    if (AStoneBuildingPiece* Bridge = Cast<AStoneBuildingPiece>(ChildActor))
+    {
+        if (!Bridge->CanAcceptAdditionalSupport(OwnAnchorId))
+            return false;
+    }
     if (bHasPhysicalAdapters &&
         (!ChildPiece || !SupportPiece ||
          !ChildPiece->GetStructuralAnchor(OwnAnchorId, ChildAnchor) ||
@@ -1167,6 +1174,382 @@ bool UWorldStructuralGraphSubsystem::TryDismantleStandaloneNodeToInventory(
     Actor->SetActorTickEnabled(false);
     if (!Actor->Destroy())
         UE_LOG(LogTemp, Warning, TEXT("Dismantled actor %s stayed inert after its world ownership was consumed."), *GetNameSafe(Actor));
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::TryDismantleConnectedStructureToInventory(
+    FGuid RootNodeId, int64 ExpectedRootRevision, UInventoryCraftingComponent* Inventory)
+{
+    return TryRemoveConnectedStructure(RootNodeId, ExpectedRootRevision, Inventory, true);
+}
+
+bool UWorldStructuralGraphSubsystem::TryCollapseConnectedStructure(
+    FGuid RootNodeId, int64 ExpectedRootRevision)
+{
+    return TryRemoveConnectedStructure(RootNodeId, ExpectedRootRevision, nullptr, false);
+}
+
+bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
+    FGuid RootNodeId, int64 ExpectedRootRevision, UInventoryCraftingComponent* Inventory,
+    bool bReturnSalvage)
+{
+    if (!RootNodeId.IsValid() || ExpectedRootRevision <= 0 || !GetWorld() ||
+        (bReturnSalvage && !IsValid(Inventory)) || (!bReturnSalvage && Inventory))
+        return false;
+
+    FStructuralNodeRecord Root;
+    if (!GetNode(RootNodeId, Root) || Root.Revision != ExpectedRootRevision ||
+        Root.Revision == MAX_int64 || !Root.Actor.IsValid())
+        return false;
+
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldGameDataSubsystem* GameData =
+        bReturnSalvage ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!Ownership || (bReturnSalvage && (!GameData || !GameData->IsLoaded())))
+        return false;
+    if (bReturnSalvage && !GameData->ApplyToInventory(Inventory))
+        return false;
+
+    TArray<FGuid> LeafFirstOrder;
+    if (!BuildDependentRemovalOrder(RootNodeId, LeafFirstOrder) ||
+        LeafFirstOrder.IsEmpty() || LeafFirstOrder.Last() != RootNodeId)
+        return false;
+
+    TSet<FGuid> RemovalSet;
+    for (const FGuid& NodeId : LeafFirstOrder)
+    {
+        if (!NodeId.IsValid() || RemovalSet.Contains(NodeId))
+            return false;
+        RemovalSet.Add(NodeId);
+    }
+
+    // Reject partial removals: no surviving actor may keep an anchor or graph
+    // edge into the transaction set. This is conservative when an alternate
+    // support exists; that case needs an explicit actor-to-actor support promotion.
+    for (const FGuid& NodeId : LeafFirstOrder)
+    {
+        const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+        if (!Node || !Node->Actor.IsValid() || Node->Revision >= MAX_int64 - LeafFirstOrder.Num() - 2)
+            return false;
+        for (const FGuid& DependentId : GetAllDependents(NodeId))
+            if (!RemovalSet.Contains(DependentId))
+                return false;
+    }
+
+    struct FRemovalEntry
+    {
+        FGuid NodeId;
+        FStructuralNodeRecord Node;
+        TWeakObjectPtr<AActor> Actor;
+        TWeakObjectPtr<UWorldObjectIdentityComponent> Identity;
+        EWorldObjectLifecycleState Lifecycle = EWorldObjectLifecycleState::World;
+        FWorldOwnedItemRecord Item;
+    };
+    TArray<FRemovalEntry> Entries;
+    Entries.Reserve(LeafFirstOrder.Num());
+    TMap<FName, int32> SalvageQuantities;
+
+    // Full preflight: identity/lifecycle, unique world ownership, repair profile,
+    // actor adapter and both physical endpoints for every current graph edge.
+    for (const FGuid& NodeId : LeafFirstOrder)
+    {
+        FRemovalEntry& Entry = Entries.AddDefaulted_GetRef();
+        Entry.NodeId = NodeId;
+        if (!GetNode(NodeId, Entry.Node))
+            return false;
+        AActor* Actor = Entry.Node.Actor.Get();
+        Entry.Actor = Actor;
+        UWorldObjectIdentityComponent* Identity =
+            IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
+        if (!Identity || !Identity->HasValidIdentity() || Identity->GetInstanceId() != NodeId)
+            return false;
+        Entry.Identity = Identity;
+        Entry.Lifecycle = Identity->GetLifecycleState();
+        if (Entry.Lifecycle != EWorldObjectLifecycleState::World &&
+            Entry.Lifecycle != EWorldObjectLifecycleState::Placed)
+            return false;
+
+        if (!Ownership->TryGetItem(NodeId, Entry.Item) ||
+            Entry.Item.ItemId != NodeId || Entry.Item.OwnerKind != EWorldItemOwnerKind::World ||
+            Entry.Item.OwnerId.IsValid() || Entry.Item.Quantity != 1 ||
+            Entry.Item.Revision <= 0 || Entry.Item.Revision == MAX_int64)
+            return false;
+
+        if (Entry.Node.ParentNodeId.IsValid())
+        {
+            const FStructuralNodeRecord* ParentNode = Nodes.Find(Entry.Node.ParentNodeId);
+            if (!ParentNode || ParentNode->Revision >= MAX_int64 - LeafFirstOrder.Num() - 2)
+                return false;
+            IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Actor);
+            IStructuralPieceInterface* ParentPiece = Cast<IStructuralPieceInterface>(ParentNode->Actor.Get());
+            if (ChildPiece || ParentPiece)
+            {
+                FStructuralAnchorView ChildAnchor;
+                FStructuralAnchorView ParentAnchor;
+                if (!ChildPiece || !ParentPiece ||
+                    !ChildPiece->GetStructuralAnchor(Entry.Node.OwnAnchorId, ChildAnchor) ||
+                    !ParentPiece->GetStructuralAnchor(Entry.Node.ParentAnchorId, ParentAnchor))
+                    return false;
+            }
+        }
+
+        for (const FStructuralSupportLink& Link : Entry.Node.SecondarySupports)
+        {
+            const FStructuralNodeRecord* SupportNode = Nodes.Find(Link.SupportNodeId);
+            if (!SupportNode || SupportNode->Revision >= MAX_int64 - LeafFirstOrder.Num() - 2)
+                return false;
+            IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Actor);
+            IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(SupportNode->Actor.Get());
+            if (ChildPiece || SupportPiece)
+            {
+                FStructuralAnchorView ChildAnchor;
+                FStructuralAnchorView SupportAnchor;
+                if (!ChildPiece || !SupportPiece ||
+                    !ChildPiece->GetStructuralAnchor(Link.OwnAnchorId, ChildAnchor) ||
+                    !SupportPiece->GetStructuralAnchor(Link.SupportAnchorId, SupportAnchor))
+                    return false;
+            }
+        }
+
+        if (bReturnSalvage)
+        {
+            const FName KindName = Entry.Node.Kind == EStructuralNodeKind::Wood ? FName(TEXT("Wood")) :
+                Entry.Node.Kind == EStructuralNodeKind::Stone ? FName(TEXT("Stone")) :
+                Entry.Node.Kind == EStructuralNodeKind::Stick ? FName(TEXT("Stick")) : NAME_None;
+            const FGameDataStructuralRepair* Recovery = KindName.IsNone() ? nullptr :
+                GameData->GetStructuralRepairs().FindByPredicate(
+                    [&KindName](const FGameDataStructuralRepair& Candidate)
+                    { return Candidate.TargetKind == KindName; });
+            if (!Recovery || Recovery->RecoveryItemId.IsNone() ||
+                Recovery->RecoveryUnits <= 0 || !GameData->GetItems().Contains(Recovery->RecoveryItemId))
+                return false;
+            int32& Total = SalvageQuantities.FindOrAdd(Recovery->RecoveryItemId);
+            if (Total > MAX_int32 - Recovery->RecoveryUnits)
+                return false;
+            Total += Recovery->RecoveryUnits;
+        }
+    }
+
+    TArray<FInventoryStack> SalvageStacks;
+    if (bReturnSalvage)
+    {
+        for (const TPair<FName, int32>& Pair : SalvageQuantities)
+        {
+            const FGameDataItem* Definition = GameData->GetItems().Find(Pair.Key);
+            if (!Definition || Definition->bConsumable || Pair.Value <= 0)
+                return false;
+            EInventoryItemCategory Category = EInventoryItemCategory::Resource;
+            if (Definition->Category == TEXT("Tool")) Category = EInventoryItemCategory::Tool;
+            else if (Definition->Category == TEXT("BuildingPart")) Category = EInventoryItemCategory::BuildingPart;
+            else if (Definition->Category == TEXT("Weapon")) Category = EInventoryItemCategory::Weapon;
+            int32 Remaining = Pair.Value;
+            while (Remaining > 0)
+            {
+                FInventoryStack Stack;
+                Stack.ItemId = Pair.Key;
+                Stack.Category = Category;
+                Stack.bIsTool = Category == EInventoryItemCategory::Tool;
+                Stack.MaxStack = Stack.bIsTool ? 1 : 99;
+                Stack.Quantity = FMath::Min(Remaining, Stack.MaxStack);
+                if (Stack.Quantity <= 0)
+                    return false;
+                SalvageStacks.Add(Stack);
+                Remaining -= Stack.Quantity;
+            }
+        }
+        if (SalvageStacks.IsEmpty() || !Inventory->CanAddItems(SalvageStacks))
+            return false;
+    }
+
+    TArray<FWorldStructuralNodeSnapshot> GraphBefore;
+    if (!ExportSnapshot(GraphBefore))
+        return false;
+    TArray<FWorldOwnedItemRecord> OwnershipBefore;
+    TArray<FWorldItemTransferReceipt> TransferReceiptsBefore;
+    TArray<FWorldItemSplitReceipt> SplitReceiptsBefore;
+    Ownership->ExportSnapshot(OwnershipBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+
+    FGuid InventoryActorId;
+    FGuid InventoryOwnerId;
+    TArray<FInventoryStack> InventoryBefore;
+    FName QuickAccessBefore = NAME_None;
+    if (bReturnSalvage)
+    {
+        Inventory->ExportSnapshot(InventoryActorId, InventoryOwnerId, InventoryBefore, QuickAccessBefore);
+        if (!InventoryOwnerId.IsValid() || InventoryOwnerId != Inventory->GetInventoryOwnerId())
+            return false;
+    }
+
+    auto RollbackData = [this, Ownership, Inventory, bReturnSalvage, &GraphBefore,
+        &OwnershipBefore, &TransferReceiptsBefore, &SplitReceiptsBefore,
+        &InventoryOwnerId, &InventoryBefore, &QuickAccessBefore]()
+    {
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            OwnershipBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+        const bool bInventoryRestored = !bReturnSalvage ||
+            Inventory->RestoreSnapshot(InventoryOwnerId, InventoryBefore, QuickAccessBefore);
+        const bool bGraphRestored = RestoreSnapshot(GraphBefore);
+        const bool bActorLinksRestored = bGraphRestored && RebuildLogActorAttachmentsFromSnapshot();
+        if (!bOwnershipRestored || !bInventoryRestored || !bGraphRestored || !bActorLinksRestored)
+            UE_LOG(LogTemp, Error, TEXT("Connected structural removal rollback failed; actor/graph/ownership recovery is required."));
+        return false;
+    };
+
+    for (const FRemovalEntry& Entry : Entries)
+    {
+        FWorldOwnedItemRecord Consumed;
+        if (!Ownership->TryTransferItem(FGuid::NewGuid(), Entry.NodeId, Entry.Item.Revision,
+            EWorldItemOwnerKind::World, EWorldItemOwnerKind::Consumed, FGuid(),
+            Entry.Item.WorldLocation, Consumed))
+        {
+            Ownership->RestoreSnapshot(OwnershipBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+            return false;
+        }
+    }
+
+    if (bReturnSalvage)
+    {
+        for (const FInventoryStack& Stack : SalvageStacks)
+        {
+            if (!Inventory->TryAddItem(Stack))
+                return RollbackData();
+        }
+    }
+
+    // Preflight passed and every dependant is removed leaf-first. Disconnect
+    // actor-local links while all actors still exist; all source items are now
+    // consumed and salvage has already been delivered.
+    for (const FRemovalEntry& Entry : Entries)
+    {
+        AActor* Actor = Entry.Actor.Get();
+        if (!IsValid(Actor))
+            return RollbackData();
+
+        if (Entry.Node.ParentNodeId.IsValid())
+        {
+            if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
+                Log->DetachFromSnapParent(true);
+            else if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Actor))
+                Stone->RemoveConnection(true);
+            else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Actor))
+                Stick->RemoveConnection(true);
+            else
+                TryDisconnect(Entry.NodeId);
+        }
+
+        // Settle every authored anchor reservation from the before-image too;
+        // this catches partially restored or cross-domain actor-local state.
+        if (IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Actor))
+        {
+            if (Entry.Node.ParentNodeId.IsValid())
+                ChildPiece->SetStructuralAnchorOccupied(Entry.Node.OwnAnchorId, false);
+            for (const FStructuralSupportLink& Link : Entry.Node.SecondarySupports)
+                ChildPiece->SetStructuralAnchorOccupied(Link.OwnAnchorId, false);
+        }
+        if (Entry.Node.ParentNodeId.IsValid())
+        {
+            const FStructuralNodeRecord* ParentNode = Nodes.Find(Entry.Node.ParentNodeId);
+            if (IStructuralPieceInterface* ParentPiece = ParentNode
+                ? Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()) : nullptr)
+                {
+                ParentPiece->SetStructuralAnchorOccupied(Entry.Node.ParentAnchorId, false);
+            }
+        }
+        for (const FStructuralSupportLink& Link : Entry.Node.SecondarySupports)
+        {
+            const FStructuralNodeRecord* SupportNode = Nodes.Find(Link.SupportNodeId);
+            if (IStructuralPieceInterface* SupportPiece = SupportNode
+                ? Cast<IStructuralPieceInterface>(SupportNode->Actor.Get()) : nullptr)
+                SupportPiece->SetStructuralAnchorOccupied(Link.SupportAnchorId, false);
+        }
+    }
+
+    if (!RemoveNodesAtomically(LeafFirstOrder))
+        return RollbackData();
+
+    // Lifecycle transitions are preflighted to World/Placed only and happen
+    // after the authoritative owner and graph changes have succeeded.
+    for (FRemovalEntry& Entry : Entries)
+    {
+        AActor* Actor = Entry.Actor.Get();
+        UWorldObjectIdentityComponent* Identity = Entry.Identity.Get();
+        if (!IsValid(Actor) || !IsValid(Identity) ||
+            !Identity->TryTransitionLifecycle(Entry.Lifecycle, EWorldObjectLifecycleState::Destroyed))
+        {
+            UE_LOG(LogTemp, Error, TEXT("Connected structure was committed but an actor lifecycle transition failed for node %s."),
+                *Entry.NodeId.ToString());
+            if (IsValid(Actor))
+            {
+                Actor->SetActorHiddenInGame(true);
+                Actor->SetActorEnableCollision(false);
+                Actor->SetActorTickEnabled(false);
+            }
+            continue;
+        }
+    }
+
+    for (const FRemovalEntry& Entry : Entries)
+    {
+        if (AActor* Actor = Entry.Actor.Get())
+        {
+            Actor->SetActorHiddenInGame(true);
+            Actor->SetActorEnableCollision(false);
+            Actor->SetActorTickEnabled(false);
+            if (!Actor->Destroy())
+                UE_LOG(LogTemp, Warning, TEXT("Committed structural removal left inert actor %s pending destruction."), *GetNameSafe(Actor));
+        }
+    }
+    return true;
+}
+
+bool UWorldStructuralGraphSubsystem::RemoveNodesAtomically(const TArray<FGuid>& NodeIds)
+{
+    if (NodeIds.IsEmpty())
+        return false;
+    TSet<FGuid> RemovalSet;
+    for (const FGuid& NodeId : NodeIds)
+    {
+        if (!NodeId.IsValid() || RemovalSet.Contains(NodeId) || !Nodes.Contains(NodeId))
+            return false;
+        RemovalSet.Add(NodeId);
+    }
+    for (const FGuid& NodeId : NodeIds)
+        for (const FGuid& DependentId : GetAllDependents(NodeId))
+            if (!RemovalSet.Contains(DependentId))
+                return false;
+
+    TMap<FGuid, FStructuralNodeRecord> Proposed = Nodes;
+    for (const FGuid& NodeId : NodeIds)
+        Proposed.Remove(NodeId);
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Proposed)
+    {
+        if (Pair.Value.ParentNodeId.IsValid() && !Proposed.Contains(Pair.Value.ParentNodeId))
+            return false;
+        for (const FStructuralSupportLink& Link : Pair.Value.SecondarySupports)
+            if (!Proposed.Contains(Link.SupportNodeId))
+                return false;
+    }
+
+    TMap<FGuid, FStructuralNodeRecord> Previous = MoveTemp(Nodes);
+    Nodes = MoveTemp(Proposed);
+    for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
+    {
+        if (Pair.Value.ParentNodeId.IsValid() && !HasValidSupportPath(Pair.Key))
+        {
+            Nodes = MoveTemp(Previous);
+            return false;
+        }
+        TSet<FGuid> Visiting;
+        bool bLoadValid = true;
+        const float Aggregate = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid);
+        const FStructuralNodeRecord* LiveNode = Nodes.Find(Pair.Key);
+        if (!bLoadValid || !LiveNode || Aggregate > LiveNode->MaxSupportedLoad)
+        {
+            Nodes = MoveTemp(Previous);
+            return false;
+        }
+    }
     return true;
 }
 
