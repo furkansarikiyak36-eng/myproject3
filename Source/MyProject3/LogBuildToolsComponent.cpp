@@ -14,6 +14,8 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
 
 #include "Components/InputComponent.h"
 #include "Engine/OverlapResult.h"
@@ -22,6 +24,38 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 #include "InputCoreTypes.h"
+
+namespace
+{
+    bool CanRecordToolActivity(AActor* Owner, ESurvivalActivity Activity,
+        float DurationSeconds, float CarriedMassKg)
+    {
+        UWorld* World = IsValid(Owner) ? Owner->GetWorld() : nullptr;
+        UWorldSurvivalSubsystem* Survival =
+            World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        UShelterSensorComponent* Sensor =
+            IsValid(Owner) ? Owner->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        // Preserve older maps that do not register a survival profile.
+        if (!Survival || !IsValid(Sensor) || !Sensor->SurvivalEntityId.IsValid())
+            return true;
+        return Survival->CanRecordActivity(
+            Sensor->SurvivalEntityId, Activity, DurationSeconds, CarriedMassKg);
+    }
+
+    bool RecordToolActivity(AActor* Owner, ESurvivalActivity Activity,
+        float DurationSeconds, float CarriedMassKg)
+    {
+        UWorld* World = IsValid(Owner) ? Owner->GetWorld() : nullptr;
+        UWorldSurvivalSubsystem* Survival =
+            World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        UShelterSensorComponent* Sensor =
+            IsValid(Owner) ? Owner->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        if (!Survival || !IsValid(Sensor) || !Sensor->SurvivalEntityId.IsValid())
+            return true;
+        return Survival->RecordActivity(
+            Sensor->SurvivalEntityId, Activity, DurationSeconds, CarriedMassKg);
+    }
+}
 
 using namespace MyProject3Construction;
 
@@ -808,6 +842,11 @@ bool ULogBuildToolsComponent::SharpenLog(ALogBuildPiece* Log)
         SetStatus(TEXT("Already sharpened."));
         return false;
     }
+    if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Chop, 1.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to sharpen this stake."));
+        return false;
+    }
     USharpenedTipComponent* Tip = NewObject<USharpenedTipComponent>(Log);
     Tip->RegisterComponent();
     if (!Tip->InitializeTip())
@@ -815,6 +854,8 @@ bool ULogBuildToolsComponent::SharpenLog(ALogBuildPiece* Log)
         Tip->DestroyComponent();
         return false;
     }
+    if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Chop, 1.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after sharpening committed."));
     SetStatus(TEXT("Sharpened: climbers will be hurt and pushed back."));
     return true;
 }
@@ -950,6 +991,11 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
             return false;
         }
     }
+    if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 4.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to cut this gate opening."));
+        return false;
+    }
     for (ALogBuildPiece* Candidate : Removed)
         DismantlePiece(Candidate);
     const FVector Centre = PostShape.Centre + WallDirection * (0.5f * (Min + Max));
@@ -957,6 +1003,8 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
         FVector(Centre.X, Centre.Y, Bottom + 0.5f * Height), WallDirection.Rotation());
     if (OutOpening)
         OutOpening->InitializeOpening(EConstructionOpeningKind::Gate, Max - Min, Height);
+    if (!Removed.IsEmpty() && !RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 4.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after gate opening mutation."));
     SetStatus(FString::Printf(TEXT("Gate opening cut (%d posts out). Fill it with split boards."), Removed.Num()));
     return OutOpening != nullptr;
 }
@@ -1031,6 +1079,13 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         }
     }
 
+    if (!WallLogs.IsEmpty() &&
+        !CanRecordToolActivity(GetOwner(), ESurvivalActivity::Chop, 4.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to cut this opening."));
+        return false;
+    }
+
     int32 Cut = 0;
     for (const FWallLog& Entry : WallLogs)
     {
@@ -1094,6 +1149,8 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         FVector(Centre.X, Centre.Y, 0.5f * (Z0 + Z1)), Along.Rotation());
     if (OutOpening)
         OutOpening->InitializeOpening(Kind, Width, Height);
+    if (Cut > 0 && !RecordToolActivity(GetOwner(), ESurvivalActivity::Chop, 4.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after wall opening mutation."));
     SetStatus(Kind == EConstructionOpeningKind::Window
         ? FString::Printf(TEXT("Window cut through %d logs."), Cut)
         : FString::Printf(TEXT("Door opening cut through %d logs. Fill it with %d split boards."), Cut,
@@ -1111,10 +1168,17 @@ ARopeLineActor* ULogBuildToolsComponent::TieRope(const FVector& From, AActor* Fr
         SetStatus(TEXT("A rope can span 1 to 30 m."));
         return nullptr;
     }
+    if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to tie rope."));
+        return nullptr;
+    }
     ARopeLineActor* Rope = GetWorld()->SpawnActor<ARopeLineActor>(0.5f * (From + To), FRotator::ZeroRotator);
     if (!Rope)
         return nullptr;
     Rope->InitializeRope(From, FromActor, To, ToActor);
+    if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after rope placement."));
     SetStatus(Rope->IsZipline()
         ? FString::Printf(TEXT("Zipline tied (%.0f deg): carry a log to its top end and press E."), Rope->GetSlopeDegrees())
         : TEXT("Rope tied: tie a second one alongside and lay boards across in Floor mode for a bridge."));
@@ -1137,9 +1201,31 @@ bool ULogBuildToolsComponent::FeedFire(AActor* Fire)
         return true;
     }
     const float Seconds = EstimateMassKg(Wood) * FuelSecondsPerKg;
-    Carry->ReleaseHeldToTool();
-    Heat->AddFuel(Seconds);
+    if (!FMath::IsFinite(Seconds) || Seconds <= 0.0f ||
+        Seconds > Heat->MaxFuelSeconds - Heat->GetFuelSeconds())
+    {
+        SetStatus(TEXT("The fire is too full; keep this wood for later."));
+        return true;
+    }
+    const float CarryMassKg = EstimateMassKg(Wood);
+    if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 1.0f, CarryMassKg))
+    {
+        SetStatus(TEXT("Too exhausted or resting to feed the fire."));
+        return true;
+    }
+    if (Carry->ReleaseHeldToTool() != Wood)
+    {
+        SetStatus(TEXT("The wood could not be released to the fire."));
+        return true;
+    }
+    if (!Heat->AddFuel(Seconds))
+    {
+        SetStatus(TEXT("The fire rejected the wood; it remains available nearby."));
+        return true;
+    }
     ConsumePiece(Wood);
+    if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 1.0f, CarryMassKg))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after committed fire feeding."));
     SetStatus(FString::Printf(TEXT("Fed the fire: +%.0f min."), Seconds / 60.0f));
     return true;
 }
@@ -1287,16 +1373,42 @@ void ULogBuildToolsComponent::PlacePlanInput()
 void ULogBuildToolsComponent::DismantleInput()
 {
     FHitResult Hit;
-    if (TraceView(InteractRange, Hit))
-        DismantlePiece(Cast<ALogBuildPiece>(Hit.GetActor()));
+    if (!TraceView(InteractRange, Hit))
+        return;
+    ALogBuildPiece* Piece = Cast<ALogBuildPiece>(Hit.GetActor());
+    if (!Piece)
+    {
+        DismantlePiece(nullptr);
+        return;
+    }
+    if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to dismantle this piece."));
+        return;
+    }
+    if (DismantlePiece(Piece) &&
+        !RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after dismantling committed."));
 }
 
 void ULogBuildToolsComponent::ThrowInput()
 {
     if (ULogCarryComponent* Carry = GetCarry())
     {
+        if (!Carry->IsCarryingLog())
+            return;
+        const float CarryMassKg = EstimateMassKg(Carry->HeldPiece.Get());
+        if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Carry, 1.0f, CarryMassKg))
+        {
+            SetStatus(TEXT("Too exhausted or resting to throw this log."));
+            return;
+        }
         if (Carry->ThrowHeldPiece())
+        {
+            if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Carry, 1.0f, CarryMassKg))
+                UE_LOG(LogTemp, Error, TEXT("Survival activity changed after throw committed."));
             SetStatus(TEXT("Thrown."), 1.0f);
+        }
     }
 }
 
