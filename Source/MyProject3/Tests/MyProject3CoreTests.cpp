@@ -3248,4 +3248,57 @@ bool FLogCutProgressOperationIdempotencyTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHeatSourceFixedStepRollbackTest,
+    "MyProject3.Survival.HeatFuelAndIgnitionRollbackWithFailedWorldStep", TestFlags)
+bool FHeatSourceFixedStepRollbackTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+
+    AActor* HeatActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Heat actor"), HeatActor))
+        return false;
+    UHeatSourceComponent* Heat = NewObject<UHeatSourceComponent>(HeatActor);
+    if (!TestNotNull(TEXT("Heat component"), Heat))
+        return false;
+    HeatActor->AddInstanceComponent(Heat);
+    Heat->RegisterComponent();
+    Survival->RegisterHeatSource(Heat);
+
+    TestTrue(TEXT("Initial fuel is accepted"), Heat->AddFuel(120.0f));
+    TestTrue(TEXT("Fuelled source ignites"), Heat->Ignite());
+    TArray<FWorldHeatSourceRuntimeState> Before;
+    Survival->CaptureHeatSourceRuntimeState(Before);
+    TestEqual(TEXT("One registered heat source captured"), Before.Num(), 1);
+
+    Heat->AdvanceFuel(30.0, EWorldWeatherState::Clear, 0.0f);
+    TestTrue(TEXT("Fuel burns during tentative fixed step"),
+        FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 90.0f, 0.01f));
+    TestTrue(TEXT("No-weather tentative step remains lit"), Heat->IsLit());
+
+    // Simulate a later subsystem rejecting the same fixed step.
+    TestTrue(TEXT("Rollback restores heat source state"),
+        Survival->RestoreHeatSourceRuntimeState(Before));
+    TestTrue(TEXT("Burn duration returns to pre-step value"),
+        FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f, 0.01f));
+    TestTrue(TEXT("Ignition state returns to pre-step value"), Heat->IsLit());
+
+    // Weather can extinguish without consuming fuel; that mutation must also roll back.
+    Heat->AdvanceFuel(10.0, EWorldWeatherState::Storm, 1.0f);
+    TestFalse(TEXT("Storm extinguishes the unprotected source"), Heat->IsLit());
+    TestTrue(TEXT("Rollback restores ignition after storm"),
+        Survival->RestoreHeatSourceRuntimeState(Before));
+    TestTrue(TEXT("Source is relit from the transaction snapshot"), Heat->IsLit());
+
+    Survival->UnregisterHeatSource(Heat);
+    TestFalse(TEXT("A changed heat-source set fails rollback closed"),
+        Survival->RestoreHeatSourceRuntimeState(Before));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
