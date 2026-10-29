@@ -183,8 +183,27 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         }
         if (Entry->TryGetObjectField(TEXT("equipment"), Sub))
         {
-            NewEquipment.Add({ Item.Id, NameField(*Sub, TEXT("slot")),
-                static_cast<float>(NumberField(*Sub, TEXT("insulation"))), static_cast<float>(NumberField(*Sub, TEXT("water_resistance"))) });
+            FEquipment EquipmentDefinition;
+            EquipmentDefinition.ItemId = Item.Id;
+            EquipmentDefinition.Slot = NameField(*Sub, TEXT("slot"));
+            EquipmentDefinition.Insulation = static_cast<float>(NumberField(*Sub, TEXT("insulation")));
+            EquipmentDefinition.WaterResistance = static_cast<float>(NumberField(*Sub, TEXT("water_resistance")));
+
+            const TArray<TSharedPtr<FJsonValue>>* CapabilityValues = ArrayField(*Sub, TEXT("capabilities"));
+            TSet<FName> SeenCapabilities;
+            if (CapabilityValues)
+            {
+                for (const TSharedPtr<FJsonValue>& CapabilityValue : *CapabilityValues)
+                {
+                    const FName CapabilityId(*CapabilityValue->AsString());
+                    if (CapabilityId.IsNone() || SeenCapabilities.Contains(CapabilityId))
+                        return Fail(FString::Printf(TEXT("Equipment %s has an invalid/repeated capability"),
+                            *Item.Id.ToString()));
+                    SeenCapabilities.Add(CapabilityId);
+                    EquipmentDefinition.GrantedCapabilities.Add(CapabilityId);
+                }
+            }
+            NewEquipment.Add(MoveTemp(EquipmentDefinition));
             Item.bEquipment = true;
         }
         NewItems.Add(Item.Id, Item);
