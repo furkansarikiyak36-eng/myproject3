@@ -50,8 +50,9 @@ namespace MyProject3Construction
     /** Spawns a loose, world-owned log with the same mesh family and scale as Source. */
     MYPROJECT3_API ALogBuildPiece* SpawnLogCopy(ALogBuildPiece* Source, const FTransform& Transform);
     /**
-     * Shortens a log to the part between FromAlong and ToAlong (cm, measured along its
-     * axis from the current centre). The mesh is scaled along its length.
+     * Validates a requested range. Partial ranges are rejected until a real mesh-slicing
+     * implementation can produce new bark/end-grain geometry and collision; scaling a
+     * static mesh is not accepted as a physical cut. A full-range request is a no-op.
      */
     MYPROJECT3_API bool TrimLogToRange(ALogBuildPiece* Log, float FromAlong, float ToAlong);
     /**
