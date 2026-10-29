@@ -24,6 +24,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldClimateSubsystem.h"
 #include "PhysicalHealthComponent.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -2009,8 +2010,23 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
             Survival->UpdateLocation(PlayerSurvivalId, PlayerLocation);
             if (IsInCreek(PlayerLocation))
                 Survival->ApplyWetnessExposure(PlayerSurvivalId, 0.12f);
-            const bool bNight = Hours < 6.0f || Hours > 19.5f;
-            Survival->SetWeather(bNight ? EWorldWeatherState::Snow : EWorldWeatherState::Wind, bNight ? 0.5f : 0.35f);
+
+            // When the shared climate is running, it is authoritative. Do not
+            // overwrite rain/storm with this scene's old wind/snow visual cycle,
+            // otherwise P2 wetness can never observe the authored weather.
+            const UWorldClimateSubsystem* Climate =
+                GetWorld()->GetSubsystem<UWorldClimateSubsystem>();
+            if (Climate && Climate->IsClimateInitialized())
+            {
+                Survival->SetWeather(Climate->GetWeather(), Climate->GetWeatherSeverity());
+            }
+            else
+            {
+                const bool bNight = Hours < 6.0f || Hours > 19.5f;
+                Survival->SetWeather(
+                    bNight ? EWorldWeatherState::Snow : EWorldWeatherState::Wind,
+                    bNight ? 0.5f : 0.35f);
+            }
         }
     }
 
