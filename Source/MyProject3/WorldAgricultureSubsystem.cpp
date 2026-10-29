@@ -1,5 +1,7 @@
 #include "WorldAgricultureSubsystem.h"
 
+#include "WorldSurvivalSubsystem.h"
+
 bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
 {
     if (!Crop.CropId.IsValid() || Crop.CropDefinitionId.IsNone() ||
@@ -64,7 +66,12 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
         !FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
         MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(HungerPerHour) ||
         HungerPerHour < 0.0f || !FMath::IsFinite(ProductHungerLimit) ||
-        ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f)
+        ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f ||
+        !FMath::IsFinite(RainGrowthMultiplier) || RainGrowthMultiplier < 0.0f || RainGrowthMultiplier > 2.0f ||
+        !FMath::IsFinite(WindGrowthMultiplier) || WindGrowthMultiplier < 0.0f || WindGrowthMultiplier > 2.0f ||
+        !FMath::IsFinite(SnowGrowthMultiplier) || SnowGrowthMultiplier < 0.0f || SnowGrowthMultiplier > 2.0f ||
+        !FMath::IsFinite(StormGrowthMultiplier) || StormGrowthMultiplier < 0.0f || StormGrowthMultiplier > 2.0f ||
+        !FMath::IsFinite(HeatwaveGrowthMultiplier) || HeatwaveGrowthMultiplier < 0.0f || HeatwaveGrowthMultiplier > 2.0f)
         return false;
 
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
@@ -98,6 +105,32 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
 {
     if (!CanAdvanceAgricultureStep(DeltaSeconds)) return false;
 
+    const UWorldSurvivalSubsystem* Survival =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!Survival ||
+        static_cast<uint8>(Survival->Weather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
+        !FMath::IsFinite(Survival->WeatherSeverity) ||
+        Survival->WeatherSeverity < 0.0f || Survival->WeatherSeverity > 1.0f)
+        return false;
+
+    float FullSeverityMultiplier = 1.0f;
+    switch (Survival->Weather)
+    {
+    case EWorldWeatherState::Rain:     FullSeverityMultiplier = RainGrowthMultiplier; break;
+    case EWorldWeatherState::Wind:     FullSeverityMultiplier = WindGrowthMultiplier; break;
+    case EWorldWeatherState::Snow:     FullSeverityMultiplier = SnowGrowthMultiplier; break;
+    case EWorldWeatherState::Storm:    FullSeverityMultiplier = StormGrowthMultiplier; break;
+    case EWorldWeatherState::Heatwave: FullSeverityMultiplier = HeatwaveGrowthMultiplier; break;
+    case EWorldWeatherState::Clear:
+    default: break;
+    }
+    const double WeatherGrowthMultiplier =
+        FMath::Lerp(1.0, static_cast<double>(FullSeverityMultiplier),
+            static_cast<double>(Survival->WeatherSeverity));
+    if (!FMath::IsFinite(WeatherGrowthMultiplier) || WeatherGrowthMultiplier < 0.0 ||
+        WeatherGrowthMultiplier > 2.0)
+        return false;
+
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         FWorldCropState& Crop = Pair.Value;
@@ -109,7 +142,9 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
             ++Crop.Revision;
             continue;
         }
-        Crop.GrowthProgressSeconds += DeltaSeconds * FMath::Clamp(Crop.Moisture, 0.0f, 1.0f);
+        Crop.GrowthProgressSeconds += DeltaSeconds *
+            static_cast<double>(FMath::Clamp(Crop.Moisture, 0.0f, 1.0f)) *
+            WeatherGrowthMultiplier;
         while (Crop.GrowthProgressSeconds >= Crop.SecondsPerStage &&
             Crop.Stage != ECropGrowthStage::Mature)
         {
