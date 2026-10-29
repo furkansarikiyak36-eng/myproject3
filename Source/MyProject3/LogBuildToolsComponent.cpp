@@ -8,6 +8,7 @@
 #include "LogContainerActor.h"
 #include "Placement/PlacementKernelSubsystem.h"
 #include "StickPrimitivePiece.h"
+#include "StoneBuildingPiece.h"
 #include "HarvestableTreeActor.h"
 #include "RopeLineActor.h"
 #include "StructuralPieceInterface.h"
@@ -381,6 +382,19 @@ bool ULogBuildToolsComponent::TryHandleInteract()
             else
                 SetStatus(Reason);
             return true;
+        }
+        if (AStoneBuildingPiece* Structure = Cast<AStoneBuildingPiece>(Hit.GetActor()))
+        {
+            if (Structure->PieceType == EStonePieceType::DoorFrame ||
+                Structure->PieceType == EStonePieceType::Gate ||
+                Structure->PieceType == EStonePieceType::WindowFrame)
+            {
+                if (Structure->TrySetOpen(!Structure->IsOpen()))
+                    SetStatus(Structure->IsOpen() ? TEXT("Opened.") : TEXT("Closed."), 1.5f);
+                else
+                    SetStatus(TEXT("This opening has no operable leaf or has an invalid hinge setting."));
+                return true;
+            }
         }
         if (ALogContainerActor* Container = FindContainer(Hit))
         {

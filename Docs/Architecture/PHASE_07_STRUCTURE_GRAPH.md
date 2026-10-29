@@ -15,7 +15,7 @@
 
 ## M064–M067 source completion
 
-- Door and gate leafs have an explicit open/close API with moving pivot geometry; the logical passage and raid-blocking state changes with it.
+- Door and gate leafs have an explicit open/close API with moving pivot geometry; pressing E while aiming at a door/gate/window toggles the leaf, and the logical passage and raid-blocking state changes with it.
 - Window shutters can open, but opening a window is not treated as a full-size passage.
 - `WallOpening` has a clear-passage state independent of a movable door.
 - Bridge deck/elevated walkway accepts traversal only with a primary and second independent support, bounded span, valid support path, and both physical support anchors reserved. Active traversal IDs reserve a shared weight budget and can be released.

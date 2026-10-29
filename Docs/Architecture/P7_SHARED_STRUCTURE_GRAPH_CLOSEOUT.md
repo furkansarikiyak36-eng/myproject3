@@ -6,7 +6,7 @@
 ## Source work completed
 
 - Primary/secondary support graph, anchor reservations, support-path validation, aggregate load, damage/repair and deterministic leaf-first removal.
-- Operable door/gate leaf state and window shutter state; wall-opening passage semantics; raid-blocking queries that distinguish clear passages from barriers.
+- Operable door/gate leaf state and window shutter state; E-interact toggling; wall-opening passage semantics; raid-blocking queries that distinguish clear passages from barriers.
 - Bridge/walkway second-anchor/span preflight, concurrent traversal weight tickets and explicit release.
 - Visible rope anchor-to-anchor link, span and traveler-weight limits, ticket-based traversal progression and endpoint cleanup.
 - Connected dismantle returns authored salvage for each removed structure node while consuming unique source ownership records; raid collapse uses the same batch transaction without salvage.
