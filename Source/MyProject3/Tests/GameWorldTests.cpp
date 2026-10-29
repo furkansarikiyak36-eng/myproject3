@@ -1545,10 +1545,20 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     TestEqual(TEXT("Repeating marker tick cannot duplicate seed reward"),
         Inventory->GetItemCount(TEXT("Seed.Grain")), 3);
 
+    FWorldSurvivalProfile BeforePlantingWork;
+    TestTrue(TEXT("Read survival state before planting labor"),
+        Survival->GetProfile(Profile.EntityId, BeforePlantingWork));
     FGuid CropId;
-    TestTrue(TEXT("Discovered seed can now be planted through the ownership transaction"),
-        Agriculture->TryPlantCrop(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
-            InitialSeed.Revision, Inventory->GetInventoryOwnerId(), PlotCell, 0.5f, CropId));
+    TestTrue(TEXT("Discovered seed can now be planted through the labor transaction"),
+        Agriculture->TryPlantCropWithLabor(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory, Profile.EntityId, PlotCell, 0.5f, CropId));
+    FWorldSurvivalProfile AfterPlantingWork;
+    TestTrue(TEXT("Read survival state after planting labor"),
+        Survival->GetProfile(Profile.EntityId, AfterPlantingWork));
+    TestTrue(TEXT("Planting charges activity energy"),
+        AfterPlantingWork.PendingActivityKcal > BeforePlantingWork.PendingActivityKcal);
+    TestTrue(TEXT("Planting charges stamina"),
+        AfterPlantingWork.Stamina < BeforePlantingWork.Stamina);
     FWorldCropState PlantedCrop;
     TestTrue(TEXT("Successful planting produces a crop record"),
         Agriculture->GetCrop(CropId, PlantedCrop));
