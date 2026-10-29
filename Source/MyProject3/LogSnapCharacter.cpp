@@ -23,6 +23,7 @@
 #include "WorldClimateSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "InventoryCraftingComponent.h"
 #include "Engine/World.h"
 #include "Math/RotationMatrix.h"
 
@@ -288,6 +289,9 @@ void ALogSnapCharacter::SetSurvivalEntityId(const FGuid& EntityId)
 {
     SurvivalEntityId = EntityId;
     TraversalActivitySeconds = 0.0f;
+
+    if (UInventoryCraftingComponent* Inventory = FindComponentByClass<UInventoryCraftingComponent>())
+        Inventory->SetProgressionEntityId(EntityId);
 }
 
 bool ALogSnapCharacter::FindWalkingRoute(
