@@ -22,7 +22,7 @@
 
 Status: `open`
 Goal: Close the remaining partial tasks listed in `memory/PLAN_STATUS.md` on `game/p00-adopt-group-a`, prioritizing backend completeness and necessary player-facing interactions, then record exact status. This plan has 22 partial rows; P10 is frozen and must be skipped.
-Asked by the user: "bu kısmileri bitirelim" (2026-10-29)
+Asked by the user: "bu kısmileri bitirelim"; continued after "devam" (2026-10-29)
 Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
 ### Plan (write code and tests; do not build per small task; status ceiling is code-written)
@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add a scoped-world regression test with two world-owned dry Firewood items and one inventory-owned control: rain changes only world items to Firewood.Wet; then clear weather plus an active nearby fire dries only the nearby item back to Firewood. Assert BaseDefinitionId remains dry-fuel and revisions advance. No test execution.
+Water-fill API is committed with schema v26 + v25→v26 migration and receipt validation. Next add automation coverage for fired-pot creek fill (invalid/missing vessel, success, ledger owner, retry, snapshot restore), then wire a simple VerticalSlice_C interaction key that only triggers while the player is in the creek. After that continue P2 injury triggers and remaining P3/P4/P7/P8/P9 tasks. New code is unbuilt; do not run builds until the batch stage.
