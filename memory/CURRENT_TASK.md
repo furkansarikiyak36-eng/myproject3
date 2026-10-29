@@ -82,7 +82,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added `MyProject3.Survival.WorldFirewoodGetsWetInRainAndDriesNearLitFire`: rain wets World-owner fuel only, preserves BaseDefinitionId, and clear weather + lit nearby fire dries only in-range fuel; revision counts asserted. Source-only/unrun).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added `MyProject3.Survival.WorldFirewoodGetsWetInRainAndDriesNearLitFire`: rain wets World-owner fuel only; clear weather + lit nearby heat dries only in-range fuel; inventory fuel stays dry; base definition + revisions asserted. Source-only/unrun).
+- `memory/PLAN_STATUS.md` (P3.1 now records existing data-driven fuel rates, O-key refuel, world-only rain wetting, lit-fire drying and the newly authored unrun test; roof coverage/visual verification remain gaps).
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
 - `Source/MyProject3/LogSnapCharacter.cpp` (now creates one canonical `UInventoryCraftingComponent` default subobject adjacent to carry/build components).
 - `Source/MyProject3/WorldDemoBootstrapActor.cpp` (bootstrap calls `LoadDefault` + `ApplyToWorld` before coordinator initialization, but actor BeginPlay order can leave player inventory already initialized).
@@ -161,4 +162,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit the new test fixture for component/world setup correctness and verify no false assumption about WorldItemOwnership/HeatSource registration. Then update `PLAN_STATUS.md` P3.1 as code-written partial, with remaining physical fuel pickup/refuel, weather exposure/covered storage rules and build/test still outstanding; update roadmap and codebase notes.
+Update `ROADMAP.md` with a P3.1 code-written entry and `CODEBASE.md` with the actual existing world-fuel conversion rule. Then move to P3.2: inspect shelter sensing/heat aggregation and physical enclosure openings; close any real gap without adding a second heat model.
