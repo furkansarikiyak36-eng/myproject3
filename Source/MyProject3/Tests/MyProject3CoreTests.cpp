@@ -4124,4 +4124,118 @@ bool FHostileBiteAppliesInjuryAndRespectsCooldownTest::RunTest(const FString& Pa
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWorldFuelWetnessAndDryingTest,
+    "MyProject3.Survival.WorldFirewoodGetsWetInRainAndDriesNearLitFire", TestFlags)
+bool FWorldFuelWetnessAndDryingTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Survival subsystem"), Survival) ||
+        !TestNotNull(TEXT("Ownership subsystem"), Ownership))
+        return false;
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(9419, 1000.0));
+
+    auto RegisterFirewood = [&](EWorldItemOwnerKind OwnerKind, const FGuid& OwnerId,
+        const FVector& Location, FGuid& OutItemId)
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = FGuid::NewGuid();
+        Item.DefinitionId = TEXT("Firewood");
+        Item.BaseDefinitionId = TEXT("Firewood");
+        Item.OwnerKind = OwnerKind;
+        Item.OwnerId = OwnerId;
+        Item.WorldLocation = Location;
+        Item.CreatedAtWorldTimeSeconds = 1000.0;
+        Item.SpoilageAgeUpdatedAtSeconds = 1000.0;
+        if (!Item.ItemId.IsValid() || !Ownership->RegisterItem(Item))
+            return false;
+        OutItemId = Item.ItemId;
+        return true;
+    };
+
+    FGuid NearWorldFirewoodId;
+    FGuid FarWorldFirewoodId;
+    TestTrue(TEXT("Register near world firewood"), RegisterFirewood(
+        EWorldItemOwnerKind::World, FGuid(), FVector(30.0f, 0.0f, 0.0f), NearWorldFirewoodId));
+    TestTrue(TEXT("Register far world firewood"), RegisterFirewood(
+        EWorldItemOwnerKind::World, FGuid(), FVector(1800.0f, 0.0f, 0.0f), FarWorldFirewoodId));
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!TestTrue(TEXT("Inventory owner is valid"), InventoryOwnerId.IsValid()))
+        return false;
+    FGuid InventoryFirewoodId;
+    TestTrue(TEXT("Register inventory-owned firewood"), RegisterFirewood(
+        EWorldItemOwnerKind::Inventory, InventoryOwnerId, FVector::ZeroVector, InventoryFirewoodId));
+    Inventory->ItemWeightGrams.Add(TEXT("Firewood"), 1500);
+    FInventoryStack InventoryStack;
+    InventoryStack.ItemId = TEXT("Firewood");
+    InventoryStack.Quantity = 1;
+    InventoryStack.MaxStack = 1;
+    InventoryStack.OwnedWorldItemId = InventoryFirewoodId;
+    TestTrue(TEXT("Inventory has its unique dry fuel"), Inventory->RestoreSnapshot(
+        InventoryOwnerId, { InventoryStack }, NAME_None));
+
+    TestTrue(TEXT("Rain weather is accepted"), Survival->SetWeather(EWorldWeatherState::Rain, 0.8f));
+    TestTrue(TEXT("Advance clock into rainy step"), Clock->AdvanceSimulation(60.0));
+    double EndTime = Clock->GetSimulationTimeSeconds();
+    TestTrue(TEXT("Advance rain exposure"), Survival->AdvanceSurvivalStep(60.0, EndTime));
+
+    FWorldOwnedItemRecord NearWet, FarWet, InventoryStillDry;
+    TestTrue(TEXT("Read near firewood after rain"), Ownership->TryGetItem(NearWorldFirewoodId, NearWet));
+    TestTrue(TEXT("Read far firewood after rain"), Ownership->TryGetItem(FarWorldFirewoodId, FarWet));
+    TestTrue(TEXT("Read inventory firewood after rain"), Ownership->TryGetItem(InventoryFirewoodId, InventoryStillDry));
+    TestEqual(TEXT("Rain wets near world firewood"), NearWet.DefinitionId, FName(TEXT("Firewood.Wet")));
+    TestEqual(TEXT("Rain wets far world firewood"), FarWet.DefinitionId, FName(TEXT("Firewood.Wet")));
+    TestEqual(TEXT("Inventory firewood is weather-protected"), InventoryStillDry.DefinitionId, FName(TEXT("Firewood")));
+    TestEqual(TEXT("Wetting preserves dry root definition"), NearWet.BaseDefinitionId, FName(TEXT("Firewood")));
+    TestEqual(TEXT("Wetting advances revision once"), NearWet.Revision, static_cast<int64>(2));
+
+    AActor* HeatActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Drying fire actor"), HeatActor))
+        return false;
+    UHeatSourceComponent* Heat = NewObject<UHeatSourceComponent>(HeatActor);
+    if (!TestNotNull(TEXT("Drying heat source"), Heat))
+        return false;
+    HeatActor->AddInstanceComponent(Heat);
+    HeatActor->SetRootComponent(Heat);
+    Heat->RegisterComponent();
+    Heat->SetWorldLocation(FVector::ZeroVector);
+    TestTrue(TEXT("Add a short live fire"), Heat->AddFuel(600.0f));
+    TestTrue(TEXT("Light the drying fire"), Heat->Ignite());
+    TestTrue(TEXT("Heat is strong enough to dry nearby firewood"), Heat->GetHeatAt(NearWet.WorldLocation) >= 12.0f);
+    TestTrue(TEXT("Heat doesn't reach far firewood"), Heat->GetHeatAt(FarWet.WorldLocation) < 12.0f);
+
+    TestTrue(TEXT("Clear weather is accepted"), Survival->SetWeather(EWorldWeatherState::Clear, 0.0f));
+    TestTrue(TEXT("Advance clock into drying step"), Clock->AdvanceSimulation(60.0));
+    EndTime = Clock->GetSimulationTimeSeconds();
+    TestTrue(TEXT("Advance firewood drying"), Survival->AdvanceSurvivalStep(60.0, EndTime));
+
+    FWorldOwnedItemRecord NearDry, FarStillWet, InventoryStillDryAfter;
+    TestTrue(TEXT("Read nearby firewood after drying"), Ownership->TryGetItem(NearWorldFirewoodId, NearDry));
+    TestTrue(TEXT("Read distant firewood after drying"), Ownership->TryGetItem(FarWorldFirewoodId, FarStillWet));
+    TestTrue(TEXT("Read inventory firewood after drying"), Ownership->TryGetItem(InventoryFirewoodId, InventoryStillDryAfter));
+    TestEqual(TEXT("Nearby fire dries the wet item"), NearDry.DefinitionId, FName(TEXT("Firewood")));
+    TestEqual(TEXT("Distant wet fuel remains wet"), FarStillWet.DefinitionId, FName(TEXT("Firewood.Wet")));
+    TestEqual(TEXT("Inventory fuel was never changed"), InventoryStillDryAfter.DefinitionId, FName(TEXT("Firewood")));
+    TestEqual(TEXT("Drying preserves root definition"), NearDry.BaseDefinitionId, FName(TEXT("Firewood")));
+    TestEqual(TEXT("Drying increments item revision"), NearDry.Revision, static_cast<int64>(3));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
