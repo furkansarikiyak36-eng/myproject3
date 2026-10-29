@@ -18,7 +18,7 @@ Update this file whenever a task changes state.
 | Kısmi | 20 | P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
 | Yok | 11 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P8.1, P9.1, P9.3, P11, P12 |
 
-Player input/HUD: available prototype bindings include carry/cut/build tools, dig tool (N), creek fill (I), fire refuel (O), and helper order (J). A general survival/status HUD, drinking confirmation, rest/sleep control, and most system-specific feedback are still missing.
+Player input/HUD: prototype bindings now include carry/cut/build tools, dig tool (N), creek fill (I), fire refuel (O), helper order (J), and production-station controls (F2 start/collect, F3 deposit, F4 take). Survival/status HUD, explicit drinking confirmation, rest/sleep control and most system feedback remain missing. No station actors/meshes have yet been placed in VerticalSlice_C.
 
 ## Per task
 
@@ -44,7 +44,7 @@ Player input/HUD: available prototype bindings include carry/cut/build tools, di
 | P3.4 charcoal pit | Yok | generic production station [S] | the station and recipe |
 | P4.1 gatherables | Kısmi | trees, logs, sticks, stones [S]; `AGatherableResourceActor`: any data item, tool rule, units that grow back on the world clock, food as ledger items (test) | placing the spots in VerticalSlice_C per zone; bone/hide/antler come from hunting (P6.4); player input |
 | P4.2 item transformations | Var | every E transformation is data: hand ones become inventory crafting recipes, station ones production recipes (station tools go in and come back) | hand-crafted items are plain stacks, not ledger items (eating needs ledger items) |
-| P4.3 stations | Kısmi | `AProductionStationActor` for every station in stations.json: deposit, start (fire / charcoal-hot fire rule), collect, take; `TryTakeStock` in production; kiln test | station meshes and placing them; the fire is checked only at the start of a job; player input |
+| P4.3 stations | Kısmi (code-written) | `AProductionStationActor` data-ID registration + deposit/start/collect/take; fire/hot-fire requirement at start; VerticalSlice_C controls F2=start/collect, F3=deposit required generic recipe input/tool, F4=take one stock unit within 300 cm; category-safe station withdrawal and stock rollback; `MyProject3.Production.StationDepositStartCollectTakePreservesToolType` authored/unrun | station actors/meshes must still be placed in VerticalSlice_C; empty station UX and multi-item transfer/selection remain basic; fire is checked only when job starts; batch build/test/PIE pending |
 | P4.4 tool requirements | Kısmi | hand recipes need their tools (not used up; CanCraft now checks them, it ignored them before); station recipes need the tool in the station | the log axe and the dig tool strength are not tied to tool items yet |
 | P5.1 layers → items | Var | yield rules [A] filled from layers.json (soil, clay, sand, stone, flint, ochre; layers 0-3); clay digs out only in its layer (test) | which material a voxel cell holds is still chosen by the caller (no per-location geology map) |
 | P5.2 cellar, trench, collapse | Yok | dig refused near grounded structures [A] | collapse of unsupported rooms; cellar/trench/cistern/embankment |
