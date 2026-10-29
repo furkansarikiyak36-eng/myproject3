@@ -4,6 +4,7 @@
 #include "PhysicalHealthComponent.h"
 #include "ShelterSensorComponent.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
 #include "TerrainDigToolComponent.h"
 
 #include "Camera/CameraComponent.h"
@@ -297,6 +298,18 @@ void ALogSnapCharacter::LookUp(float Value)
 
 void ALogSnapCharacter::HandleJumpPressed()
 {
+    UWorldSurvivalSubsystem* Survival = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    FWorldSurvivalProfile Profile;
+    if (Survival && Clock && Clock->IsClockInitialized() &&
+        IsValid(ShelterSensor) && ShelterSensor->SurvivalEntityId.IsValid() &&
+        Survival->GetProfile(ShelterSensor->SurvivalEntityId, Profile) &&
+        Profile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds())
+    {
+        return; // Rest is an actual movement-locked interval, not only a recovery bonus.
+    }
     Jump();
 }
 
@@ -367,19 +380,27 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
     const bool bHasSurvivalProfile = Survival && IsValid(ShelterSensor) &&
         ShelterSensor->SurvivalEntityId.IsValid() &&
         Survival->GetProfile(ShelterSensor->SurvivalEntityId, SurvivalProfile);
+    const UWorldSimulationClockSubsystem* Clock = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    const bool bIsResting = bHasSurvivalProfile && Clock && Clock->IsClockInitialized() &&
+        SurvivalProfile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds();
     bool bSprintActive = false;
     float FatigueSpeedFactor = 1.0f;
     if (bHasSurvivalProfile)
     {
         FatigueSpeedFactor = FMath::Lerp(1.0f, 0.45f,
             FMath::Clamp(SurvivalProfile.Fatigue / 100.0f, 0.0f, 1.0f));
-        bSprintActive = bHasMovementInput &&
+        bSprintActive = !bIsResting && bHasMovementInput &&
             PlayerController->IsInputKeyDown(EKeys::LeftShift) &&
             SurvivalProfile.Stamina > 20.0f && SurvivalProfile.Fatigue < 85.0f;
         if (UCharacterMovementComponent* Movement = GetCharacterMovement())
             Movement->MaxWalkSpeed = BaseWalkSpeed * FatigueSpeedFactor * (bSprintActive ? 1.5f : 1.0f);
 
-        if (bHasMovementInput)
+        if (bIsResting)
+        {
+            SurvivalActivityAccumulator = 0.0f;
+        }
+        else if (bHasMovementInput)
         {
             SurvivalActivityAccumulator += DeltaSeconds;
             if (SurvivalActivityAccumulator >= 1.0f)
@@ -410,8 +431,13 @@ void ALogSnapCharacter::Tick(float DeltaSeconds)
             Movement->MaxWalkSpeed = BaseWalkSpeed;
     }
 
-    MoveForward(ForwardInput);
-    MoveRight(RightInput);
+    // VerticalSlice_C rest is a bounded sleep-like interval on the shared
+    // clock. The pawn polls WASD directly, so movement calls must be gated here.
+    if (!bIsResting)
+    {
+        MoveForward(ForwardInput);
+        MoveRight(RightInput);
+    }
 
     // Step-ups onto logs and rocks move the capsule in one frame; the camera
     // follows smoothly instead of snapping.
