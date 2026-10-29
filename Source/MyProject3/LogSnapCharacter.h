@@ -90,6 +90,9 @@ protected:
     float LastGroundZ = 0.0f;
     bool bHasLastGroundZ = false;
     float CameraBaseHeight = 64.0f;
+    /** Cached base speed so fatigue/sprint modifiers can be recomputed without compounding. */
+    float BaseWalkSpeed = 420.0f;
+    float SurvivalActivityAccumulator = 0.0f;
 
     float AxeSwingElapsed = 0.0f;
     float AxeSwingDuration = 0.30f;
