@@ -774,8 +774,22 @@ bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
         GameData->GetItems().Find(FName(TEXT("Water.Dirty")));
     const FGameDataItem* BoiledItemDefinition =
         GameData->GetItems().Find(FName(TEXT("Water.Boiled")));
-    if (!BoilRecipe || !FMath::IsFinite(BoilRecipe->DurationSeconds) ||
+    const bool bHasDirtyWaterInput = BoilRecipe && BoilRecipe->Inputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount)
+        {
+            return Amount.ItemId == FName(TEXT("Water.Dirty")) && Amount.Quantity == 1;
+        });
+    const bool bHasBoiledWaterOutput = BoilRecipe && BoilRecipe->Outputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount)
+        {
+            return Amount.ItemId == FName(TEXT("Water.Boiled")) && Amount.Quantity == 1;
+        });
+    const bool bRequiresReusablePot = BoilRecipe &&
+        BoilRecipe->Tools.Contains(FName(TEXT("Pot.Fired")));
+    if (!BoilRecipe || BoilRecipe->Where != FName(TEXT("campfire")) ||
+        !FMath::IsFinite(BoilRecipe->DurationSeconds) ||
         BoilRecipe->DurationSeconds <= 0.0 || BoilRecipe->DurationSeconds > 86400.0 ||
+        !bHasDirtyWaterInput || !bHasBoiledWaterOutput || !bRequiresReusablePot ||
         !DirtyItemDefinition || !BoiledItemDefinition ||
         !FindConsumableDefinition(FName(TEXT("Water.Dirty"))) ||
         !FindConsumableDefinition(FName(TEXT("Water.Boiled"))))
