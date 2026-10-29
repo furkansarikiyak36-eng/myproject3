@@ -317,6 +317,9 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
         if (Cell.DepthLayer < 0 || Cell.DepthLayer >= MaxEditableDepthLayers ||
             Cell.DepthLayer >= MaxDepthPerCell || Cell.Revision <= 0 ||
             (!Cell.bExcavated && Cell.MaterialId.IsNone()) ||
+            (Cell.bResourceDepositInitialized
+                ? (Cell.ResourceDefinitionId.IsNone() || Cell.RemainingResourceUnits < 0)
+                : (!Cell.ResourceDefinitionId.IsNone() || Cell.RemainingResourceUnits != 0)) ||
             (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)))
             return false;
         ProposedCells.Add(Cell.Cell, Cell);
@@ -347,7 +350,19 @@ bool UWorldTerrainStateSubsystem::RestoreSnapshot(
               (Receipt.ResultState.bExcavated ||
                Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId)) ||
             (Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial &&
-              Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId))
+              Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId) ||
+            (Receipt.bYieldAware &&
+              (Receipt.RequestedEdit != ETerrainCellEdit::Excavate ||
+               !Receipt.RequestedMaterialId.IsNone() ||
+               !Receipt.ResultState.bResourceDepositInitialized ||
+               Receipt.YieldedResourceDefinitionId.IsNone() ||
+               Receipt.ResultState.ResourceDefinitionId != Receipt.YieldedResourceDefinitionId ||
+               Receipt.YieldedResourceUnits < 0 ||
+               (Receipt.YieldedResourceUnits > 0 && !Receipt.OutputWorldItemId.IsValid()) ||
+               (Receipt.YieldedResourceUnits == 0 && Receipt.OutputWorldItemId.IsValid()))) ||
+            (!Receipt.bYieldAware &&
+              (!Receipt.YieldedResourceDefinitionId.IsNone() ||
+               Receipt.YieldedResourceUnits != 0 || Receipt.OutputWorldItemId.IsValid())))
             return false;
 
         ProposedReceipts.Add(Receipt.OperationId, Receipt);
