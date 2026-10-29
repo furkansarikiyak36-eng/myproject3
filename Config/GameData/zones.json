@@ -114,10 +114,11 @@
         8
       ],
       "required_capabilities": [
-        "Capability.ColdProtection"
+        "Capability.ColdProtection",
+        "Capability.TerrainGrip"
       ],
       "required_discovery_ids": [
-        "Discovery.Zone2.HighForest"
+        "Discovery.Zone3.LakeSwamp"
       ]
     }
   ]
