@@ -7,6 +7,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldAgricultureSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -377,9 +378,12 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
         World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     UWorldStructuralGraphSubsystem* StructuralGraph =
         World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
-    if (!World || !Data || !Agriculture || !StructuralGraph)
+    UWorldLogisticsRouteSubsystem* Routes =
+        World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!World || !Data || !Agriculture || !StructuralGraph || !Routes)
         return false;
 
+    TArray<FGuid> ActiveFloodIds;
     for (FWorldNaturalEventInstance& Instance : State.Instances)
     {
         if (Instance.Phase != EWorldNaturalEventPhase::Active)
@@ -388,6 +392,9 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
             [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
         if (!Definition)
             return false;
+
+        if (Definition->Effect == TEXT("flooded_routes"))
+            ActiveFloodIds.Add(Instance.InstanceId);
 
         const bool bContinuous = Definition->Effect == TEXT("crop_moisture_loss");
         if (bContinuous && Instance.LastAppliedEffectTickIndex == TargetTickIndex)
@@ -434,6 +441,8 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
             return false;
         ++Instance.Revision;
     }
+    if (!Routes->ApplyActiveFloodEvents(ActiveFloodIds))
+        return false;
     return true;
 }
 
