@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldCargoTransportSubsystem.generated.h"
 
 class UWorldLogisticsRouteSubsystem;
@@ -24,6 +25,8 @@ struct FWorldCargoTransportRecord
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") float RouteCost = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") float Progress = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") float CostPerSecond = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") float CargoMassKg = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") float WeatherSeverityAtDispatch = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") int64 ItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") ECargoTransportState State = ECargoTransportState::InTransit;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Logistics") FName BlockedReason = NAME_None;
@@ -42,6 +45,11 @@ public:
         const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& SourceStorageId,
         FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
         float CostPerSecond, FGuid& OutCargoId);
+    /** Context-aware route-cost path for callers with authoritative load/weather data. */
+    UFUNCTION(BlueprintCallable, Category="World|Logistics") bool StartTransportWithContext(
+        const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& SourceStorageId,
+        FName OriginNode, FName DestinationNode, const FGuid& DestinationStorageId,
+        float CostPerSecond, const FLogisticsRouteCostContext& CostContext, FGuid& OutCargoId);
     UFUNCTION(BlueprintPure, Category="World|Logistics") bool CanAdvanceCargoStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Logistics") bool AdvanceCargoStep(double DeltaSeconds);
     UFUNCTION(BlueprintCallable, Category="World|Logistics") bool RetryBlockedDelivery(const FGuid& CargoId);
