@@ -1127,19 +1127,8 @@ bool ULogCarryComponent::ProcessAimedPiece()
         return false;
     }
 
-    // Fatigue affects sustained tool work as well as locomotion. Keep the
-    // multiplier centralized in the survival model so axe and digging actions
-    // respond to the same profile value.
-    if (const UShelterSensorComponent* Sensor = GetOwner()
-        ? GetOwner()->FindComponentByClass<UShelterSensorComponent>() : nullptr)
-    {
-        const UWorldSurvivalSubsystem* Survival = GetWorld()
-            ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
-        if (Survival && Sensor->SurvivalEntityId.IsValid())
-            AxeStrength *= Survival->GetWorkEffectiveness(Sensor->SurvivalEntityId);
-    }
-
-    // First press marks the cut where the player looks; the next presses cut it.
+    // First press marks the cut where the player looks; marking does not
+    // spend effort. The actual repeated cut below is the costly work action.
     if (ArmedLog.Get() != Piece)
     {
         FLogCutChoice Choice;
@@ -1166,6 +1155,23 @@ bool ULogCarryComponent::ProcessAimedPiece()
         ArmedWork = 0.0f;
         PlacementStatus = FString::Printf(TEXT("Marked: %s. F: cut with the axe, C: cancel."), *DescribeCut(Piece, Choice));
         return true;
+    }
+
+    const UShelterSensorComponent* Sensor = GetOwner()
+        ? GetOwner()->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+    const UWorldSurvivalSubsystem* Survival = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (Survival && Sensor && Sensor->SurvivalEntityId.IsValid())
+    {
+        if (!Survival->RecordActivity(
+            Sensor->SurvivalEntityId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+        {
+            PlacementStatus = TEXT("Too exhausted or resting to cut this log.");
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange, PlacementStatus);
+            return false;
+        }
+        AxeStrength *= Survival->GetWorkEffectiveness(Sensor->SurvivalEntityId);
     }
 
     // A 3/4 cut aimed at the -X end: turn the log end for end so the short piece
