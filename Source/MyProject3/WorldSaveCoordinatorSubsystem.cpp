@@ -639,7 +639,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         }
     }
     Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
-    Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals, OutSave->FieldCells);
+    Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals, OutSave->FieldCells, OutSave->AnimalPens);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
@@ -765,7 +765,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
 
     if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells, Snapshot->TerrainReceipts)) return false;
-    if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals, Snapshot->FieldCells)) return false;
+    if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals, Snapshot->FieldCells, Snapshot->AnimalPens)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
     if (!Production->RestoreSnapshot(Snapshot->ProductionStations, Snapshot->ProductionRecipes)) return false;
@@ -945,6 +945,14 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
             Crop.MinimumFertility = 0.0f;
         }
         Candidate->SchemaVersion = 23;
+    }
+
+    if (Candidate->SchemaVersion == 23)
+    {
+        // Schema v24 adds logical animal pens and the capture/pen/slaughter lifecycle.
+        // Legacy animals remain uncaptured; no pen links or historical slaughter outputs are inferred.
+        Candidate->AnimalPens.Reset();
+        Candidate->SchemaVersion = 24;
     }
 
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
