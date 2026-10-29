@@ -122,7 +122,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed exact owned-item fields and owner kinds).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires an inventory owner ID, finite timestamps/location and capacity; fills `BaseDefinitionId`).
 - `Source/MyProject3/LogSnapCharacter.h` (fall tracking fields and `ApplyFallImpact` entry point).
-- `Source/MyProject3/LogSnapCharacter.cpp` (tracks peak downward velocity while falling and applies a single consequence when movement exits falling; hard impacts ≥850 cm/s deal bounded physical damage and attempt receipt-backed `Injury.Fall` application via the shelter sensor profile).
+- `Source/MyProject3/LogSnapCharacter.cpp` (tracks peak downward velocity while falling; hard impacts ≥850 cm/s deal bounded physical damage and attempt receipt-backed `Injury.Fall` through the shelter sensor profile).
+- `Source/MyProject3/WildlifeActor.h` (added a runtime attack cooldown timer to stop hostile bite damage being applied every Tick).
 - `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival conditions exists).
 - `Source/MyProject3/WildlifeActor.h/.cpp` (Enemy already approaches the player and stops at ~150 cm, but there is no bite cooldown or attack/damage action; SmallAnimal capture state is present).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
@@ -156,4 +157,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement rate-limited hostile bites in `WildlifeActor.cpp`: when an Enemy reaches the attack distance, apply physical hit damage and configured `Injury.AnimalBite` via the target's shelter sensor profile, then cooldown. Keep the health hit effective even if a condition definition/profile is unavailable.
+Implement enemy close-range attack in `WildlifeActor.cpp` and add the necessary survival/shelter includes. Use current `FindPlayerPawn` helper, only bite once the target is within the close range, apply physical damage + `Injury.AnimalBite`, and set a 3-second cooldown.
