@@ -197,7 +197,7 @@ void ALogSnapCharacter::BeginPlay()
     ApplyBlockoutMaterials();
 
     const FString Controls =
-        TEXT("WASD move | Mouse look | E pick/place/use | N dig bounded voxel terrain | Q throw | RMB placement mode | F1 all building keys");
+        TEXT("WASD move | Mouse look | E pick/place/use | N dig bounded voxel terrain | Q throw | RMB placement mode | F1 all building keys | F8 choose farm action | F9 work soil");
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(
