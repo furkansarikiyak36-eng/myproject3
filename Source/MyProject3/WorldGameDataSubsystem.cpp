@@ -337,6 +337,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         ZoneIndices.Add(Zone.Index);
         NewZones.Add(Zone);
     }
+    if (NewZones.Num() != 5 || ZoneIndices.Num() != 5)
+        return Fail(TEXT("zones.json must define exactly five unique zones with indices 0..4"));
 
     TArray<FGameDataCrop> NewCrops;
     if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(CropsJson, TEXT("crops")))
@@ -473,7 +475,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             DistanceSquared > FMath::Square(static_cast<double>(Zone->RadiusCm)) ||
             Discovery.RewardQuantity < 0 || Discovery.RewardQuantity > 64 ||
             (Discovery.RewardItemId.IsNone() != (Discovery.RewardQuantity == 0)) ||
-            (!Discovery.RewardItemId.IsNone() && !NewItems.Contains(Discovery.RewardItemId)))
+            (!Discovery.RewardItemId.IsNone() &&
+                (!NewItems.Contains(Discovery.RewardItemId) || NewItems.FindChecked(Discovery.RewardItemId).bConsumable)))
             return Fail(FString::Printf(TEXT("Bad or duplicate discovery %s"), *Discovery.Id.ToString()));
 
         for (const FName EquipmentId : Discovery.RequiredEquipmentDefinitionIds)
