@@ -1383,7 +1383,8 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
         Entry.Actor = Actor;
         UWorldObjectIdentityComponent* Identity =
             IsValid(Actor) ? Actor->FindComponentByClass<UWorldObjectIdentityComponent>() : nullptr;
-        if (!Identity || !Identity->HasValidIdentity() || Identity->GetInstanceId() != NodeId)
+        if (!Identity || !Identity->HasValidIdentity() || Identity->GetInstanceId() != NodeId ||
+            Identity->StateRevision == MAX_int64)
             return false;
         Entry.Identity = Identity;
         Entry.Lifecycle = Identity->GetLifecycleState();
