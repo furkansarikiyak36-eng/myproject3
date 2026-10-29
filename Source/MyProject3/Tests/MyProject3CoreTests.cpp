@@ -2598,6 +2598,9 @@ bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
     Profile.Hunger = 20.0f;
     Profile.Thirst = 10.0f;
     TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+    const float WorkEffectivenessBeforeRest = Survival->GetWorkEffectiveness(Profile.EntityId);
+    TestTrue(TEXT("Fatigue reduces work effectiveness"),
+        WorkEffectivenessBeforeRest < 1.0f && WorkEffectivenessBeforeRest > 0.5f);
 
     const FGuid RestOperationId = FGuid::NewGuid();
     TestTrue(TEXT("Begin rest interval"), Survival->TryBeginRest(
@@ -2607,6 +2610,8 @@ bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Rest end is expressed on shared world time"),
         FMath::IsNearlyEqual(Resting.RestUntilTimeSeconds, 3700.0, 0.001));
     const int64 RestCommittedRevision = Resting.Revision;
+    TestFalse(TEXT("Strenuous work is rejected during active rest"),
+        Survival->RecordActivity(Profile.EntityId, ESurvivalActivity::Chop, 1.0f, 0.0f));
 
     TestTrue(TEXT("Advance authoritative world clock"), Clock->AdvanceSimulation(60.0));
     TestTrue(TEXT("Advance survival through the same time interval"),
@@ -2615,6 +2620,10 @@ bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read profile after time step"), Survival->GetProfile(Profile.EntityId, AfterRestStep));
     TestTrue(TEXT("Rest improves fatigue"), AfterRestStep.Fatigue < Resting.Fatigue);
     TestTrue(TEXT("Rest improves stamina"), AfterRestStep.Stamina > Resting.Stamina);
+    TestTrue(TEXT("Lower fatigue improves work effectiveness"),
+        Survival->GetWorkEffectiveness(Profile.EntityId) > WorkEffectivenessBeforeRest);
+    TestFalse(TEXT("Work remains blocked while rest interval is active"),
+        Survival->RecordActivity(Profile.EntityId, ESurvivalActivity::Dig, 1.0f, 0.0f));
     const int64 AfterStepRevision = AfterRestStep.Revision;
 
     TestTrue(TEXT("Duplicate rest request returns its committed receipt"),
