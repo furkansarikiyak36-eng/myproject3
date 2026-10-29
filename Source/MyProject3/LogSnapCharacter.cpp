@@ -20,6 +20,8 @@
 #include "InputCoreTypes.h"
 #include "LogCarryComponent.h"
 #include "CarryLoadComponent.h"
+#include "WorldClimateSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "Math/RotationMatrix.h"
 
 ALogSnapCharacter::ALogSnapCharacter()
@@ -278,6 +280,34 @@ void ALogSnapCharacter::HandleJumpPressed()
 void ALogSnapCharacter::HandleJumpReleased()
 {
     StopJumping();
+}
+
+bool ALogSnapCharacter::FindWalkingRoute(
+    FName StartNode, FName GoalNode, TArray<FName>& OutPath, float& OutTotalCost) const
+{
+    OutPath.Reset();
+    OutTotalCost = 0.0f;
+
+    UWorld* World = GetWorld();
+    const UWorldLogisticsRouteSubsystem* Routes =
+        World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    const UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!Routes || !Climate || !Climate->IsClimateInitialized() || !CarryLoad ||
+        !FMath::IsFinite(CarryLoad->MaxCarryMassKg) || CarryLoad->MaxCarryMassKg <= 0.0f)
+        return false;
+
+    FLogisticsRouteCostContext Context;
+    Context.CarriedMassKg = CarryLoad->GetCarriedMassKg();
+    Context.MaxCarryMassKg = CarryLoad->MaxCarryMassKg;
+    Context.WeatherSeverity = Climate->GetWeatherSeverity();
+    if (!FMath::IsFinite(Context.CarriedMassKg) || Context.CarriedMassKg < 0.0f ||
+        Context.CarriedMassKg > Context.MaxCarryMassKg ||
+        !FMath::IsFinite(Context.WeatherSeverity) ||
+        Context.WeatherSeverity < 0.0f || Context.WeatherSeverity > 1.0f)
+        return false;
+
+    return Routes->FindRouteWithContext(StartNode, GoalNode, Context, OutPath, OutTotalCost);
 }
 
 void ALogSnapCharacter::PlayAxeSwing()
