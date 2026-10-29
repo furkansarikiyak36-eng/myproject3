@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit the new station integration test against production/job/stock semantics. Confirm the chosen data IDs (`workbench_log`, `make_plank`, `HalfLog`, `Tool.Wedge`, `Tool.Chisel`, output `Plank`) are exact and that `TryCollectCompletedJob` removes the completed job only after output stock is committed. Fix any test assumptions before status updates.
+Inspect `LogCarryComponent::BindDefaultInput` for E/F/R key collisions; then audit `VerticalSliceCWorldActor.cpp` station-handler snippets and `ProductionStationActor::TryTake` for source consistency. Fix key conflicts or test assumptions before changing P4.3 status.
