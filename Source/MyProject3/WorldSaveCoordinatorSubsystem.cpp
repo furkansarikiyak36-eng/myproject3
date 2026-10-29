@@ -1875,6 +1875,44 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->SchemaVersion = 20;
     }
 
+    if (Candidate->SchemaVersion == 20)
+    {
+        // Schema v21 adds logical deposit state/yield receipts, cargo route
+        // context, production-intake quantity semantics and unlock-gated recipes.
+        // Existing v20 saves cannot safely infer mined deposits or historical
+        // item weights, so these new fields migrate to neutral/legacy defaults.
+        for (FWorldTerrainCellState& Cell : Candidate->TerrainCells)
+        {
+            Cell.ResourceDefinitionId = NAME_None;
+            Cell.RemainingResourceUnits = 0;
+            Cell.bResourceDepositInitialized = false;
+        }
+        for (FWorldTerrainOperationReceipt& Receipt : Candidate->TerrainReceipts)
+        {
+            Receipt.bYieldAware = false;
+            Receipt.YieldedResourceDefinitionId = NAME_None;
+            Receipt.YieldedResourceUnits = 0;
+            Receipt.OutputWorldItemId.Invalidate();
+        }
+        for (FWorldCargoTransportRecord& CargoRecord : Candidate->Cargo)
+        {
+            CargoRecord.CargoMassKg = 0.0f;
+            CargoRecord.WeatherSeverityAtDispatch = 0.0f;
+        }
+        for (FWorldProductionStation& Station : Candidate->ProductionStations)
+        {
+            for (FWorldProductionPhysicalIntakeReceipt& Receipt : Station.PhysicalIntakeReceipts)
+            {
+                Receipt.Quantity = 1;
+                Receipt.bPhysicalActorIntake = true;
+            }
+        }
+        for (FWorldProductionRecipe& Recipe : Candidate->ProductionRecipes)
+            Recipe.RequiredUnlockId = NAME_None;
+
+        Candidate->SchemaVersion = 21;
+    }
+
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
