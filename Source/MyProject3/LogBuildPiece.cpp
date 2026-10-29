@@ -1960,6 +1960,7 @@ FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
     }
 
     CutProgress = FMath::Clamp(CutProgress + NormalizedWork, 0.0f, 1.0f);
+    const float ResultingProgress = CutProgress;
     FWorldOperationResult Result;
     if (CutProgress < 1.0f)
     {
@@ -1983,7 +1984,7 @@ FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
         Receipt.OperationId = OperationId;
         Receipt.Action = Action;
         Receipt.NormalizedWork = NormalizedWork;
-        Receipt.ResultingProgress = CutProgress;
+        Receipt.ResultingProgress = ResultingProgress;
         Receipt.ResultCode = Result.Code;
         Receipt.ResultMessage = Result.Message;
         Receipt.AffectedObjectIds = Result.AffectedObjectIds;
