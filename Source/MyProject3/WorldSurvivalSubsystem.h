@@ -224,7 +224,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Rest", meta=(ClampMin="0")) float RestStaminaRecoveryPerHour = 25.0f;
 
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool RegisterProfile(const FWorldSurvivalProfile& Profile);
-    UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateProtection(const FGuid& EntityId, float ClothingInsulation, float ShelterProtection, int64 ExpectedRevision);
+    /** Legacy import helper. Gameplay adapters should update authored shelter protection separately. */
+    bool UpdateProtection(const FGuid& EntityId, float ClothingInsulation, float ShelterProtection, int64 ExpectedRevision);
+    UFUNCTION(BlueprintCallable, Category="World|Survival")
+    bool UpdateShelterProtection(const FGuid& EntityId, float ShelterProtection, int64 ExpectedRevision);
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool SetWeather(EWorldWeatherState NewWeather, float Severity);
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateLocation(const FGuid& EntityId, FVector NewLocation);
     /** Adds the calorie and stamina cost of an activity; the energy burns on the next step. */
