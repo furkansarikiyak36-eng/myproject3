@@ -1557,9 +1557,9 @@ bool UWorldSurvivalSubsystem::RecordDiscovery(
         return false;
     }
     if (Discoveries.ContainsByPredicate([DiscoveryId](const FWorldDiscoveryRecord& D)
-        { return D.DiscoveryId == DiscoveryId; }))
+        { return D.DiscoveryId == DiscoveryId && !D.EntityId.IsValid(); }))
     {
-        return true; // discovery is idempotent
+        return true; // this legacy helper only manages world-global discovery records
     }
     FWorldDiscoveryRecord Record;
     Record.DiscoveryId = DiscoveryId;
