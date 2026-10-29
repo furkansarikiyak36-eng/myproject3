@@ -9,6 +9,8 @@
 #include "VoxelTerrainChunkComponent.h"
 #include "HeatSourceComponent.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
 #include "LogBuildPiece.h"
 #include "HelperCompanionActor.h"
 #include "HarvestableTreeActor.h"
@@ -2470,6 +2472,135 @@ bool FTerrainOperationReceiptPersistenceTest::RunTest(const FString& Parameters)
         Terrain->TryApplyCellEdit(OperationId, FIntVector(9, 9, 9), 2,
             ETerrainCellEdit::Excavate, NAME_None, 0, Conflict));
     TestEqual(TEXT("Conflicting replay leaves cell count unchanged"), Terrain->GetEditedCellCount(), 1);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAgricultureHarvestReceiptTest,
+    "MyProject3.Farming.HarvestCreatesOwnedOutputsOnceAndPersistsReceipt", TestFlags)
+bool FAgricultureHarvestReceiptTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldAgricultureSubsystem* Agriculture = World
+        ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Agriculture subsystem"), Agriculture) ||
+        !TestNotNull(TEXT("Ownership subsystem"), Ownership))
+        return false;
+
+    FWorldCropState Crop;
+    Crop.CropId = FGuid::NewGuid();
+    Crop.CropDefinitionId = TEXT("Test.Crop");
+    Crop.PlotCell = FIntVector(2, 3, 0);
+    Crop.Stage = ECropGrowthStage::Mature;
+    Crop.Moisture = 0.75f;
+    Crop.SecondsPerStage = 60.0;
+    Crop.HarvestDefinitionId = TEXT("Test.Wheat");
+    Crop.HarvestUnits = 3;
+    Crop.Revision = 7;
+    TestTrue(TEXT("Register mature crop"), Agriculture->RegisterCrop(Crop));
+
+    const int32 ItemsBefore = Ownership->GetTrackedItemCount();
+    const FGuid OperationId = FGuid::NewGuid();
+    TArray<FGuid> FirstOutputIds;
+    TestTrue(TEXT("Harvest commits"), Agriculture->TryHarvestCrop(
+        OperationId, Crop.CropId, Crop.Revision, FirstOutputIds));
+    TestEqual(TEXT("Configured yield produces three unique items"), FirstOutputIds.Num(), 3);
+    TestEqual(TEXT("All outputs registered in the ownership ledger"),
+        Ownership->GetTrackedItemCount(), ItemsBefore + 3);
+
+    TArray<FGuid> RetryOutputIds;
+    TestTrue(TEXT("Retry reports the previous harvest"), Agriculture->TryHarvestCrop(
+        OperationId, Crop.CropId, Crop.Revision, RetryOutputIds));
+    TestTrue(TEXT("Retry returns identical item identities"), RetryOutputIds == FirstOutputIds);
+    TestEqual(TEXT("Retry does not duplicate output"),
+        Ownership->GetTrackedItemCount(), ItemsBefore + 3);
+
+    FWorldCropState Harvested;
+    TestTrue(TEXT("Read harvested crop"), Agriculture->GetCrop(Crop.CropId, Harvested));
+    TestEqual(TEXT("Harvest marks crop terminal"), Harvested.Stage, ECropGrowthStage::Harvested);
+    TestEqual(TEXT("Harvest increments crop revision once"), Harvested.Revision, static_cast<int64>(8));
+
+    TArray<FWorldCropState> Crops;
+    TArray<FWorldAnimalState> Animals;
+    Agriculture->ExportSnapshot(Crops, Animals);
+    TestTrue(TEXT("Restore retains harvest receipt and item references"),
+        Agriculture->RestoreSnapshot(Crops, Animals));
+    TArray<FGuid> PostRestoreRetry;
+    TestTrue(TEXT("Retry after snapshot restore succeeds"), Agriculture->TryHarvestCrop(
+        OperationId, Crop.CropId, Crop.Revision, PostRestoreRetry));
+    TestTrue(TEXT("Snapshot-restored retry returns original items"), PostRestoreRetry == FirstOutputIds);
+    TestEqual(TEXT("Snapshot-restored retry creates no duplicate"),
+        Ownership->GetTrackedItemCount(), ItemsBefore + 3);
+
+    TestTrue(TEXT("Agriculture step remains valid"), Agriculture->AdvanceAgricultureStep(30.0));
+    FWorldCropState AfterStep;
+    TestTrue(TEXT("Read crop after growth step"), Agriculture->GetCrop(Crop.CropId, AfterStep));
+    TestEqual(TEXT("Harvested crop cannot grow back"), AfterStep.Stage, ECropGrowthStage::Harvested);
+    TestEqual(TEXT("Terminal crop revision remains unchanged"), AfterStep.Revision, static_cast<int64>(8));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSurvivalRestClockReceiptTest,
+    "MyProject3.Survival.RestUsesSharedClockAndIdempotentReceipt", TestFlags)
+bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Shared clock"), Clock) ||
+        !TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+    TestTrue(TEXT("Initialize shared time"), Clock->InitializeClock(12345, 100.0));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Fatigue = 50.0f;
+    Profile.Stamina = 50.0f;
+    Profile.CaloriesKcal = 2000.0f;
+    Profile.Hunger = 20.0f;
+    Profile.Thirst = 10.0f;
+    TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+
+    const FGuid RestOperationId = FGuid::NewGuid();
+    TestTrue(TEXT("Begin rest interval"), Survival->TryBeginRest(
+        RestOperationId, Profile.EntityId, Profile.Revision, 3600.0));
+    FWorldSurvivalProfile Resting;
+    TestTrue(TEXT("Read profile after rest begins"), Survival->GetProfile(Profile.EntityId, Resting));
+    TestTrue(TEXT("Rest end is expressed on shared world time"),
+        FMath::IsNearlyEqual(Resting.RestUntilTimeSeconds, 3700.0, 0.001));
+    const int64 RestCommittedRevision = Resting.Revision;
+
+    TestTrue(TEXT("Advance authoritative world clock"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Advance survival through the same time interval"),
+        Survival->AdvanceSurvivalStep(60.0, Clock->GetSimulationTimeSeconds()));
+    FWorldSurvivalProfile AfterRestStep;
+    TestTrue(TEXT("Read profile after time step"), Survival->GetProfile(Profile.EntityId, AfterRestStep));
+    TestTrue(TEXT("Rest improves fatigue"), AfterRestStep.Fatigue < Resting.Fatigue);
+    TestTrue(TEXT("Rest improves stamina"), AfterRestStep.Stamina > Resting.Stamina);
+    const int64 AfterStepRevision = AfterRestStep.Revision;
+
+    TestTrue(TEXT("Duplicate rest request returns its committed receipt"),
+        Survival->TryBeginRest(RestOperationId, Profile.EntityId, Profile.Revision, 3600.0));
+    FWorldSurvivalProfile AfterRetry;
+    TestTrue(TEXT("Read profile after replay"), Survival->GetProfile(Profile.EntityId, AfterRetry));
+    TestEqual(TEXT("Replay has no second state mutation"), AfterRetry.Revision, AfterStepRevision);
+    TestTrue(TEXT("Rest-start revision was committed once"), RestCommittedRevision < AfterStepRevision);
+
+    TArray<FWorldSurvivalProfile> Profiles;
+    TArray<FWorldDiscoveryRecord> Discoveries;
+    EWorldWeatherState Weather;
+    float Severity = 0.0f;
+    Survival->ExportSnapshot(Profiles, Discoveries, Weather, Severity);
+    TestTrue(TEXT("Restore profile including rest receipts"),
+        Survival->RestoreSnapshot(Profiles, Discoveries, Weather, Severity));
+    TestTrue(TEXT("Rest retry remains idempotent after snapshot restore"),
+        Survival->TryBeginRest(RestOperationId, Profile.EntityId, Profile.Revision, 3600.0));
     return true;
 }
 
