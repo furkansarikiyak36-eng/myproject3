@@ -494,6 +494,169 @@ bool UWorldSurvivalSubsystem::TryConsumeFoodItem(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::TryFillWaterFromCreek(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
+    const FGuid& ExpectedInventoryOwnerId, const FVector& CreekLocation, FGuid& OutWaterItemId)
+{
+    OutWaterItemId.Invalidate();
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !ContainerItemId.IsValid() || ExpectedContainerRevision <= 0 ||
+        !ExpectedInventoryOwnerId.IsValid() || CreekLocation.ContainsNaN())
+        return false;
+
+    // A retry resolves to its committed output before current revisions are checked.
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != EWorldSurvivalActionKind::FillWaterFromCreek ||
+            Existing->EntityId != EntityId || Existing->ItemId != ContainerItemId ||
+            Existing->ExpectedItemOwnerId != ExpectedInventoryOwnerId ||
+            Existing->ExpectedProfileRevision != ExpectedProfileRevision ||
+            Existing->ExpectedItemRevision != ExpectedContainerRevision ||
+            Existing->ItemDefinitionId != FName(TEXT("Pot.Fired")) ||
+            FVector::DistSquared(Existing->RequestedLocation, CreekLocation) > 100.0f ||
+            !Existing->ResultingItemId.IsValid())
+            return false;
+
+        UWorldItemOwnershipSubsystem* ExistingOwnership =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        FWorldOwnedItemRecord ExistingOutput;
+        if (!ExistingOwnership || !ExistingOwnership->TryGetItem(Existing->ResultingItemId, ExistingOutput) ||
+            ExistingOutput.BaseDefinitionId != FName(TEXT("Water.Dirty")))
+            return false;
+        OutWaterItemId = Existing->ResultingItemId;
+        return true;
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Profile || !Ownership || !Clock || !Clock->IsClockInitialized() ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
+        MaxActionReceiptsPerProfile <= 0)
+        return false;
+
+    // The authored fired pot is the reusable vessel. Filling never consumes it.
+    FWorldOwnedItemRecord Container;
+    if (!Ownership->TryGetItem(ContainerItemId, Container) ||
+        Container.Revision != ExpectedContainerRevision || Container.Revision >= MAX_int64 - 1 ||
+        Container.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Container.OwnerId != ExpectedInventoryOwnerId || Container.Quantity != 1 ||
+        Container.DefinitionId != FName(TEXT("Pot.Fired")))
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory))
+        return false;
+
+    FGuid OwnerActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorBefore, InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != ExpectedInventoryOwnerId)
+        return false;
+
+    bool bFoundReusablePot = false;
+    for (const FInventoryStack& Stack : InventoryItemsBefore)
+    {
+        if (Stack.OwnedWorldItemId != ContainerItemId)
+            continue;
+        if (Stack.ItemId != FName(TEXT("Pot.Fired")) || Stack.Quantity != 1 || Stack.MaxStack != 1)
+            return false;
+        bFoundReusablePot = true;
+        break;
+    }
+    if (!bFoundReusablePot || !Inventory->CanAddItems({
+        FInventoryStack{ FName(TEXT("Water.Dirty")), 1, 1, false, EInventoryItemCategory::Consumable, FGuid() }
+    }))
+        return false;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (!FMath::IsFinite(Now) || Now < 0.0 ||
+        FVector::DistSquared(Profile->Location, CreekLocation) > FMath::Square(600.0))
+        return false;
+
+    TArray<FWorldOwnedItemRecord> ItemsBefore;
+    TArray<FWorldItemTransferReceipt> TransferReceiptsBefore;
+    TArray<FWorldItemSplitReceipt> SplitReceiptsBefore;
+    Ownership->ExportSnapshot(ItemsBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+
+    FWorldOwnedItemRecord WaterItem;
+    WaterItem.ItemId = FGuid::NewGuid();
+    WaterItem.DefinitionId = FName(TEXT("Water.Dirty"));
+    WaterItem.BaseDefinitionId = WaterItem.DefinitionId;
+    WaterItem.Quantity = 1;
+    WaterItem.OwnerKind = EWorldItemOwnerKind::Inventory;
+    WaterItem.OwnerId = ExpectedInventoryOwnerId;
+    WaterItem.WorldLocation = CreekLocation;
+    WaterItem.CreatedAtWorldTimeSeconds = Now;
+    WaterItem.SpoilageAgeSeconds = 0.0;
+    WaterItem.SpoilageAgeUpdatedAtSeconds = Now;
+    WaterItem.Revision = 1;
+    if (!WaterItem.ItemId.IsValid() || !Ownership->RegisterItem(WaterItem))
+        return false;
+
+    FInventoryStack WaterStack;
+    WaterStack.ItemId = WaterItem.DefinitionId;
+    WaterStack.Quantity = 1;
+    WaterStack.MaxStack = 1; // A water-filled vessel is a unique physical item.
+    WaterStack.bIsTool = false;
+    WaterStack.Category = EInventoryItemCategory::Consumable;
+    WaterStack.OwnedWorldItemId = WaterItem.ItemId;
+
+    auto Rollback = [&]() -> bool
+    {
+        // Restore the ownership ledger first; inventory restore validates against it.
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            ItemsBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        if (!bOwnershipRestored || !bInventoryRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Creek fill rollback failed for output item %s."),
+                *WaterItem.ItemId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Creek water fill rollback failed; stop simulation and recover/reset the world."));
+            }
+            return false;
+        }
+        return true;
+    };
+
+    if (!Inventory->TryAddItem(WaterStack))
+    {
+        Rollback();
+        return false;
+    }
+
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::FillWaterFromCreek;
+    Receipt.ItemId = ContainerItemId;
+    Receipt.ResultingItemId = WaterItem.ItemId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = ExpectedContainerRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    // The reusable pot is unchanged; this field records its unchanged revision.
+    Receipt.ResultingItemRevision = ExpectedContainerRevision;
+    Receipt.ItemDefinitionId = Container.DefinitionId;
+    Receipt.RequestedLocation = CreekLocation;
+    Profile->ActionReceipts.Add(Receipt);
+    OutWaterItemId = WaterItem.ItemId;
+    return true;
+}
+
 bool UWorldSurvivalSubsystem::TryBeginRest(
     const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
     double DurationSeconds)
