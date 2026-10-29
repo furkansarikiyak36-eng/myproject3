@@ -13,6 +13,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
@@ -161,7 +162,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 28;
+    static constexpr int32 CurrentSchemaVersion = 29;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     /** Schema v21: weather of the day, snow depth, ground wetness. */
@@ -196,4 +197,5 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageIncomingReservation> StorageReservations;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldPhysicalActorSnapshot> PhysicalActors;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStructuralNodeSnapshot> StructuralGraph;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldLogisticsRouteSnapshot Routes;
 };
