@@ -23,6 +23,8 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
+#include "WorldHudDataSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
@@ -936,6 +938,61 @@ bool FDigLayersFromDataTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Clay item exists"), Ownership->TryGetItem(Id, Record));
         TestEqual(TEXT("It is clay"), Record.DefinitionId, FName(TEXT("Clay")));
     }
+    return true;
+}
+
+
+// P1.3/P1.4: lifecycle transitions, event chaining, snapshot restore and HUD data contract.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNaturalEventDirectorLifecycleTest,
+    "MyProject3.World.Events.DeterministicLifecycleChainAndSnapshot", Flags)
+bool FNaturalEventDirectorLifecycleTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    UWorldHudDataSubsystem* Hud = World ? World->GetSubsystem<UWorldHudDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Event director"), Events) ||
+        !TestNotNull(TEXT("HUD contract"), Hud)) return false;
+    TestTrue(TEXT("Clock starts"), Clock->InitializeClock(27, 0.0));
+    FWorldNaturalEventDefinition Storm;
+    Storm.DefinitionId = TEXT("Test.Storm"); Storm.DisplayName = TEXT("Fırtına");
+    Storm.EffectId = TEXT("Test.StormEffect"); Storm.WarningDurationSeconds = 10.0;
+    Storm.ActiveDurationSeconds = 10.0; Storm.CooldownSeconds = 1.0;
+    Storm.MinimumIntervalSeconds = 1.0; Storm.MaximumIntervalSeconds = 1.0; Storm.TriggerChance = 1.0f;
+    TestTrue(TEXT("Register predecessor"), Events->RegisterEventDefinition(Storm));
+    FWorldNaturalEventDefinition Flood;
+    Flood.DefinitionId = TEXT("Test.Flood"); Flood.DisplayName = TEXT("Sel");
+    Flood.EffectId = TEXT("Test.FloodEffect"); Flood.TriggerAfterEventId = Storm.DefinitionId;
+    Flood.WarningDurationSeconds = 10.0; Flood.ActiveDurationSeconds = 10.0; Flood.CooldownSeconds = 1.0;
+    Flood.MinimumIntervalSeconds = 1.0; Flood.MaximumIntervalSeconds = 1.0; Flood.TriggerChance = 1.0f;
+    TestTrue(TEXT("Register chained event"), Events->RegisterEventDefinition(Flood));
+    TestTrue(TEXT("Definitions validate"), Events->ValidateDefinitions());
+    TestTrue(TEXT("Director initializes"), Events->InitializeDirector(27, 0.0));
+    TestTrue(TEXT("Storm enters warning"), Events->AdvanceToTime(1.0));
+    TArray<FWorldNaturalEventRecord> Current = Events->GetCurrentEvents();
+    TestEqual(TEXT("One warning event"), Current.Num(), 1);
+    TestTrue(TEXT("Storm warning state"), Current[0].DefinitionId == Storm.DefinitionId &&
+        Current[0].State == EWorldNaturalEventState::Warning);
+    TestTrue(TEXT("Storm enters active"), Events->AdvanceToTime(11.0));
+    Current = Events->GetCurrentEvents();
+    TestEqual(TEXT("One active event"), Current.Num(), 1);
+    TestTrue(TEXT("Storm active state"), Current[0].State == EWorldNaturalEventState::Active);
+    TestTrue(TEXT("Storm ends"), Events->AdvanceToTime(21.0));
+    TestEqual(TEXT("Completion history has predecessor"), Events->ExportSnapshot().CompletedHistory.Num(), 1);
+    TestTrue(TEXT("Flood warning follows storm completion"), Events->AdvanceToTime(22.0));
+    Current = Events->GetCurrentEvents();
+    TestEqual(TEXT("One chained warning"), Current.Num(), 1);
+    TestTrue(TEXT("Flood is current"), Current[0].DefinitionId == Flood.DefinitionId);
+    const FWorldEventDirectorSnapshot Saved = Events->ExportSnapshot();
+    FWorldHudDataSnapshot HudSnapshot;
+    TestTrue(TEXT("HUD reads shared calendar"), Hud->GetSnapshot(HudSnapshot));
+    TestTrue(TEXT("HUD includes event notifications"), HudSnapshot.EventNotifications.Num() > 0);
+    TestTrue(TEXT("Advance after snapshot"), Events->AdvanceToTime(32.0));
+    TestTrue(TEXT("Restore event snapshot"), Events->RestoreSnapshot(Saved));
+    Current = Events->GetCurrentEvents();
+    TestEqual(TEXT("One restored event"), Current.Num(), 1);
+    TestTrue(TEXT("Restored event ID is stable"), Current[0].EventInstanceId == Saved.RuntimeRecords[1].EventInstanceId);
     return true;
 }
 

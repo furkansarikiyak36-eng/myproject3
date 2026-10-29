@@ -5,6 +5,10 @@
 #include "LogBuildToolsComponent.h"
 #include "PhysicalHealthComponent.h"
 #include "ShelterSensorComponent.h"
+#include "WorldHudDataSubsystem.h"
+#include "WorldCalendar.h"
+#include "WorldSurvivalSubsystem.h"
+#include "Engine/World.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "GameFramework/PlayerController.h"
@@ -39,11 +43,50 @@ void ALogSnapHUD::DrawHUD()
     DrawCrosshair(CentreX, CentreY);
 
     APawn* Pawn = GetOwningPawn();
+    UFont* Font = GEngine ? GEngine->GetSmallFont() : nullptr;
+    if (Font)
+    {
+        const UWorldHudDataSubsystem* HudData =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldHudDataSubsystem>() : nullptr;
+        FWorldHudDataSnapshot Snapshot;
+        if (HudData && HudData->GetSnapshot(Snapshot))
+        {
+            const TCHAR* Season = TEXT("Kış");
+            switch (Snapshot.Calendar.Season)
+            {
+            case EWorldSeason::Spring: Season = TEXT("İlkbahar"); break;
+            case EWorldSeason::Summer: Season = TEXT("Yaz"); break;
+            case EWorldSeason::Autumn: Season = TEXT("Sonbahar"); break;
+            default: break;
+            }
+            const int32 Hour = FMath::FloorToInt(Snapshot.Calendar.HourOfDay);
+            const int32 Minute = FMath::FloorToInt((Snapshot.Calendar.HourOfDay - Hour) * 60.0f);
+            const UEnum* WeatherEnum = StaticEnum<EWorldWeatherState>();
+            const FString WeatherName = WeatherEnum
+                ? WeatherEnum->GetDisplayNameTextByValue(static_cast<int64>(Snapshot.Weather)).ToString()
+                : TEXT("Bilinmiyor");
+            const float StatusX = FMath::Max(16.0f, Canvas->ClipX - 350.0f);
+            float StatusY = 16.0f;
+            DrawText(FString::Printf(TEXT("Yıl %d  %02d/%02d  %02d:%02d  %s"),
+                Snapshot.Calendar.Year, Snapshot.Calendar.DayOfMonth, Snapshot.Calendar.Month, Hour, Minute, Season),
+                FLinearColor(0.9f, 0.95f, 1.0f), StatusX, StatusY, Font);
+            StatusY += 17.0f;
+            DrawText(FString::Printf(TEXT("%s  %.1f C  (%.0f%%)"),
+                *WeatherName, Snapshot.AirTemperatureCelsius, Snapshot.WeatherSeverity * 100.0f),
+                FLinearColor(0.75f, 0.85f, 1.0f), StatusX, StatusY, Font);
+            StatusY += 17.0f;
+            for (const FString& Notice : Snapshot.EventNotifications)
+            {
+                DrawText(Notice, FLinearColor(1.0f, 0.72f, 0.28f, 1.0f), StatusX, StatusY, Font);
+                StatusY += 17.0f;
+            }
+        }
+    }
+
     const ULogCarryComponent* Carry = Pawn ? Pawn->FindComponentByClass<ULogCarryComponent>() : nullptr;
     if (!Carry)
         return;
 
-    UFont* Font = GEngine ? GEngine->GetSmallFont() : nullptr;
     float TextY = CentreY + 28.0f;
 
     if (!Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())

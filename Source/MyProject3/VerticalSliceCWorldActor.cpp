@@ -1998,7 +1998,14 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
             FString::Printf(TEXT("Helper: %s"), *LastHelperStatus));
     }
 
-    Hours = FMath::Fmod(Hours + DeltaSeconds * static_cast<float>(SimulationTimeScale) / 3600.0f, 24.0f);
+    // Sun/daylight is presentation of the authoritative world clock, never a separate clock.
+    if (const UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr)
+    {
+        FWorldCalendarDate Date;
+        if (Clock->GetCalendarDate(Date))
+            Hours = Date.HourOfDay;
+    }
     UpdateSun();
 
     TimeToSurvivalUpdate -= DeltaSeconds;
