@@ -82,7 +82,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (P2 fill/wet-cold tests exist; fuel ownership and fixed-step rollback tests exist, but no test currently asserts `Firewood`→`Firewood.Wet` or nearby-fire drying).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added `MyProject3.Survival.WorldFirewoodGetsWetInRainAndDriesNearLitFire`: rain wets World-owner fuel only, preserves BaseDefinitionId, and clear weather + lit nearby fire dries only in-range fuel; revision counts asserted. Source-only/unrun).
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
 - `Source/MyProject3/LogSnapCharacter.cpp` (now creates one canonical `UInventoryCraftingComponent` default subobject adjacent to carry/build components).
 - `Source/MyProject3/WorldDemoBootstrapActor.cpp` (bootstrap calls `LoadDefault` + `ApplyToWorld` before coordinator initialization, but actor BeginPlay order can leave player inventory already initialized).
@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `FWorldFuelWetnessAndDryingTest` around the existing fixed-step/survival tests: create two World-owned Firewood records at separate locations plus one Inventory-owned control; Rain should wet only both world items; then Clear plus one lit nearby heat source should dry only its nearby item. Assert definition IDs, BaseDefinitionId preservation and revisions. Keep the test unrun; then update P3.1 row from missing wetness to code-written partial.
+Audit the new test fixture for component/world setup correctness and verify no false assumption about WorldItemOwnership/HeatSource registration. Then update `PLAN_STATUS.md` P3.1 as code-written partial, with remaining physical fuel pickup/refuel, weather exposure/covered storage rules and build/test still outstanding; update roadmap and codebase notes.
