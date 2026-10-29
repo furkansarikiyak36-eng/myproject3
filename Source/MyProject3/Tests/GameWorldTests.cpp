@@ -1106,10 +1106,10 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Plant retry returns same crop"), Agriculture->TryPlantCropOnField(
         PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
         Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, RetriedCropId));
-    TestEqual(TEXT("Plant retry does not create a second crop"), RetriedCropId, CropId);
+    TestTrue(TEXT("Plant retry does not create a second crop"), RetriedCropId == CropId);
     TestEqual(TEXT("Planted seed stack is consumed"), Inventory->GetItemCount(TEXT("Seed.Grain")), 0);
     TestTrue(TEXT("Planted field references crop"), Agriculture->GetFieldCell(Field.Cell, Field));
-    TestEqual(TEXT("Field holds the planted crop ID"), Field.PlantedCropId, CropId);
+    TestTrue(TEXT("Field holds the planted crop ID"), Field.PlantedCropId == CropId);
 
     for (int32 Step = 0; Step < 4; ++Step)
         TestTrue(FString::Printf(TEXT("Advance crop growth step %d"), Step), Agriculture->AdvanceAgricultureStep(1.0));
@@ -1152,7 +1152,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read restored field"), Agriculture->GetFieldCell(Field.Cell, Field));
     TestEqual(TEXT("Field fertility round-trips"), Field.Fertility, SavedFertility);
     TestTrue(TEXT("Harvested crop still round-trips"), Agriculture->GetCrop(CropId, HarvestedCrop));
-    TestEqual(TEXT("Restored seed outputs retain identity"), HarvestedCrop.SeedOutputItemIds[0], ReturnedSeed.ItemId);
+    TestTrue(TEXT("Restored seed outputs retain identity"), HarvestedCrop.SeedOutputItemIds[0] == ReturnedSeed.ItemId);
     return true;
 }
 
