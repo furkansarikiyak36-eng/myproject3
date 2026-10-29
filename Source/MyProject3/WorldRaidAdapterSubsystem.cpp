@@ -73,12 +73,46 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         }
     }
 
-    if (Raid.State != EThreatRaidState::Active || Clock->GetSimulationTimeSeconds() < NextDamageTimeSeconds)
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (Raid.State != EThreatRaidState::Active || Now < NextDamageTimeSeconds)
         return true;
 
     UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
     if (!Graph) return false;
-    for (const FGuid& NodeId : DefenseTargetNodeIds)
+
+    const double Elapsed = FMath::Max(0.0, Now - Raid.ActiveStartTime);
+    const double PulseAsDouble = FMath::FloorToDouble(Elapsed / AttackIntervalSeconds);
+    if (!FMath::IsFinite(PulseAsDouble) || PulseAsDouble < 0.0 ||
+        PulseAsDouble >= static_cast<double>(MAX_int64 - 1))
+        return false;
+    const int64 PulseIndex = static_cast<int64>(PulseAsDouble);
+    const double NextPulseTime = Raid.ActiveStartTime +
+        (static_cast<double>(PulseIndex) + 1.0) * AttackIntervalSeconds;
+    if (!FMath::IsFinite(NextPulseTime) || NextPulseTime <= Now)
+        return false;
+
+    if (!Threat->TryClaimDamagePulse(Raid.RaidId, PulseIndex))
+    {
+        FThreatRaidRecord LatestRaid;
+        if (!Threat->GetCurrentRaid(LatestRaid) || LatestRaid.RaidId != Raid.RaidId ||
+            LatestRaid.LastAppliedDamagePulseIndex >= MAX_int64 - 1)
+            return false;
+        NextDamageTimeSeconds = LatestRaid.ActiveStartTime +
+            (static_cast<double>(LatestRaid.LastAppliedDamagePulseIndex) + 1.0) * AttackIntervalSeconds;
+        return FMath::IsFinite(NextDamageTimeSeconds);
+    }
+
+    // The receipt and next deadline are committed before damage; a failed
+    // collapse resolution cannot replay this pulse on the next call.
+    NextDamageTimeSeconds = NextPulseTime;
+    TArray<FGuid> SortedTargets = DefenseTargetNodeIds;
+    SortedTargets.Sort([](const FGuid& A, const FGuid& B)
+        { return A.ToString() < B.ToString(); });
+    for (int32 Index = SortedTargets.Num() - 1; Index > 0; --Index)
+        if (SortedTargets[Index] == SortedTargets[Index - 1])
+            SortedTargets.RemoveAt(Index, 1, EAllowShrinking::No);
+
+    for (const FGuid& NodeId : SortedTargets)
     {
         FStructuralNodeRecord Node;
         if (!Graph->GetNode(NodeId, Node)) continue;
@@ -86,12 +120,9 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         if (!Graph->ApplyDamage(NodeId, DamagePerPulse, bThresholdExceeded)) continue;
         if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
         {
-            // Damage remains authoritative; the structure stays in the graph if
-            // a safe leaf-first removal plan cannot be executed.
             return false;
         }
     }
-    NextDamageTimeSeconds = Clock->GetSimulationTimeSeconds() + AttackIntervalSeconds;
     return FMath::IsFinite(NextDamageTimeSeconds);
 }
 
