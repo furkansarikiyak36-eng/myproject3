@@ -12,6 +12,9 @@
 #include "StickPrimitivePiece.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "GameFramework/Pawn.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -794,6 +797,26 @@ bool UInventoryCraftingComponent::CanCraft(FName RecipeId, TArray<FInventoryStac
  const int32 Index = FindRecipeIndex(RecipeId);
  if (!Recipes.IsValidIndex(Index) || !Recipes[Index].bEnabled) return false;
  const FCraftingRecipe& Recipe = Recipes[Index];
+
+ // A definition listed by a discovery may only be crafted by the player after
+ // its persistent discovery unlock has been recorded. Non-pawn service/test
+ // inventories remain usable by tooling and authored background systems.
+ UWorld* World = GetWorld();
+ const UWorldGameDataSubsystem* GameData =
+  World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+ if (Cast<APawn>(GetOwner()) && GameData && GameData->IsApplied() &&
+     GameData->IsDiscoveryGatedDefinition(RecipeId))
+ {
+  const APawn* Pawn = Cast<APawn>(GetOwner());
+  const UShelterSensorComponent* Shelter =
+   Pawn ? Pawn->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+  const UWorldSurvivalSubsystem* Survival =
+   World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+  if (!Shelter || !Shelter->SurvivalEntityId.IsValid() || !Survival ||
+      !Survival->IsDefinitionUnlocked(Shelter->SurvivalEntityId, RecipeId))
+   return false;
+ }
+
  // Everything must be in hand; a tool (bConsume = false) is needed but not used up.
  TMap<FName,int32> Required;
  for (const FRecipeIngredient& I : Recipe.Ingredients) Required.FindOrAdd(I.ItemId) += I.Quantity;
