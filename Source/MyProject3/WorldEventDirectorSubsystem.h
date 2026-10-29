@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "WorldCalendar.h"
 #include "WorldEventDirectorSubsystem.generated.h"
 
 class UWorldGameDataSubsystem;
@@ -35,6 +36,8 @@ struct FWorldNaturalEventInstance
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") bool bOnsetEffectApplied = false;
     /** Continuous effects are claimed once per committed fixed-step tick. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") int64 LastAppliedEffectTickIndex = -1;
+    /** The settlement held the counter item at onset, so the severity was lowered once. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events") bool bCountered = false;
 };
 
 /** Complete deterministic event state; included in the world-save manifest and fixed-step rollback. */
@@ -50,6 +53,8 @@ struct FWorldEventDirectorSnapshot
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events|Save") double LastProcessedTimeSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events|Save") float PreviousSnowDepthCm = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events|Save") TMap<FName, int64> LastTriggeredDayByEvent;
+    /** When each event last ended; event chains read it (fire -> toxic rain, flood -> epidemic). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events|Save") TMap<FName, double> LastEndedAtByEvent;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Events|Save") TArray<FWorldNaturalEventInstance> Instances;
 };
 
@@ -91,6 +96,8 @@ public:
     /** Human-readable short state for HUD/debug feedback; empty when no signal is pending. */
     UFUNCTION(BlueprintPure, Category="World|Events")
     FString GetEventStatusText() const;
+    /** The next signalled event and its seconds until onset; false when nothing is signalled. */
+    bool GetNextSignalledEvent(FName& OutDefinitionId, double& OutSecondsUntilOnset) const;
 
     /** Called after a committed simulation step; emits transition-only on-screen notices. */
     void PublishEventNotifications();
@@ -108,6 +115,10 @@ private:
     UWorldGameDataSubsystem* GetGameData() const;
     bool IsValidSnapshot(const FWorldEventDirectorSnapshot& Snapshot) const;
     bool EvaluateTrigger(const struct FGameDataWorldEvent& Definition, float& OutSeverity) const;
+    /** Month, air temperature and chain gates for a new signal. */
+    bool PassesEventGates(const struct FGameDataWorldEvent& Definition, const FWorldCalendarDate& Date, double TimeSeconds) const;
+    /** Units of an item held by any inventory, storage or equipment slot (the settlement's preparation). */
+    int32 CountSettlementStock(FName ItemId) const;
     bool ApplyActiveEventEffects(double DeltaSeconds, double TargetTimeSeconds, int64 TargetTickIndex);
     bool ApplyConditionEffect(const FGameDataWorldEvent& Definition, const FWorldNaturalEventInstance& Instance);
     void ApplyActiveEventWeather() const;

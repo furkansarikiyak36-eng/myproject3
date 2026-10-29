@@ -25,6 +25,7 @@ bool UWorldHudDataSubsystem::GetSnapshot(FWorldHudDataSnapshot& OutSnapshot) con
         const FString Status = Events->GetEventStatusText();
         if (!Status.IsEmpty())
             OutSnapshot.EventNotifications.Add(Status);
+        Events->GetNextSignalledEvent(OutSnapshot.NextEventId, OutSnapshot.SecondsUntilNextEvent);
     }
     OutSnapshot.bValid = true;
     return true;

@@ -22,8 +22,9 @@ Started: 2026-10-30 · Branch: `game/p00-adopt-group-a` (single working branch)
        route closures, raids, repair) replaces p00's (318 lines). Keep p00-only work: WorldHudDataSubsystem (adapt to
        the phase-3-4 director API), geology, action costs, charcoal pause, build fixes. One save schema line.
        Then build + all tests.
-1. [ ] Phase 0 leftovers (P0.2 freeze note, P0.5 old demo recipe).
-2. [ ] Phase 1 ... 9: per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
+1. [x] Phase 0 closed (P0.2-P0.5 Var; P0.1 main merge waits for the user).
+2. [x] Phase 1 closed (127/127): chains, counters, fog, late frost, HUD countdown, save v30.
+3. [ ] Phase 2 ... 9: per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
 Side lines p06/p07 hold a second farming API: do not merge; port only data files (zones, routes, discoveries,
 animals) if phase 6/7 needs them.
 
@@ -38,4 +39,4 @@ animals) if phase 6/7 needs them.
 - p00 merge commit: tree = integration, memory notes kept from p00.
 
 ### Next step
-Step 1: Phase 0 leftovers, then Phase 1. Read memory/PLAN_STATUS.md rows P0.x and P1.x first.
+Phase 2: read PLAN_STATUS rows P2.x, close the gaps, build + test.

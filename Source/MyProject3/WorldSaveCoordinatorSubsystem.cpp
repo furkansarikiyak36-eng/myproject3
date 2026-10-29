@@ -1023,6 +1023,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->Routes = FWorldLogisticsRouteSnapshot();
         Candidate->SchemaVersion = 29;
     }
+    if (Candidate->SchemaVersion == 29)
+    {
+        // Schema v30 adds event chain memory (LastEndedAtByEvent) and the per-instance
+        // bCountered flag. Old saves have no chain history; chains restart from now.
+        Candidate->SchemaVersion = 30;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 

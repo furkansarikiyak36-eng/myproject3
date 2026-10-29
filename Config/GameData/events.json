@@ -1,5 +1,5 @@
 {
-  "_about": "Data contracts for P1.3/P8.1. Runtime scheduling and world effects are implemented by the natural-event director; values are design defaults, not balance claims.",
+  "_about": "Data contracts for P1.3/P8.1. Runtime scheduling and world effects are implemented by the natural-event director; values are design defaults, not balance claims. Optional: months, min_air_c, max_air_c, requires_recent (chain), recent_h, counter_factor.",
   "events": [
     {
       "id": "Event.Snowstorm",
@@ -44,7 +44,14 @@
       "counter_item": "Stone",
       "counter_qty": 3,
       "trigger_min": 0.8,
-      "trigger_max": 1
+      "trigger_max": 1,
+      "months": [
+        3,
+        4,
+        5,
+        10,
+        11
+      ]
     },
     {
       "id": "Event.Avalanche",
@@ -59,7 +66,14 @@
       "counter_item": "Rope",
       "counter_qty": 1,
       "trigger_min": 0.8,
-      "trigger_max": 1
+      "trigger_max": 1,
+      "min_air_c": 0.5,
+      "months": [
+        12,
+        1,
+        2,
+        3
+      ]
     },
     {
       "id": "Event.Hail",
@@ -74,7 +88,12 @@
       "counter_item": "ThatchBundle",
       "counter_qty": 1,
       "trigger_min": 0.75,
-      "trigger_max": 1
+      "trigger_max": 1,
+      "months": [
+        5,
+        6,
+        7
+      ]
     },
     {
       "id": "Event.Drought",
@@ -89,7 +108,12 @@
       "counter_item": "Water.Boiled",
       "counter_qty": 1,
       "trigger_min": 0,
-      "trigger_max": 0.15
+      "trigger_max": 0.15,
+      "months": [
+        6,
+        7,
+        8
+      ]
     },
     {
       "id": "Event.ForestFire",
@@ -119,7 +143,11 @@
       "counter_item": "Clothing.HideTunic",
       "counter_qty": 1,
       "trigger_min": 0.9,
-      "trigger_max": 1
+      "trigger_max": 1,
+      "requires_recent": [
+        "Event.ForestFire"
+      ],
+      "recent_h": 48
     },
     {
       "id": "Event.Epidemic",
@@ -134,7 +162,53 @@
       "counter_item": "Water.Boiled",
       "counter_qty": 1,
       "trigger_min": 0.6,
-      "trigger_max": 1
+      "trigger_max": 1,
+      "requires_recent": [
+        "Event.Flood",
+        "Event.ToxicRain"
+      ],
+      "recent_h": 120
+    },
+    {
+      "id": "Event.Fog",
+      "name": "Sis",
+      "trigger": "ground_wetness",
+      "signal": "warning",
+      "effect": "visibility",
+      "warning_h": 2,
+      "duration_h": 6,
+      "min_severity": 0.3,
+      "max_severity": 1,
+      "trigger_min": 0.5,
+      "trigger_max": 1,
+      "months": [
+        9,
+        10,
+        11
+      ],
+      "min_air_c": -2,
+      "max_air_c": 10
+    },
+    {
+      "id": "Event.LateFrost",
+      "name": "Geç don",
+      "trigger": "air_temperature",
+      "signal": "warning",
+      "effect": "crop_damage",
+      "warning_h": 6,
+      "duration_h": 8,
+      "min_severity": 0.3,
+      "max_severity": 1,
+      "trigger_min": 0.0,
+      "trigger_max": 1,
+      "months": [
+        4,
+        5
+      ],
+      "min_air_c": -8,
+      "max_air_c": 0,
+      "counter_item": "Mat",
+      "counter_qty": 2
     }
   ]
 }

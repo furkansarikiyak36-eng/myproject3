@@ -1017,7 +1017,7 @@ bool FPlasterAndCharcoalDataContractsTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Ash output exists"), Charcoal->Outputs.ContainsByPredicate(
         [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Ash") && Amount.Quantity == 1; }));
 
-    TestEqual(TEXT("Nine authored natural-event definitions"), Data->GetWorldEvents().Num(), 9);
+    TestEqual(TEXT("Eleven authored natural-event definitions (fog and late frost added)"), Data->GetWorldEvents().Num(), 11);
     const FGameDataWorldEvent* Flood = Data->GetWorldEvents().FindByPredicate(
         [](const FGameDataWorldEvent& Event) { return Event.Id == TEXT("Event.Flood"); });
     if (TestNotNull(TEXT("Flood event contract"), Flood))
@@ -1926,6 +1926,104 @@ bool FHudDataSnapshotTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Spring"), Snapshot.Calendar.Season == EWorldSeason::Spring);
     TestTrue(TEXT("Weather from the climate"), Snapshot.Weather == Climate->GetWeather());
     TestEqual(TEXT("Air from the climate"), Snapshot.AirTemperatureCelsius, Climate->GetTemperatureCelsius());
+    return true;
+}
+
+// P1.3: chains and preparation. Toxic rain needs a recent forest fire; a hide tunic in the
+// settlement softens a snowstorm at its onset; the HUD counts down to the next signalled event.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEventChainsAndCountersTest,
+    "MyProject3.World.Events.ChainsCountersAndCountdown", Flags)
+bool FEventChainsAndCountersTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldHudDataSubsystem* Hud = World ? World->GetSubsystem<UWorldHudDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Events"), Events) || !TestNotNull(TEXT("Ownership"), Ownership) || !TestNotNull(TEXT("Hud"), Hud))
+        return false;
+    TestTrue(TEXT("Load data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply data"), Data->ApplyToWorld());
+    const FGameDataWorldEvent* Toxic = Data->GetWorldEvents().FindByPredicate(
+        [](const FGameDataWorldEvent& E) { return E.Id == TEXT("Event.ToxicRain"); });
+    if (TestNotNull(TEXT("Toxic rain is defined"), Toxic))
+        TestTrue(TEXT("Toxic rain follows a forest fire"), Toxic->RequiresRecentEventIds.Contains(FName(TEXT("Event.ForestFire"))));
+    TestTrue(TEXT("Fog is defined"), Data->GetWorldEvents().ContainsByPredicate([](const FGameDataWorldEvent& E) { return E.Id == TEXT("Event.Fog"); }));
+    TestTrue(TEXT("Late frost is defined"), Data->GetWorldEvents().ContainsByPredicate([](const FGameDataWorldEvent& E) { return E.Id == TEXT("Event.LateFrost"); }));
+
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(5150));
+    TestTrue(TEXT("Climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Events"), Events->InitializeEventDirector());
+
+    // A hide tunic is stored in the settlement.
+    FWorldOwnedItemRecord Tunic;
+    Tunic.ItemId = FGuid::NewGuid();
+    Tunic.DefinitionId = TEXT("Clothing.HideTunic");
+    Tunic.OwnerKind = EWorldItemOwnerKind::Storage;
+    Tunic.OwnerId = FGuid::NewGuid();
+    TestTrue(TEXT("Tunic in storage"), Ownership->RegisterItem(Tunic));
+
+    // A rainy snow-free day without a recent fire: plain rain, no toxic rain.
+    FWorldClimateSnapshot Rain = Climate->ExportSnapshot();
+    Rain.Weather = EWorldWeatherState::Rain;
+    Rain.Severity = 0.9f;
+    Rain.TemperatureCelsius = 6.0f;
+    Rain.SnowDepthCm = 0.0f;
+    Rain.GroundWetness = 0.3f;
+    Rain.WeatherDayIndex = 0;
+    TestTrue(TEXT("Force rain"), Climate->RestoreSnapshot(Rain));
+    TestTrue(TEXT("Step 1"), Events->AdvanceEventStep(60.0, 60.0, 1));
+    TestTrue(TEXT("Clock to 60"), Clock->AdvanceSimulation(60.0));
+    auto HasSignal = [Events](FName Id)
+    {
+        return Events->GetEventInstances().ContainsByPredicate([Id](const FWorldNaturalEventInstance& I) { return I.DefinitionId == Id; });
+    };
+    TestFalse(TEXT("No toxic rain without a fire before it"), HasSignal(TEXT("Event.ToxicRain")));
+
+    // The same rain right after a forest fire turns toxic (the chain reads the saved fire end time).
+    FWorldEventDirectorSnapshot AfterFire = Events->ExportSnapshot();
+    AfterFire.LastEndedAtByEvent.Add(TEXT("Event.ForestFire"), 30.0);
+    AfterFire.LastTriggeredDayByEvent.Remove(TEXT("Event.ToxicRain"));
+    TestTrue(TEXT("Restore with a recent fire"), Events->RestoreSnapshot(AfterFire));
+    TestTrue(TEXT("Step 2"), Events->AdvanceEventStep(60.0, 120.0, 2));
+    TestTrue(TEXT("Clock to 120"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Toxic rain follows the fire"), HasSignal(TEXT("Event.ToxicRain")));
+
+    // HUD countdown: the earliest signalled event and its time to onset.
+    FWorldHudDataSnapshot HudSnapshot;
+    TestTrue(TEXT("HUD"), Hud->GetSnapshot(HudSnapshot));
+    TestFalse(TEXT("A next event is shown"), HudSnapshot.NextEventId.IsNone());
+    TestTrue(TEXT("Countdown is within the warning time"), HudSnapshot.SecondsUntilNextEvent >= 0.0 && HudSnapshot.SecondsUntilNextEvent <= 3600.0);
+
+    // A snowstorm: the stored tunic halves its severity at onset.
+    FWorldClimateSnapshot Snow = Climate->ExportSnapshot();
+    Snow.Weather = EWorldWeatherState::Snow;
+    Snow.Severity = 0.9f;
+    Snow.TemperatureCelsius = -6.0f;
+    Snow.SnowDepthCm = 20.0f;
+    Snow.GroundWetness = 0.2f;
+    TestTrue(TEXT("Force snow"), Climate->RestoreSnapshot(Snow));
+    TestTrue(TEXT("Step 3"), Events->AdvanceEventStep(60.0, 180.0, 3));
+    TestTrue(TEXT("Clock to 180"), Clock->AdvanceSimulation(60.0));
+    const FWorldNaturalEventInstance* StormSignal = Events->GetEventInstances().FindByPredicate(
+        [](const FWorldNaturalEventInstance& I) { return I.DefinitionId == TEXT("Event.Snowstorm"); });
+    if (!TestNotNull(TEXT("Snowstorm signalled"), StormSignal))
+        return false;
+    const float SignalSeverity = StormSignal->Severity;
+    const double Onset = StormSignal->StartsAtSeconds;
+    const double Step = Onset - 180.0;
+    TestTrue(TEXT("Onset step"), Step > 0.0 && Events->AdvanceEventStep(Step, Onset, 4));
+    const FWorldNaturalEventInstance* Storm = Events->GetEventInstances().FindByPredicate(
+        [](const FWorldNaturalEventInstance& I) { return I.DefinitionId == TEXT("Event.Snowstorm"); });
+    if (TestNotNull(TEXT("Snowstorm active"), Storm))
+    {
+        TestTrue(TEXT("Prepared"), Storm->bCountered);
+        TestEqual(TEXT("Half as severe"), Storm->Severity, SignalSeverity * 0.5f, 0.001f);
+    }
     return true;
 }
 

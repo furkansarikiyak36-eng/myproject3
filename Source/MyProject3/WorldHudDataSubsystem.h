@@ -17,6 +17,9 @@ struct FWorldHudDataSnapshot
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|HUD") double SimulationTimeSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|HUD") int64 ClockRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|HUD") TArray<FString> EventNotifications;
+    /** The next signalled event and the game seconds left until it starts (P1.4 countdown). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|HUD") FName NextEventId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|HUD") double SecondsUntilNextEvent = 0.0;
 };
 
 /** Read-only aggregation contract for date, climate and active event notifications. */

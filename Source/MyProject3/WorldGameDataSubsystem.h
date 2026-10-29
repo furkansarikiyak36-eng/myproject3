@@ -152,6 +152,16 @@ struct FGameDataWorldEvent
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MaximumSeverity = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName CounterItemId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") int32 CounterQuantity = 0;
+    /** Severity is multiplied by this when the settlement holds the counter item at onset (P1.3 preparation). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float CounterSeverityFactor = 0.5f;
+    /** Months the event may start in; empty = any month. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") TArray<int32> Months;
+    /** Air temperature window for a new signal (C). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MinimumAirTemperatureCelsius = -100.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MaximumAirTemperatureCelsius = 100.0f;
+    /** Chain: one of these events must be active or have ended within RecentWindowSeconds. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") TArray<FName> RequiresRecentEventIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double RecentWindowSeconds = 172800.0;
 };
 
 /**

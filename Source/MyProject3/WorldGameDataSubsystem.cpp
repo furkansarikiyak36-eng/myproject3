@@ -483,6 +483,21 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Event.MaximumSeverity = static_cast<float>(NumberField(Entry, TEXT("max_severity"), 1.0));
         Event.CounterItemId = NameField(Entry, TEXT("counter_item"));
         Event.CounterQuantity = static_cast<int32>(NumberField(Entry, TEXT("counter_qty")));
+        Event.CounterSeverityFactor = static_cast<float>(NumberField(Entry, TEXT("counter_factor"), 0.5));
+        Event.MinimumAirTemperatureCelsius = static_cast<float>(NumberField(Entry, TEXT("min_air_c"), -100.0));
+        Event.MaximumAirTemperatureCelsius = static_cast<float>(NumberField(Entry, TEXT("max_air_c"), 100.0));
+        Event.RecentWindowSeconds = NumberField(Entry, TEXT("recent_h"), 48.0) * 3600.0;
+        bool bBadMonth = false;
+        if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("months")))
+            for (const TSharedPtr<FJsonValue>& Month : *Months)
+            {
+                const int32 MonthNumber = static_cast<int32>(Month->AsNumber());
+                bBadMonth |= MonthNumber < 1 || MonthNumber > 12;
+                Event.Months.AddUnique(MonthNumber);
+            }
+        if (const TArray<TSharedPtr<FJsonValue>>* Recent = ArrayField(Entry, TEXT("requires_recent")))
+            for (const TSharedPtr<FJsonValue>& Id : *Recent)
+                Event.RequiresRecentEventIds.AddUnique(FName(*Id->AsString()));
         if (Event.Id.IsNone() || WorldEventIds.Contains(Event.Id) || Event.Name.IsEmpty() ||
             Event.Trigger.IsNone() || Event.Signal.IsNone() || Event.Effect.IsNone() ||
             !FMath::IsFinite(Event.WarningSeconds) || Event.WarningSeconds < 0.0 ||
@@ -495,7 +510,13 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Event.MinimumSeverity > Event.MaximumSeverity ||
             ((!Event.CounterItemId.IsNone()) &&
                 (!HasItem(Event.CounterItemId) || Event.CounterQuantity <= 0)) ||
-            (Event.CounterItemId.IsNone() && Event.CounterQuantity != 0))
+            (Event.CounterItemId.IsNone() && Event.CounterQuantity != 0) ||
+            bBadMonth || !FMath::IsFinite(Event.CounterSeverityFactor) ||
+            Event.CounterSeverityFactor < 0.0f || Event.CounterSeverityFactor > 1.0f ||
+            !FMath::IsFinite(Event.MinimumAirTemperatureCelsius) || !FMath::IsFinite(Event.MaximumAirTemperatureCelsius) ||
+            Event.MinimumAirTemperatureCelsius > Event.MaximumAirTemperatureCelsius ||
+            !FMath::IsFinite(Event.RecentWindowSeconds) || Event.RecentWindowSeconds <= 0.0 ||
+            Event.RequiresRecentEventIds.Contains(Event.Id))
         {
             return Fail(FString::Printf(TEXT("Bad world event %s"), *Event.Id.ToString()));
         }
@@ -504,6 +525,10 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     }
     if (NewWorldEvents.IsEmpty())
         return Fail(TEXT("events.json needs at least one event"));
+    for (const FGameDataWorldEvent& Event : NewWorldEvents)
+        for (const FName Required : Event.RequiresRecentEventIds)
+            if (!WorldEventIds.Contains(Required))
+                return Fail(FString::Printf(TEXT("World event %s requires unknown event %s"), *Event.Id.ToString(), *Required.ToString()));
 
     TArray<FGameDataDiscovery> NewDiscoveries;
     TSet<FName> DiscoveryIds;

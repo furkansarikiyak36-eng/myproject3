@@ -9,6 +9,7 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "HeatSourceComponent.h"
+#include "WorldItemOwnershipSubsystem.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -188,6 +189,15 @@ bool UWorldEventDirectorSubsystem::EvaluateTrigger(
         if (OutSeverity < Definition.TriggerMinimum || OutSeverity > Definition.TriggerMaximum)
             return false;
     }
+    else if (Definition.Trigger == TEXT("air_temperature"))
+    {
+        // Late frost, cold fog: the air window in PassesEventGates is the trigger; severity grows with the cold.
+        const float Air = Climate->GetTemperatureCelsius();
+        const float Span = FMath::Max(1.0f, Definition.MaximumAirTemperatureCelsius - Definition.MinimumAirTemperatureCelsius);
+        OutSeverity = FMath::Clamp((Definition.MaximumAirTemperatureCelsius - Air) / Span, 0.0f, 1.0f);
+        if (OutSeverity < Definition.TriggerMinimum || OutSeverity > Definition.TriggerMaximum)
+            return false;
+    }
     else
     {
         return false;
@@ -223,6 +233,17 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
             if (Instance.Revision >= MAX_int64 - 1)
                 return false;
             Instance.Phase = EWorldNaturalEventPhase::Active;
+            // Preparation pays off at onset: the counter item in the settlement lowers the severity once.
+            if (const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+                    [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; }))
+            {
+                if (!Instance.bCountered && !Definition->CounterItemId.IsNone() &&
+                    CountSettlementStock(Definition->CounterItemId) >= Definition->CounterQuantity)
+                {
+                    Instance.Severity = FMath::Clamp(Instance.Severity * Definition->CounterSeverityFactor, 0.0f, 1.0f);
+                    Instance.bCountered = true;
+                }
+            }
             ++Instance.Revision;
         }
         else if (Instance.Phase == EWorldNaturalEventPhase::Active &&
@@ -231,6 +252,7 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
             if (Instance.Revision >= MAX_int64 - 1)
                 return false;
             Instance.Phase = EWorldNaturalEventPhase::Completed;
+            State.LastEndedAtByEvent.Add(Instance.DefinitionId, TargetTimeSeconds);
             ++Instance.Revision;
         }
     }
@@ -257,7 +279,7 @@ bool UWorldEventDirectorSubsystem::AdvanceEventStep(
             continue;
 
         float Severity = 0.0f;
-        if (!EvaluateTrigger(Definition, Severity))
+        if (!PassesEventGates(Definition, TargetDate, TargetTimeSeconds) || !EvaluateTrigger(Definition, Severity))
             continue;
 
         const int64 NewSerial = State.Serial + 1;
@@ -671,6 +693,9 @@ void UWorldEventDirectorSubsystem::PublishEventNotifications()
 
 bool UWorldEventDirectorSubsystem::IsValidSnapshot(const FWorldEventDirectorSnapshot& Snapshot) const
 {
+    for (const TPair<FName, double>& Ended : Snapshot.LastEndedAtByEvent)
+        if (Ended.Key.IsNone() || !FMath::IsFinite(Ended.Value) || Ended.Value < 0.0)
+            return false;
     if (Snapshot.SchemaVersion != 1 || Snapshot.Serial < 0 ||
         Snapshot.LastProcessedTickIndex < -1 ||
         !FMath::IsFinite(Snapshot.LastProcessedTimeSeconds) ||
@@ -749,4 +774,75 @@ bool UWorldEventDirectorSubsystem::RestoreSnapshot(const FWorldEventDirectorSnap
     UWorldLogisticsRouteSubsystem* Routes =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
     return Routes && Routes->ApplyActiveFloodEvents(ActiveFloodIds);
+}
+
+bool UWorldEventDirectorSubsystem::PassesEventGates(
+    const FGameDataWorldEvent& Definition, const FWorldCalendarDate& Date, double TimeSeconds) const
+{
+    if (Definition.Months.Num() > 0 && !Definition.Months.Contains(Date.Month))
+        return false;
+    const UWorld* World = GetWorld();
+    const UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!Climate || !Climate->IsClimateInitialized())
+        return false;
+    const float Air = Climate->GetTemperatureCelsius();
+    if (Air < Definition.MinimumAirTemperatureCelsius || Air > Definition.MaximumAirTemperatureCelsius)
+        return false;
+    if (Definition.RequiresRecentEventIds.IsEmpty())
+        return true;
+    for (const FName Required : Definition.RequiresRecentEventIds)
+    {
+        const bool bActive = State.Instances.ContainsByPredicate([Required](const FWorldNaturalEventInstance& Instance)
+            { return Instance.DefinitionId == Required && Instance.Phase == EWorldNaturalEventPhase::Active; });
+        const double* EndedAt = State.LastEndedAtByEvent.Find(Required);
+        if (bActive || (EndedAt && TimeSeconds - *EndedAt <= Definition.RecentWindowSeconds))
+            return true;
+    }
+    return false;
+}
+
+int32 UWorldEventDirectorSubsystem::CountSettlementStock(FName ItemId) const
+{
+    const UWorld* World = GetWorld();
+    const UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!Ownership || ItemId.IsNone())
+        return 0;
+    TArray<FWorldOwnedItemRecord> Items;
+    TArray<FWorldItemTransferReceipt> Transfers;
+    TArray<FWorldItemSplitReceipt> Splits;
+    Ownership->ExportSnapshot(Items, Transfers, Splits);
+    int32 Count = 0;
+    for (const FWorldOwnedItemRecord& Item : Items)
+    {
+        if (Item.DefinitionId == ItemId &&
+            (Item.OwnerKind == EWorldItemOwnerKind::Inventory || Item.OwnerKind == EWorldItemOwnerKind::Storage ||
+             Item.OwnerKind == EWorldItemOwnerKind::Equipped))
+            Count += FMath::Max(1, Item.Quantity);
+    }
+    return Count;
+}
+
+bool UWorldEventDirectorSubsystem::GetNextSignalledEvent(FName& OutDefinitionId, double& OutSecondsUntilOnset) const
+{
+    OutDefinitionId = NAME_None;
+    OutSecondsUntilOnset = 0.0;
+    const UWorld* World = GetWorld();
+    const UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Clock || !Clock->IsClockInitialized())
+        return false;
+    const double Now = Clock->GetSimulationTimeSeconds();
+    bool bFound = false;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Signal)
+            continue;
+        const double Until = FMath::Max(0.0, Instance.StartsAtSeconds - Now);
+        if (!bFound || Until < OutSecondsUntilOnset)
+        {
+            OutDefinitionId = Instance.DefinitionId;
+            OutSecondsUntilOnset = Until;
+            bFound = true;
+        }
+    }
+    return bFound;
 }
