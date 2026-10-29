@@ -49,11 +49,12 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 ### Read
 - `memory/CURRENT_TASK.md` (checkpoint only).
 - `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
-- `memory/CODE_INDEX.md` (raw unit index; used to identify code file names, not read gameplay source yet).
+- `memory/CODE_INDEX.md` (raw unit index; used to identify code file names).
+- `Source/MyProject3/WorldSurvivalSubsystem.h` (current declarations for survival, consumables, conditions, equipment, actions, and profile).
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
-- `CODE_INDEX.md` is the authoritative filename/type map; begin with P0.5/P2 and follow exact subsystem headers before editing.
+- `CODE_INDEX.md` is the authoritative filename/type map; `WorldSurvivalSubsystem.h` confirms current public API names for P2. Do not add or call new APIs without adding declarations and definitions.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
 - Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
 
