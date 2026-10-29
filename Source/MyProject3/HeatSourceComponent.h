@@ -96,6 +96,9 @@ public:
     /** Burns fuel for one simulation step; called by the survival subsystem only. */
     void AdvanceFuel(double DeltaSeconds, EWorldWeatherState Weather, float WeatherSeverity);
 
+    /** Internal transaction rollback hook; restores only fuel/lit runtime state. */
+    bool RestoreSimulationFuelState(float InFuelSeconds, bool bInLit);
+
 private:
     UPROPERTY(SaveGame, VisibleAnywhere, Category="Heat")
     float FuelSeconds = 0.0f;
