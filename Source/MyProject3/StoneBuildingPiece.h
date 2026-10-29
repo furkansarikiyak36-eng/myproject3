@@ -8,6 +8,7 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class UWallCoatingComponent;
 class UWorldObjectIdentityComponent;
 
 /**
@@ -30,6 +31,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stone")
     TObjectPtr<UStaticMeshComponent> Mesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stone|Structure")
+    TObjectPtr<UWallCoatingComponent> WallCoating;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Stone|Structure")
     TObjectPtr<UWorldObjectIdentityComponent> StructuralIdentity;

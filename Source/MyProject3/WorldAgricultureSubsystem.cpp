@@ -6,6 +6,9 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "ShelterSensorComponent.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 #include "WildlifeActor.h"
 #include "WorldObjectIdentityComponent.h"
 
@@ -126,6 +129,203 @@ bool UWorldAgricultureSubsystem::TryApplyFieldAction(
     Receipt.Amount = Amount;
     Updated.ActionReceipts.Add(Receipt);
     FieldCells.Add(Cell, MoveTemp(Updated));
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::RegisterFieldActionDefinition(
+    const FWorldFieldActionDefinition& Definition)
+{
+    if (Definition.Id.IsNone() ||
+        static_cast<uint8>(Definition.Action) > static_cast<uint8>(EWorldFieldActionKind::Fence) ||
+        !FMath::IsFinite(Definition.Amount) || Definition.Amount < 0.0f || Definition.Amount > 1.0f ||
+        !FMath::IsFinite(Definition.LaborSeconds) || Definition.LaborSeconds < 1.0 ||
+        Definition.LaborSeconds > 3600.0 ||
+        MaxFieldActionDefinitions < 1 || MaxFieldActionDefinitions > 16)
+        return false;
+
+    const bool bNeedsAmount = Definition.Action == EWorldFieldActionKind::Fertilize ||
+        Definition.Action == EWorldFieldActionKind::Water ||
+        Definition.Action == EWorldFieldActionKind::Weed ||
+        Definition.Action == EWorldFieldActionKind::Mulch;
+    if ((bNeedsAmount && Definition.Amount <= 0.0f) ||
+        (!bNeedsAmount && Definition.Amount != 0.0f))
+        return false;
+
+    if (FieldActionDefinitions.ContainsByPredicate(
+        [&Definition](const FWorldFieldActionDefinition& Existing)
+        {
+            return Existing.Id == Definition.Id || Existing.Action == Definition.Action;
+        }) || FieldActionDefinitions.Num() >= MaxFieldActionDefinitions)
+        return false;
+
+    TSet<FName> SeenInputs;
+    for (const FWorldFieldActionCost& Input : Definition.Inputs)
+    {
+        if (Input.ItemId.IsNone() || Input.Quantity <= 0 || Input.Quantity > 64 ||
+            SeenInputs.Contains(Input.ItemId))
+            return false;
+        SeenInputs.Add(Input.ItemId);
+    }
+    TSet<FName> SeenTools;
+    for (const FName ToolId : Definition.RequiredTools)
+    {
+        if (ToolId.IsNone() || SeenTools.Contains(ToolId))
+            return false;
+        SeenTools.Add(ToolId);
+    }
+
+    FieldActionDefinitions.Add(Definition);
+    FieldActionDefinitions.Sort([](const FWorldFieldActionDefinition& A,
+        const FWorldFieldActionDefinition& B)
+    {
+        return A.Id.ToString() < B.Id.ToString();
+    });
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryApplyFieldActionWithInventory(
+    const FGuid& OperationId, UInventoryCraftingComponent* Inventory,
+    const FGuid& SurvivalEntityId, const FIntVector& Cell,
+    EWorldFieldActionKind Action, int64 ExpectedRevision, FWorldFieldCellState& OutCell)
+{
+    OutCell = FWorldFieldCellState();
+    if (!OperationId.IsValid() || !IsValid(Inventory) || !SurvivalEntityId.IsValid() ||
+        ExpectedRevision < 0 ||
+        static_cast<uint8>(Action) > static_cast<uint8>(EWorldFieldActionKind::Fence))
+        return false;
+
+    const FWorldFieldActionDefinition* Definition =
+        FieldActionDefinitions.FindByPredicate([Action](const FWorldFieldActionDefinition& Candidate)
+        {
+            return Candidate.Action == Action;
+        });
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationCoordinatorSubsystem* Coordinator =
+        World ? World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr;
+    if (!Definition || !World || !Survival || !Ownership)
+        return false;
+
+    if (const FWorldFieldActionReceipt* ExistingReceipt = FindFieldActionReceipt(OperationId))
+    {
+        const bool bSameRequest = ExistingReceipt->Cell == Cell &&
+            ExistingReceipt->Action == Action &&
+            ExistingReceipt->ExpectedRevision == ExpectedRevision &&
+            FMath::IsNearlyEqual(ExistingReceipt->Amount, Definition->Amount, 0.0001f);
+        return bSameRequest && GetFieldCell(Cell, OutCell);
+    }
+
+    FWorldFieldCellState ExistingCell;
+    const bool bCellExists = GetFieldCell(Cell, ExistingCell);
+    const int64 CurrentRevision = bCellExists ? ExistingCell.Revision : 0;
+    if (CurrentRevision != ExpectedRevision || CurrentRevision >= MAX_int64 - 1 ||
+        (bCellExists && ExistingCell.ActionReceipts.Num() >= MaxFieldActionReceiptsPerCell) ||
+        (!bCellExists && FieldCells.Num() >= MaxFieldCells) ||
+        MaxFieldCells <= 0 || MaxFieldCells > 65536 ||
+        MaxFieldActionReceiptsPerCell <= 0 || MaxFieldActionReceiptsPerCell > 512)
+        return false;
+
+    FWorldFieldCellState ProposedCell;
+    ProposedCell.Cell = Cell;
+    if (bCellExists)
+        ProposedCell = ExistingCell;
+    if ((Action == EWorldFieldActionKind::Till && !ProposedCell.bCleared) ||
+        ((Action == EWorldFieldActionKind::Fertilize ||
+          Action == EWorldFieldActionKind::Weed ||
+          Action == EWorldFieldActionKind::Mulch) &&
+         (!ProposedCell.bCleared || !ProposedCell.bTilled)))
+        return false;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!InventoryOwnerId.IsValid())
+        return false;
+
+    for (const FWorldFieldActionCost& Input : Definition->Inputs)
+        if (Inventory->GetItemCount(Input.ItemId) < Input.Quantity)
+            return false;
+    for (const FName ToolId : Definition->RequiredTools)
+        if (Inventory->GetItemCount(ToolId) < 1)
+            return false;
+    if (!Survival->CanRecordActivity(
+        SurvivalEntityId, ESurvivalActivity::Build, Definition->LaborSeconds, 0.0f))
+        return false;
+
+    FGuid InventoryActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorBefore, InventoryOwnerBefore,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != InventoryOwnerId)
+        return false;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+
+    TArray<FWorldCropState> CropsBefore;
+    TArray<FWorldAnimalState> AnimalsBefore;
+    TArray<FWorldFieldCellState> FieldCellsBefore;
+    TArray<FWorldAnimalPenState> AnimalPensBefore;
+    ExportSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+
+    TArray<FWorldSurvivalProfile> ProfilesBefore;
+    TArray<FWorldDiscoveryRecord> DiscoveriesBefore;
+    EWorldWeatherState WeatherBefore = EWorldWeatherState::Clear;
+    float WeatherSeverityBefore = 0.0f;
+    Survival->ExportSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bFarmRestored =
+            RestoreSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored =
+            Inventory->RestoreSnapshot(InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bSurvivalRestored =
+            Survival->RestoreSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+        if (!bFarmRestored || !bOwnershipRestored || !bInventoryRestored || !bSurvivalRestored)
+        {
+            if (Coordinator)
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Field-action rollback failed; stop simulation and recover/reset the world."));
+            UE_LOG(LogTemp, Error, TEXT("Field-action rollback failed for operation %s."),
+                *OperationId.ToString());
+            return false;
+        }
+        return true;
+    };
+
+    for (const FWorldFieldActionCost& Input : Definition->Inputs)
+    {
+        if (!Inventory->TryRemoveItem(Input.ItemId, Input.Quantity))
+        {
+            Rollback();
+            return false;
+        }
+    }
+
+    if (!TryApplyFieldAction(OperationId, Cell, Action, ExpectedRevision, Definition->Amount) ||
+        !GetFieldCell(Cell, OutCell))
+    {
+        Rollback();
+        OutCell = FWorldFieldCellState();
+        return false;
+    }
+
+    if (!Survival->RecordActivity(
+        SurvivalEntityId, ESurvivalActivity::Build, Definition->LaborSeconds, 0.0f))
+    {
+        Rollback();
+        OutCell = FWorldFieldCellState();
+        return false;
+    }
+
     return true;
 }
 
@@ -393,12 +593,131 @@ bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefiniti
         Definition.SeedReturnUnits > 64 || Definition.HarvestUnits + Definition.SeedReturnUnits > 64 ||
         !FMath::IsFinite(Definition.SecondsPerStage) ||
         Definition.SecondsPerStage <= 0.0 ||
+        !FMath::IsFinite(Definition.PlantLaborSeconds) || Definition.PlantLaborSeconds < 1.0 ||
+        Definition.PlantLaborSeconds > 3600.0 ||
+        !FMath::IsFinite(Definition.HarvestLaborSeconds) || Definition.HarvestLaborSeconds < 1.0 ||
+        Definition.HarvestLaborSeconds > 3600.0 ||
         !FMath::IsFinite(Definition.MinimumPlantMoisture) ||
         Definition.MinimumPlantMoisture < 0.0f || Definition.MinimumPlantMoisture > 1.0f ||
         MaxCropDefinitions <= 0 || MaxCropDefinitions > 4096 ||
         CropDefinitions.Num() >= MaxCropDefinitions || FindCropDefinition(Definition.CropDefinitionId))
         return false;
     CropDefinitions.Add(Definition);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryPlantCropWithLabor(
+    const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
+    int64 ExpectedSeedItemRevision, UInventoryCraftingComponent* Inventory,
+    const FGuid& SurvivalEntityId, const FIntVector& PlotCell, float InitialMoisture,
+    FGuid& OutCropId)
+{
+    OutCropId.Invalidate();
+    if (!OperationId.IsValid() || CropDefinitionId.IsNone() || !SeedItemId.IsValid() ||
+        ExpectedSeedItemRevision <= 0 || !IsValid(Inventory) || !SurvivalEntityId.IsValid())
+        return false;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationCoordinatorSubsystem* Coordinator =
+        World ? World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr;
+    const FWorldCropDefinition* Definition = FindCropDefinition(CropDefinitionId);
+    if (!World || !Ownership || !Survival || !Definition || !InventoryOwnerId.IsValid() ||
+        !FMath::IsFinite(Definition->PlantLaborSeconds) ||
+        Definition->PlantLaborSeconds < 1.0 || Definition->PlantLaborSeconds > 3600.0)
+        return false;
+
+    // A retry returns the already committed crop without consuming the seed
+    // twice or charging labor again.
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        const FWorldCropState* ExistingCrop = Crops.Find(Existing->EntityId);
+        if (Existing->Action != EWorldAgricultureActionKind::PlantCrop ||
+            Existing->InputItemId != SeedItemId ||
+            Existing->ExpectedItemRevision != ExpectedSeedItemRevision ||
+            Existing->ExpectedInventoryOwnerId != InventoryOwnerId ||
+            Existing->DefinitionId != CropDefinitionId || !ExistingCrop ||
+            ExistingCrop->CropDefinitionId != CropDefinitionId ||
+            ExistingCrop->PlotCell != PlotCell ||
+            ExistingCrop->SeedItemId != SeedItemId)
+            return false;
+        OutCropId = Existing->EntityId;
+        return true;
+    }
+
+    if (!Survival->CanRecordActivity(
+        SurvivalEntityId, ESurvivalActivity::Build,
+        static_cast<float>(Definition->PlantLaborSeconds), 0.0f))
+        return false;
+
+    FGuid InventoryActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorBefore, InventoryOwnerBefore,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != InventoryOwnerId)
+        return false;
+    (void)InventoryActorBefore;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+
+    TArray<FWorldCropState> CropsBefore;
+    TArray<FWorldAnimalState> AnimalsBefore;
+    TArray<FWorldFieldCellState> FieldCellsBefore;
+    TArray<FWorldAnimalPenState> AnimalPensBefore;
+    ExportSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+
+    TArray<FWorldSurvivalProfile> ProfilesBefore;
+    TArray<FWorldDiscoveryRecord> DiscoveriesBefore;
+    EWorldWeatherState WeatherBefore = EWorldWeatherState::Clear;
+    float WeatherSeverityBefore = 0.0f;
+    Survival->ExportSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bFarmRestored =
+            RestoreSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+        const bool bSurvivalRestored =
+            Survival->RestoreSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+        if (!bOwnershipRestored || !bInventoryRestored || !bFarmRestored || !bSurvivalRestored)
+        {
+            if (Coordinator)
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Crop-planting rollback failed; stop simulation and recover/reset the world."));
+            UE_LOG(LogTemp, Error, TEXT("Crop-planting rollback failed for operation %s."),
+                *OperationId.ToString());
+            return false;
+        }
+        return true;
+    };
+
+    if (!TryPlantCrop(OperationId, CropDefinitionId, SeedItemId,
+        ExpectedSeedItemRevision, InventoryOwnerId, PlotCell, InitialMoisture, OutCropId))
+    {
+        Rollback();
+        OutCropId.Invalidate();
+        return false;
+    }
+
+    if (!Survival->RecordActivity(SurvivalEntityId, ESurvivalActivity::Build,
+        static_cast<float>(Definition->PlantLaborSeconds), 0.0f))
+    {
+        Rollback();
+        OutCropId.Invalidate();
+        return false;
+    }
     return true;
 }
 
@@ -472,6 +791,24 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
         Seed.OwnerId != ExpectedInventoryOwnerId || Seed.DefinitionId != Definition->SeedDefinitionId ||
         Seed.Quantity != 1 || Seed.Revision >= MAX_int64 - 1)
         return false;
+
+    // Seeds that a discovery explicitly unlocks stay gated at the authoritative
+    // planting transaction too; possession of a spoofed/raw seed record is not
+    // enough to bypass the player's knowledge ledger.
+    const UWorldGameDataSubsystem* GameData =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (GameData && GameData->IsApplied() &&
+        GameData->IsDiscoveryGatedDefinition(Definition->SeedDefinitionId))
+    {
+        const AActor* InventoryActor = Inventory->GetOwner();
+        const UShelterSensorComponent* Shelter =
+            InventoryActor ? InventoryActor->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        const UWorldSurvivalSubsystem* Survival =
+            GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+        if (!Shelter || !Shelter->SurvivalEntityId.IsValid() || !Survival ||
+            !Survival->IsDefinitionUnlocked(Shelter->SurvivalEntityId, Definition->SeedDefinitionId))
+            return false;
+    }
 
     FWorldCropState Crop;
     Crop.CropId = FGuid::NewGuid();
@@ -594,6 +931,243 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     ++Crop->Revision;
     Crop->ActionReceipts.Add(Receipt);
     OutItemIds = MoveTemp(CreatedItems);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::GetCropAtPlotCell(
+    const FIntVector& PlotCell, FWorldCropState& OutCrop) const
+{
+    OutCrop = FWorldCropState();
+    const FWorldCropState* Found = nullptr;
+    for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
+    {
+        const FWorldCropState& Crop = Pair.Value;
+        if (Crop.PlotCell != PlotCell || Crop.Stage == ECropGrowthStage::Harvested ||
+            Crop.Stage == ECropGrowthStage::Withered)
+            continue;
+        if (Found)
+            return false; // Ambiguous saved state: never guess which crop to mutate.
+        Found = &Crop;
+    }
+    if (!Found)
+        return false;
+    OutCrop = *Found;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryHarvestCropToInventory(
+    const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
+    UInventoryCraftingComponent* Inventory, const FGuid& SurvivalEntityId,
+    TArray<FGuid>& OutItemIds)
+{
+    OutItemIds.Reset();
+    if (!OperationId.IsValid() || !CropId.IsValid() || ExpectedCropRevision <= 0 ||
+        !IsValid(Inventory) || !SurvivalEntityId.IsValid())
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !Ownership || !Survival || !GameData || !GameData->IsApplied())
+        return false;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!InventoryOwnerId.IsValid())
+        return false;
+
+    FWorldCropState Crop;
+    if (!GetCrop(CropId, Crop))
+        return false;
+    const FWorldCropDefinition* CropDefinition = FindCropDefinition(Crop.CropDefinitionId);
+    if (!CropDefinition || !FMath::IsFinite(CropDefinition->HarvestLaborSeconds) ||
+        CropDefinition->HarvestLaborSeconds < 1.0 || CropDefinition->HarvestLaborSeconds > 3600.0)
+        return false;
+
+    // A retry after a save/reload is successful only when all harvest outputs
+    // remain owned by this exact inventory and each ID is present there.
+    if (Crop.HarvestOperationId == OperationId)
+    {
+        if (Crop.HarvestExpectedRevision != ExpectedCropRevision ||
+            Crop.HarvestOutputItemIds.IsEmpty())
+            return false;
+        for (const FGuid& ItemId : Crop.HarvestOutputItemIds)
+        {
+            FWorldOwnedItemRecord Item;
+            if (!Ownership->TryGetItem(ItemId, Item) ||
+                Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                Item.OwnerId != InventoryOwnerId ||
+                !Inventory->Items.ContainsByPredicate([&ItemId](const FInventoryStack& Stack)
+                    { return Stack.OwnedWorldItemId == ItemId; }))
+                return false;
+        }
+        OutItemIds = Crop.HarvestOutputItemIds;
+        return true;
+    }
+
+    if (Crop.Revision != ExpectedCropRevision || Crop.Stage != ECropGrowthStage::Mature ||
+        Crop.HarvestUnits <= 0 || Crop.SeedReturnUnits < 0 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits <= 0 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
+        (Crop.SeedReturnUnits > 0 && Crop.SeedDefinitionId.IsNone()) ||
+        Ownership->MaxTrackedItems <= 0 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits >
+            Ownership->MaxTrackedItems - Ownership->GetTrackedItemCount() ||
+        !Survival->CanRecordActivity(SurvivalEntityId, ESurvivalActivity::Build,
+            static_cast<float>(CropDefinition->HarvestLaborSeconds), 0.0f))
+        return false;
+
+    FGuid InventoryActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorBefore, InventoryOwnerBefore,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != InventoryOwnerId)
+        return false;
+    (void)InventoryActorBefore;
+
+    // Every output becomes its own ledger-owned item. Preflight the real item
+    // weights and inventory capacity before a crop or world-item record changes.
+    TArray<FInventoryStack> CapacityProbe;
+    CapacityProbe.Reserve(Crop.HarvestUnits + Crop.SeedReturnUnits);
+    auto ToInventoryCategory = [](FName Category)
+    {
+        if (Category == TEXT("Tool")) return EInventoryItemCategory::Tool;
+        if (Category == TEXT("Weapon")) return EInventoryItemCategory::Weapon;
+        if (Category == TEXT("BuildingPart")) return EInventoryItemCategory::BuildingPart;
+        if (Category == TEXT("Consumable")) return EInventoryItemCategory::Consumable;
+        if (Category == TEXT("Protection")) return EInventoryItemCategory::Protection;
+        return EInventoryItemCategory::Resource;
+    };
+    auto AddCapacityProbe = [&](FName DefinitionId) -> bool
+    {
+        const FGameDataItem* Definition = GameData->GetItems().Find(DefinitionId);
+        if (!Definition || Definition->WeightGrams <= 0)
+            return false;
+        if (!Inventory->ItemWeightGrams.Contains(DefinitionId))
+            Inventory->ItemWeightGrams.Add(DefinitionId, Definition->WeightGrams);
+
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.Category = ToInventoryCategory(Definition->Category);
+        Stack.MaxStack = 1;
+        Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
+        Stack.OwnedWorldItemId = FGuid::NewGuid();
+        if (!Stack.OwnedWorldItemId.IsValid())
+            return false;
+        CapacityProbe.Add(Stack);
+        return true;
+    };
+    for (int32 Index = 0; Index < Crop.HarvestUnits; ++Index)
+        if (!AddCapacityProbe(Crop.HarvestDefinitionId))
+            return false;
+    for (int32 Index = 0; Index < Crop.SeedReturnUnits; ++Index)
+        if (!AddCapacityProbe(Crop.SeedDefinitionId))
+            return false;
+    if (!Inventory->CanAddItems(CapacityProbe))
+        return false;
+
+    TArray<FWorldCropState> CropsBefore;
+    TArray<FWorldAnimalState> AnimalsBefore;
+    TArray<FWorldFieldCellState> FieldCellsBefore;
+    TArray<FWorldAnimalPenState> AnimalPensBefore;
+    ExportSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+
+    TArray<FWorldSurvivalProfile> ProfilesBefore;
+    TArray<FWorldDiscoveryRecord> DiscoveriesBefore;
+    EWorldWeatherState WeatherBefore = EWorldWeatherState::Clear;
+    float WeatherSeverityBefore = 0.0f;
+    Survival->ExportSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bFarmRestored =
+            RestoreSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+        const bool bSurvivalRestored =
+            Survival->RestoreSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+        if (!bOwnershipRestored || !bInventoryRestored || !bFarmRestored || !bSurvivalRestored)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Harvest-to-inventory rollback failed; stop simulation and recover/reset the world."));
+            UE_LOG(LogTemp, Error, TEXT("Harvest-to-inventory rollback failed for crop %s."),
+                *CropId.ToString());
+            return false;
+        }
+        return true;
+    };
+
+    TArray<FGuid> WorldOutputIds;
+    if (!TryHarvestCrop(OperationId, CropId, ExpectedCropRevision, WorldOutputIds) ||
+        WorldOutputIds.Num() != CapacityProbe.Num())
+    {
+        Rollback();
+        return false;
+    }
+
+    for (const FGuid& ItemId : WorldOutputIds)
+    {
+        FWorldOwnedItemRecord WorldItem;
+        if (!Ownership->TryGetItem(ItemId, WorldItem) ||
+            WorldItem.OwnerKind != EWorldItemOwnerKind::World ||
+            WorldItem.Revision <= 0 || WorldItem.Revision >= MAX_int64)
+        {
+            Rollback();
+            return false;
+        }
+
+        FWorldOwnedItemRecord InventoryItem;
+        if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, WorldItem.Revision,
+            EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
+            InventoryOwnerId, WorldItem.WorldLocation, InventoryItem))
+        {
+            Rollback();
+            return false;
+        }
+
+        const FGameDataItem* Definition = GameData->GetItems().Find(InventoryItem.DefinitionId);
+        if (!Definition)
+        {
+            Rollback();
+            return false;
+        }
+        FInventoryStack Stack;
+        Stack.ItemId = InventoryItem.DefinitionId;
+        Stack.Quantity = 1;
+        Stack.Category = ToInventoryCategory(Definition->Category);
+        Stack.MaxStack = 1;
+        Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
+        Stack.OwnedWorldItemId = InventoryItem.ItemId;
+        if (!Inventory->TryAddItem(Stack))
+        {
+            Rollback();
+            return false;
+        }
+    }
+
+    if (!Survival->RecordActivity(SurvivalEntityId, ESurvivalActivity::Build,
+        static_cast<float>(CropDefinition->HarvestLaborSeconds), 0.0f))
+    {
+        Rollback();
+        return false;
+    }
+
+    OutItemIds = MoveTemp(WorldOutputIds);
     return true;
 }
 
@@ -1043,6 +1617,103 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
         SeenOperations.Add(Receipt.OperationId);
     }
     Animals.Add(Animal.AnimalId, Animal);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::ApplyEnvironmentalEffect(
+    FName EffectId, float Severity, double DeltaSeconds)
+{
+    if (EffectId.IsNone() || !FMath::IsFinite(Severity) || Severity < 0.0f ||
+        Severity > 1.0f || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
+        DeltaSeconds > 3600.0)
+        return false;
+
+    const bool bContinuousDrying = EffectId == TEXT("crop_moisture_loss");
+    const bool bCropDamage = EffectId == TEXT("crop_damage");
+    if (!bContinuousDrying && !bCropDamage)
+        return false;
+
+    // Preflight the entire domain first so revision exhaustion cannot leave a
+    // partially affected set of fields/crops inside an otherwise valid fixed step.
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        const FWorldFieldCellState& Field = Pair.Value;
+        if (Field.Revision >= MAX_int64 - 1 || !FMath::IsFinite(Field.Moisture) ||
+            Field.Moisture < 0.0f || Field.Moisture > 1.0f)
+            return false;
+    }
+    for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
+    {
+        const FWorldCropState& Crop = Pair.Value;
+        if (Crop.Revision >= MAX_int64 - 1 || !FMath::IsFinite(Crop.Moisture) ||
+            Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0)
+            return false;
+    }
+
+    const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
+    if (bContinuousDrying)
+    {
+        const float MoistureLoss = 0.02f * Severity * Hours;
+        for (TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+        {
+            FWorldFieldCellState& Field = Pair.Value;
+            const float OldMoisture = Field.Moisture;
+            Field.Moisture = FMath::Max(0.0f, Field.Moisture -
+                MoistureLoss * (1.0f - FMath::Clamp(Field.Mulch, 0.0f, 1.0f) * MulchMoistureRetention));
+            if (!FMath::IsNearlyEqual(OldMoisture, Field.Moisture))
+                ++Field.Revision;
+        }
+        for (TPair<FGuid, FWorldCropState>& Pair : Crops)
+        {
+            FWorldCropState& Crop = Pair.Value;
+            if (Crop.Stage == ECropGrowthStage::Mature ||
+                Crop.Stage == ECropGrowthStage::Withered ||
+                Crop.Stage == ECropGrowthStage::Harvested ||
+                FieldCells.Contains(Crop.PlotCell))
+                continue;
+
+            const float NewMoisture = FMath::Max(0.0f, Crop.Moisture - MoistureLoss);
+            if (!FMath::IsNearlyEqual(Crop.Moisture, NewMoisture))
+            {
+                Crop.Moisture = NewMoisture;
+                ++Crop.Revision;
+            }
+        }
+    }
+    else
+    {
+        // Hail/crop-impact events remove part of accumulated growth and moisture
+        // once at onset. Crop stage changes remain in the ordinary farm step.
+        const float MoistureLoss = 0.25f * Severity;
+        const float GrowthRetention = FMath::Clamp(1.0f - 0.45f * Severity, 0.0f, 1.0f);
+        for (TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+        {
+            FWorldFieldCellState& Field = Pair.Value;
+            const float OldMoisture = Field.Moisture;
+            Field.Moisture = FMath::Max(0.0f, Field.Moisture - MoistureLoss);
+            if (!FMath::IsNearlyEqual(OldMoisture, Field.Moisture))
+                ++Field.Revision;
+        }
+        for (TPair<FGuid, FWorldCropState>& Pair : Crops)
+        {
+            FWorldCropState& Crop = Pair.Value;
+            if (Crop.Stage == ECropGrowthStage::Mature ||
+                Crop.Stage == ECropGrowthStage::Withered ||
+                Crop.Stage == ECropGrowthStage::Harvested)
+                continue;
+
+            const float OldMoisture = Crop.Moisture;
+            if (FieldCells.Contains(Crop.PlotCell))
+                Crop.Moisture = FieldCells.FindChecked(Crop.PlotCell).Moisture;
+            else
+                Crop.Moisture = FMath::Max(0.0f, Crop.Moisture - MoistureLoss);
+            Crop.GrowthProgressSeconds *= GrowthRetention;
+            if (!FMath::IsNearlyEqual(OldMoisture, Crop.Moisture) ||
+                GrowthRetention < 1.0f)
+                ++Crop.Revision;
+        }
+    }
     return true;
 }
 

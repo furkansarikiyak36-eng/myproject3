@@ -60,6 +60,14 @@ struct FLogisticsRouteEdge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Cost")
     bool bRequiresInfrastructure = false;
 
+    /** Flood-prone edges are temporarily unavailable while any flood event is active. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Hazards")
+    bool bFloodProne = false;
+
+    /** Natural-event identity claims are saved with the edge and compose safely when events overlap. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Logistics|Hazards")
+    TArray<FGuid> ActiveNaturalHazardIds;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics")
     bool bEnabled = true;
 };
@@ -78,6 +86,22 @@ struct FLogisticsRouteCostContext
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Logistics|Cost", meta=(ClampMin="0.0", ClampMax="1.0"))
     float WeatherSeverity = 0.0f;
+};
+
+/** Explicit route graph manifest for save/load and transactional rollback. */
+USTRUCT(BlueprintType)
+struct FWorldLogisticsRouteSnapshot
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Logistics|Save")
+    int32 SchemaVersion = 1;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Logistics|Save")
+    TArray<FLogisticsRouteNode> Nodes;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Logistics|Save")
+    TArray<FLogisticsRouteEdge> Edges;
 };
 
 /** Explicit, bounded route-cost graph; physical movement is handled by a separate adapter. */
@@ -124,6 +148,12 @@ public:
     UFUNCTION(BlueprintPure, Category="Logistics")
     bool CalculatePathCost(const TArray<FName>& Path,
         const FLogisticsRouteCostContext& Context, float& OutTotalCost) const;
+
+    /** Rebuilds edge hazard claims from the active flood-event instances. */
+    bool ApplyActiveFloodEvents(const TArray<FGuid>& ActiveFloodEventIds);
+
+    void ExportSnapshot(FWorldLogisticsRouteSnapshot& OutSnapshot) const;
+    bool RestoreSnapshot(const FWorldLogisticsRouteSnapshot& Snapshot);
 
     UFUNCTION(BlueprintPure, Category="Logistics")
     int32 GetNodeCount() const { return Nodes.Num(); }

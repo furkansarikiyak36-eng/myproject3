@@ -1,0 +1,107 @@
+{
+  "_about": "Data-backed discovery markers; reward_unique=true means each output is a separate inventory-owned world-item ledger record (required by the planting transaction).",
+  "discoveries": [
+    {
+      "id": "Discovery.AbandonedCamp",
+      "name": "Terk edilmiş kamp",
+      "zone": "Zone.BaseValley",
+      "location_x": 0,
+      "location_y": 520,
+      "location_z": 0,
+      "reveal_radius_cm": 260,
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "twist_rope"
+      ],
+      "reward_item": "",
+      "reward_qty": 0,
+      "reward_unique": false
+    },
+    {
+      "id": "Discovery.GrainSeeds",
+      "name": "Dere kıyısındaki tahıllar",
+      "zone": "Zone.RiverBank",
+      "location_x": 930,
+      "location_y": -690,
+      "location_z": 0,
+      "reveal_radius_cm": 300,
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "Seed.Grain"
+      ],
+      "reward_item": "Seed.Grain",
+      "reward_qty": 2,
+      "reward_unique": true
+    },
+    {
+      "id": "Discovery.RootSeeds",
+      "name": "Yüksek orman kök bitkileri",
+      "zone": "Zone.HighForest",
+      "location_x": 1850,
+      "location_y": 1320,
+      "location_z": 0,
+      "reveal_radius_cm": 300,
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "Seed.Root"
+      ],
+      "reward_item": "Seed.Root",
+      "reward_qty": 2,
+      "reward_unique": true
+    },
+    {
+      "id": "Discovery.LegumeSeeds",
+      "name": "Bataklık baklagilleri",
+      "zone": "Zone.LakeWetland",
+      "location_x": -2320,
+      "location_y": -720,
+      "location_z": 0,
+      "reveal_radius_cm": 300,
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "Seed.Legume"
+      ],
+      "reward_item": "Seed.Legume",
+      "reward_qty": 2,
+      "reward_unique": true
+    },
+    {
+      "id": "Discovery.OchreOutcrop",
+      "name": "Aşı boyası kayalığı",
+      "zone": "Zone.LakeWetland",
+      "location_x": -2450,
+      "location_y": -420,
+      "location_z": 0,
+      "reveal_radius_cm": 280,
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "grind_ochre"
+      ],
+      "reward_item": "OchreEarth",
+      "reward_qty": 2,
+      "reward_unique": false
+    },
+    {
+      "id": "Discovery.MountainPass",
+      "name": "Dağ geçidi işareti",
+      "zone": "Zone.MountainPass",
+      "location_x": -1860,
+      "location_y": 2700,
+      "location_z": 0,
+      "reveal_radius_cm": 280,
+      "prerequisites": [],
+      "required_equipment": [],
+      "unlocks": [
+        "cure_hide"
+      ],
+      "reward_item": "Rope",
+      "reward_qty": 1,
+      "reward_unique": false
+    }
+  ]
+}

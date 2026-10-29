@@ -9,6 +9,7 @@
 
 class UStaticMesh;
 class UStaticMeshComponent;
+class UWallCoatingComponent;
 class UWorldObjectIdentityComponent;
 enum class EWorldItemOwnerKind : uint8;
 struct FWorldOwnedItemRecord;
@@ -41,6 +42,9 @@ public:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Piece")
     TObjectPtr<UStaticMeshComponent> Mesh;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Piece|Structure")
+    TObjectPtr<UWallCoatingComponent> WallCoating;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Log Piece|Structure")
     TObjectPtr<UWorldObjectIdentityComponent> StructuralIdentity;

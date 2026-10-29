@@ -55,6 +55,14 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat", meta=(ClampMin="1.0"))
     float MaxFuelSeconds = 4.0f * 3600.0f;
 
+    /** Visibility signature used by the raid/threat model while this source is lit. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Threat", meta=(ClampMin="0.0", ClampMax="10.0"))
+    float RaidLightSignature = 1.0f;
+
+    /** Baseline smoke signature; the current fuel blend scales this in the raid model. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Threat", meta=(ClampMin="0.0", ClampMax="10.0"))
+    float RaidSmokeSignature = 0.65f;
+
     /** 0 = open fire, 1 = fully sheltered hearth; rain and storms put out poorly protected fires. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat", meta=(ClampMin="0.0", ClampMax="1.0"))
     float WeatherProtection = 0.0f;
@@ -80,6 +88,12 @@ public:
     /** Lit and burning charcoal-hot: needed to fire clay (P4). */
     UFUNCTION(BlueprintPure, Category="Heat")
     bool IsBurningHot() const { return bLit && FuelHeatMultiplier >= 1.3f; }
+
+    UFUNCTION(BlueprintPure, Category="Heat|Threat")
+    float GetRaidLightSignature() const { return RaidLightSignature; }
+
+    UFUNCTION(BlueprintPure, Category="Heat|Threat")
+    float GetRaidSmokeSignature() const { return RaidSmokeSignature; }
 
     /** Internal numerical helper. Player-facing refuelling must consume an owned fuel item. */
     bool AddFuel(float BurnSeconds);

@@ -3,8 +3,8 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldCalendar.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldClimateSubsystem.h"
-#include "WorldEventDirectorSubsystem.h"
 #include "WorldGameDataSubsystem.generated.h"
 
 class UInventoryCraftingComponent;
@@ -70,6 +70,54 @@ struct FGameDataStation
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") float SpoilageRate = 1.0f;
 };
 
+/** Item costs, reusable tools, field delta and labor effort for a player field action. */
+USTRUCT(BlueprintType)
+struct FGameDataFieldAction
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") EWorldFieldActionKind Action = EWorldFieldActionKind::Clear;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FGameDataItemAmount> Inputs;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FName> RequiredTools;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") float Amount = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") double LaborSeconds = 300.0;
+};
+
+/** Authored ecological region; one index is the stable crop/discovery zone id. */
+USTRUCT(BlueprintType)
+struct FGameDataZone
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") int32 Index = -1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FVector Center = FVector::ZeroVector;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") float RadiusCm = 1000.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> ResourceItemIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Obstacle;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString PermanentSolution;
+};
+
+/** Data definition for a discoverable knowledge/material site in the world. */
+USTRUCT(BlueprintType)
+struct FGameDataDiscovery
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName ZoneId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FVector Location = FVector::ZeroVector;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") float RevealRadiusCm = 300.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") TArray<FName> PrerequisiteDiscoveryIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") TArray<FName> RequiredEquipmentDefinitionIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") TArray<FName> UnlockedDefinitionIds;
+    /** Optional one-time item reward; zero quantity means a knowledge/location-only discovery. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName RewardItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") int32 RewardQuantity = 0;
+    /** True when each reward unit must be separately ledger-owned (for plantable seeds). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") bool bRewardUniqueItems = false;
+};
+
 USTRUCT(BlueprintType)
 struct FGameDataCrop
 {
@@ -80,16 +128,39 @@ struct FGameDataCrop
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 HarvestUnits = 1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 SeedReturnUnits = 1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double SecondsPerStage = 3600.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double PlantLaborSeconds = 600.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double HarvestLaborSeconds = 450.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") TArray<int32> PlantMonths;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 FoundInZone = 0;
+};
+
+/** Authored trigger/effect contract for natural world events (P1.3/P8.1). */
+USTRUCT(BlueprintType)
+struct FGameDataWorldEvent
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Trigger = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Signal = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Effect = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double WarningSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double DurationSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float TriggerMinimum = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float TriggerMaximum = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MinimumSeverity = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MaximumSeverity = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName CounterItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") int32 CounterQuantity = 0;
 };
 
 /**
  * Loads and checks the primitive-era game data (Config/GameData/*.json, P0.3/P0.4) and
  * hands it to the systems that use it: production recipes and stations, survival
- * consumables / conditions / equipment, heat fuels, climate months, the calendar and
- * terrain resource layers. Hand recipes and fuels are per component (ApplyToInventory,
- * ApplyToHeatSource); components call those themselves once the data is applied.
+ * consumables / conditions / equipment, heat fuels, climate months, the calendar, natural-event
+ * contracts, terrain resource layers, ecological zones, and exploration discoveries. Hand recipes and
+ * fuels are per component (ApplyToInventory, ApplyToHeatSource); discovery definitions bind persistent
+ * unlocks to their world markers once the data is applied.
  */
 UCLASS()
 class MYPROJECT3_API UWorldGameDataSubsystem : public UWorldSubsystem
@@ -118,7 +189,14 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
-    const TArray<FWorldNaturalEventDefinition>& GetNaturalEvents() const { return NaturalEvents; }
+    const TArray<FGameDataFieldAction>& GetFieldActions() const { return FieldActions; }
+    const TArray<FGameDataZone>& GetZones() const { return Zones; }
+    const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
+    bool IsDiscoveryGatedDefinition(FName DefinitionId) const;
+    const FGameDataZone* FindZone(FName ZoneId) const;
+    /** Best-fitting containing region in 2D world space; null when outside every region. */
+    const FGameDataZone* FindZoneAtLocation(const FVector& WorldLocation) const;
+    const TArray<FGameDataWorldEvent>& GetWorldEvents() const { return WorldEvents; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
@@ -132,7 +210,10 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
-    TArray<FWorldNaturalEventDefinition> NaturalEvents;
+    TArray<FGameDataFieldAction> FieldActions;
+    TArray<FGameDataZone> Zones;
+    TArray<FGameDataDiscovery> Discoveries;
+    TArray<FGameDataWorldEvent> WorldEvents;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 

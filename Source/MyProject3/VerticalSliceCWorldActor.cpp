@@ -3,6 +3,8 @@
 
 #include "ConstructionHelpers.h"
 #include "HarvestableTreeActor.h"
+#include "GatherableResourceActor.h"
+#include "WorldDiscoveryMarkerActor.h"
 #include "HeatSourceComponent.h"
 #include "HelperCompanionActor.h"
 #include "LogAttachmentComponents.h"
@@ -14,6 +16,7 @@
 #include "InventoryCraftingTypes.h"
 #include "ProductionStationActor.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
@@ -23,11 +26,15 @@
 #include "WildlifeActor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "StructuralPieceInterface.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldClimateSubsystem.h"
 #include "PhysicalHealthComponent.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
+#include "WorldCalendar.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 #include "Components/DirectionalLightComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -62,6 +69,10 @@ namespace
     const FVector2D CampCentre(0.0f, 0.0f);
     const FVector2D CabinCentre(-1350.0f, 380.0f);
     const FVector2D LookoutPoint(600.0f, 2650.0f);
+    // Small, intentionally low-cost three-by-three primitive field for P6.2 interaction tests.
+    const FVector2D FarmPlotCentre(-350.0f, 950.0f);
+    constexpr float FarmPlotCellSize = 180.0f;
+    constexpr int32 FarmPlotCellsPerAxis = 3;
     const float BridgeX = 760.0f;
     const float PalisadeX = 2050.0f;
 
@@ -170,6 +181,8 @@ bool AVerticalSliceCWorldActor::IsOpenGround(float X, float Y, float Margin) con
     const FVector2D P(X, Y);
     return FVector2D::Distance(P, CampCentre) > 900.0f + Margin &&
         FVector2D::Distance(P, CabinCentre) > 600.0f + Margin &&
+        // The field patch is reserved from tree placement so its nine soil tiles remain usable.
+        FVector2D::Distance(P, FarmPlotCentre) > 360.0f + Margin &&
         FMath::Abs(Y - GetCreekCentreY(X)) > 480.0f + Margin &&
         !(FMath::Abs(X - PalisadeX) < 500.0f + Margin && FMath::Abs(Y) < 900.0f) &&
         !(X > -400.0f && X < 1800.0f && Y > 1350.0f && Y < 1700.0f) &&
@@ -559,7 +572,9 @@ void AVerticalSliceCWorldActor::BuildRocksAndGrass()
                     FVector(Random.FRandRange(0.05f, 0.18f)) * FVector(1.0f, 0.8f, 0.5f)), true);
             continue;
         }
-        if (FVector2D::Distance(FVector2D(X, Y), CampCentre) < 450.0f || FVector2D::Distance(FVector2D(X, Y), CabinCentre) < 330.0f)
+        if (FVector2D::Distance(FVector2D(X, Y), CampCentre) < 450.0f ||
+            FVector2D::Distance(FVector2D(X, Y), CabinCentre) < 330.0f ||
+            FVector2D::Distance(FVector2D(X, Y), FarmPlotCentre) < 360.0f)
             continue;
         const float Height = Random.FRandRange(0.18f, 0.42f);
         GrassClumps->AddInstance(FTransform(FRotator(Random.FRandRange(-8, 8), Random.FRandRange(0, 360), 0),
@@ -875,6 +890,53 @@ void AVerticalSliceCWorldActor::BuildLife()
         Stick->FinishSpawning(FTransform(Rotation, Location, FVector(0.06f, 0.06f, Random.FRandRange(1.0f, 1.5f))));
         Stick->Mesh->SetMaterial(0, Tint(FLinearColor(0.26f, 0.18f, 0.1f)));
     }
+
+    // Gatherable nodes are placed in the biome that explains the resource:
+    // berries in the clearing, reeds beside the creek, flint on the rocky bank,
+    // clay/sand along the exposed lower bank. These are real inventory resources,
+    // not decorative props; G gathers the nearest node.
+    struct FGatherNode
+    {
+        FName ItemId;
+        FVector2D XY;
+        const TCHAR* Shape;
+        FVector Scale;
+        FLinearColor Colour;
+        int32 Units;
+        int32 PerGather;
+        double RefillSeconds;
+        FName ToolId;
+        bool bLedger;
+    };
+    const FGatherNode Nodes[] =
+    {
+        { TEXT("Berries"), FVector2D(-900, 650), TEXT("Sphere"), FVector(0.55f,0.55f,0.65f), FLinearColor(0.42f,0.06f,0.12f), 5, 2, 21600.0, NAME_None, true },
+        { TEXT("Berries"), FVector2D(-1150, 820), TEXT("Sphere"), FVector(0.45f,0.45f,0.55f), FLinearColor(0.42f,0.06f,0.12f), 5, 2, 21600.0, NAME_None, true },
+        { TEXT("Reed"), FVector2D(1150, -950), TEXT("Cylinder"), FVector(0.12f,0.12f,0.85f), FLinearColor(0.28f,0.36f,0.12f), 8, 2, 43200.0, NAME_None, false },
+        { TEXT("Reed"), FVector2D(1350, -1050), TEXT("Cylinder"), FVector(0.10f,0.10f,0.75f), FLinearColor(0.28f,0.36f,0.12f), 8, 2, 43200.0, NAME_None, false },
+        { TEXT("Flint"), FVector2D(1750, 950), TEXT("Sphere"), FVector(0.32f,0.28f,0.22f), FLinearColor(0.22f,0.23f,0.25f), 3, 1, 0.0, NAME_None, false },
+        { TEXT("Clay"), FVector2D(-1750, -650), TEXT("Sphere"), FVector(0.65f,0.5f,0.18f), FLinearColor(0.43f,0.24f,0.13f), 5, 1, 86400.0, NAME_None, false },
+        { TEXT("Sand"), FVector2D(2050, -750), TEXT("Sphere"), FVector(0.7f,0.55f,0.12f), FLinearColor(0.57f,0.49f,0.32f), 5, 1, 86400.0, NAME_None, false },
+        { TEXT("Resin"), FVector2D(1450, 1200), TEXT("Sphere"), FVector(0.18f,0.18f,0.18f), FLinearColor(0.48f,0.27f,0.06f), 3, 1, 0.0, TEXT("Tool.Scraper"), false }
+    };
+    for (const FGatherNode& Node : Nodes)
+    {
+        const FVector Location(Node.XY.X, Node.XY.Y, GetGroundHeight(Node.XY.X, Node.XY.Y) + 22.0f);
+        AGatherableResourceActor* Resource = World->SpawnActor<AGatherableResourceActor>(
+            AGatherableResourceActor::StaticClass(), Location, FRotator::ZeroRotator);
+        if (!Resource)
+            continue;
+        Resource->ItemDefinitionId = Node.ItemId;
+        Resource->MaxUnits = Node.Units;
+        Resource->UnitsPerGather = Node.PerGather;
+        Resource->RefillSecondsPerUnit = Node.RefillSeconds;
+        Resource->RequiredToolId = Node.ToolId;
+        Resource->bGiveLedgerItems = Node.bLedger;
+        Resource->Mesh->SetStaticMesh(LoadEngineShape(Node.Shape));
+        Resource->Mesh->SetRelativeScale3D(Node.Scale);
+        Resource->Mesh->SetMaterial(0, Tint(Node.Colour));
+        Resource->Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+    }
 }
 
 // ---------------------------------------------------------------- creek
@@ -992,6 +1054,103 @@ void AVerticalSliceCWorldActor::HelperOrderInput()
 
 // ---------------------------------------------------------------- play
 
+void AVerticalSliceCWorldActor::BuildFarmPlot()
+{
+    if (bFarmPlotBuilt || !GetWorld())
+        return;
+
+    UStaticMesh* SoilCube = LoadEngineShape(TEXT("Cube"));
+    if (!SoilCube)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("VerticalSlice_C: farm placeholder mesh is not available yet."));
+        return;
+    }
+
+    FarmPlotTiles.Reset();
+    FarmPlotColours.Reset();
+    // Visible, non-blocking soil tiles keep the backend logical grid discoverable
+    // without creating a large voxel field or interfering with traversal.
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const FVector Location(WorldX, WorldY, GetGroundHeight(WorldX, WorldY) + 5.0f);
+            const FTransform Transform(FRotator::ZeroRotator, Location, FVector(1.68f, 1.68f, 0.08f));
+            const FLinearColor SoilColour = ((X + Y) % 2 == 0)
+                ? FLinearColor(0.20f, 0.125f, 0.065f)
+                : FLinearColor(0.16f, 0.095f, 0.045f);
+            if (UStaticMeshComponent* Tile = AddProp(SoilCube, Transform, SoilColour, false))
+            {
+                FarmPlotTiles.Add(Tile);
+                FarmPlotColours.Add(FLinearColor::Transparent);
+            }
+        }
+    }
+
+    bFarmPlotBuilt = FarmPlotTiles.Num() == FarmPlotCellsPerAxis * FarmPlotCellsPerAxis;
+    RefreshFarmPlotVisuals();
+}
+
+void AVerticalSliceCWorldActor::RefreshFarmPlotVisuals()
+{
+    UWorld* World = GetWorld();
+    const UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!bFarmPlotBuilt || !Agriculture ||
+        FarmPlotTiles.Num() != FarmPlotCellsPerAxis * FarmPlotCellsPerAxis)
+        return;
+
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const int32 Index = Y * FarmPlotCellsPerAxis + X;
+            if (!FarmPlotTiles.IsValidIndex(Index) || !IsValid(FarmPlotTiles[Index]))
+                continue;
+
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const FIntVector LogicalCell(
+                FMath::RoundToInt(WorldX / 100.0f),
+                FMath::RoundToInt(WorldY / 100.0f),
+                FMath::RoundToInt(GetGroundHeight(WorldX, WorldY) / 100.0f));
+            FWorldFieldCellState Cell;
+            const bool bExists = Agriculture->GetFieldCell(LogicalCell, Cell);
+            FLinearColor Colour = ((X + Y) % 2 == 0)
+                ? FLinearColor(0.20f, 0.125f, 0.065f)
+                : FLinearColor(0.16f, 0.095f, 0.045f);
+            if (bExists)
+            {
+                if (Cell.bCleared)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.27f, 0.18f, 0.095f), 0.45f);
+                if (Cell.bTilled)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.11f, 0.065f, 0.032f), 0.65f);
+                if (Cell.Mulch > 0.0f)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.33f, 0.22f, 0.09f),
+                        FMath::Clamp(Cell.Mulch, 0.0f, 1.0f) * 0.55f);
+                if (Cell.Fertility > 0.5f)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.20f, 0.27f, 0.075f),
+                        FMath::Clamp((Cell.Fertility - 0.5f) * 0.5f, 0.0f, 0.25f));
+                if (Cell.bFenced)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.28f, 0.22f, 0.10f), 0.18f);
+            }
+            if (!FarmPlotColours.IsValidIndex(Index) ||
+                !FarmPlotColours[Index].Equals(Colour, 0.001f))
+            {
+                FarmPlotTiles[Index]->SetMaterial(0, Tint(Colour));
+                if (FarmPlotColours.IsValidIndex(Index))
+                    FarmPlotColours[Index] = Colour;
+            }
+        }
+    }
+}
+
 bool AVerticalSliceCWorldActor::BuildWorld()
 {
     if (bBuilt || !GetWorld())
@@ -1017,7 +1176,52 @@ bool AVerticalSliceCWorldActor::BuildWorld()
         UE_LOG(LogTemp, Error, TEXT("VerticalSlice_C: log meshes missing under /Game/DemoAssets/Logs."));
     }
     BuildLife();
+    BuildFarmPlot();
     BuildHelper();
+
+    // Phase 4: make the data-driven work stations discoverable in the continuous
+    // world instead of leaving their records accessible only to tests/tools.
+    // Primitive meshes are intentional placeholders; registration still uses
+    // the same station IDs and recipe data as the production subsystem.
+    if (UWorld* World = GetWorld())
+    {
+        struct FStationPlacement
+        {
+            const TCHAR* Id;
+            FVector Location;
+            FVector Scale;
+            const TCHAR* Shape;
+            FLinearColor Colour;
+        };
+        const FStationPlacement Stations[] =
+        {
+            { TEXT("workbench_log"), FVector(-250.0f, -420.0f, GetGroundHeight(-250.0f, -420.0f)), FVector(1.5f, 0.55f, 0.28f), TEXT("Cube"), FLinearColor(0.22f, 0.12f, 0.055f) },
+            { TEXT("pit_kiln"), FVector(520.0f, -420.0f, GetGroundHeight(520.0f, -420.0f)), FVector(0.75f, 0.75f, 0.35f), TEXT("Sphere"), FLinearColor(0.28f, 0.22f, 0.16f) },
+            { TEXT("charcoal_pit"), FVector(680.0f, -520.0f, GetGroundHeight(680.0f, -520.0f)), FVector(0.9f, 0.65f, 0.22f), TEXT("Cylinder"), FLinearColor(0.12f, 0.11f, 0.10f) },
+            { TEXT("smoke_rack"), FVector(-420.0f, -500.0f, GetGroundHeight(-420.0f, -500.0f)), FVector(0.8f, 0.12f, 0.85f), TEXT("Cube"), FLinearColor(0.28f, 0.19f, 0.10f) },
+            { TEXT("drying_rack"), FVector(-520.0f, -300.0f, GetGroundHeight(-520.0f, -300.0f)), FVector(0.8f, 0.12f, 0.7f), TEXT("Cube"), FLinearColor(0.38f, 0.28f, 0.15f) },
+            { TEXT("grinding_stone"), FVector(360.0f, -520.0f, GetGroundHeight(360.0f, -520.0f)), FVector(0.55f, 0.55f, 0.22f), TEXT("Sphere"), FLinearColor(0.27f, 0.27f, 0.25f) },
+            { TEXT("hide_frame"), FVector(-600.0f, -480.0f, GetGroundHeight(-600.0f, -480.0f)), FVector(0.7f, 0.12f, 0.8f), TEXT("Cube"), FLinearColor(0.3f, 0.2f, 0.12f) },
+            { TEXT("threshing_floor"), FVector(900.0f, -380.0f, GetGroundHeight(900.0f, -380.0f)), FVector(1.25f, 1.0f, 0.08f), TEXT("Cylinder"), FLinearColor(0.42f, 0.32f, 0.19f) },
+            { TEXT("compost_heap"), FVector(-750.0f, -650.0f, GetGroundHeight(-750.0f, -650.0f)), FVector(0.7f, 0.7f, 0.45f), TEXT("Sphere"), FLinearColor(0.18f, 0.14f, 0.08f) }
+        };
+        for (const FStationPlacement& Placement : Stations)
+        {
+            AProductionStationActor* Station = World->SpawnActor<AProductionStationActor>(
+                AProductionStationActor::StaticClass(), Placement.Location, FRotator::ZeroRotator);
+            if (!Station)
+                continue;
+            Station->StationDataId = FName(Placement.Id);
+            if (UStaticMeshComponent* Mesh = Station->Mesh)
+            {
+                Mesh->SetStaticMesh(LoadEngineShape(Placement.Shape));
+                Mesh->SetRelativeScale3D(Placement.Scale);
+                Mesh->SetMaterial(0, Tint(Placement.Colour));
+                Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+            }
+            Station->EnsureRegistered();
+        }
+    }
     return true;
 }
 
@@ -1108,6 +1312,82 @@ void AVerticalSliceCWorldActor::EnsureStarterTools()
         Inventory->GetItemCount(TEXT("Tool.DiggingStick")) > 0;
 }
 
+void AVerticalSliceCWorldActor::AssignGatherableZones()
+{
+    if (bGatherableZonesAssigned)
+        return;
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !GameData || !GameData->IsApplied() || GameData->GetZones().IsEmpty())
+        return;
+
+    bool bAllAssigned = true;
+    for (TActorIterator<AGatherableResourceActor> It(World); It; ++It)
+    {
+        AGatherableResourceActor* Resource = *It;
+        if (!IsValid(Resource) || !Resource->ZoneId.IsNone())
+            continue;
+        const FGameDataZone* Zone = GameData->FindZoneAtLocation(Resource->GetActorLocation());
+        if (Zone)
+            Resource->ZoneId = Zone->Id;
+        else
+            bAllAssigned = false;
+    }
+    bGatherableZonesAssigned = bAllAssigned;
+}
+
+void AVerticalSliceCWorldActor::EnsureDiscoveryMarkers()
+{
+    if (bDiscoveryMarkersSpawned)
+        return;
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !GameData || !GameData->IsApplied() || GameData->GetDiscoveries().IsEmpty())
+        return;
+
+    bool bAllMarkersExist = true;
+    for (const FGameDataDiscovery& Definition : GameData->GetDiscoveries())
+    {
+        if (Definition.Id.IsNone())
+        {
+            bAllMarkersExist = false;
+            continue;
+        }
+
+        bool bAlreadySpawned = false;
+        for (TActorIterator<AWorldDiscoveryMarkerActor> It(World); It; ++It)
+        {
+            if (IsValid(*It) && (*It)->DiscoveryId == Definition.Id)
+            {
+                bAlreadySpawned = true;
+                break;
+            }
+        }
+        if (bAlreadySpawned)
+            continue;
+
+        const FVector MarkerLocation(Definition.Location.X, Definition.Location.Y,
+            GetGroundHeight(Definition.Location.X, Definition.Location.Y) + 38.0f);
+        AWorldDiscoveryMarkerActor* Marker = World->SpawnActor<AWorldDiscoveryMarkerActor>(
+            AWorldDiscoveryMarkerActor::StaticClass(), MarkerLocation, FRotator::ZeroRotator);
+        if (!Marker)
+        {
+            bAllMarkersExist = false;
+            continue;
+        }
+
+        Marker->DiscoveryId = Definition.Id;
+        Marker->DisplayName = Definition.Name;
+        Marker->RevealRadiusCm = Definition.RevealRadiusCm;
+        Marker->RewardItemId = Definition.RewardItemId;
+        Marker->RewardQuantity = Definition.RewardQuantity;
+        Marker->bRewardUniqueItems = Definition.bRewardUniqueItems;
+    }
+    bDiscoveryMarkersSpawned = bAllMarkersExist;
+}
+
 void AVerticalSliceCWorldActor::SetupPlayer()
 {
     APlayerController* Controller = GetWorld()->GetFirstPlayerController();
@@ -1165,6 +1445,19 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& StationTakeBinding = InputComponent->BindKey(
                 EKeys::F4, IE_Pressed, this, &AVerticalSliceCWorldActor::StationTakeInput);
             StationTakeBinding.bConsumeInput = false;
+            FInputKeyBinding& GatherBinding = InputComponent->BindKey(
+                EKeys::G, IE_Pressed, this, &AVerticalSliceCWorldActor::GatherInput);
+            GatherBinding.bConsumeInput = false;
+
+            FInputKeyBinding& CycleFieldBinding = InputComponent->BindKey(
+                EKeys::F9, IE_Pressed, this, &AVerticalSliceCWorldActor::CycleFieldActionInput);
+            CycleFieldBinding.bConsumeInput = false;
+            FInputKeyBinding& ApplyFieldBinding = InputComponent->BindKey(
+                EKeys::F10, IE_Pressed, this, &AVerticalSliceCWorldActor::ApplyFieldActionInput);
+            ApplyFieldBinding.bConsumeInput = false;
+            FInputKeyBinding& CropBinding = InputComponent->BindKey(
+                EKeys::P, IE_Pressed, this, &AVerticalSliceCWorldActor::PlantOrHarvestCropInput);
+            CropBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
@@ -1399,13 +1692,41 @@ void AVerticalSliceCWorldActor::StationDepositInput()
     if (!Production->GetStation(Station->GetStationId(), State))
         return;
 
-    auto TryDepositDeficit = [&](FName ItemId, int32 RequiredUnits) -> bool
+    // Build one requirement map for every recipe registered at this station.
+    // F3 moves all currently available generic deficits in one press, rather than
+    // forcing one key press per ingredient. Unique ledger-owned items stay excluded.
+    TMap<FName, int32> DesiredStock;
+    for (const FGameDataTransformation& Transformation : GameData->GetTransformations())
     {
-        if (ItemId.IsNone() || RequiredUnits <= State.Stock.FindRef(ItemId))
-            return false;
+        if (Transformation.Where != Station->StationDataId || Transformation.Inputs.IsEmpty())
+            continue;
+        for (const FGameDataItemAmount& Input : Transformation.Inputs)
+        {
+            if (!Input.ItemId.IsNone() && Input.Quantity > 0)
+                DesiredStock.FindOrAdd(Input.ItemId) =
+                    FMath::Max(DesiredStock.FindRef(Input.ItemId), Input.Quantity);
+        }
+        for (const FName ToolId : Transformation.Tools)
+        {
+            if (!ToolId.IsNone())
+                DesiredStock.FindOrAdd(ToolId) = FMath::Max(DesiredStock.FindRef(ToolId), 1);
+        }
+    }
 
-        // Aggregate station stock cannot retain a unique ledger item identity.
-        // Only generic stacks are eligible for this prototype deposit action.
+    TArray<FName> ItemIds;
+    DesiredStock.GetKeys(ItemIds);
+    ItemIds.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+
+    int32 DepositedKinds = 0;
+    int32 DepositedUnits = 0;
+    for (const FName ItemId : ItemIds)
+    {
+        if (!Production->GetStation(Station->GetStationId(), State))
+            break;
+        const int32 Missing = DesiredStock.FindRef(ItemId) - State.Stock.FindRef(ItemId);
+        if (Missing <= 0)
+            continue;
+
         int32 PlainAvailable = 0;
         bool bContainsUniqueIdentity = false;
         for (const FInventoryStack& Stack : Inventory->Items)
@@ -1418,55 +1739,23 @@ void AVerticalSliceCWorldActor::StationDepositInput()
                 PlainAvailable += Stack.Quantity;
         }
         if (bContainsUniqueIdentity || PlainAvailable <= 0)
-            return false;
-
-        const int32 ToDeposit = FMath::Min(RequiredUnits - State.Stock.FindRef(ItemId), PlainAvailable);
-        if (ToDeposit <= 0 || !Station->TryDeposit(Inventory, ItemId, ToDeposit))
-            return false;
-
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(150, 205, 255),
-                FString::Printf(TEXT("Deposited %d x %s at %s."),
-                    ToDeposit, *ItemId.ToString(), *Station->StationDataId.ToString()));
-        return true;
-    };
-
-    bool bRecipeAlreadyStocked = false;
-    for (const FGameDataTransformation& Transformation : GameData->GetTransformations())
-    {
-        if (Transformation.Where != Station->StationDataId || Transformation.Inputs.IsEmpty())
             continue;
 
-        bool bAllInputsStocked = true;
-        for (const FGameDataItemAmount& Input : Transformation.Inputs)
+        const int32 ToDeposit = FMath::Min(Missing, PlainAvailable);
+        if (Station->TryDeposit(Inventory, ItemId, ToDeposit))
         {
-            if (State.Stock.FindRef(Input.ItemId) < Input.Quantity)
-            {
-                bAllInputsStocked = false;
-                if (TryDepositDeficit(Input.ItemId, Input.Quantity))
-                    return;
-            }
+            ++DepositedKinds;
+            DepositedUnits += ToDeposit;
         }
-        for (const FName ToolId : Transformation.Tools)
-        {
-            if (State.Stock.FindRef(ToolId) < 1)
-            {
-                bAllInputsStocked = false;
-                if (TryDepositDeficit(ToolId, 1))
-                    return;
-            }
-        }
-        if (bAllInputsStocked)
-            bRecipeAlreadyStocked = true;
     }
 
     if (GEngine)
     {
-        const FString Message = bRecipeAlreadyStocked
-            ? TEXT("Required items are already at the station. Press F2 to start when fire requirements are met.")
-            : TEXT("No missing recipe input/tool is available as a generic inventory stack.");
-        GEngine->AddOnScreenDebugMessage(-1, 2.5f,
-            bRecipeAlreadyStocked ? FColor(130, 220, 150) : FColor::Orange, Message);
+        const FString Message = DepositedUnits > 0
+            ? FString::Printf(TEXT("Deposited %d items across %d types at %s."),
+                DepositedUnits, DepositedKinds, *Station->StationDataId.ToString())
+            : TEXT("No missing recipe inputs/tools could be deposited; check generic inventory stacks and station capacity.");
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, DepositedUnits > 0 ? FColor(150, 205, 255) : FColor::Orange, Message);
     }
 }
 
@@ -1497,27 +1786,37 @@ void AVerticalSliceCWorldActor::StationTakeInput()
     TArray<FName> StockIds;
     State.Stock.GetKeys(StockIds);
     StockIds.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+    int32 WithdrawnKinds = 0;
+    int32 WithdrawnUnits = 0;
     for (const FName ItemId : StockIds)
     {
-        if (State.Stock.FindRef(ItemId) <= 0)
+        if (!Production->GetStation(Station->GetStationId(), State))
+            break;
+        const int32 Available = State.Stock.FindRef(ItemId);
+        if (Available <= 0)
             continue;
-        if (Station->TryTake(Inventory, ItemId, 1))
+
+        // Withdraw the largest whole stack that fits; proceed to other item types
+        // if this one cannot fit, preserving station stock on every failed attempt.
+        for (int32 Quantity = Available; Quantity >= 1; --Quantity)
         {
-            if (GEngine)
-                GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(140, 220, 150),
-                    FString::Printf(TEXT("Took 1 x %s from %s."), *ItemId.ToString(),
-                        *Station->StationDataId.ToString()));
-            return;
+            if (Station->TryTake(Inventory, ItemId, Quantity))
+            {
+                ++WithdrawnKinds;
+                WithdrawnUnits += Quantity;
+                break;
+            }
         }
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
-                TEXT("Could not take stock. Check inventory capacity and item data."));
-        return;
     }
 
     if (GEngine)
-        GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
-            TEXT("Station stock is empty."));
+    {
+        const FString Message = WithdrawnUnits > 0
+            ? FString::Printf(TEXT("Withdrew %d items across %d types from %s."),
+                WithdrawnUnits, WithdrawnKinds, *Station->StationDataId.ToString())
+            : TEXT("No station stock could fit in inventory.");
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, WithdrawnUnits > 0 ? FColor(140, 220, 150) : FColor::Orange, Message);
+    }
 }
 
 void AVerticalSliceCWorldActor::FillCreekWaterInput()
@@ -1843,13 +2142,368 @@ void AVerticalSliceCWorldActor::ShowSurvivalStatusInput()
     }
     const bool bResting = Clock && Clock->IsClockInitialized() &&
         Profile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds();
+    FString DateStatus = TEXT("date unavailable");
+    FWorldCalendarDate Date;
+    if (Clock && Clock->GetCalendarDate(Date))
+    {
+        const TCHAR* SeasonName = TEXT("Winter");
+        switch (Date.Season)
+        {
+        case EWorldSeason::Spring: SeasonName = TEXT("Spring"); break;
+        case EWorldSeason::Summer: SeasonName = TEXT("Summer"); break;
+        case EWorldSeason::Autumn: SeasonName = TEXT("Autumn"); break;
+        default: SeasonName = TEXT("Winter"); break;
+        }
+        DateStatus = FString::Printf(TEXT("Y%d M%02d D%02d %s %02d:%02d"),
+            Date.Year, Date.Month, Date.DayOfMonth, SeasonName,
+            FMath::FloorToInt(Date.HourOfDay),
+            FMath::FloorToInt((Date.HourOfDay - FMath::FloorToFloat(Date.HourOfDay)) * 60.0f));
+    }
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    FString EventStatus = Events ? Events->GetEventStatusText() : FString();
+    if (EventStatus.IsEmpty())
+        EventStatus = TEXT("none");
     const FString Status = FString::Printf(
-        TEXT("SURVIVAL | Body HP %.0f/%.0f | Survival HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s"),
+        TEXT("SURVIVAL | Body HP %.0f/%.0f | Survival HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s | %s | Events: %s"),
         PhysicalHp, PhysicalMaxHp, Profile.Health, Profile.Thirst, Profile.Stamina, Profile.Fatigue,
         Profile.Wetness * 100.0f, Profile.CoreTemperatureCelsius,
-        bResting ? TEXT("yes") : TEXT("no"), *Conditions);
+        bResting ? TEXT("yes") : TEXT("no"), *Conditions, *DateStatus, *EventStatus);
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(9205, 6.0f, FColor::Cyan, Status);
+}
+
+void AVerticalSliceCWorldActor::GatherInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    if (!World || !Pawn || !Inventory)
+        return;
+
+    AGatherableResourceActor* Nearest = nullptr;
+    float BestDistanceSquared = FMath::Square(250.0f);
+    for (TActorIterator<AGatherableResourceActor> It(World); It; ++It)
+    {
+        AGatherableResourceActor* Candidate = *It;
+        if (!IsValid(Candidate))
+            continue;
+        const float DistanceSquared = FVector::DistSquared(Pawn->GetActorLocation(), Candidate->GetActorLocation());
+        if (DistanceSquared < BestDistanceSquared)
+        {
+            BestDistanceSquared = DistanceSquared;
+            Nearest = Candidate;
+        }
+    }
+    if (!Nearest)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.8f, FColor::Silver,
+                TEXT("No gatherable resource within 250 cm. (G: gather)"));
+        return;
+    }
+
+    int32 Gathered = 0;
+    if (Nearest->TryGather(Inventory, Gathered))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(140, 220, 150),
+                FString::Printf(TEXT("Gathered %d x %s. Remaining: %d."),
+                    Gathered, *Nearest->ItemDefinitionId.ToString(), Nearest->GetAvailableUnits()));
+        return;
+    }
+    const FString Reason = Nearest->GetAvailableUnits() <= 0
+        ? TEXT("This resource is depleted.")
+        : (!Nearest->RequiredToolId.IsNone() && Inventory->GetItemCount(Nearest->RequiredToolId) <= 0
+            ? FString::Printf(TEXT("Requires tool: %s."), *Nearest->RequiredToolId.ToString())
+            : TEXT("Inventory is full or gathering failed."));
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, Reason);
+}
+
+bool AVerticalSliceCWorldActor::FindNearestFarmPlotCell(
+    const FVector& WorldLocation, FIntVector& OutCell, float MaxDistanceCm) const
+{
+    OutCell = FIntVector::ZeroValue;
+    if (!bFarmPlotBuilt || FarmPlotTiles.Num() != FarmPlotCellsPerAxis * FarmPlotCellsPerAxis ||
+        WorldLocation.ContainsNaN() || !FMath::IsFinite(MaxDistanceCm) || MaxDistanceCm <= 0.0f)
+        return false;
+
+    float BestDistanceSquared = TNumericLimits<float>::Max();
+    bool bFoundCell = false;
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const float DistanceSquared = FVector::DistSquared2D(
+                WorldLocation, FVector(WorldX, WorldY, 0.0f));
+            if (DistanceSquared >= BestDistanceSquared)
+                continue;
+
+            BestDistanceSquared = DistanceSquared;
+            OutCell = FIntVector(
+                FMath::RoundToInt(WorldX / 100.0f),
+                FMath::RoundToInt(WorldY / 100.0f),
+                FMath::RoundToInt(GetGroundHeight(WorldX, WorldY) / 100.0f));
+            bFoundCell = true;
+        }
+    }
+    return bFoundCell && BestDistanceSquared <= FMath::Square(MaxDistanceCm);
+}
+
+void AVerticalSliceCWorldActor::CycleFieldActionInput()
+{
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!GameData || !GameData->IsApplied() || GameData->GetFieldActions().IsEmpty())
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                TEXT("Farm action data is not ready."));
+        return;
+    }
+
+    SelectedFieldActionIndex = (SelectedFieldActionIndex + 1) % GameData->GetFieldActions().Num();
+    const FGameDataFieldAction& Action = GameData->GetFieldActions()[SelectedFieldActionIndex];
+    TArray<FString> Requirements;
+    for (const FGameDataItemAmount& Input : Action.Inputs)
+        Requirements.Add(FString::Printf(TEXT("%d x %s"), Input.Quantity, *Input.ItemId.ToString()));
+    for (const FName ToolId : Action.RequiredTools)
+        Requirements.Add(FString::Printf(TEXT("tool: %s (kept)"), *ToolId.ToString()));
+    const FString CostText = Requirements.IsEmpty()
+        ? TEXT("no materials") : FString::Join(Requirements, TEXT(", "));
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(160, 215, 255),
+            FString::Printf(TEXT("FIELD ACTION: %s | %s | labor %.0f game seconds | F10 apply"),
+                *Action.Id.ToString(), *CostText, Action.LaborSeconds));
+}
+
+void AVerticalSliceCWorldActor::ApplyFieldActionInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !GameData || !GameData->IsApplied() ||
+        !Agriculture || !PlayerSurvivalId.IsValid() ||
+        GameData->GetFieldActions().IsEmpty())
+        return;
+
+    if (!GameData->GetFieldActions().IsValidIndex(SelectedFieldActionIndex))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+                TEXT("Press F9 to choose a field action, then F10 to apply it to a soil tile."));
+        return;
+    }
+    const FGameDataFieldAction& Action = GameData->GetFieldActions()[SelectedFieldActionIndex];
+
+    FIntVector FieldCell = FIntVector::ZeroValue;
+    if (!FindNearestFarmPlotCell(Pawn->GetActorLocation(), FieldCell))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+                TEXT("Farm work must be done on a visible soil tile. Move close to the 3x3 farm patch."));
+        return;
+    }
+
+    FWorldFieldCellState ExistingCell;
+    const int64 ExpectedRevision = Agriculture->GetFieldCell(FieldCell, ExistingCell)
+        ? ExistingCell.Revision : 0;
+    FWorldFieldCellState UpdatedCell;
+    if (!Agriculture->TryApplyFieldActionWithInventory(
+        FGuid::NewGuid(), Inventory, PlayerSurvivalId, FieldCell,
+        Action.Action, ExpectedRevision, UpdatedCell))
+    {
+        if (GEngine)
+        {
+            TArray<FString> Requirements;
+            for (const FGameDataItemAmount& Input : Action.Inputs)
+            {
+                const int32 Have = Inventory->GetItemCount(Input.ItemId);
+                if (Have < Input.Quantity)
+                    Requirements.Add(FString::Printf(TEXT("%s %d/%d"),
+                        *Input.ItemId.ToString(), Have, Input.Quantity));
+            }
+            for (const FName ToolId : Action.RequiredTools)
+                if (Inventory->GetItemCount(ToolId) <= 0)
+                    Requirements.Add(FString::Printf(TEXT("tool %s missing"), *ToolId.ToString()));
+            const FString Detail = Requirements.IsEmpty()
+                ? TEXT("field stage, rest or stamina may be blocking the action")
+                : FString::Join(Requirements, TEXT(", "));
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange,
+                FString::Printf(TEXT("FIELD ACTION FAILED: %s | %s"),
+                    *Action.Id.ToString(), *Detail));
+        }
+        return;
+    }
+
+    RefreshFarmPlotVisuals();
+    if (GEngine)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 220, 160),
+            FString::Printf(TEXT("FIELD: %s cell (%d,%d) | revision %lld | stamina charged"),
+                *Action.Id.ToString(), FieldCell.X, FieldCell.Y,
+                static_cast<long long>(UpdatedCell.Revision)));
+    }
+}
+
+void AVerticalSliceCWorldActor::PlantOrHarvestCropInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !GameData || !GameData->IsApplied() ||
+        !Agriculture || !Survival || !Ownership || !PlayerSurvivalId.IsValid())
+        return;
+
+    FIntVector FieldCell;
+    if (!FindNearestFarmPlotCell(Pawn->GetActorLocation(), FieldCell))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+                TEXT("P: stand close to one of the nine visible farm tiles to plant or harvest."));
+        return;
+    }
+
+    FWorldCropState ExistingCrop;
+    if (Agriculture->GetCropAtPlotCell(FieldCell, ExistingCrop))
+    {
+        if (ExistingCrop.Stage != ECropGrowthStage::Mature)
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(200, 200, 140),
+                    FString::Printf(TEXT("Crop %s is not mature yet (stage %d)."),
+                        *ExistingCrop.CropDefinitionId.ToString(),
+                        static_cast<int32>(ExistingCrop.Stage)));
+            return;
+        }
+
+        TArray<FGuid> HarvestedItemIds;
+        if (!Agriculture->TryHarvestCropToInventory(FGuid::NewGuid(),
+            ExistingCrop.CropId, ExistingCrop.Revision, Inventory, PlayerSurvivalId, HarvestedItemIds))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+                    TEXT("Harvest failed: check inventory capacity, rest, stamina and crop state."));
+            return;
+        }
+
+        TMap<FName, int32> OutputCounts;
+        for (const FGuid& ItemId : HarvestedItemIds)
+        {
+            FWorldOwnedItemRecord Item;
+            if (Ownership->TryGetItem(ItemId, Item) &&
+                Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+                Item.OwnerId == Inventory->GetInventoryOwnerId())
+                ++OutputCounts.FindOrAdd(Item.DefinitionId);
+        }
+        TArray<FName> OutputDefinitions;
+        OutputCounts.GetKeys(OutputDefinitions);
+        OutputDefinitions.Sort([](FName A, FName B) { return A.ToString() < B.ToString(); });
+        TArray<FString> OutputParts;
+        for (const FName DefinitionId : OutputDefinitions)
+            OutputParts.Add(FString::Printf(TEXT("%d x %s"),
+                OutputCounts.FindRef(DefinitionId), *DefinitionId.ToString()));
+
+        RefreshFarmPlotVisuals();
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(140, 220, 160),
+                FString::Printf(TEXT("HARVESTED %s: %s"),
+                    *ExistingCrop.CropDefinitionId.ToString(), *FString::Join(OutputParts, TEXT(", "))));
+        return;
+    }
+
+    FWorldFieldCellState Field;
+    if (!Agriculture->GetFieldCell(FieldCell, Field) ||
+        !Field.bCleared || !Field.bTilled || Field.Fertility <= 0.0f)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.3f, FColor::Orange,
+                TEXT("Prepare the tile first: use F9 to select Clear, then Till, and F10 to apply."));
+        return;
+    }
+
+    FWorldCalendarDate Date;
+    const UWorldSimulationClockSubsystem* Clock =
+        World->GetSubsystem<UWorldSimulationClockSubsystem>();
+    if (!Clock || !Clock->GetCalendarDate(Date))
+        return;
+
+    const FInventoryStack* SelectedSeedStack = nullptr;
+    const FGameDataCrop* SelectedCrop = nullptr;
+    FWorldOwnedItemRecord SelectedSeed;
+    for (const FInventoryStack& Stack : Inventory->Items)
+    {
+        if (!Stack.OwnedWorldItemId.IsValid() || Stack.Quantity != 1 || Stack.MaxStack != 1)
+            continue;
+        const FGameDataCrop* Crop = GameData->GetCrops().FindByPredicate(
+            [&Stack](const FGameDataCrop& Candidate) { return Candidate.SeedItemId == Stack.ItemId; });
+        if (!Crop || !Crop->PlantMonths.Contains(Date.Month) ||
+            (GameData->IsDiscoveryGatedDefinition(Stack.ItemId) &&
+             !Survival->IsDefinitionUnlocked(PlayerSurvivalId, Stack.ItemId)))
+            continue;
+
+        FWorldOwnedItemRecord Seed;
+        if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Seed) ||
+            Seed.OwnerKind != EWorldItemOwnerKind::Inventory ||
+            Seed.OwnerId != Inventory->GetInventoryOwnerId() ||
+            Seed.DefinitionId != Stack.ItemId || Seed.Quantity != 1)
+            continue;
+
+        SelectedSeedStack = &Stack;
+        SelectedCrop = Crop;
+        SelectedSeed = Seed;
+        break;
+    }
+
+    if (!SelectedSeedStack || !SelectedCrop)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+                FString::Printf(TEXT("No plantable owned seed for month %d. Find the seed site for a crop in season."),
+                    Date.Month));
+        return;
+    }
+
+    FGuid NewCropId;
+    if (!Agriculture->TryPlantCropWithLabor(FGuid::NewGuid(), SelectedCrop->Id,
+        SelectedSeed.ItemId, SelectedSeed.Revision, Inventory, PlayerSurvivalId,
+        FieldCell, Field.Moisture, NewCropId))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+                FString::Printf(TEXT("Planting %s failed: check moisture, season, soil or discovery."),
+                    *SelectedCrop->Id.ToString()));
+        return;
+    }
+
+    RefreshFarmPlotVisuals();
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 220, 160),
+            FString::Printf(TEXT("PLANTED %s in tile (%d,%d); the owned seed was consumed."),
+                *SelectedCrop->Id.ToString(), FieldCell.X, FieldCell.Y));
 }
 
 void AVerticalSliceCWorldActor::ChopInput()
@@ -1882,34 +2536,124 @@ void AVerticalSliceCWorldActor::ChopInput()
     const bool bHitSomething = GetWorld()->LineTraceSingleByChannel(
         Hit, Location, Location + Rotation.Vector() * 260.0f, ECC_Visibility, Params);
 
-    // The axe on a log: repair a damaged piece, or mark and make a cut (the second click cuts).
-    ULogCarryComponent* Carry = Controller->GetPawn() ? Controller->GetPawn()->FindComponentByClass<ULogCarryComponent>() : nullptr;
-    if (ALogBuildPiece* Log = bHitSomething ? Cast<ALogBuildPiece>(Hit.GetActor()) : nullptr;
-        Log && Carry && !Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
+    // The axe repairs damaged placed pieces only when the matching repair material
+    // is available. Graph damage and inventory are rolled back together on failure.
+    ULogCarryComponent* Carry = Controller->GetPawn()
+        ? Controller->GetPawn()->FindComponentByClass<ULogCarryComponent>() : nullptr;
+    if (bHitSomething && Carry && !Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
     {
-        UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-        if (Log->IsPlaced() && Graph)
+        UWorldStructuralGraphSubsystem* Graph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
+        IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Hit.GetActor());
+        FStructuralNodeRecord Node;
+        if (Piece && Piece->IsStructurallyPlaced() && Graph &&
+            Graph->GetNode(Piece->GetStructuralNodeId(), Node) && Node.Damage > 0.0f)
         {
+            FName RepairMaterial = NAME_None;
+            switch (Node.Kind)
+            {
+            case EStructuralNodeKind::Wood: RepairMaterial = TEXT("Firewood"); break;
+            case EStructuralNodeKind::Stone: RepairMaterial = TEXT("Stone"); break;
+            case EStructuralNodeKind::Stick: RepairMaterial = TEXT("Stick"); break;
+            default: break;
+            }
+            int32 GenericRepairUnits = 0;
+            bool bHasUniqueRepairItem = false;
+            for (const FInventoryStack& Stack : Inventory->Items)
+            {
+                if (Stack.ItemId != RepairMaterial)
+                    continue;
+                if (Stack.OwnedWorldItemId.IsValid())
+                    bHasUniqueRepairItem = true;
+                else
+                    GenericRepairUnits += FMath::Max(0, Stack.Quantity);
+            }
+            if (RepairMaterial.IsNone() || GenericRepairUnits <= 0 || bHasUniqueRepairItem)
+            {
+                if (GEngine)
+                    GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                        RepairMaterial.IsNone()
+                            ? TEXT("This structural material has no repair rule yet.")
+                            : FString::Printf(TEXT("Repair requires one generic %s (not a unique physical piece)."), *RepairMaterial.ToString()));
+                return;
+            }
+
             if (Survival && PlayerSurvivalId.IsValid() &&
-                !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+                !Survival->CanRecordActivity(PlayerSurvivalId, ESurvivalActivity::Build, 0.75f, 0.0f))
             {
                 if (GEngine)
                     GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
                         TEXT("Too exhausted or resting. Wait for rest to end or recover stamina."));
                 return;
             }
+
             const float RepairEffectiveness = Survival && PlayerSurvivalId.IsValid()
-                ? Survival->GetWorkEffectiveness(PlayerSurvivalId) : 1.0f;
-            if (Graph->RepairDamage(Log->GetStructuralNodeId(), 25.0f * RepairEffectiveness))
+                ? FMath::Clamp(Survival->GetWorkEffectiveness(PlayerSurvivalId), 0.1f, 1.5f) : 1.0f;
+            const float RepairAmount = 25.0f * RepairEffectiveness;
+            TArray<FWorldStructuralNodeSnapshot> GraphBefore;
+            FGuid OwnerActorId;
+            FGuid InventoryOwnerBefore;
+            TArray<FInventoryStack> InventoryBefore;
+            FName QuickAccessBefore = NAME_None;
+            if (!Graph->ExportSnapshot(GraphBefore))
             {
-                if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
-                    Character->PlayAxeSwing();
-                Carry->SetPlacementStatus(TEXT("Repaired a part of the damage."));
+                Carry->SetPlacementStatus(TEXT("Repair failed: structural state could not be snapshotted."));
                 return;
             }
+            Inventory->ExportSnapshot(OwnerActorId, InventoryOwnerBefore, InventoryBefore, QuickAccessBefore);
+            if (!InventoryOwnerBefore.IsValid() || InventoryOwnerBefore != Inventory->GetInventoryOwnerId())
+                return;
+
+            auto RollbackRepair = [&]() -> bool
+            {
+                const bool bInventoryRestored =
+                    Inventory->RestoreSnapshot(InventoryOwnerBefore, InventoryBefore, QuickAccessBefore);
+                const bool bGraphRestored = Graph->RestoreSnapshot(GraphBefore);
+                if (!bInventoryRestored || !bGraphRestored)
+                {
+                    if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                        World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                        Coordinator->MarkSimulationFaulted(
+                            TEXT("Structural repair rollback failed; stop simulation and recover/reset the world."));
+                    return false;
+                }
+                return true;
+            };
+
+            if (!Inventory->TryRemoveItem(RepairMaterial, 1))
+            {
+                Carry->SetPlacementStatus(TEXT("Repair failed: repair material changed."));
+                return;
+            }
+            if (!Graph->RepairDamage(Node.NodeId, RepairAmount))
+            {
+                RollbackRepair();
+                Carry->SetPlacementStatus(TEXT("Repair failed: structural damage changed."));
+                return;
+            }
+            if (Survival && PlayerSurvivalId.IsValid() &&
+                !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Build, 0.75f, 0.0f))
+            {
+                RollbackRepair();
+                Carry->SetPlacementStatus(TEXT("Repair rolled back because the survival action could not be committed."));
+                return;
+            }
+
+            if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Pawn))
+                Character->PlayAxeSwing();
+            FStructuralNodeRecord UpdatedNode;
+            const float RemainingDamage = Graph->GetNode(Node.NodeId, UpdatedNode)
+                ? UpdatedNode.Damage : Node.Damage;
+            Carry->SetPlacementStatus(FString::Printf(
+                TEXT("Repaired with 1 %s. Remaining damage: %.0f."),
+                *RepairMaterial.ToString(), RemainingDamage));
+            return;
         }
-        Carry->ProcessAimedPiece();
-        return;
+
+        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Hit.GetActor()))
+        {
+            Carry->ProcessAimedPiece();
+            return;
+        }
     }
 
     ++ChopSwingCount;
@@ -1989,6 +2733,15 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     if (!PlayerSurvivalId.IsValid())
         SetupPlayer();
     EnsureStarterTools();
+    AssignGatherableZones();
+    EnsureDiscoveryMarkers();
+
+    FarmPlotVisualRefreshTimer -= DeltaSeconds;
+    if (FarmPlotVisualRefreshTimer <= 0.0f)
+    {
+        FarmPlotVisualRefreshTimer = 1.0f;
+        RefreshFarmPlotVisuals();
+    }
 
     UpdateCreek(DeltaSeconds);
     if (Helper && Helper->GetStatus() != LastHelperStatus && GEngine)

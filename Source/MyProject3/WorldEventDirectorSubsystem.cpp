@@ -1,318 +1,752 @@
 #include "WorldEventDirectorSubsystem.h"
-#include "Engine/World.h"
+
+#include "WorldGameDataSubsystem.h"
 #include "WorldCalendar.h"
+#include "WorldClimateSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
+#include "HeatSourceComponent.h"
+#include "EngineUtils.h"
+#include "Engine/World.h"
+#include "Engine/Engine.h"
+#include "Misc/Crc.h"
 
 namespace
 {
-    uint64 StableHash(const FString& Text, uint32 Seed, int64 Serial, uint32 Salt)
+    bool IsTerminalEvent(EWorldNaturalEventPhase Phase)
     {
-        uint64 Hash = 1469598103934665603ull;
-        for (const TCHAR* It = *Text; *It; ++It) { Hash ^= static_cast<uint32>(*It); Hash *= 1099511628211ull; }
-        Hash ^= Seed; Hash *= 1099511628211ull;
-        Hash ^= static_cast<uint64>(Serial); Hash *= 1099511628211ull;
-        Hash ^= Salt; Hash *= 1099511628211ull;
-        return Hash;
+        return Phase == EWorldNaturalEventPhase::Completed || Phase == EWorldNaturalEventPhase::Cancelled;
     }
-    float UnitFromHash(uint64 Hash)
+
+    bool IsWeatherTrigger(FName Trigger, EWorldWeatherState Weather, float TemperatureCelsius)
     {
-        return static_cast<float>(static_cast<uint32>(Hash & 0xffffffffull)) / 4294967296.0f;
-    }
-    bool IsValidState(EWorldNaturalEventState State)
-    {
-        return static_cast<uint8>(State) <= static_cast<uint8>(EWorldNaturalEventState::Ended);
+        if (Trigger == TEXT("weather.snow"))
+            return Weather == EWorldWeatherState::Snow ||
+                (Weather == EWorldWeatherState::Storm && TemperatureCelsius <= 1.0f);
+        if (Trigger == TEXT("weather.rain"))
+            return Weather == EWorldWeatherState::Rain ||
+                (Weather == EWorldWeatherState::Storm && TemperatureCelsius > 1.0f);
+        if (Trigger == TEXT("weather.storm"))
+            return Weather == EWorldWeatherState::Storm;
+        if (Trigger == TEXT("weather.heatwave"))
+            return Weather == EWorldWeatherState::Heatwave;
+        return false;
     }
 }
 
-bool UWorldEventDirectorSubsystem::RegisterEventDefinition(const FWorldNaturalEventDefinition& D)
+UWorldGameDataSubsystem* UWorldEventDirectorSubsystem::GetGameData() const
 {
-    if (D.DefinitionId.IsNone() || D.DisplayName.IsEmpty() || D.EffectId.IsNone() ||
-        !FMath::IsFinite(D.WarningDurationSeconds) || D.WarningDurationSeconds < 0.1 ||
-        !FMath::IsFinite(D.ActiveDurationSeconds) || D.ActiveDurationSeconds < 0.1 ||
-        !FMath::IsFinite(D.CooldownSeconds) || D.CooldownSeconds < 0.0 ||
-        !FMath::IsFinite(D.MinimumIntervalSeconds) || D.MinimumIntervalSeconds < 1.0 ||
-        !FMath::IsFinite(D.MaximumIntervalSeconds) || D.MaximumIntervalSeconds < D.MinimumIntervalSeconds ||
-        !FMath::IsFinite(D.TriggerChance) || D.TriggerChance < 0.0f || D.TriggerChance > 1.0f ||
-        D.AllowedMonths.Num() > 12)
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+}
+
+bool UWorldEventDirectorSubsystem::InitializeEventDirector()
+{
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* Data = GetGameData();
+    if (!World || !Clock || !Climate || !Data || !Clock->IsClockInitialized() ||
+        !Climate->IsClimateInitialized() || MaxEventInstances < 1 || MaxEventInstances > 512 ||
+        MaxNewSignalsPerStep < 1 || MaxNewSignalsPerStep > 128)
+    {
         return false;
-    TSet<int32> Months;
-    for (const int32 Month : D.AllowedMonths)
-    {
-        if (Month < 1 || Month > 12 || Months.Contains(Month)) return false;
-        Months.Add(Month);
     }
-    if (const FWorldNaturalEventDefinition* Existing = FindDefinition(D.DefinitionId))
+    if ((!Data->IsLoaded() && !Data->LoadDefault()) ||
+        (!Data->IsApplied() && !Data->ApplyToWorld()) ||
+        Data->GetWorldEvents().IsEmpty())
     {
-        return Existing->DisplayName == D.DisplayName && Existing->EffectId == D.EffectId &&
-            Existing->TriggerAfterEventId == D.TriggerAfterEventId &&
-            FMath::IsNearlyEqual(Existing->WarningDurationSeconds, D.WarningDurationSeconds) &&
-            FMath::IsNearlyEqual(Existing->ActiveDurationSeconds, D.ActiveDurationSeconds) &&
-            FMath::IsNearlyEqual(Existing->CooldownSeconds, D.CooldownSeconds) &&
-            FMath::IsNearlyEqual(Existing->MinimumIntervalSeconds, D.MinimumIntervalSeconds) &&
-            FMath::IsNearlyEqual(Existing->MaximumIntervalSeconds, D.MaximumIntervalSeconds) &&
-            FMath::IsNearlyEqual(Existing->TriggerChance, D.TriggerChance) &&
-            Existing->AllowedMonths == D.AllowedMonths;
+        return false;
     }
-    if (bInitialized || MaxDefinitions < 1 || Definitions.Num() >= MaxDefinitions) return false;
-    Definitions.Add(D);
+
+    FWorldEventDirectorSnapshot Fresh;
+    Fresh.SchemaVersion = 1;
+    Fresh.bInitialized = true;
+    Fresh.Serial = 0;
+    Fresh.LastProcessedTickIndex = Clock->GetTickIndex();
+    Fresh.LastProcessedTimeSeconds = Clock->GetSimulationTimeSeconds();
+    Fresh.PreviousSnowDepthCm = Climate->GetSnowDepthCm();
+    State = MoveTemp(Fresh);
+    PresentedSignalIds.Reset();
+    PresentedActiveIds.Reset();
     return true;
 }
 
-bool UWorldEventDirectorSubsystem::ValidateDefinitions() const
+bool UWorldEventDirectorSubsystem::CanAdvanceEventStep(
+    double DeltaSeconds, double TargetTimeSeconds, int64 TargetTickIndex) const
 {
-    if (Definitions.Num() > MaxDefinitions) return false;
-    TSet<FName> Ids;
-    TMap<FName, FName> Previous;
-    for (const FWorldNaturalEventDefinition& D : Definitions)
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* Data = GetGameData();
+    if (!State.bInitialized || !Clock || !Clock->IsClockInitialized() ||
+        !Climate || !Climate->IsClimateInitialized() || !Data || !Data->IsLoaded() ||
+        Data->GetWorldEvents().IsEmpty() ||
+        !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
+        !FMath::IsFinite(TargetTimeSeconds) || TargetTimeSeconds < State.LastProcessedTimeSeconds ||
+        !FMath::IsFinite(Clock->GetSimulationTimeSeconds() + DeltaSeconds) ||
+        !FMath::IsNearlyEqual(TargetTimeSeconds, Clock->GetSimulationTimeSeconds() + DeltaSeconds, 0.001) ||
+        TargetTickIndex <= State.LastProcessedTickIndex ||
+        State.Serial < 0 || State.Serial >= MAX_int32 - 1 ||
+        MaxEventInstances < 1 || MaxEventInstances > 512 ||
+        State.Instances.Num() > MaxEventInstances)
     {
-        if (D.DefinitionId.IsNone() || D.DisplayName.IsEmpty() || D.EffectId.IsNone() ||
-            Ids.Contains(D.DefinitionId) || !FMath::IsFinite(D.WarningDurationSeconds) ||
-            D.WarningDurationSeconds < 0.1 || !FMath::IsFinite(D.ActiveDurationSeconds) ||
-            D.ActiveDurationSeconds < 0.1 || !FMath::IsFinite(D.CooldownSeconds) ||
-            D.CooldownSeconds < 0.0 || !FMath::IsFinite(D.MinimumIntervalSeconds) ||
-            D.MinimumIntervalSeconds < 1.0 || !FMath::IsFinite(D.MaximumIntervalSeconds) ||
-            D.MaximumIntervalSeconds < D.MinimumIntervalSeconds || !FMath::IsFinite(D.TriggerChance) ||
-            D.TriggerChance < 0.0f || D.TriggerChance > 1.0f)
+        return false;
+    }
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (!Instance.InstanceId.IsValid() || Instance.DefinitionId.IsNone() ||
+            !FMath::IsFinite(Instance.SignalStartedAtSeconds) ||
+            !FMath::IsFinite(Instance.StartsAtSeconds) ||
+            !FMath::IsFinite(Instance.EndsAtSeconds) ||
+            Instance.SignalStartedAtSeconds < 0.0 ||
+            Instance.StartsAtSeconds < Instance.SignalStartedAtSeconds ||
+            Instance.EndsAtSeconds <= Instance.StartsAtSeconds ||
+            !FMath::IsFinite(Instance.Severity) || Instance.Severity < 0.0f ||
+            Instance.Severity > 1.0f || Instance.Revision <= 0)
+        {
             return false;
-        for (const int32 Month : D.AllowedMonths)
-            if (Month < 1 || Month > 12) return false;
-        Ids.Add(D.DefinitionId);
-        if (!D.TriggerAfterEventId.IsNone()) Previous.Add(D.DefinitionId, D.TriggerAfterEventId);
-    }
-    for (const FWorldNaturalEventDefinition& D : Definitions)
-    {
-        if (!D.TriggerAfterEventId.IsNone() && !Ids.Contains(D.TriggerAfterEventId)) return false;
-        TSet<FName> Seen;
-        FName Cursor = D.DefinitionId;
-        while (!Cursor.IsNone())
-        {
-            if (Seen.Contains(Cursor)) return false;
-            Seen.Add(Cursor);
-            const FName* Next = Previous.Find(Cursor);
-            Cursor = Next ? *Next : NAME_None;
         }
     }
     return true;
 }
 
-const FWorldNaturalEventDefinition* UWorldEventDirectorSubsystem::FindDefinition(FName Id) const
+bool UWorldEventDirectorSubsystem::EvaluateTrigger(
+    const FGameDataWorldEvent& Definition, float& OutSeverity) const
 {
-    return Definitions.FindByPredicate([Id](const FWorldNaturalEventDefinition& D) { return D.DefinitionId == Id; });
-}
-FWorldNaturalEventRecord* UWorldEventDirectorSubsystem::FindRuntimeRecord(FName Id)
-{
-    return RuntimeRecords.FindByPredicate([Id](const FWorldNaturalEventRecord& R) { return R.DefinitionId == Id; });
-}
-const FWorldNaturalEventRecord* UWorldEventDirectorSubsystem::FindRuntimeRecord(FName Id) const
-{
-    return RuntimeRecords.FindByPredicate([Id](const FWorldNaturalEventRecord& R) { return R.DefinitionId == Id; });
-}
-double UWorldEventDirectorSubsystem::SampleInterval(const FWorldNaturalEventDefinition& D, int64 Serial) const
-{
-    const float Alpha = UnitFromHash(StableHash(D.DefinitionId.ToString(), static_cast<uint32>(RandomSeed), Serial, 0xA511E9B3u));
-    return FMath::Lerp(D.MinimumIntervalSeconds, D.MaximumIntervalSeconds, static_cast<double>(Alpha));
-}
-float UWorldEventDirectorSubsystem::SampleChance(FName Id, int64 Serial) const
-{
-    return UnitFromHash(StableHash(Id.ToString(), static_cast<uint32>(RandomSeed), Serial, 0x63D83595u));
-}
-FGuid UWorldEventDirectorSubsystem::MakeEventInstanceId(FName Id, int64 Serial) const
-{
-    const FString Key = Id.ToString();
-    const uint32 Seed = static_cast<uint32>(RandomSeed);
-    const uint64 H0 = StableHash(Key, Seed, Serial, 0x243F6A88u);
-    const uint64 H1 = StableHash(Key, Seed, Serial, 0x85A308D3u);
-    uint32 A = static_cast<uint32>(H0 >> 32), B = static_cast<uint32>(H0);
-    uint32 C = static_cast<uint32>(H1 >> 32), D = static_cast<uint32>(H1);
-    if ((A | B | C | D) == 0) A = 1;
-    return FGuid(A, B, C, D);
-}
-bool UWorldEventDirectorSubsystem::IsMonthAllowed(const FWorldNaturalEventDefinition& D, double Time) const
-{
-    if (D.AllowedMonths.IsEmpty()) return true;
-    const UWorld* World = GetWorld();
-    const UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
-    FWorldCalendarDate Date;
-    return Clock && WorldCalendar::DateFromTime(Time, Clock->CalendarConfig, Date) && D.AllowedMonths.Contains(Date.Month);
-}
-bool UWorldEventDirectorSubsystem::InitializeDirector(int32 Seed, double InitialTimeSeconds)
-{
-    if (bInitialized || !FMath::IsFinite(InitialTimeSeconds) || InitialTimeSeconds < 0.0 ||
-        MaxDefinitions < 1 || MaxHistoryEntries < 1 || MaxTransitionsPerStep < 1 || !ValidateDefinitions())
+    OutSeverity = 0.0f;
+    UWorld* World = GetWorld();
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!Climate || !Climate->IsClimateInitialized())
         return false;
-    RandomSeed = Seed; LastProcessedTimeSeconds = InitialTimeSeconds; StateRevision = 1;
-    RuntimeRecords.Reset(); CompletedHistory.Reset(); PendingTransitions.Reset();
-    for (const FWorldNaturalEventDefinition& D : Definitions)
+
+    const EWorldWeatherState Weather = Climate->GetWeather();
+    const float WeatherSeverity = Climate->GetWeatherSeverity();
+    const float Wetness = Climate->GetGroundWetness();
+    const float SnowDepth = Climate->GetSnowDepthCm();
+
+    if (Definition.Trigger == TEXT("weather.snow") ||
+        Definition.Trigger == TEXT("weather.rain") ||
+        Definition.Trigger == TEXT("weather.storm") ||
+        Definition.Trigger == TEXT("weather.heatwave"))
     {
-        FWorldNaturalEventRecord& R = RuntimeRecords.AddDefaulted_GetRef();
-        R.DefinitionId = D.DefinitionId; R.State = EWorldNaturalEventState::Waiting; R.Revision = 1;
-        R.ScheduledStartTimeSeconds = D.TriggerAfterEventId.IsNone() ? InitialTimeSeconds + SampleInterval(D, 1) : -1.0;
+        if (!IsWeatherTrigger(Definition.Trigger, Weather, Climate->GetTemperatureCelsius()) ||
+            WeatherSeverity < Definition.TriggerMinimum || WeatherSeverity > Definition.TriggerMaximum)
+            return false;
+        OutSeverity = WeatherSeverity;
     }
-    bInitialized = true; return true;
-}
-bool UWorldEventDirectorSubsystem::CanAdvanceToTime(double TargetTimeSeconds) const
-{
-    if (!bInitialized || !FMath::IsFinite(TargetTimeSeconds) || TargetTimeSeconds < LastProcessedTimeSeconds ||
-        RuntimeRecords.Num() != Definitions.Num() || CompletedHistory.Num() > MaxHistoryEntries ||
-        StateRevision == MAX_int64 || !ValidateDefinitions()) return false;
-    for (const FWorldNaturalEventRecord& R : RuntimeRecords)
+    else if (Definition.Trigger == TEXT("ground_wetness"))
     {
-        if (!FindDefinition(R.DefinitionId) || !IsValidState(R.State) || R.Serial < 0 ||
-            R.AttemptCount < 0 || R.LastCompletedSerial < 0 || R.LastObservedPredecessorSerial < 0 ||
-            R.Revision < 0 || !FMath::IsFinite(R.LastCompletedEndTimeSeconds) ||
-            (R.ScheduledStartTimeSeconds >= 0.0 && !FMath::IsFinite(R.ScheduledStartTimeSeconds))) return false;
-        if (R.State == EWorldNaturalEventState::Warning &&
-            (!R.EventInstanceId.IsValid() || !FMath::IsFinite(R.WarningStartTimeSeconds) ||
-             !FMath::IsFinite(R.ActiveStartTimeSeconds) || R.ActiveStartTimeSeconds < R.WarningStartTimeSeconds)) return false;
-        if (R.State == EWorldNaturalEventState::Active &&
-            (!R.EventInstanceId.IsValid() || !FMath::IsFinite(R.ActiveStartTimeSeconds) ||
-             !FMath::IsFinite(R.PlannedEndTimeSeconds) || R.PlannedEndTimeSeconds < R.ActiveStartTimeSeconds)) return false;
+        if (!FMath::IsFinite(Wetness) || Wetness < 0.0f || Wetness > 1.0f)
+            return false;
+        if (Wetness < Definition.TriggerMinimum || Wetness > Definition.TriggerMaximum)
+            return false;
+        OutSeverity = Definition.Effect == TEXT("crop_moisture_loss")
+            ? 1.0f - Wetness
+            : Wetness;
+    }
+    else if (Definition.Trigger == TEXT("snow_depth"))
+    {
+        const float MaxDepth = FMath::Max(Climate->MaxSnowDepthCm, 1.0f);
+        const float DepthRatio = FMath::Clamp(SnowDepth / MaxDepth, 0.0f, 1.0f);
+        if (DepthRatio < Definition.TriggerMinimum || DepthRatio > Definition.TriggerMaximum)
+            return false;
+        OutSeverity = DepthRatio;
+    }
+    else if (Definition.Trigger == TEXT("world.condition_pressure"))
+    {
+        if (!Survival)
+            return false;
+        TArray<FWorldSurvivalProfile> Profiles;
+        TArray<FWorldDiscoveryRecord> Discoveries;
+        EWorldWeatherState IgnoredWeather = EWorldWeatherState::Clear;
+        float IgnoredSeverity = 0.0f;
+        Survival->ExportSnapshot(Profiles, Discoveries, IgnoredWeather, IgnoredSeverity);
+        if (Profiles.IsEmpty())
+            return false;
+        int32 Affected = 0;
+        for (const FWorldSurvivalProfile& Profile : Profiles)
+        {
+            if (Profile.Conditions.ContainsByPredicate([](const FWorldSurvivalConditionState& Condition)
+                {
+                    return Condition.Kind == EWorldSurvivalConditionKind::Illness ||
+                        Condition.Kind == EWorldSurvivalConditionKind::Poisoning;
+                }))
+                ++Affected;
+        }
+        OutSeverity = static_cast<float>(Affected) / static_cast<float>(Profiles.Num());
+        if (OutSeverity < Definition.TriggerMinimum || OutSeverity > Definition.TriggerMaximum)
+            return false;
+    }
+    else
+    {
+        return false;
+    }
+
+    OutSeverity = FMath::Clamp(OutSeverity, Definition.MinimumSeverity, Definition.MaximumSeverity);
+    return FMath::IsFinite(OutSeverity);
+}
+
+bool UWorldEventDirectorSubsystem::AdvanceEventStep(
+    double DeltaSeconds, double TargetTimeSeconds, int64 TargetTickIndex)
+{
+    if (!CanAdvanceEventStep(DeltaSeconds, TargetTimeSeconds, TargetTickIndex))
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* Data = GetGameData();
+    FWorldCalendarDate TargetDate;
+    if (!Clock || !Climate || !Data ||
+        !WorldCalendar::DateFromTime(TargetTimeSeconds, Clock->CalendarConfig, TargetDate))
+        return false;
+
+    // Advance the existing signal/effect lifecycle before evaluating new signals.
+    for (FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase == EWorldNaturalEventPhase::Signal &&
+            TargetTimeSeconds >= Instance.StartsAtSeconds)
+        {
+            if (Instance.Revision >= MAX_int64 - 1)
+                return false;
+            Instance.Phase = EWorldNaturalEventPhase::Active;
+            ++Instance.Revision;
+        }
+        else if (Instance.Phase == EWorldNaturalEventPhase::Active &&
+            TargetTimeSeconds >= Instance.EndsAtSeconds)
+        {
+            if (Instance.Revision >= MAX_int64 - 1)
+                return false;
+            Instance.Phase = EWorldNaturalEventPhase::Completed;
+            ++Instance.Revision;
+        }
+    }
+
+    if (!ApplyActiveEventEffects(DeltaSeconds, TargetTimeSeconds, TargetTickIndex))
+        return false;
+
+    // Retire old terminal history before admitting new events. Otherwise a
+    // long-running world would eventually fill the history with completed
+    // events and permanently stop emitting any new natural events.
+    for (int32 Index = State.Instances.Num() - 1; Index >= 0; --Index)
+    {
+        if (IsTerminalEvent(State.Instances[Index].Phase))
+            State.Instances.RemoveAt(Index, 1, EAllowShrinking::No);
+    }
+
+    int32 NewSignals = 0;
+    for (const FGameDataWorldEvent& Definition : Data->GetWorldEvents())
+    {
+        if (NewSignals >= MaxNewSignalsPerStep || State.Instances.Num() >= MaxEventInstances)
+            break;
+        const int64* LastDay = State.LastTriggeredDayByEvent.Find(Definition.Id);
+        if (LastDay && *LastDay == TargetDate.DaysElapsed)
+            continue;
+
+        float Severity = 0.0f;
+        if (!EvaluateTrigger(Definition, Severity))
+            continue;
+
+        const int64 NewSerial = State.Serial + 1;
+        if (NewSerial <= 0 || NewSerial >= MAX_int32)
+            return false;
+        const int32 Seed = Clock->GetRandomSeed();
+        const uint32 DefinitionHash = FCrc::StrCrc32(*Definition.Id.ToString());
+        FWorldNaturalEventInstance& Instance = State.Instances.AddDefaulted_GetRef();
+        Instance.InstanceId = FGuid(Seed, static_cast<int32>(NewSerial),
+            static_cast<int32>(TargetTickIndex), static_cast<int32>(DefinitionHash ^ static_cast<uint32>(NewSerial)));
+        if (!Instance.InstanceId.IsValid())
+            return false;
+        Instance.DefinitionId = Definition.Id;
+        Instance.Phase = EWorldNaturalEventPhase::Signal;
+        Instance.SignalStartedAtSeconds = TargetTimeSeconds;
+        Instance.StartsAtSeconds = TargetTimeSeconds + Definition.WarningSeconds;
+        Instance.EndsAtSeconds = Instance.StartsAtSeconds + Definition.DurationSeconds;
+        Instance.Severity = Severity;
+        Instance.TriggerDayIndex = TargetDate.DaysElapsed;
+        Instance.Revision = 1;
+        State.Serial = NewSerial;
+        State.LastTriggeredDayByEvent.Add(Definition.Id, TargetDate.DaysElapsed);
+        ++NewSignals;
+    }
+
+    // Keep a bounded history without discarding a signal or active event.
+    while (State.Instances.Num() > MaxEventInstances)
+    {
+        const int32 RemoveIndex = State.Instances.IndexOfByPredicate(
+            [](const FWorldNaturalEventInstance& I) { return IsTerminalEvent(I.Phase); });
+        if (RemoveIndex == INDEX_NONE)
+            return false;
+        State.Instances.RemoveAt(RemoveIndex, 1, EAllowShrinking::No);
+    }
+    ApplyActiveEventWeather();
+    State.LastProcessedTickIndex = TargetTickIndex;
+    State.LastProcessedTimeSeconds = TargetTimeSeconds;
+    State.PreviousSnowDepthCm = Climate->GetSnowDepthCm();
+    return true;
+}
+
+bool UWorldEventDirectorSubsystem::ApplyConditionEffect(
+    const FGameDataWorldEvent& Definition, const FWorldNaturalEventInstance& Instance)
+{
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* Data = GetGameData();
+    if (!Survival || !Climate || !Data)
+        return false;
+
+    FName ConditionId = NAME_None;
+    if (Definition.Effect == TEXT("exposure"))
+        ConditionId = TEXT("Illness.Cold");
+    else if (Definition.Effect == TEXT("illness_exposure"))
+        ConditionId = TEXT("Illness.ToxicRain");
+    else if (Definition.Effect == TEXT("illness_spread"))
+        ConditionId = TEXT("Illness.Epidemic");
+    else
+        return true;
+
+    TArray<FWorldSurvivalProfile> Profiles;
+    TArray<FWorldDiscoveryRecord> Discoveries;
+    EWorldWeatherState IgnoredWeather = EWorldWeatherState::Clear;
+    float IgnoredSeverity = 0.0f;
+    Survival->ExportSnapshot(Profiles, Discoveries, IgnoredWeather, IgnoredSeverity);
+
+    for (const FWorldSurvivalProfile& Profile : Profiles)
+    {
+        if (!Profile.EntityId.IsValid() || Profile.Revision <= 0)
+            continue;
+
+        const bool bAlreadyHasCondition = Profile.Conditions.ContainsByPredicate(
+            [&ConditionId](const FWorldSurvivalConditionState& Condition)
+            { return Condition.DefinitionId == ConditionId; });
+        if (bAlreadyHasCondition)
+            continue;
+
+        float Protection = FMath::Clamp(Profile.ShelterProtection, 0.0f, 1.0f);
+        if (Definition.Effect == TEXT("exposure") && Protection >= 0.8f)
+            continue;
+        if (Definition.Effect == TEXT("illness_exposure") && Protection >= 0.75f)
+            continue;
+        if (Definition.Effect == TEXT("illness_spread") &&
+            Profile.Conditions.ContainsByPredicate([](const FWorldSurvivalConditionState& Condition)
+            {
+                return Condition.Kind == EWorldSurvivalConditionKind::Illness ||
+                    Condition.Kind == EWorldSurvivalConditionKind::Poisoning;
+            }))
+            continue;
+
+        const float EffectiveSeverity = FMath::Clamp(
+            Instance.Severity * (Definition.Effect == TEXT("illness_spread") ? 0.8f : 1.0f - Protection),
+            0.1f, 1.0f);
+        FGuid OperationId(
+            Instance.InstanceId.A ^ Profile.EntityId.A,
+            Instance.InstanceId.B ^ Profile.EntityId.B,
+            Instance.InstanceId.C ^ Profile.EntityId.C,
+            Instance.InstanceId.D ^ Profile.EntityId.D);
+        if (!OperationId.IsValid())
+            OperationId.A = 1;
+
+        // Capacity is a deliberate skip; other failures indicate a stale or
+        // conflicting transaction and must abort the step so coordinator rollback
+        // can restore the event and every condition already applied this tick.
+        if (Profile.Conditions.Num() >= 128 ||
+            Profile.ActionReceipts.Num() >= Survival->MaxActionReceiptsPerProfile)
+            continue;
+        if (!Survival->TryApplyCondition(OperationId, Profile.EntityId, Profile.Revision,
+            ConditionId, EffectiveSeverity))
+            return false;
     }
     return true;
 }
-bool UWorldEventDirectorSubsystem::ScheduleChainedEvents()
+
+bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
+    double DeltaSeconds, double TargetTimeSeconds, int64 TargetTickIndex)
 {
-    bool Changed = false;
-    for (FWorldNaturalEventRecord& R : RuntimeRecords)
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* Data = GetGameData();
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* StructuralGraph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!World || !Data || !Agriculture || !StructuralGraph)
+        return false;
+    for (FWorldNaturalEventInstance& Instance : State.Instances)
     {
-        if (R.State != EWorldNaturalEventState::Waiting || R.ScheduledStartTimeSeconds >= 0.0) continue;
-        const FWorldNaturalEventDefinition* D = FindDefinition(R.DefinitionId);
-        if (!D || D->TriggerAfterEventId.IsNone()) continue;
-        const FWorldNaturalEventRecord* Prev = FindRuntimeRecord(D->TriggerAfterEventId);
-        if (!Prev || Prev->LastCompletedSerial <= R.LastObservedPredecessorSerial) continue;
-        R.LastObservedPredecessorSerial = Prev->LastCompletedSerial;
-        R.TriggeredByDefinitionId = Prev->DefinitionId;
-        R.ScheduledStartTimeSeconds = Prev->LastCompletedEndTimeSeconds + SampleInterval(*D, R.AttemptCount + R.Serial + 1);
-        ++R.Revision; Changed = true;
-    }
-    return Changed;
-}
-bool UWorldEventDirectorSubsystem::AdvanceToTime(double TargetTimeSeconds)
-{
-    if (!CanAdvanceToTime(TargetTimeSeconds)) return false;
-    if (TargetTimeSeconds == LastProcessedTimeSeconds) return true;
-    const FWorldEventDirectorSnapshot Before = ExportSnapshot();
-    TArray<FWorldNaturalEventRecord> Transitions;
-    int32 Iterations = 0;
-    bool bStable = false;
-    while (Iterations++ < MaxTransitionsPerStep)
-    {
-        bool bChanged = ScheduleChainedEvents();
-        for (FWorldNaturalEventRecord& R : RuntimeRecords)
+        if (Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+            [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+        if (!Definition)
+            return false;
+
+        const bool bContinuous = Definition->Effect == TEXT("crop_moisture_loss");
+        if (bContinuous && Instance.LastAppliedEffectTickIndex == TargetTickIndex)
+            continue;
+        if (!bContinuous && Instance.bOnsetEffectApplied)
+            continue;
+
+        if (Definition->Effect == TEXT("crop_moisture_loss") ||
+            Definition->Effect == TEXT("crop_damage"))
         {
-            const FWorldNaturalEventDefinition* D = FindDefinition(R.DefinitionId);
-            if (!D) { RestoreSnapshot(Before); return false; }
-            if (R.State == EWorldNaturalEventState::Waiting && R.ScheduledStartTimeSeconds >= 0.0 &&
-                R.ScheduledStartTimeSeconds <= TargetTimeSeconds)
+            if (!Agriculture->ApplyEnvironmentalEffect(Definition->Effect, Instance.Severity,
+                bContinuous ? DeltaSeconds : 1.0))
+                return false;
+        }
+        else if (Definition->Effect == TEXT("structure_damage"))
+        {
+            TArray<FWorldStructuralNodeSnapshot> Nodes;
+            if (!StructuralGraph->ExportSnapshot(Nodes))
+                return false;
+            const float Damage = 8.0f * FMath::Clamp(Instance.Severity, 0.0f, 1.0f);
+            for (const FWorldStructuralNodeSnapshot& Node : Nodes)
             {
-                if (!IsMonthAllowed(*D, R.ScheduledStartTimeSeconds))
-                {
-                    R.ScheduledStartTimeSeconds += 86400.0; ++R.Revision; bChanged = true; continue;
-                }
-                ++R.AttemptCount;
-                if (SampleChance(R.DefinitionId, R.AttemptCount) >= D->TriggerChance)
-                {
-                    R.ScheduledStartTimeSeconds += SampleInterval(*D, R.AttemptCount + R.Serial + 1);
-                    ++R.Revision; bChanged = true; continue;
-                }
-                ++R.Serial; R.EventInstanceId = MakeEventInstanceId(R.DefinitionId, R.Serial);
-                R.WarningStartTimeSeconds = R.ScheduledStartTimeSeconds;
-                R.ActiveStartTimeSeconds = R.WarningStartTimeSeconds + D->WarningDurationSeconds;
-                R.PlannedEndTimeSeconds = R.ActiveStartTimeSeconds + D->ActiveDurationSeconds;
-                R.State = EWorldNaturalEventState::Warning; ++R.Revision; Transitions.Add(R); bChanged = true; continue;
-            }
-            if (R.State == EWorldNaturalEventState::Warning && R.ActiveStartTimeSeconds <= TargetTimeSeconds)
-            {
-                R.State = EWorldNaturalEventState::Active; ++R.Revision; Transitions.Add(R); bChanged = true; continue;
-            }
-            if (R.State == EWorldNaturalEventState::Active && R.PlannedEndTimeSeconds <= TargetTimeSeconds)
-            {
-                FWorldNaturalEventRecord Ended = R; Ended.State = EWorldNaturalEventState::Ended; ++Ended.Revision;
-                Transitions.Add(Ended);
-                R.LastCompletedSerial = R.Serial; R.LastCompletedEndTimeSeconds = R.PlannedEndTimeSeconds;
-                R.EventInstanceId.Invalidate(); R.State = EWorldNaturalEventState::Waiting;
-                R.WarningStartTimeSeconds = 0.0; R.ActiveStartTimeSeconds = 0.0; R.PlannedEndTimeSeconds = 0.0;
-                R.ScheduledStartTimeSeconds = D->TriggerAfterEventId.IsNone()
-                    ? R.LastCompletedEndTimeSeconds + D->CooldownSeconds + SampleInterval(*D, R.AttemptCount + R.Serial + 1)
-                    : -1.0;
-                ++R.Revision; CompletedHistory.Add(Ended);
-                if (CompletedHistory.Num() > MaxHistoryEntries)
-                    CompletedHistory.RemoveAt(0, CompletedHistory.Num() - MaxHistoryEntries, EAllowShrinking::No);
-                bChanged = true;
+                if (!Node.NodeId.IsValid())
+                    return false;
+                bool bThresholdExceeded = false;
+                if (!StructuralGraph->ApplyDamage(Node.NodeId, Damage, bThresholdExceeded))
+                    return false;
             }
         }
-        if (!bChanged) { bStable = true; break; }
+        else if (Definition->Effect == TEXT("fire_spread"))
+        {
+            // Fire affects the canonical structure graph, not physical actors:
+            // the graph is included in the coordinator snapshot, so a failed
+            // world step can roll these damages back atomically.
+            TArray<FWorldStructuralNodeSnapshot> Nodes;
+            if (!StructuralGraph->ExportSnapshot(Nodes))
+                return false;
+            Nodes.Sort([](const FWorldStructuralNodeSnapshot& A, const FWorldStructuralNodeSnapshot& B)
+                { return A.NodeId.ToString() < B.NodeId.ToString(); });
+
+            TArray<TPair<FGuid, FVector>> FlammableNodes;
+            for (const FWorldStructuralNodeSnapshot& Node : Nodes)
+            {
+                if (Node.Kind != EStructuralNodeKind::Wood && Node.Kind != EStructuralNodeKind::Stick)
+                    continue;
+                FStructuralNodeRecord LiveNode;
+                if (!StructuralGraph->GetNode(Node.NodeId, LiveNode) || !LiveNode.Actor.IsValid())
+                    continue;
+                const FVector Location = LiveNode.Actor->GetActorLocation();
+                if (!Location.ContainsNaN())
+                    FlammableNodes.Add(TPair<FGuid, FVector>(Node.NodeId, Location));
+            }
+
+            TArray<FVector> FireOrigins;
+            for (TActorIterator<AActor> It(World); It; ++It)
+            {
+                AActor* Actor = *It;
+                if (!IsValid(Actor))
+                    continue;
+                TInlineComponentArray<UHeatSourceComponent*> HeatSources(Actor);
+                for (const UHeatSourceComponent* Heat : HeatSources)
+                {
+                    if (IsValid(Heat) && Heat->IsLit() && Heat->GetFuelSeconds() > 0.0f)
+                    {
+                        const FVector Location = Heat->GetComponentLocation();
+                        if (!Location.ContainsNaN())
+                            FireOrigins.Add(Location);
+                    }
+                }
+            }
+            FireOrigins.Sort([](const FVector& A, const FVector& B)
+            {
+                if (!FMath::IsNearlyEqual(A.X, B.X)) return A.X < B.X;
+                if (!FMath::IsNearlyEqual(A.Y, B.Y)) return A.Y < B.Y;
+                return A.Z < B.Z;
+            });
+
+            // Heatwave ignition can start even without an existing campfire.
+            // Pick a reproducible vulnerable wooden node as the ignition origin.
+            if (FireOrigins.IsEmpty() && !FlammableNodes.IsEmpty())
+            {
+                const uint32 Seed = Instance.InstanceId.A ^ Instance.InstanceId.B ^
+                    Instance.InstanceId.C ^ Instance.InstanceId.D;
+                FireOrigins.Add(FlammableNodes[Seed % FlammableNodes.Num()].Value);
+            }
+
+            const float SpreadRadius = 1200.0f + 300.0f * Instance.Severity;
+            for (const TPair<FGuid, FVector>& Flammable : FlammableNodes)
+            {
+                float NearestDistance = TNumericLimits<float>::Max();
+                for (const FVector& Origin : FireOrigins)
+                    NearestDistance = FMath::Min(NearestDistance, FVector::Dist2D(Origin, Flammable.Value));
+                if (NearestDistance > SpreadRadius)
+                    continue;
+
+                const float DistanceFactor = FMath::Clamp(1.0f - NearestDistance / SpreadRadius, 0.15f, 1.0f);
+                const float Damage = 18.0f * Instance.Severity * DistanceFactor;
+                bool bThresholdExceeded = false;
+                if (!StructuralGraph->ApplyDamage(Flammable.Key, Damage, bThresholdExceeded))
+                    return false;
+            }
+        }
+        else if (Definition->Effect == TEXT("exposure") ||
+                 Definition->Effect == TEXT("illness_exposure") ||
+                 Definition->Effect == TEXT("illness_spread"))
+        {
+            if (!ApplyConditionEffect(*Definition, Instance))
+                return false;
+        }
+        // Rain-derived wetness is authored by the climate/survival step.
+        // Flood closures are rebuilt from active instances after commit, avoiding
+        // an untracked route mutation inside a step that may still roll back.
+        Instance.bOnsetEffectApplied = true;
+        Instance.LastAppliedEffectTickIndex = TargetTickIndex;
+        if (Instance.Revision >= MAX_int64 - 1)
+            return false;
+        ++Instance.Revision;
     }
-    if (!bStable || StateRevision == MAX_int64) { RestoreSnapshot(Before); return false; }
-    LastProcessedTimeSeconds = TargetTimeSeconds; ++StateRevision;
-    PendingTransitions.Append(Transitions);
     return true;
 }
-void UWorldEventDirectorSubsystem::PublishPendingTransitions()
+
+void UWorldEventDirectorSubsystem::ApplyActiveEventWeather() const
 {
-    TArray<FWorldNaturalEventRecord> ToPublish = MoveTemp(PendingTransitions);
-    PendingTransitions.Reset();
-    for (const FWorldNaturalEventRecord& Record : ToPublish) OnEventTransition.Broadcast(Record);
+    UWorld* World = GetWorld();
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* Data = GetGameData();
+    if (!Survival || !Data)
+        return;
+
+    bool bHasOverride = false;
+    EWorldWeatherState OverrideWeather = EWorldWeatherState::Clear;
+    float OverrideSeverity = 0.0f;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+            [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+        if (!Definition)
+            continue;
+
+        EWorldWeatherState CandidateWeather = EWorldWeatherState::Clear;
+        bool bCandidate = true;
+        if (Definition->Trigger == TEXT("weather.snow"))
+            CandidateWeather = EWorldWeatherState::Snow;
+        else if (Definition->Trigger == TEXT("weather.rain"))
+            CandidateWeather = EWorldWeatherState::Rain;
+        else if (Definition->Trigger == TEXT("weather.storm"))
+            CandidateWeather = EWorldWeatherState::Storm;
+        else if (Definition->Trigger == TEXT("weather.heatwave"))
+            CandidateWeather = EWorldWeatherState::Heatwave;
+        else
+            bCandidate = false;
+
+        if (bCandidate && (!bHasOverride || Instance.Severity > OverrideSeverity))
+        {
+            bHasOverride = true;
+            OverrideWeather = CandidateWeather;
+            OverrideSeverity = Instance.Severity;
+        }
+    }
+    // Natural-event overrides are temporary. Once their final active instance
+    // ends, restore the weather currently owned by the climate system instead of
+    // leaving the survival subsystem stuck on stale storm/rain state.
+    const UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (bHasOverride)
+        Survival->SetWeather(OverrideWeather, OverrideSeverity);
+    else if (Climate && Climate->IsClimateInitialized())
+        Survival->SetWeather(Climate->GetWeather(), Climate->GetWeatherSeverity());
 }
-TArray<FWorldNaturalEventRecord> UWorldEventDirectorSubsystem::GetCurrentEvents() const
+
+TArray<FWorldNaturalEventInstance> UWorldEventDirectorSubsystem::GetActiveNaturalEvents() const
 {
-    TArray<FWorldNaturalEventRecord> Result;
-    for (const FWorldNaturalEventRecord& R : RuntimeRecords)
-        if (R.State == EWorldNaturalEventState::Warning || R.State == EWorldNaturalEventState::Active) Result.Add(R);
+    TArray<FWorldNaturalEventInstance> Result;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+        if (Instance.Phase == EWorldNaturalEventPhase::Signal ||
+            Instance.Phase == EWorldNaturalEventPhase::Active)
+            Result.Add(Instance);
     return Result;
 }
-TArray<FString> UWorldEventDirectorSubsystem::GetCurrentEventSummaries() const
+
+FString UWorldEventDirectorSubsystem::GetEventStatusText() const
 {
-    TArray<FString> Result;
-    for (const FWorldNaturalEventRecord& R : RuntimeRecords)
+    const UWorldGameDataSubsystem* Data = GetGameData();
+    FString Result;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
     {
-        if (R.State != EWorldNaturalEventState::Warning && R.State != EWorldNaturalEventState::Active) continue;
-        const FWorldNaturalEventDefinition* D = FindDefinition(R.DefinitionId);
-        const FString Label = D ? D->DisplayName : R.DefinitionId.ToString();
-        Result.Add(FString::Printf(TEXT("%s: %s"),
-            R.State == EWorldNaturalEventState::Warning ? TEXT("UYARI") : TEXT("ETKİN"), *Label));
+        if (Instance.Phase != EWorldNaturalEventPhase::Signal &&
+            Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data
+            ? Data->GetWorldEvents().FindByPredicate([&Instance](const FGameDataWorldEvent& Event)
+                { return Event.Id == Instance.DefinitionId; })
+            : nullptr;
+        if (!Result.IsEmpty())
+            Result += TEXT(" | ");
+        Result += Definition ? Definition->Name : Instance.DefinitionId.ToString();
+        Result += Instance.Phase == EWorldNaturalEventPhase::Signal ? TEXT(" (uyarı)") : TEXT(" (aktif)");
     }
     return Result;
 }
-FWorldEventDirectorSnapshot UWorldEventDirectorSubsystem::ExportSnapshot() const
+
+void UWorldEventDirectorSubsystem::PublishEventNotifications()
 {
-    FWorldEventDirectorSnapshot S;
-    S.SchemaVersion = CurrentSchemaVersion; S.bInitialized = bInitialized; S.RandomSeed = RandomSeed;
-    S.LastProcessedTimeSeconds = LastProcessedTimeSeconds; S.StateRevision = StateRevision;
-    S.RuntimeRecords = RuntimeRecords; S.CompletedHistory = CompletedHistory; return S;
+    // This hook runs only after the simulation tick commits. Route changes
+    // therefore cannot escape a rolled-back tick; route hazard claims are
+    // recomputed from the active event instances and are idempotent.
+    const UWorldGameDataSubsystem* Data = GetGameData();
+    UWorldLogisticsRouteSubsystem* Routes =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    TArray<FGuid> ActiveFloodIds;
+    if (Data && Routes)
+    {
+        for (const FWorldNaturalEventInstance& Instance : State.Instances)
+        {
+            if (Instance.Phase != EWorldNaturalEventPhase::Active)
+                continue;
+            const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+                [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+            if (Definition && Definition->Effect == TEXT("flooded_routes"))
+                ActiveFloodIds.Add(Instance.InstanceId);
+        }
+        Routes->ApplyActiveFloodEvents(ActiveFloodIds);
+    }
+
+    if (!GEngine)
+        return;
+
+    TSet<FGuid> LiveSignals;
+    TSet<FGuid> LiveActive;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Signal &&
+            Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data
+            ? Data->GetWorldEvents().FindByPredicate([&Instance](const FGameDataWorldEvent& Event)
+                { return Event.Id == Instance.DefinitionId; })
+            : nullptr;
+        const FString Name = Definition ? Definition->Name : Instance.DefinitionId.ToString();
+        const uint32 KeyHash = FCrc::StrCrc32(*Instance.InstanceId.ToString()) & 0x3FFFFFFF;
+        if (Instance.Phase == EWorldNaturalEventPhase::Signal)
+        {
+            LiveSignals.Add(Instance.InstanceId);
+            if (!PresentedSignalIds.Contains(Instance.InstanceId))
+            {
+                const double Remaining = FMath::Max(0.0, Instance.StartsAtSeconds - State.LastProcessedTimeSeconds);
+                const FString Message = FString::Printf(TEXT("DOĞAL OLAY UYARISI: %s (başlangıca %.0f oyun dakikası)"),
+                    *Name, Remaining / 60.0);
+                GEngine->AddOnScreenDebugMessage(static_cast<int32>(KeyHash), 7.0f, FColor::Orange, Message);
+                PresentedSignalIds.Add(Instance.InstanceId);
+            }
+        }
+        else
+        {
+            LiveActive.Add(Instance.InstanceId);
+            if (!PresentedActiveIds.Contains(Instance.InstanceId))
+            {
+                GEngine->AddOnScreenDebugMessage(static_cast<int32>(KeyHash | 0x40000000), 7.0f,
+                    FColor::Red, FString::Printf(TEXT("DOĞAL OLAY BAŞLADI: %s"), *Name));
+                PresentedActiveIds.Add(Instance.InstanceId);
+            }
+        }
+    }
+
+    for (auto It = PresentedSignalIds.CreateIterator(); It; ++It)
+        if (!LiveSignals.Contains(*It))
+            It.RemoveCurrent();
+    for (auto It = PresentedActiveIds.CreateIterator(); It; ++It)
+        if (!LiveActive.Contains(*It))
+            It.RemoveCurrent();
 }
-bool UWorldEventDirectorSubsystem::RestoreSnapshot(const FWorldEventDirectorSnapshot& S)
+
+bool UWorldEventDirectorSubsystem::IsValidSnapshot(const FWorldEventDirectorSnapshot& Snapshot) const
 {
-    if (S.SchemaVersion != CurrentSchemaVersion || S.RuntimeRecords.Num() > MaxDefinitions ||
-        S.CompletedHistory.Num() > MaxHistoryEntries || !FMath::IsFinite(S.LastProcessedTimeSeconds) ||
-        S.LastProcessedTimeSeconds < 0.0 || S.StateRevision < 0) return false;
-    if (!S.bInitialized)
+    if (Snapshot.SchemaVersion != 1 || Snapshot.Serial < 0 ||
+        Snapshot.LastProcessedTickIndex < -1 ||
+        !FMath::IsFinite(Snapshot.LastProcessedTimeSeconds) ||
+        Snapshot.LastProcessedTimeSeconds < 0.0 ||
+        !FMath::IsFinite(Snapshot.PreviousSnowDepthCm) || Snapshot.PreviousSnowDepthCm < 0.0f ||
+        Snapshot.Instances.Num() > MaxEventInstances ||
+        Snapshot.LastTriggeredDayByEvent.Num() > 256)
+        return false;
+
+    TSet<FGuid> SeenIds;
+    for (const FWorldNaturalEventInstance& Instance : Snapshot.Instances)
     {
-        RuntimeRecords.Reset(); CompletedHistory.Reset(); PendingTransitions.Reset(); RandomSeed = S.RandomSeed;
-        LastProcessedTimeSeconds = S.LastProcessedTimeSeconds; StateRevision = S.StateRevision; bInitialized = false; return true;
+        if (!Instance.InstanceId.IsValid() || SeenIds.Contains(Instance.InstanceId) ||
+            Instance.DefinitionId.IsNone() ||
+            static_cast<uint8>(Instance.Phase) > static_cast<uint8>(EWorldNaturalEventPhase::Cancelled) ||
+            !FMath::IsFinite(Instance.SignalStartedAtSeconds) ||
+            !FMath::IsFinite(Instance.StartsAtSeconds) || !FMath::IsFinite(Instance.EndsAtSeconds) ||
+            Instance.SignalStartedAtSeconds < 0.0 || Instance.StartsAtSeconds < Instance.SignalStartedAtSeconds ||
+            Instance.EndsAtSeconds <= Instance.StartsAtSeconds || !FMath::IsFinite(Instance.Severity) ||
+            Instance.Severity < 0.0f || Instance.Severity > 1.0f ||
+            Instance.TriggerDayIndex < 0 || Instance.Revision <= 0 ||
+            Instance.Revision >= MAX_int64)
+            return false;
+        SeenIds.Add(Instance.InstanceId);
     }
-    if (!ValidateDefinitions() || S.RuntimeRecords.Num() != Definitions.Num()) return false;
-    TSet<FName> Seen;
-    for (const FWorldNaturalEventRecord& R : S.RuntimeRecords)
+    for (const TPair<FName, int64>& Pair : Snapshot.LastTriggeredDayByEvent)
+        if (Pair.Key.IsNone() || Pair.Value < 0)
+            return false;
+    return true;
+}
+
+bool UWorldEventDirectorSubsystem::RestoreSnapshot(const FWorldEventDirectorSnapshot& Snapshot)
+{
+    // A v27/legacy save has no event manifest. Start a new deterministic event
+    // history from its restored clock instead of freezing the simulation.
+    if (!Snapshot.bInitialized)
     {
-        if (!FindDefinition(R.DefinitionId) || Seen.Contains(R.DefinitionId) || !IsValidState(R.State) ||
-            R.State == EWorldNaturalEventState::Ended || R.Serial < 0 || R.AttemptCount < 0 ||
-            R.LastCompletedSerial < 0 || R.LastObservedPredecessorSerial < 0 || R.Revision < 0 ||
-            !FMath::IsFinite(R.LastCompletedEndTimeSeconds) ||
-            (R.ScheduledStartTimeSeconds >= 0.0 && !FMath::IsFinite(R.ScheduledStartTimeSeconds))) return false;
-        if (R.State == EWorldNaturalEventState::Warning &&
-            (!R.EventInstanceId.IsValid() || R.ActiveStartTimeSeconds < R.WarningStartTimeSeconds)) return false;
-        if (R.State == EWorldNaturalEventState::Active &&
-            (!R.EventInstanceId.IsValid() || R.PlannedEndTimeSeconds < R.ActiveStartTimeSeconds)) return false;
-        Seen.Add(R.DefinitionId);
+        if (!InitializeEventDirector())
+            return false;
+        if (UWorldLogisticsRouteSubsystem* Routes =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr)
+            return Routes->ApplyActiveFloodEvents({});
+        return false;
     }
-    for (const FWorldNaturalEventRecord& R : S.CompletedHistory)
-        if (!R.EventInstanceId.IsValid() || R.State != EWorldNaturalEventState::Ended ||
-            !FindDefinition(R.DefinitionId) || R.Serial < 1 ||
-            !FMath::IsFinite(R.WarningStartTimeSeconds) || !FMath::IsFinite(R.ActiveStartTimeSeconds) ||
-            !FMath::IsFinite(R.PlannedEndTimeSeconds) || R.ActiveStartTimeSeconds < R.WarningStartTimeSeconds ||
-            R.PlannedEndTimeSeconds < R.ActiveStartTimeSeconds) return false;
-    RandomSeed = S.RandomSeed; LastProcessedTimeSeconds = S.LastProcessedTimeSeconds;
-    StateRevision = S.StateRevision; RuntimeRecords = S.RuntimeRecords; CompletedHistory = S.CompletedHistory;
-    PendingTransitions.Reset(); bInitialized = true; return true;
+    if (!IsValidSnapshot(Snapshot))
+        return false;
+
+    const UWorldGameDataSubsystem* Data = GetGameData();
+    if (!Data || !Data->IsLoaded())
+        return false;
+    TSet<FName> DefinitionIds;
+    for (const FGameDataWorldEvent& Definition : Data->GetWorldEvents())
+        DefinitionIds.Add(Definition.Id);
+    for (const FWorldNaturalEventInstance& Instance : Snapshot.Instances)
+        if (!DefinitionIds.Contains(Instance.DefinitionId))
+            return false;
+    for (const TPair<FName, int64>& Pair : Snapshot.LastTriggeredDayByEvent)
+        if (!DefinitionIds.Contains(Pair.Key))
+            return false;
+
+    State = Snapshot;
+    PresentedSignalIds.Reset();
+    PresentedActiveIds.Reset();
+    ApplyActiveEventWeather();
+
+    TArray<FGuid> ActiveFloodIds;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data->GetWorldEvents().FindByPredicate(
+            [&Instance](const FGameDataWorldEvent& Event) { return Event.Id == Instance.DefinitionId; });
+        if (Definition && Definition->Effect == TEXT("flooded_routes"))
+            ActiveFloodIds.Add(Instance.InstanceId);
+    }
+    UWorldLogisticsRouteSubsystem* Routes =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    return Routes && Routes->ApplyActiveFloodEvents(ActiveFloodIds);
 }

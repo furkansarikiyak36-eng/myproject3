@@ -70,5 +70,5 @@ private:
     UWorldSurvivalSubsystem* GetSurvival() const;
     UWorldProductionSubsystem* GetProduction() const;
     UWorldCargoTransportSubsystem* GetCargo() const;
-    UWorldEventDirectorSubsystem* GetEventDirector() const;
+    UWorldEventDirectorSubsystem* GetEvents() const;
 };

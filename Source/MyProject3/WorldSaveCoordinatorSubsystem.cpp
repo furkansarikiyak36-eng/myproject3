@@ -17,10 +17,15 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WallCoatingComponent.h"
+#include "LogBuildPiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 #include "Components/ActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -390,7 +395,7 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
                     return false;
                 CurrentComponentNames.Add(Component->GetFName());
             }
-            if (CurrentComponentNames.Num() != State.ComponentSaveGameData.Num())
+            if (State.ComponentSaveGameData.Num() > CurrentComponentNames.Num())
                 return false;
 
             TSet<FName> SavedComponentNames;
@@ -416,6 +421,20 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
                     return false;
 
                 SavedComponentNames.Add(ComponentState.ComponentName);
+            }
+
+            // Additive P3.3 migration: older saves did not capture the newly added
+            // non-primitive WallCoating component. Leave that component at its
+            // validated default; every other unmatched component still fails closed.
+            for (UActorComponent* Component : CurrentComponents)
+            {
+                if (!IsValid(Component) || SavedComponentNames.Contains(Component->GetFName()))
+                    continue;
+                const bool bSupportedWallPiece = (*Found)->IsA<ALogBuildPiece>() ||
+                    (*Found)->IsA<AStoneBuildingPiece>() || (*Found)->IsA<AStickPrimitivePiece>();
+                if (!bSupportedWallPiece || Component->GetFName() != TEXT("WallCoating") ||
+                    !Component->IsA<UWallCoatingComponent>())
+                    return false;
             }
         }
 
@@ -590,7 +609,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
     if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger ||
-        !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() || !Events->IsDirectorInitialized()) return false;
+        !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() || !Events->IsEventDirectorInitialized()) return false;
     if (OperationLedger->HasPendingOperations())
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused while a world operation is pending."));
@@ -602,7 +621,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     if (const UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>())
         OutSave->Climate = Climate->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
-    OutSave->NaturalEvents = Events->ExportSnapshot();
+    OutSave->Events = Events->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts, OutSave->ItemSplitReceipts);
     OperationLedger->ExportSnapshot(OutSave->OperationLedgerEntries);
     // Held actor/carry-component state is not yet part of this manifest. Refuse
@@ -624,7 +643,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         return false;
     }
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!StructuralGraph || !StructuralGraph->ExportSnapshot(OutSave->StructuralGraph))
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
+    if (!StructuralGraph || !Routes || !StructuralGraph->ExportSnapshot(OutSave->StructuralGraph))
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused because structural graph snapshot export failed."));
         return false;
@@ -647,6 +667,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
     Cargo->ExportSnapshot(OutSave->Cargo);
+    Routes->ExportSnapshot(OutSave->Routes);
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
     if (!ValidateProductionReceiptItemReferences(OutSave->Items, OutSave->ProductionStations))
     {
@@ -678,7 +699,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
+    if (!Clock || !Threat || !Events || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph || !Routes)
         return false;
 
     if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
@@ -776,9 +798,8 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!Storage->RestoreSnapshot(Snapshot->StorageContainers, Snapshot->StorageReservations)) return false;
     if (!Cargo->RestoreSnapshot(Snapshot->Cargo)) return false;
     if (!Threat->RestoreSnapshot(Snapshot->Threat)) return false;
-    if (!Events->RestoreSnapshot(Snapshot->NaturalEvents)) return false;
-    if (!Snapshot->NaturalEvents.bInitialized &&
-        !Events->InitializeDirector(Snapshot->Clock.RandomSeed, Snapshot->Clock.SimulationTimeSeconds)) return false;
+    if (!Routes->RestoreSnapshot(Snapshot->Routes)) return false;
+    if (!Events->RestoreSnapshot(Snapshot->Events)) return false;
     return true;
 }
 
@@ -991,22 +1012,15 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     }
     if (Candidate->SchemaVersion == 27)
     {
-        // Schema v28 adds natural-event schedules, trigger cursors and completion history.
-        // Legacy state is not inferable; start a fresh schedule from the saved simulation time.
-        Candidate->NaturalEvents = FWorldEventDirectorSnapshot();
+        // Schema v28 adds the natural-event signal/effect history and per-day
+        // trigger guards. Older saves start a fresh event history from restored time.
+        Candidate->Events = FWorldEventDirectorSnapshot();
         Candidate->SchemaVersion = 28;
     }
     if (Candidate->SchemaVersion == 28)
     {
-        // Schema v29 adds fire requirements and current fire condition to production stations.
-        // Older saves cannot know which physical fire was nearby; the station actor refreshes
-        // these derived fields from stations.json and actual heat sources after load.
-        for (FWorldProductionStation& Station : Candidate->ProductionStations)
-        {
-            Station.bRequiresFire = false;
-            Station.bRequiresHotFire = false;
-            Station.bFireRequirementSatisfied = true;
-        }
+        // Schema v29 records the route graph. Older saves did not persist route topology.
+        Candidate->Routes = FWorldLogisticsRouteSnapshot();
         Candidate->SchemaVersion = 29;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)

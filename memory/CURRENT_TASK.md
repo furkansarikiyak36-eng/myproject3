@@ -18,7 +18,7 @@ Asked by the user: "9 faz da bitirerek ilerleme zamanı geldi sırayla kapatalı
 Started: 2026-10-30 · Branch: `game/p00-adopt-group-a` (single working branch)
 
 ### Plan
-0. [ ] Merge `work/phase-3-4-closure` into p00. Its event director (752 lines, real effects: fire spread, flood
+0. [x] Merged `work/phase-3-4-closure` into p00 (integration `15208d3`, 126/126). Its event director (752 lines, real effects: fire spread, flood
        route closures, raids, repair) replaces p00's (318 lines). Keep p00-only work: WorldHudDataSubsystem (adapt to
        the phase-3-4 director API), geology, action costs, charcoal pause, build fixes. One save schema line.
        Then build + all tests.
@@ -34,7 +34,8 @@ animals) if phase 6/7 needs them.
 - Two independent event directors. phase-3-4: AdvanceEventStep/InitializeEventDirector; p00: AdvanceToTime/InitializeDirector.
 
 ### Changes
-- —
+- integrate/phase-3-4 = phase-3-4 + p00 geology/costs/build fixes + HUD port; 4 build fixes, 3 test fixes; 126/126.
+- p00 merge commit: tree = integration, memory notes kept from p00.
 
 ### Next step
-Step 0: git merge origin/work/phase-3-4-closure; resolve conflicts.
+Step 1: Phase 0 leftovers, then Phase 1. Read memory/PLAN_STATUS.md rows P0.x and P1.x first.

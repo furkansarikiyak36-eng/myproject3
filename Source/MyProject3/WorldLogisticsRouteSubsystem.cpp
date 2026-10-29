@@ -110,7 +110,8 @@ bool UWorldLogisticsRouteSubsystem::ComputeEdgeCost(
     {
         return false;
     }
-    if (Edge.bRequiresInfrastructure && !Edge.bHasBuiltInfrastructure)
+    if ((Edge.bRequiresInfrastructure && !Edge.bHasBuiltInfrastructure) ||
+        !Edge.ActiveNaturalHazardIds.IsEmpty())
     {
         return false;
     }
@@ -334,6 +335,92 @@ bool UWorldLogisticsRouteSubsystem::CalculatePathCost(
     }
 
     OutTotalCost = static_cast<float>(TotalCost);
+    return true;
+}
+
+
+bool UWorldLogisticsRouteSubsystem::ApplyActiveFloodEvents(const TArray<FGuid>& ActiveFloodEventIds)
+{
+    TSet<FGuid> Seen;
+    TArray<FGuid> CanonicalIds = ActiveFloodEventIds;
+    for (const FGuid& Id : CanonicalIds)
+    {
+        if (!Id.IsValid() || Seen.Contains(Id))
+            return false;
+        Seen.Add(Id);
+    }
+    CanonicalIds.Sort([](const FGuid& A, const FGuid& B)
+        { return A.ToString() < B.ToString(); });
+
+    for (FLogisticsRouteEdge& Edge : Edges)
+        Edge.ActiveNaturalHazardIds = Edge.bFloodProne ? CanonicalIds : TArray<FGuid>();
+    return true;
+}
+
+void UWorldLogisticsRouteSubsystem::ExportSnapshot(FWorldLogisticsRouteSnapshot& OutSnapshot) const
+{
+    OutSnapshot.SchemaVersion = 1;
+    OutSnapshot.Nodes.Reset(Nodes.Num());
+    for (const TPair<FName, FLogisticsRouteNode>& Pair : Nodes)
+        OutSnapshot.Nodes.Add(Pair.Value);
+    OutSnapshot.Nodes.Sort([](const FLogisticsRouteNode& A, const FLogisticsRouteNode& B)
+        { return A.NodeId.ToString() < B.NodeId.ToString(); });
+    OutSnapshot.Edges = Edges;
+    OutSnapshot.Edges.Sort([](const FLogisticsRouteEdge& A, const FLogisticsRouteEdge& B)
+    {
+        if (A.FromNode != B.FromNode)
+            return A.FromNode.ToString() < B.FromNode.ToString();
+        return A.ToNode.ToString() < B.ToNode.ToString();
+    });
+}
+
+bool UWorldLogisticsRouteSubsystem::RestoreSnapshot(const FWorldLogisticsRouteSnapshot& Snapshot)
+{
+    if (Snapshot.SchemaVersion != 1 || Snapshot.Nodes.Num() > MaxNodes ||
+        Snapshot.Edges.Num() > MaxEdges || MaxNodes < 1 || MaxNodes > 4096 ||
+        MaxEdges < 1 || MaxEdges > 16384)
+        return false;
+
+    TMap<FName, FLogisticsRouteNode> NewNodes;
+    NewNodes.Reserve(Snapshot.Nodes.Num());
+    for (const FLogisticsRouteNode& Node : Snapshot.Nodes)
+    {
+        if (Node.NodeId.IsNone() || Node.Location.ContainsNaN() || NewNodes.Contains(Node.NodeId))
+            return false;
+        NewNodes.Add(Node.NodeId, Node);
+    }
+
+    TArray<FLogisticsRouteEdge> NewEdges;
+    NewEdges.Reserve(Snapshot.Edges.Num());
+    TSet<FString> SeenEdges;
+    for (const FLogisticsRouteEdge& Edge : Snapshot.Edges)
+    {
+        const FString EdgeKey = Edge.FromNode.ToString() + TEXT("->") + Edge.ToNode.ToString();
+        if (Edge.FromNode.IsNone() || Edge.ToNode.IsNone() || Edge.FromNode == Edge.ToNode ||
+            !NewNodes.Contains(Edge.FromNode) || !NewNodes.Contains(Edge.ToNode) ||
+            SeenEdges.Contains(EdgeKey) || !FMath::IsFinite(Edge.Cost) || Edge.Cost < 0.0f ||
+            !FMath::IsFinite(Edge.SlopeRatio) || Edge.SlopeRatio < 0.0f || Edge.SlopeRatio > 10.0f ||
+            !FMath::IsFinite(Edge.SurfaceCostMultiplier) || Edge.SurfaceCostMultiplier < 0.01f ||
+            Edge.SurfaceCostMultiplier > 100.0f || !FMath::IsFinite(Edge.WeatherSensitivity) ||
+            Edge.WeatherSensitivity < 0.0f || Edge.WeatherSensitivity > 100.0f ||
+            !FMath::IsFinite(Edge.LoadSensitivity) || Edge.LoadSensitivity < 0.0f ||
+            Edge.LoadSensitivity > 100.0f || !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
+            Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f)
+            return false;
+
+        TSet<FGuid> SeenHazards;
+        for (const FGuid& HazardId : Edge.ActiveNaturalHazardIds)
+        {
+            if (!HazardId.IsValid() || SeenHazards.Contains(HazardId))
+                return false;
+            SeenHazards.Add(HazardId);
+        }
+        SeenEdges.Add(EdgeKey);
+        NewEdges.Add(Edge);
+    }
+
+    Nodes = MoveTemp(NewNodes);
+    Edges = MoveTemp(NewEdges);
     return true;
 }
 

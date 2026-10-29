@@ -121,6 +121,7 @@ private:
     bool bWallLineStarted = false;
     FVector WallLineStart = FVector::ZeroVector;
     void ApexInput();
+    void PlasterInput();
     FVector RopeStart = FVector::ZeroVector;
     TWeakObjectPtr<AActor> RopeStartActor;
 

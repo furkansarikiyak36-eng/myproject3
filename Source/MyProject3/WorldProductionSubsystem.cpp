@@ -1,4 +1,10 @@
 #include "WorldProductionSubsystem.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
+#include "ProductionStationActor.h"
 
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -69,28 +75,6 @@ bool UWorldProductionSubsystem::RegisterStation(const FWorldProductionStation& S
         if (Pair.Key.IsNone() || Pair.Value < 0) return false;
     if (CountStockUnits(Station.Stock) > Station.StorageCapacityUnits) return false;
     Stations.Add(Station.StationId, Station);
-    return true;
-}
-
-bool UWorldProductionSubsystem::ConfigureStationFireRequirement(
-    const FGuid& StationId, bool bNeedsFire, bool bNeedsHotFire, bool bRequirementSatisfied)
-{
-    FWorldProductionStation* Station = Stations.Find(StationId);
-    if (!Station || !StationId.IsValid())
-        return false;
-
-    const bool bEffectiveRequirement = (!bNeedsFire && !bNeedsHotFire) || bRequirementSatisfied;
-    if (Station->bRequiresFire == bNeedsFire &&
-        Station->bRequiresHotFire == bNeedsHotFire &&
-        Station->bFireRequirementSatisfied == bEffectiveRequirement)
-        return true;
-    if (Station->Revision <= 0 || Station->Revision == MAX_int64)
-        return false;
-
-    Station->bRequiresFire = bNeedsFire;
-    Station->bRequiresHotFire = bNeedsHotFire;
-    Station->bFireRequirementSatisfied = bEffectiveRequirement;
-    ++Station->Revision;
     return true;
 }
 
@@ -751,6 +735,25 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
     }
 
     const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
+
+    // Station recipes listed as discovery unlocks are authoritative gates too;
+    // direct subsystem callers may not bypass the player-facing F2 interaction.
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (GameData && GameData->IsApplied() && GameData->IsDiscoveryGatedDefinition(RecipeId))
+    {
+        APlayerController* Controller = World->GetFirstPlayerController();
+        APawn* PlayerPawn = Controller ? Controller->GetPawn() : nullptr;
+        const UShelterSensorComponent* Shelter =
+            PlayerPawn ? PlayerPawn->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        const UWorldSurvivalSubsystem* Survival =
+            World->GetSubsystem<UWorldSurvivalSubsystem>();
+        if (!Shelter || !Shelter->SurvivalEntityId.IsValid() || !Survival ||
+            !Survival->IsDefinitionUnlocked(Shelter->SurvivalEntityId, RecipeId))
+            return false;
+    }
+
     if (!Recipe.RequiredStationTag.IsNone() &&
         Recipe.RequiredStationTag != Station->StationTag)
     {
@@ -912,32 +915,27 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
     {
         FWorldProductionStation& Station = Pair.Value;
         bool bStationChanged = false;
-        const bool bFireRequired = Station.bRequiresFire || Station.bRequiresHotFire;
-        if (bFireRequired && !Station.bFireRequirementSatisfied)
+        bool bCanRunStation = true;
+        if (UWorld* World = GetWorld())
         {
-            for (FWorldProductionJob& Job : Station.Jobs)
+            for (TActorIterator<AProductionStationActor> It(World); It; ++It)
             {
-                if ((Job.State == EProductionJobState::Queued || Job.State == EProductionJobState::Running) &&
-                    Job.BlockedReason != TEXT("NeedsFire"))
+                AProductionStationActor* Actor = *It;
+                if (IsValid(Actor) && Actor->GetStationId() == Station.StationId)
                 {
-                    Job.BlockedReason = TEXT("NeedsFire");
-                    bStationChanged = true;
+                    bCanRunStation = Actor->HasRequiredFire();
+                    break;
                 }
             }
-            if (bStationChanged)
-                ++Station.Revision;
-            continue; // Keep queued/running progress; the same job resumes once its fire returns.
         }
-
+        // Jobs keep their inputs and progress while a required fire is absent.
+        // Do not consume simulation time until the station's fire condition returns.
+        if (!bCanRunStation)
+            continue;
         for (FWorldProductionJob& Job : Station.Jobs)
         {
             if (Job.State == EProductionJobState::Completed || Job.State == EProductionJobState::Blocked)
                 continue;
-            if (Job.BlockedReason == TEXT("NeedsFire"))
-            {
-                Job.BlockedReason = NAME_None;
-                bStationChanged = true;
-            }
             const int32 RecipeIndex = FindRecipe(Job.RecipeId);
             const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
             if (Job.State == EProductionJobState::Queued)

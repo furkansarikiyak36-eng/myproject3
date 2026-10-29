@@ -5,12 +5,10 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 
 ## Now (2026-10-29)
 
-Working branch: **`game/p00-adopt-group-a`** = `group-a-code-closure` (ChatGPT backend) + `feature/simple-intent`
-(placement kernel, plan, memory). Builds; **85/85 automation tests pass**. Not played in PIE.
+Working branch: **`game/p00-adopt-group-a`** (single working branch). 2026-10-30: `work/phase-3-4-closure` merged in;
+builds, **126/126 automation tests pass**. Not played in PIE (the new scene comes last).
 Plan: `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`; tasks `ROADMAP.md`; per-task status `PLAN_STATUS.md`.
-Current work: finishing the partial tasks (`CURRENT_TASK.md`). From 2026-10-29 code is written without
-building (rules in `ROADMAP.md`); one batch build/test/fix at the end; the new scene last.
-Last built and tested: `bbc57b3` = 102/102.
+Current work: closing phases 1-9 in order (`CURRENT_TASK.md`).
 
 ## Branches
 
@@ -22,8 +20,8 @@ Last built and tested: `bbc57b3` = 102/102.
 | `feature/simple-intent` | Newest. Contextual placement without modes, symmetric diagonals, bent end joints. |
 | `group-a-code-closure` | ChatGPT, +182 commits on simple-intent@321e55a: survival items, conditions, equipment, farming items, excavation yield, routes. Did not compile as pushed; fixed on `game/p00-adopt-group-a` (250ce13). |
 | `fix/vertical-slice-b-core-loop`, `phase-03…14-*-sequential` | Older separate lines without the placement kernel. Not merged anywhere. |
-| `work/phase-3-4-closure` | ChatGPT, +179 on p00@`ea00757`, unbuilt. Not merged; conflicts with p00. |
-| `game/p06-farming-seed-cycle`, `game/p07-zone-entry-progression` | ChatGPT, forked from `0d91300`; a second farming API. Not merged. |
+| `work/phase-3-4-closure` | Merged into p00 on 2026-10-30. Do not use. |
+| `game/p06-farming-seed-cycle`, `game/p07-zone-entry-progression` | Obsolete: a second farming API. Not merged; do not use. |
 | PR #34 `architecture/global-snap-variation-library` | Has a second, conflicting kernel. Recommended: close it. |
 
 ## Works (build + 85 automation tests on game/p00-adopt-group-a)

@@ -20,8 +20,12 @@ bool UWorldHudDataSubsystem::GetSnapshot(FWorldHudDataSnapshot& OutSnapshot) con
         OutSnapshot.AirTemperatureCelsius = Climate->GetTemperatureCelsius();
     }
     if (const UWorldEventDirectorSubsystem* Events = World->GetSubsystem<UWorldEventDirectorSubsystem>();
-        Events && Events->IsDirectorInitialized())
-        OutSnapshot.EventNotifications = Events->GetCurrentEventSummaries();
+        Events && Events->IsEventDirectorInitialized())
+    {
+        const FString Status = Events->GetEventStatusText();
+        if (!Status.IsEmpty())
+            OutSnapshot.EventNotifications.Add(Status);
+    }
     OutSnapshot.bValid = true;
     return true;
 }

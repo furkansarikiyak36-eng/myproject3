@@ -8,12 +8,24 @@
 #include "WorldClimateSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldStorageSubsystem.h"
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldDiscoveryMarkerActor.h"
+#include "LogSnapCharacter.h"
+#include "ShelterSensorComponent.h"
+#include "WorldHudDataSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
+#include "WorldThreatDirectorSubsystem.h"
+#include "LogContainerActor.h"
+#include "WorldLogisticsRouteSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
+#include "WallCoatingComponent.h"
+#include "StoneBuildingPiece.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
 #include "VoxelTerrainChunkComponent.h"
@@ -24,13 +36,13 @@
 #include "Misc/Paths.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
-#include "WorldHudDataSubsystem.h"
 #include "LogContainerActor.h"
 #include "ShelterSensorComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
+#include "GameFramework/PlayerController.h"
 
 namespace GameWorldTests
 {
@@ -887,8 +899,19 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Firing starts"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
     TestEqual(TEXT("The raw pot is used"), Kiln->GetStockCount(TEXT("Pot.Raw")), 0);
 
-    for (int32 Hour = 0; Hour < 4; ++Hour)
-        TestTrue(TEXT("Kiln hour"), Production->AdvanceProductionStep(3600.0));
+    TestTrue(TEXT("First kiln hour"), Production->AdvanceProductionStep(3600.0));
+    FWorldProductionStation ProgressState;
+    TestTrue(TEXT("Read kiln progress"), Production->GetStation(Kiln->GetStationId(), ProgressState));
+    TestEqual(TEXT("One hour of progress"), ProgressState.Jobs[0].ProgressSeconds, 3600.0);
+
+    Fire->Extinguish();
+    TestTrue(TEXT("Clock step while fire is out"), Production->AdvanceProductionStep(3600.0));
+    TestTrue(TEXT("Read paused kiln"), Production->GetStation(Kiln->GetStationId(), ProgressState));
+    TestEqual(TEXT("Progress pauses without hot fire"), ProgressState.Jobs[0].ProgressSeconds, 3600.0);
+
+    TestTrue(TEXT("Relight charcoal-hot fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
+    for (int32 Hour = 0; Hour < 3; ++Hour)
+        TestTrue(TEXT("Kiln resumes after fire returns"), Production->AdvanceProductionStep(3600.0));
     TestEqual(TEXT("Collect"), Kiln->CollectFinishedJobs(), 1);
     TestEqual(TEXT("A fired pot"), Kiln->GetStockCount(TEXT("Pot.Fired")), 1);
     TestTrue(TEXT("Take it"), Kiln->TryTake(Inventory, TEXT("Pot.Fired"), 1));
@@ -945,57 +968,860 @@ bool FDigLayersFromDataTest::RunTest(const FString& Parameters)
 }
 
 
-// P1.3/P1.4: lifecycle transitions, event chaining, snapshot restore and HUD data contract.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNaturalEventDirectorLifecycleTest,
-    "MyProject3.World.Events.DeterministicLifecycleChainAndSnapshot", Flags)
-bool FNaturalEventDirectorLifecycleTest::RunTest(const FString& Parameters)
+ 
+// P3.3/P3.4: data contracts must reference real items and a registered station.
+// This does not prove wall coating visuals or in-world placement; those remain PIE work.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlasterAndCharcoalDataContractsTest,
+    "MyProject3.World.GameData.PlasterAndCharcoalContracts", Flags)
+bool FPlasterAndCharcoalDataContractsTest::RunTest(const FString& Parameters)
 {
     FTestWorld TestWorld;
     UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data subsystem"), Data))
+        return false;
+    TestTrue(TEXT("All game data loads and applies"), Data->LoadDefault() && Data->ApplyToWorld());
+
+    const FGameDataTransformation* Plaster = Data->FindTransformation(TEXT("mix_plaster"));
+    if (!TestNotNull(TEXT("Plaster recipe exists"), Plaster))
+        return false;
+    TestEqual(TEXT("Plaster is hand mixed"), Plaster->Where, FName(TEXT("hand")));
+    TestEqual(TEXT("Plaster output count"), Plaster->Outputs.Num(), 1);
+    if (Plaster->Outputs.Num() == 1)
+    {
+        TestEqual(TEXT("Plaster output item"), Plaster->Outputs[0].ItemId, FName(TEXT("Plaster")));
+        TestEqual(TEXT("Plaster output quantity"), Plaster->Outputs[0].Quantity, 2);
+    }
+    auto HasInput = [Plaster](FName ItemId)
+    {
+        return Plaster->Inputs.ContainsByPredicate([ItemId](const FGameDataItemAmount& Amount)
+            { return Amount.ItemId == ItemId && Amount.Quantity > 0; });
+    };
+    TestTrue(TEXT("Clay is consumed"), HasInput(TEXT("Clay")));
+    TestTrue(TEXT("Sand is consumed"), HasInput(TEXT("Sand")));
+    TestTrue(TEXT("Water is consumed"), HasInput(TEXT("Water.Dirty")));
+
+    const FGameDataStation* CharcoalStation = Data->GetStations().Find(TEXT("charcoal_pit"));
+    if (!TestNotNull(TEXT("Charcoal station exists"), CharcoalStation))
+        return false;
+    TestTrue(TEXT("Charcoal pit requires fire"), CharcoalStation->bNeedsFire);
+    const FGameDataTransformation* Charcoal = Data->FindTransformation(TEXT("burn_charcoal"));
+    if (!TestNotNull(TEXT("Charcoal recipe exists"), Charcoal))
+        return false;
+    TestEqual(TEXT("Recipe is assigned to charcoal pit"), Charcoal->Where, FName(TEXT("charcoal_pit")));
+    TestEqual(TEXT("Charcoal duration is eight simulation hours"), Charcoal->DurationSeconds, 28800.0);
+    TestTrue(TEXT("Firewood input exists"), Charcoal->Inputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Firewood") && Amount.Quantity == 6; }));
+    TestTrue(TEXT("Charcoal output exists"), Charcoal->Outputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Charcoal") && Amount.Quantity == 3; }));
+    TestTrue(TEXT("Ash output exists"), Charcoal->Outputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Ash") && Amount.Quantity == 1; }));
+
+    TestEqual(TEXT("Nine authored natural-event definitions"), Data->GetWorldEvents().Num(), 9);
+    const FGameDataWorldEvent* Flood = Data->GetWorldEvents().FindByPredicate(
+        [](const FGameDataWorldEvent& Event) { return Event.Id == TEXT("Event.Flood"); });
+    if (TestNotNull(TEXT("Flood event contract"), Flood))
+    {
+        TestEqual(TEXT("Flood effect is explicit"), Flood->Effect, FName(TEXT("flooded_routes")));
+        TestTrue(TEXT("Flood has a warning before the effect"), Flood->WarningSeconds > 0.0);
+        TestTrue(TEXT("Flood has a positive duration"), Flood->DurationSeconds > 0.0);
+    }
+    return true;
+}
+
+
+// P1.3/P1.4: a natural event signals before becoming active, and its current phase is saved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNaturalEventSignalAndSaveContractTest,
+    "MyProject3.World.Events.SignalBeforeEffectAndSnapshot", Flags)
+bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
     UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
-    UWorldHudDataSubsystem* Hud = World ? World->GetSubsystem<UWorldHudDataSubsystem>() : nullptr;
-    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Event director"), Events) ||
-        !TestNotNull(TEXT("HUD contract"), Hud)) return false;
-    TestTrue(TEXT("Clock starts"), Clock->InitializeClock(27, 0.0));
-    FWorldNaturalEventDefinition Storm;
-    Storm.DefinitionId = TEXT("Test.Storm"); Storm.DisplayName = TEXT("Fırtına");
-    Storm.EffectId = TEXT("Test.StormEffect"); Storm.WarningDurationSeconds = 10.0;
-    Storm.ActiveDurationSeconds = 10.0; Storm.CooldownSeconds = 1.0;
-    Storm.MinimumIntervalSeconds = 1.0; Storm.MaximumIntervalSeconds = 1.0; Storm.TriggerChance = 1.0f;
-    TestTrue(TEXT("Register predecessor"), Events->RegisterEventDefinition(Storm));
-    FWorldNaturalEventDefinition Flood;
-    Flood.DefinitionId = TEXT("Test.Flood"); Flood.DisplayName = TEXT("Sel");
-    Flood.EffectId = TEXT("Test.FloodEffect"); Flood.TriggerAfterEventId = Storm.DefinitionId;
-    Flood.WarningDurationSeconds = 10.0; Flood.ActiveDurationSeconds = 10.0; Flood.CooldownSeconds = 1.0;
-    Flood.MinimumIntervalSeconds = 1.0; Flood.MaximumIntervalSeconds = 1.0; Flood.TriggerChance = 1.0f;
-    TestTrue(TEXT("Register chained event"), Events->RegisterEventDefinition(Flood));
-    TestTrue(TEXT("Definitions validate"), Events->ValidateDefinitions());
-    TestTrue(TEXT("Director initializes"), Events->InitializeDirector(27, 0.0));
-    TestTrue(TEXT("Storm enters warning"), Events->AdvanceToTime(1.0));
-    TArray<FWorldNaturalEventRecord> Current = Events->GetCurrentEvents();
-    TestEqual(TEXT("One warning event"), Current.Num(), 1);
-    TestTrue(TEXT("Storm warning state"), Current[0].DefinitionId == Storm.DefinitionId &&
-        Current[0].State == EWorldNaturalEventState::Warning);
-    TestTrue(TEXT("Storm enters active"), Events->AdvanceToTime(11.0));
-    Current = Events->GetCurrentEvents();
-    TestEqual(TEXT("One active event"), Current.Num(), 1);
-    TestTrue(TEXT("Storm active state"), Current[0].State == EWorldNaturalEventState::Active);
-    TestTrue(TEXT("Storm ends"), Events->AdvanceToTime(21.0));
-    TestEqual(TEXT("Completion history has predecessor"), Events->ExportSnapshot().CompletedHistory.Num(), 1);
-    TestTrue(TEXT("Flood warning follows storm completion"), Events->AdvanceToTime(22.0));
-    Current = Events->GetCurrentEvents();
-    TestEqual(TEXT("One chained warning"), Current.Num(), 1);
-    TestTrue(TEXT("Flood is current"), Current[0].DefinitionId == Flood.DefinitionId);
-    const FWorldEventDirectorSnapshot Saved = Events->ExportSnapshot();
-    FWorldHudDataSnapshot HudSnapshot;
-    TestTrue(TEXT("HUD reads shared calendar"), Hud->GetSnapshot(HudSnapshot));
-    TestTrue(TEXT("HUD includes event notifications"), HudSnapshot.EventNotifications.Num() > 0);
-    TestTrue(TEXT("Advance after snapshot"), Events->AdvanceToTime(32.0));
-    TestTrue(TEXT("Restore event snapshot"), Events->RestoreSnapshot(Saved));
-    Current = Events->GetCurrentEvents();
-    TestEqual(TEXT("One restored event"), Current.Num(), 1);
-    TestTrue(TEXT("Restored event ID is stable"), Current[0].EventInstanceId == Saved.RuntimeRecords[1].EventInstanceId);
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Climate"), Climate) || !TestNotNull(TEXT("Event director"), Events))
+        return false;
+    TestTrue(TEXT("Load data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply data"), Data->ApplyToWorld());
+    TestTrue(TEXT("Start clock"), Clock->InitializeClock(7391));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Initialize event director"), Events->InitializeEventDirector());
+
+    FWorldClimateSnapshot ForcedWeather = Climate->ExportSnapshot();
+    ForcedWeather.Weather = EWorldWeatherState::Snow;
+    ForcedWeather.Severity = 0.9f;
+    ForcedWeather.TemperatureCelsius = -4.0f;
+    ForcedWeather.SnowDepthCm = 210.0f;
+    ForcedWeather.GroundWetness = 0.2f;
+    ForcedWeather.WeatherDayIndex = 0;
+    TestTrue(TEXT("Force a reproducible snow day"), Climate->RestoreSnapshot(ForcedWeather));
+
+    TestTrue(TEXT("Event preflight"), Events->CanAdvanceEventStep(60.0, 60.0, 1));
+    TestTrue(TEXT("Advance into signal phase"), Events->AdvanceEventStep(60.0, 60.0, 1));
+    const TArray<FWorldNaturalEventInstance> SignalInstances = Events->GetEventInstances();
+    const FWorldNaturalEventInstance* Signal = SignalInstances.FindByPredicate(
+        [](const FWorldNaturalEventInstance& Instance)
+        { return Instance.DefinitionId == TEXT("Event.Snowstorm"); });
+    TestNotNull(TEXT("Snowstorm signal exists"), Signal);
+    if (Signal)
+    {
+        TestTrue(TEXT("Signal is not active before warning ends"), Signal->Phase == EWorldNaturalEventPhase::Signal);
+        TestTrue(TEXT("Signal time precedes effect time"), Signal->SignalStartedAtSeconds < Signal->StartsAtSeconds);
+    }
+
+    // The first 60-second event step was prospective; advance the shared clock
+    // to its committed boundary first: the step needs TargetTime = clock + delta.
+    TestTrue(TEXT("Advance clock to first event boundary"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Preflight at effect start"), Events->CanAdvanceEventStep(1800.0, 1860.0, 2));
+    TestTrue(TEXT("Advance into effect phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
+    const TArray<FWorldNaturalEventInstance> Active = Events->GetActiveNaturalEvents();
+    const FWorldNaturalEventInstance* ActiveSnow = Active.FindByPredicate(
+        [](const FWorldNaturalEventInstance& Instance)
+        { return Instance.DefinitionId == TEXT("Event.Snowstorm"); });
+    TestNotNull(TEXT("Snowstorm is active after warning"), ActiveSnow);
+    if (ActiveSnow)
+        TestTrue(TEXT("Effect phase active"), ActiveSnow->Phase == EWorldNaturalEventPhase::Active);
+
+    const FWorldEventDirectorSnapshot Snapshot = Events->ExportSnapshot();
+    TestTrue(TEXT("Restore the event snapshot"), Events->RestoreSnapshot(Snapshot));
+    TestTrue(TEXT("Active event survives snapshot round-trip"),
+        Events->GetActiveNaturalEvents().ContainsByPredicate(
+            [](const FWorldNaturalEventInstance& Instance)
+            { return Instance.DefinitionId == TEXT("Event.Snowstorm") &&
+                Instance.Phase == EWorldNaturalEventPhase::Active; }));
+    return true;
+}
+
+
+// P3.3: plaster is a persistent, idempotent operation on an already placed structure.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWallCoatingConsumesPlasterAndSealsGapsTest,
+    "MyProject3.World.Shelter.PlastersPlacedPieceIdempotently", Flags)
+bool FWallCoatingConsumesPlasterAndSealsGapsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    if (!TestNotNull(TEXT("World"), World))
+        return false;
+
+    AStoneBuildingPiece* Piece = World->SpawnActorDeferred<AStoneBuildingPiece>(
+        AStoneBuildingPiece::StaticClass(), FTransform::Identity);
+    if (!TestNotNull(TEXT("Deferred wall piece"), Piece))
+        return false;
+    Piece->bStartsPlaced = true;
+    Piece->FinishSpawning(FTransform::Identity);
+    UWallCoatingComponent* Coating = Piece->FindComponentByClass<UWallCoatingComponent>();
+    if (!TestNotNull(TEXT("Wall coating component"), Coating))
+        return false;
+    TestFalse(TEXT("Uncoated wall does not seal gaps"), Coating->ProvidesShelterSeal());
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner"), InventoryOwner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwner);
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    Inventory->ItemWeightGrams.Add(TEXT("Plaster"), 2000); // An inventory refuses items of unknown weight.
+    FInventoryStack Plaster;
+    Plaster.ItemId = TEXT("Plaster");
+    Plaster.Quantity = 2;
+    TestTrue(TEXT("Add plaster stack"), Inventory->TryAddItem(Plaster));
+
+    float CoatingLevel = 0.0f;
+    const FGuid Operation = FGuid::NewGuid();
+    TestTrue(TEXT("Apply first plaster unit"), Coating->TryApplyPlaster(Operation, Inventory, 1, 1, CoatingLevel));
+    TestEqual(TEXT("First unit gives 25 percent coating"), CoatingLevel, 0.25f);
+    TestEqual(TEXT("One unit consumed"), Inventory->GetItemCount(TEXT("Plaster")), 1);
+    TestFalse(TEXT("Partial coating does not seal gaps yet"), Coating->ProvidesShelterSeal());
+
+    float RetryLevel = 0.0f;
+    TestTrue(TEXT("Same operation is idempotent"), Coating->TryApplyPlaster(Operation, Inventory, 1, 1, RetryLevel));
+    TestEqual(TEXT("Retry does not consume another unit"), Inventory->GetItemCount(TEXT("Plaster")), 1);
+    TestEqual(TEXT("Retry returns the recorded result"), RetryLevel, 0.25f);
+
+    TestTrue(TEXT("Apply second plaster unit"), Coating->TryApplyPlaster(FGuid::NewGuid(), Inventory, 1, 2, CoatingLevel));
+    TestTrue(TEXT("Half coating seals small shelter gaps"), Coating->ProvidesShelterSeal());
+    TestFalse(TEXT("Stale revision refuses more plaster"), Coating->TryApplyPlaster(FGuid::NewGuid(), Inventory, 1, 2, CoatingLevel));
+    TestEqual(TEXT("Stale request leaves inventory intact"), Inventory->GetItemCount(TEXT("Plaster")), 0);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFloodClosesAndRestoresFloodProneRoutesTest,
+    "MyProject3.World.Logistics.FloodClosuresAndRouteSnapshot", Flags)
+bool FFloodClosesAndRestoresFloodProneRoutesTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldLogisticsRouteSubsystem* Routes =
+        World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Route subsystem"), Routes))
+        return false;
+
+    FLogisticsRouteNode Start;
+    Start.NodeId = TEXT("Village");
+    Start.Location = FVector(0.0, 0.0, 0.0);
+    FLogisticsRouteNode Crossing;
+    Crossing.NodeId = TEXT("RiverCrossing");
+    Crossing.Location = FVector(1000.0, 0.0, 0.0);
+    FLogisticsRouteNode Goal;
+    Goal.NodeId = TEXT("Forest");
+    Goal.Location = FVector(2000.0, 0.0, 0.0);
+    TestTrue(TEXT("Register village"), Routes->UpsertNode(Start));
+    TestTrue(TEXT("Register river crossing"), Routes->UpsertNode(Crossing));
+    TestTrue(TEXT("Register forest"), Routes->UpsertNode(Goal));
+
+    FLogisticsRouteEdge FloodEdge;
+    FloodEdge.FromNode = Start.NodeId;
+    FloodEdge.ToNode = Crossing.NodeId;
+    FloodEdge.Cost = 1.0f;
+    FloodEdge.bFloodProne = true;
+    FLogisticsRouteEdge SafeEdge;
+    SafeEdge.FromNode = Crossing.NodeId;
+    SafeEdge.ToNode = Goal.NodeId;
+    SafeEdge.Cost = 1.0f;
+    TestTrue(TEXT("Register flood-prone edge"), Routes->UpsertEdge(FloodEdge));
+    TestTrue(TEXT("Register safe edge"), Routes->UpsertEdge(SafeEdge));
+
+    TArray<FName> Path;
+    float Cost = 0.0f;
+    TestTrue(TEXT("Route is open before a flood"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+    const FGuid FloodId = FGuid::NewGuid();
+    TestTrue(TEXT("Activate flood route claim"), Routes->ApplyActiveFloodEvents({ FloodId }));
+    TestFalse(TEXT("Flood-prone edge blocks the route"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+
+    FWorldLogisticsRouteSnapshot Snapshot;
+    Routes->ExportSnapshot(Snapshot);
+    TestTrue(TEXT("Route snapshot restores"), Routes->RestoreSnapshot(Snapshot));
+    TestFalse(TEXT("Saved flood claim remains active"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+
+    TestTrue(TEXT("Clear ended flood claims"), Routes->ApplyActiveFloodEvents({}));
+    TestTrue(TEXT("Route reopens after the flood"), Routes->FindRoute(Start.NodeId, Goal.NodeId, Path, Cost));
+    TestEqual(TEXT("Route returns three nodes"), Path.Num(), 3);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRaidPressureRespondsToStoredFoodLightAndSmokeTest,
+    "MyProject3.World.Threat.RaidPressureUsesFoodStorageLightAndSmoke", Flags)
+bool FRaidPressureRespondsToStoredFoodLightAndSmokeTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldThreatDirectorSubsystem* Threat = World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Threat director"), Threat) ||
+        !TestNotNull(TEXT("Item ownership"), Ownership))
+        return false;
+
+    TestTrue(TEXT("Load game data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply game data"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize deterministic clock"), Clock->InitializeClock(72419));
+    TestTrue(TEXT("Initialize raid director"), Threat->InitializeDirector(0.0));
+
+    // Capture the pressure of a quiet settlement first. The same seed, time, and
+    // serial are used after signals are added so the delta comes from world state.
+    TestTrue(TEXT("Schedule quiet raid"), Threat->AdvanceDirectorAtTime(1.0, 1));
+    FThreatRaidRecord QuietRaid;
+    TestTrue(TEXT("Read quiet raid"), Threat->GetCurrentRaid(QuietRaid));
+
+    const FVector StorageLocation(1800.0, -450.0, 40.0);
+    ALogContainerActor* FoodStorage = World->SpawnActor<ALogContainerActor>(
+        ALogContainerActor::StaticClass(), StorageLocation, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Food storage actor"), FoodStorage))
+        return false;
+    const FGuid StorageId = FoodStorage->GetStorageId();
+    if (!TestTrue(TEXT("Storage has a runtime ID"), StorageId.IsValid()))
+        return false;
+
+    FWorldOwnedItemRecord Meat;
+    Meat.ItemId = FGuid::NewGuid();
+    Meat.DefinitionId = TEXT("Meat.Raw");
+    Meat.BaseDefinitionId = Meat.DefinitionId;
+    Meat.Quantity = 16;
+    Meat.OwnerKind = EWorldItemOwnerKind::Storage;
+    Meat.OwnerId = StorageId;
+    Meat.WorldLocation = StorageLocation;
+    Meat.CreatedAtWorldTimeSeconds = 0.0;
+    TestTrue(TEXT("Register stored food in the ownership ledger"), Ownership->RegisterItem(Meat));
+
+    AActor* FireActor = World->SpawnActor<AActor>(
+        AActor::StaticClass(), StorageLocation + FVector(180.0, 0.0, 0.0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Fire actor"), FireActor))
+        return false;
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor, TEXT("RaidSignalHeat"));
+    if (!TestNotNull(TEXT("Heat component"), Fire))
+        return false;
+    FireActor->AddInstanceComponent(Fire);
+    FireActor->SetRootComponent(Fire);
+    Fire->RegisterComponent();
+    TestTrue(TEXT("Provide fuel to the heat source"), Fire->AddFuel(1800.0f));
+    TestTrue(TEXT("Light the heat source"), Fire->Ignite());
+
+    TestTrue(TEXT("Reset director against the same schedule"), Threat->InitializeDirector(0.0));
+    TestTrue(TEXT("Schedule signal-driven raid"), Threat->AdvanceDirectorAtTime(1.0, 1));
+    FThreatRaidRecord SignalRaid;
+    TestTrue(TEXT("Read signal-driven raid"), Threat->GetCurrentRaid(SignalRaid));
+
+    TestTrue(TEXT("Stored food, light, and smoke raise raid pressure"),
+        SignalRaid.Pressure > QuietRaid.Pressure + 0.25f);
+    TestTrue(TEXT("Target stays near the food/fire signal cluster"),
+        FVector::Dist2D(SignalRaid.TargetLocation, StorageLocation) < 1000.0f);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FForestFireDamagesNearbyWoodStructuresTest,
+    "MyProject3.World.Events.ForestFireDamagesNearbyWoodStructures", Flags)
+bool FForestFireDamagesNearbyWoodStructuresTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), Data) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Event director"), Events) || !TestNotNull(TEXT("Structural graph"), Graph))
+        return false;
+
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply game data"), Data->ApplyToWorld());
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(81427));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Initialize event director"), Events->InitializeEventDirector());
+
+    // Like real pieces: a root so the location sticks, an identity so the graph can export it.
+    auto SpawnWood = [World](const FVector& Location) -> AActor*
+    {
+        AActor* Actor = World->SpawnActor<AActor>();
+        if (!Actor)
+            return nullptr;
+        USceneComponent* Root = NewObject<USceneComponent>(Actor);
+        Actor->SetRootComponent(Root);
+        Root->RegisterComponent();
+        Actor->SetActorLocation(Location);
+        UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(Actor);
+        Actor->AddInstanceComponent(Identity);
+        Identity->RegisterComponent();
+        Identity->EnsureIdentity();
+        return Actor;
+    };
+    AActor* WoodA = SpawnWood(FVector(100.0, 0.0, 0.0));
+    AActor* WoodB = SpawnWood(FVector(650.0, 0.0, 0.0));
+    if (!TestNotNull(TEXT("First wooden structure"), WoodA) ||
+        !TestNotNull(TEXT("Second wooden structure"), WoodB))
+        return false;
+
+    const FGuid WoodAId = FGuid::NewGuid();
+    const FGuid WoodBId = FGuid::NewGuid();
+    TestTrue(TEXT("Register first wooden structure"),
+        Graph->RegisterNode(WoodA, WoodAId, EStructuralNodeKind::Wood, true, 0.0f, 10000.0f, 100.0f));
+    TestTrue(TEXT("Register second wooden structure"),
+        Graph->RegisterNode(WoodB, WoodBId, EStructuralNodeKind::Stick, true, 0.0f, 10000.0f, 100.0f));
+
+    FWorldClimateSnapshot ForcedHeatwave = Climate->ExportSnapshot();
+    ForcedHeatwave.Weather = EWorldWeatherState::Heatwave;
+    ForcedHeatwave.Severity = 0.95f;
+    ForcedHeatwave.TemperatureCelsius = 35.0f;
+    ForcedHeatwave.SnowDepthCm = 0.0f;
+    ForcedHeatwave.GroundWetness = 0.0f;
+    ForcedHeatwave.WeatherDayIndex = 0;
+    TestTrue(TEXT("Force deterministic heatwave"), Climate->RestoreSnapshot(ForcedHeatwave));
+
+    TestTrue(TEXT("Signal forest fire"), Events->AdvanceEventStep(60.0, 60.0, 1));
+    TestTrue(TEXT("Advance shared clock to warning boundary"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Advance forest fire to active phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
+
+    FStructuralNodeRecord DamagedA;
+    FStructuralNodeRecord DamagedB;
+    TestTrue(TEXT("Read first structure"), Graph->GetNode(WoodAId, DamagedA));
+    TestTrue(TEXT("Read second structure"), Graph->GetNode(WoodBId, DamagedB));
+    TestTrue(TEXT("Fire effect damages nearby flammable structure"),
+        DamagedA.Damage > 0.0f || DamagedB.Damage > 0.0f);
+    TestTrue(TEXT("Only wooden or stick nodes are included in fire spread"),
+        DamagedA.Damage > 0.0f && DamagedB.Damage > 0.0f);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWorldZonesAndDiscoveryContractsTest,
+    "MyProject3.World.Exploration.RegionsAndDiscoveryUnlocks", Flags)
+bool FWorldZonesAndDiscoveryContractsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Simulation clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+
+    TestTrue(TEXT("Load all region/discovery data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply world data and register discovery definitions"), GameData->ApplyToWorld());
+    TestEqual(TEXT("Exactly five ecological zones"), GameData->GetZones().Num(), 5);
+    TestEqual(TEXT("Six data-authored discoveries"), GameData->GetDiscoveries().Num(), 6);
+    TestTrue(TEXT("Abandoned-camp rope recipe is discovery-gated"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("twist_rope")));
+    TestTrue(TEXT("Ochre grinding is discovery-gated"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("grind_ochre")));
+    TestTrue(TEXT("Hide curing is discovery-gated"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("cure_hide")));
+    TestFalse(TEXT("Ordinary drying remains available before discovery"),
+        GameData->IsDiscoveryGatedDefinition(TEXT("dry_grain")));
+
+    const FGameDataZone* CreekZone =
+        GameData->FindZoneAtLocation(FVector(1150.0f, -950.0f, 25.0f));
+    TestNotNull(TEXT("Reed-bed position resolves to a zone"), CreekZone);
+    if (CreekZone)
+        TestTrue(TEXT("Reed-bed belongs to the creek bank"), CreekZone->Id == TEXT("Zone.RiverBank"));
+
+    const FGameDataZone* ForestZone =
+        GameData->FindZoneAtLocation(FVector(1750.0f, 950.0f, 0.0f));
+    TestNotNull(TEXT("Flint-outcrop position resolves to a zone"), ForestZone);
+    if (ForestZone)
+        TestTrue(TEXT("Flint outcrop belongs to high forest"), ForestZone->Id == TEXT("Zone.HighForest"));
+
+    TestTrue(TEXT("Points outside all zone radii have no region"),
+        GameData->FindZoneAtLocation(FVector(9000.0f, 9000.0f, 0.0f)) == nullptr);
+    const FGameDataZone* Valley = GameData->FindZone(TEXT("Zone.BaseValley"));
+    TestNotNull(TEXT("Zone lookup by stable ID"), Valley);
+    if (Valley)
+        TestEqual(TEXT("Base valley has stable index zero"), Valley->Index, 0);
+
+    for (const FGameDataCrop& Crop : GameData->GetCrops())
+    {
+        TestTrue(FString::Printf(TEXT("Crop %s references a registered zone index"), *Crop.Id.ToString()),
+            GameData->GetZones().ContainsByPredicate([&Crop](const FGameDataZone& Zone)
+            { return Zone.Index == Crop.FoundInZone; }));
+    }
+
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(90121));
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(930.0f, -690.0f, 0.0f);
+    TestTrue(TEXT("Register discovery test profile"), Survival->RegisterProfile(Profile));
+
+    FWorldSurvivalProfile CurrentProfile;
+    TestTrue(TEXT("Read discovery test profile"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
+    TestTrue(TEXT("Record grain-seed discovery through the existing transaction"),
+        Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId,
+            CurrentProfile.Revision, TEXT("Discovery.GrainSeeds"),
+            FVector(930.0f, -690.0f, 0.0f), Clock->GetSimulationTimeSeconds()));
+    TestTrue(TEXT("Discovery unlock is reflected in the survival ledger"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
+    TestTrue(TEXT("Discovery is recorded once"),
+        Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
+        { return Record.DiscoveryId == TEXT("Discovery.GrainSeeds"); }));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDiscoveryMarkerGrantsRewardAtomicallyTest,
+    "MyProject3.World.Exploration.MarkerRecordsUnlockAndGrantsRewardOnce", Flags)
+bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Item ownership"), Ownership) || !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+
+    TestTrue(TEXT("Load game data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply zones/discoveries, crop definitions and recipe gates"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(90123));
+
+    // Grain can only be planted in April or May. Advance via the common clock,
+    // not by editing crop state or bypassing the calendar.
+    FWorldCalendarDate Date;
+    TestTrue(TEXT("Read initial calendar date"), Clock->GetCalendarDate(Date));
+    for (int32 DayStep = 0; DayStep < 6 && Date.Month != 4; ++DayStep)
+    {
+        TestTrue(TEXT("Advance one whole game day"), Clock->AdvanceSimulation(86400.0));
+        TestTrue(TEXT("Read updated calendar date"), Clock->GetCalendarDate(Date));
+    }
+    TestEqual(TEXT("Test planting happens in April"), Date.Month, 4);
+
+    const FVector Location(930.0f, -690.0f, 100.0f);
+    APlayerController* Controller = World->SpawnActor<APlayerController>(
+        APlayerController::StaticClass(), FTransform::Identity);
+    ALogSnapCharacter* Pawn = World->SpawnActor<ALogSnapCharacter>(
+        ALogSnapCharacter::StaticClass(), Location, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Player controller"), Controller) ||
+        !TestNotNull(TEXT("Player character"), Pawn))
+        return false;
+    Controller->Possess(Pawn);
+
+    UShelterSensorComponent* Shelter =
+        Pawn->FindComponentByClass<UShelterSensorComponent>();
+    UInventoryCraftingComponent* Inventory =
+        Pawn->FindComponentByClass<UInventoryCraftingComponent>();
+    if (!TestNotNull(TEXT("Player shelter profile link"), Shelter) ||
+        !TestNotNull(TEXT("Player inventory"), Inventory))
+        return false;
+    TestTrue(TEXT("Configure player inventory weights/recipes"), GameData->ApplyToInventory(Inventory));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = Location;
+    TestTrue(TEXT("Register player survival profile"), Survival->RegisterProfile(Profile));
+    Shelter->SurvivalEntityId = Profile.EntityId;
+
+    const FIntVector PlotCell(9, -7, 0);
+    FWorldFieldCellState FieldCell;
+    TestTrue(TEXT("Prepare the target soil cell"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), PlotCell,
+            EWorldFieldActionKind::Clear, 0, 0.0f));
+    TestTrue(TEXT("Till the cleared soil cell"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), PlotCell,
+            EWorldFieldActionKind::Till, 1, 0.0f));
+
+    // Add a valid but undiscovered unique seed to prove the gate belongs inside
+    // TryPlantCrop itself, not just the discovery-marker interaction.
+    FWorldOwnedItemRecord InitialSeed;
+    InitialSeed.ItemId = FGuid::NewGuid();
+    InitialSeed.DefinitionId = TEXT("Seed.Grain");
+    InitialSeed.BaseDefinitionId = TEXT("Seed.Grain");
+    InitialSeed.Quantity = 1;
+    InitialSeed.OwnerKind = EWorldItemOwnerKind::Inventory;
+    InitialSeed.OwnerId = Inventory->GetInventoryOwnerId();
+    InitialSeed.WorldLocation = Location;
+    TestTrue(TEXT("Register the initial unique seed in the ownership ledger"),
+        Ownership->RegisterItem(InitialSeed));
+
+    FInventoryStack InitialSeedStack;
+    InitialSeedStack.ItemId = TEXT("Seed.Grain");
+    InitialSeedStack.Quantity = 1;
+    InitialSeedStack.Category = EInventoryItemCategory::Resource;
+    InitialSeedStack.MaxStack = 1;
+    InitialSeedStack.OwnedWorldItemId = InitialSeed.ItemId;
+    TestTrue(TEXT("Add the seed as an owned inventory reference"),
+        Inventory->TryAddItem(InitialSeedStack));
+
+    FGuid RejectedCropId;
+    TestFalse(TEXT("Seed ownership alone cannot bypass the discovery gate"),
+        Agriculture->TryPlantCrop(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory->GetInventoryOwnerId(), PlotCell, 0.5f, RejectedCropId));
+    FWorldOwnedItemRecord SeedBeforeDiscovery;
+    TestTrue(TEXT("Rejected planting leaves the seed in the ownership ledger"),
+        Ownership->TryGetItem(InitialSeed.ItemId, SeedBeforeDiscovery));
+    TestTrue(TEXT("Rejected planting preserves seed inventory ownership"),
+        SeedBeforeDiscovery.OwnerKind == EWorldItemOwnerKind::Inventory &&
+        SeedBeforeDiscovery.OwnerId == Inventory->GetInventoryOwnerId());
+
+    AWorldDiscoveryMarkerActor* Marker = World->SpawnActor<AWorldDiscoveryMarkerActor>(
+        AWorldDiscoveryMarkerActor::StaticClass(), Location, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Discovery marker"), Marker))
+        return false;
+    Marker->DiscoveryId = TEXT("Discovery.GrainSeeds");
+    Marker->DisplayName = TEXT("Grain seeds");
+    Marker->RevealRadiusCm = 300.0f;
+    Marker->RewardItemId = TEXT("Seed.Grain");
+    Marker->RewardQuantity = 2;
+    Marker->bRewardUniqueItems = true;
+
+    Marker->Tick(1.0f);
+    TestTrue(TEXT("Marker records the configured discovery"),
+        Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
+        { return Record.DiscoveryId == TEXT("Discovery.GrainSeeds"); }));
+    TestTrue(TEXT("Discovery unlock is available through the survival ledger"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
+    TestEqual(TEXT("Two new seed items are granted"), Inventory->GetItemCount(TEXT("Seed.Grain")), 3);
+
+    TArray<FGuid> OwnedSeedIds;
+    for (const FInventoryStack& Stack : Inventory->Items)
+        if (Stack.ItemId == TEXT("Seed.Grain") && Stack.OwnedWorldItemId.IsValid())
+            OwnedSeedIds.Add(Stack.OwnedWorldItemId);
+    TestEqual(TEXT("Original seed plus two rewards each have a ledger identity"), OwnedSeedIds.Num(), 3);
+    for (const FGuid& ItemId : OwnedSeedIds)
+    {
+        FWorldOwnedItemRecord Item;
+        TestTrue(TEXT("Seed exists in ownership ledger"), Ownership->TryGetItem(ItemId, Item));
+        TestTrue(TEXT("Seed is owned by this inventory"),
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            Item.OwnerId == Inventory->GetInventoryOwnerId() &&
+            Item.DefinitionId == TEXT("Seed.Grain"));
+    }
+
+    Marker->Tick(1.0f);
+    TestEqual(TEXT("Repeating marker tick cannot duplicate seed reward"),
+        Inventory->GetItemCount(TEXT("Seed.Grain")), 3);
+
+    FWorldSurvivalProfile BeforePlantingWork;
+    TestTrue(TEXT("Read survival state before planting labor"),
+        Survival->GetProfile(Profile.EntityId, BeforePlantingWork));
+    FGuid CropId;
+    const FGuid PlantOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Discovered seed can now be planted through the labor transaction"),
+        Agriculture->TryPlantCropWithLabor(PlantOperation, TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory, Profile.EntityId, PlotCell, 0.5f, CropId));
+    FWorldSurvivalProfile AfterPlantingWork;
+    TestTrue(TEXT("Read survival state after planting labor"),
+        Survival->GetProfile(Profile.EntityId, AfterPlantingWork));
+    TestTrue(TEXT("Planting charges activity energy"),
+        AfterPlantingWork.PendingActivityKcal > BeforePlantingWork.PendingActivityKcal);
+    TestTrue(TEXT("Planting charges stamina"),
+        AfterPlantingWork.Stamina < BeforePlantingWork.Stamina);
+
+    FGuid RetryCropId;
+    TestTrue(TEXT("Planting retry returns the original crop"),
+        Agriculture->TryPlantCropWithLabor(PlantOperation, TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory, Profile.EntityId, PlotCell, 0.5f, RetryCropId));
+    TestTrue(TEXT("Planting retry preserves the original crop identity"), RetryCropId == CropId);
+    FWorldSurvivalProfile AfterPlantingRetry;
+    TestTrue(TEXT("Read profile after planting retry"),
+        Survival->GetProfile(Profile.EntityId, AfterPlantingRetry));
+    TestEqual(TEXT("Planting retry does not charge labor twice"),
+        AfterPlantingRetry.PendingActivityKcal, AfterPlantingWork.PendingActivityKcal);
+    TestEqual(TEXT("Planting retry does not drain stamina twice"),
+        AfterPlantingRetry.Stamina, AfterPlantingWork.Stamina);
+    FWorldCropState PlantedCrop;
+    TestTrue(TEXT("Successful planting produces a crop record"),
+        Agriculture->GetCrop(CropId, PlantedCrop));
+    TestTrue(TEXT("Planted crop records the expected seed definition"),
+        PlantedCrop.SeedDefinitionId == TEXT("Seed.Grain"));
+    FWorldOwnedItemRecord ConsumedSeed;
+    TestTrue(TEXT("Consumed seed remains traceable in the ledger"),
+        Ownership->TryGetItem(InitialSeed.ItemId, ConsumedSeed));
+    TestTrue(TEXT("Planting transitions the seed out of inventory ownership"),
+        ConsumedSeed.OwnerKind == EWorldItemOwnerKind::Consumed);
+    TestEqual(TEXT("Only the two unplanted reward seeds remain"), Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFieldActionConsumesConfiguredInputsAndChargesLaborTest,
+    "MyProject3.World.Farming.FieldActionsConsumeInputsAndChargeLabor", Flags)
+bool FFieldActionConsumesConfiguredInputsAndChargesLaborTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+
+    TestTrue(TEXT("Load field action definitions"), GameData->LoadDefault());
+    TestEqual(TEXT("All seven field actions loaded"), GameData->GetFieldActions().Num(), 7);
+    TestTrue(TEXT("Apply field action definitions to agriculture"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared world clock"), Clock->InitializeClock(65431));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(0.0, 0.0, 0.0);
+    TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Inventory owner actor"), InventoryOwner))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryOwner, TEXT("FieldActionTestInventory"));
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Backfill configured item weights"), GameData->ApplyToInventory(Inventory));
+
+    auto AddStack = [this, Inventory, GameData](FName ItemId, int32 Quantity, EInventoryItemCategory Category)
+    {
+        const FGameDataItem* Definition = GameData->GetItems().Find(ItemId);
+        if (!Definition || Quantity <= 0)
+            return false;
+        FInventoryStack Stack;
+        Stack.ItemId = ItemId;
+        Stack.Quantity = Quantity;
+        Stack.Category = Category;
+        Stack.MaxStack = Category == EInventoryItemCategory::Tool ? 1 : 99;
+        Stack.bIsTool = Category == EInventoryItemCategory::Tool;
+        return Inventory->TryAddItem(Stack);
+    };
+
+    TestTrue(TEXT("Provide reusable axe"), AddStack(TEXT("Tool.Axe"), 1, EInventoryItemCategory::Tool));
+
+    FWorldFieldCellState OutCell;
+    const FIntVector Cell(12, -4, 0);
+    FWorldSurvivalProfile BeforeRejectedAction;
+    TestTrue(TEXT("Read profile before rejected field action"),
+        Survival->GetProfile(Profile.EntityId, BeforeRejectedAction));
+    TestFalse(TEXT("Fence rejects missing material before mutating a field"),
+        Agriculture->TryApplyFieldActionWithInventory(FGuid::NewGuid(), Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Fence, 0, OutCell));
+    FWorldFieldCellState UnchangedCell;
+    TestFalse(TEXT("Rejected action leaves the field cell absent"),
+        Agriculture->GetFieldCell(Cell, UnchangedCell));
+    FWorldSurvivalProfile AfterRejectedAction;
+    TestTrue(TEXT("Read profile after rejected field action"),
+        Survival->GetProfile(Profile.EntityId, AfterRejectedAction));
+    TestEqual(TEXT("Rejected action does not charge labor"),
+        AfterRejectedAction.PendingActivityKcal, BeforeRejectedAction.PendingActivityKcal);
+    TestEqual(TEXT("Rejected action does not drain stamina"),
+        AfterRejectedAction.Stamina, BeforeRejectedAction.Stamina);
+
+    TestTrue(TEXT("Provide four sticks"), AddStack(TEXT("Stick"), 4, EInventoryItemCategory::Resource));
+    TestTrue(TEXT("Provide one rope"), AddStack(TEXT("Rope"), 1, EInventoryItemCategory::Resource));
+
+
+    const FGuid ClearOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Clear a field with an axe"),
+        Agriculture->TryApplyFieldActionWithInventory(ClearOperation, Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Clear, 0, OutCell));
+    TestTrue(TEXT("Cell is cleared"), OutCell.bCleared);
+    TestEqual(TEXT("Cell revision increments"), OutCell.Revision, int64(1));
+    TestEqual(TEXT("Reusable axe is not consumed"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+
+    FWorldSurvivalProfile AfterClear;
+    TestTrue(TEXT("Read profile after field work"), Survival->GetProfile(Profile.EntityId, AfterClear));
+    const float KcalAfterClear = AfterClear.PendingActivityKcal;
+    const float StaminaAfterClear = AfterClear.Stamina;
+    TestTrue(TEXT("Field work charges activity energy"), KcalAfterClear > 0.0f);
+    TestTrue(TEXT("Field work drains stamina"), StaminaAfterClear < 100.0f);
+
+    FWorldFieldCellState RetryCell;
+    TestTrue(TEXT("Same operation ID returns its committed result"),
+        Agriculture->TryApplyFieldActionWithInventory(ClearOperation, Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Clear, 0, RetryCell));
+    FWorldSurvivalProfile AfterRetry;
+    TestTrue(TEXT("Read profile after retry"), Survival->GetProfile(Profile.EntityId, AfterRetry));
+    TestEqual(TEXT("Retry does not charge activity twice"), AfterRetry.PendingActivityKcal, KcalAfterClear);
+    TestEqual(TEXT("Retry does not drain stamina twice"), AfterRetry.Stamina, StaminaAfterClear);
+
+    const FGuid FenceOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Fence a cleared cell with configured material costs"),
+        Agriculture->TryApplyFieldActionWithInventory(FenceOperation, Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Fence, 1, OutCell));
+    TestTrue(TEXT("Cell is fenced"), OutCell.bFenced);
+    TestEqual(TEXT("Fence operation advances field revision"), OutCell.Revision, int64(2));
+    TestEqual(TEXT("Fence consumes its four sticks"), Inventory->GetItemCount(TEXT("Stick")), 0);
+    TestEqual(TEXT("Fence consumes its rope"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestEqual(TEXT("Reusable axe remains available after both actions"),
+        Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCropHarvestToInventoryChargesAuthoredLaborTest,
+    "MyProject3.World.Farming.HarvestToInventoryChargesLaborAndIsIdempotent", Flags)
+bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+
+    TestTrue(TEXT("Load game data"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply crop definitions"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(77129));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    TestTrue(TEXT("Register harvester profile"), Survival->RegisterProfile(Profile));
+
+    AActor* InventoryOwner = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("Inventory owner"), InventoryOwner))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryOwner, TEXT("HarvestTestInventory"));
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryOwner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Configure item weights"), GameData->ApplyToInventory(Inventory));
+
+    const FGameDataCrop* CropDefinition = GameData->GetCrops().FindByPredicate(
+        [](const FGameDataCrop& Candidate) { return Candidate.Id == TEXT("Crop.Grain"); });
+    if (!TestNotNull(TEXT("Grain crop definition"), CropDefinition))
+        return false;
+
+    FWorldCropState Crop;
+    Crop.CropId = FGuid::NewGuid();
+    Crop.CropDefinitionId = CropDefinition->Id;
+    Crop.PlotCell = FIntVector(-3, 12, 0);
+    Crop.Stage = ECropGrowthStage::Mature;
+    Crop.Moisture = 0.75f;
+    Crop.SecondsPerStage = CropDefinition->SecondsPerStage;
+    Crop.Revision = 1;
+    Crop.SeedDefinitionId = CropDefinition->SeedItemId;
+    Crop.HarvestDefinitionId = CropDefinition->HarvestItemId;
+    Crop.HarvestUnits = CropDefinition->HarvestUnits;
+    Crop.SeedReturnUnits = CropDefinition->SeedReturnUnits;
+    TestTrue(TEXT("Register mature crop"), Agriculture->RegisterCrop(Crop));
+
+    FWorldSurvivalProfile BeforeHarvest;
+    TestTrue(TEXT("Read profile before harvest"), Survival->GetProfile(Profile.EntityId, BeforeHarvest));
+    const FGuid HarvestOperation = FGuid::NewGuid();
+    TArray<FGuid> OutputIds;
+    TestTrue(TEXT("Harvest all outputs into the player's inventory"),
+        Agriculture->TryHarvestCropToInventory(HarvestOperation, Crop.CropId, Crop.Revision,
+            Inventory, Profile.EntityId, OutputIds));
+
+    TestEqual(TEXT("Harvest outputs include produce and returned seeds"),
+        OutputIds.Num(), CropDefinition->HarvestUnits + CropDefinition->SeedReturnUnits);
+    TestEqual(TEXT("Produce is in the inventory"),
+        Inventory->GetItemCount(CropDefinition->HarvestItemId), CropDefinition->HarvestUnits);
+    TestEqual(TEXT("Returned seeds are in the inventory"),
+        Inventory->GetItemCount(CropDefinition->SeedItemId), CropDefinition->SeedReturnUnits);
+
+    for (const FGuid& OutputId : OutputIds)
+    {
+        FWorldOwnedItemRecord Item;
+        TestTrue(TEXT("Each output remains ledger-backed"), Ownership->TryGetItem(OutputId, Item));
+        TestTrue(TEXT("Each output is owned by the player inventory"),
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            Item.OwnerId == Inventory->GetInventoryOwnerId());
+    }
+
+    FWorldSurvivalProfile AfterHarvest;
+    TestTrue(TEXT("Read profile after harvest"), Survival->GetProfile(Profile.EntityId, AfterHarvest));
+    TestTrue(TEXT("Harvest charges the crop's authored labor energy"),
+        AfterHarvest.PendingActivityKcal > BeforeHarvest.PendingActivityKcal);
+    TestTrue(TEXT("Harvest charges stamina"),
+        AfterHarvest.Stamina < BeforeHarvest.Stamina);
+
+    TArray<FGuid> RetryIds;
+    TestTrue(TEXT("Retry returns the same committed harvest"),
+        Agriculture->TryHarvestCropToInventory(HarvestOperation, Crop.CropId, Crop.Revision,
+            Inventory, Profile.EntityId, RetryIds));
+    TestEqual(TEXT("Retry preserves output count"), RetryIds.Num(), OutputIds.Num());
+    for (int32 Index = 0; Index < FMath::Min(RetryIds.Num(), OutputIds.Num()); ++Index)
+        TestTrue(TEXT("Retry returns the original output identity"), RetryIds[Index] == OutputIds[Index]);
+
+    FWorldSurvivalProfile AfterRetry;
+    TestTrue(TEXT("Read profile after harvest retry"), Survival->GetProfile(Profile.EntityId, AfterRetry));
+    TestEqual(TEXT("Retry does not charge labor twice"),
+        AfterRetry.PendingActivityKcal, AfterHarvest.PendingActivityKcal);
+    TestEqual(TEXT("Retry does not drain stamina twice"),
+        AfterRetry.Stamina, AfterHarvest.Stamina);
     return true;
 }
 
@@ -1073,75 +1899,33 @@ bool FSledTowOngoingCostTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read charged profile"), Survival->GetProfile(Profile.EntityId, After));
     TestEqual(TEXT("One minute of towing costs two stamina"), After.Stamina, 98.0f, 0.01f);
     TestTrue(TEXT("Towing reports activity energy"), After.PendingActivityKcal > 0.0f);
-    TestTrue(TEXT("The sled remains towed when the puller has stamina"), Sled->IsTowed());
+    TestFalse(TEXT("The sled remains towed when the puller has stamina"), !Sled->IsTowed());
     TestTrue(TEXT("Release towing"), Sled->ToggleTow(Puller));
     return true;
 }
 
-
-// P3.4: fire-dependent production pauses without losing progress and resumes when the condition returns.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProductionStationFirePauseResumeTest,
-    "MyProject3.World.Production.FireDependentJobsPauseAndResume", Flags)
-bool FProductionStationFirePauseResumeTest::RunTest(const FString& Parameters)
+// P1.4: the HUD data reads date, season and weather from the shared clock and climate.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHudDataSnapshotTest,
+    "MyProject3.World.Hud.SnapshotShowsDateAndWeather", Flags)
+bool FHudDataSnapshotTest::RunTest(const FString& Parameters)
 {
     FTestWorld TestWorld;
     UWorld* World = TestWorld.World;
-    UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
-    if (!TestNotNull(TEXT("Production subsystem"), Production))
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldHudDataSubsystem* Hud = World ? World->GetSubsystem<UWorldHudDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) || !TestNotNull(TEXT("Hud"), Hud))
         return false;
-
-    FWorldProductionStation Station;
-    Station.StationId = FGuid::NewGuid();
-    Station.StationTag = TEXT("charcoal_pit");
-    Station.StorageCapacityUnits = 32;
-    Station.bRequiresFire = true;
-    Station.bFireRequirementSatisfied = true;
-    TestTrue(TEXT("Register station"), Production->RegisterStation(Station));
-
-    FWorldProductionRecipe Recipe;
-    Recipe.RecipeId = TEXT("Test.Charcoal");
-    Recipe.RequiredStationTag = TEXT("charcoal_pit");
-    Recipe.DurationSeconds = 120.0;
-    FProductionIngredient Input;
-    Input.ItemId = TEXT("Firewood");
-    Input.Quantity = 6;
-    Recipe.Inputs.Add(Input);
-    FProductionIngredient Output;
-    Output.ItemId = TEXT("Charcoal");
-    Output.Quantity = 3;
-    Recipe.Outputs.Add(Output);
-    TestTrue(TEXT("Register recipe"), Production->RegisterRecipe(Recipe));
-
-    FWorldProductionStation Current;
-    TestTrue(TEXT("Read station"), Production->GetStation(Station.StationId, Current));
-    TestTrue(TEXT("Deposit firewood"), Production->AddStock(Station.StationId, TEXT("Firewood"), 6, Current.Revision));
-    TestTrue(TEXT("Read stocked station"), Production->GetStation(Station.StationId, Current));
-    FGuid JobId;
-    TestTrue(TEXT("Enqueue charcoal job"), Production->TryEnqueueJob(
-        FGuid::NewGuid(), Station.StationId, Recipe.RecipeId, Current.Revision, JobId));
-
-    TestTrue(TEXT("Fire goes out"), Production->ConfigureStationFireRequirement(
-        Station.StationId, true, false, false));
-    TestTrue(TEXT("Advance with no fire"), Production->AdvanceProductionStep(60.0));
-    TestTrue(TEXT("Read paused station"), Production->GetStation(Station.StationId, Current));
-    const FWorldProductionJob* Job = Current.Jobs.FindByPredicate([JobId](const FWorldProductionJob& J)
-        { return J.JobId == JobId; });
-    if (!TestNotNull(TEXT("Paused job"), Job))
-        return false;
-    TestEqual(TEXT("Progress does not advance while fire is out"), Job->ProgressSeconds, 0.0, 0.001);
-    TestTrue(TEXT("Job records why it is paused"), Job->BlockedReason == TEXT("NeedsFire"));
-
-    TestTrue(TEXT("Fire returns"), Production->ConfigureStationFireRequirement(
-        Station.StationId, true, false, true));
-    TestTrue(TEXT("First resumed minute"), Production->AdvanceProductionStep(60.0));
-    TestTrue(TEXT("Read resumed station"), Production->GetStation(Station.StationId, Current));
-    Job = Current.Jobs.FindByPredicate([JobId](const FWorldProductionJob& J) { return J.JobId == JobId; });
-    if (!TestNotNull(TEXT("Resumed job"), Job))
-        return false;
-    TestEqual(TEXT("Progress resumes without resetting"), Job->ProgressSeconds, 60.0, 0.001);
-    TestTrue(TEXT("Second resumed minute completes job"), Production->AdvanceProductionStep(60.0));
-    TestTrue(TEXT("Read completed station"), Production->GetStation(Station.StationId, Current));
-    TestEqual(TEXT("Charcoal output committed"), Current.Stock.FindRef(TEXT("Charcoal")), 3);
+    FWorldHudDataSnapshot Snapshot;
+    TestFalse(TEXT("Nothing before the clock starts"), Hud->GetSnapshot(Snapshot));
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(9, 0.0));
+    TestTrue(TEXT("Climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Snapshot"), Hud->GetSnapshot(Snapshot));
+    TestTrue(TEXT("Valid"), Snapshot.bValid);
+    TestEqual(TEXT("March"), Snapshot.Calendar.Month, 3);
+    TestTrue(TEXT("Spring"), Snapshot.Calendar.Season == EWorldSeason::Spring);
+    TestTrue(TEXT("Weather from the climate"), Snapshot.Weather == Climate->GetWeather());
+    TestEqual(TEXT("Air from the climate"), Snapshot.AirTemperatureCelsius, Climate->GetTemperatureCelsius());
     return true;
 }
 

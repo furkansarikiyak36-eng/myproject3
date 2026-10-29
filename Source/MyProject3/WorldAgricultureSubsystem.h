@@ -37,6 +37,26 @@ struct FWorldFieldActionReceipt
 
 /** Persistent state of one logical farm cell. Empty cells can be prepared before planting. */
 USTRUCT(BlueprintType)
+struct FWorldFieldActionCost
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") FName ItemId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="1", ClampMax="64")) int32 Quantity = 1;
+};
+
+USTRUCT(BlueprintType)
+struct FWorldFieldActionDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") FName Id = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") EWorldFieldActionKind Action = EWorldFieldActionKind::Clear;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") TArray<FWorldFieldActionCost> Inputs;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") TArray<FName> RequiredTools;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="0", ClampMax="1")) float Amount = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="1", ClampMax="3600")) double LaborSeconds = 300.0;
+};
+
+USTRUCT(BlueprintType)
 struct FWorldFieldCellState
 {
     GENERATED_BODY()
@@ -87,6 +107,8 @@ struct FWorldCropDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="64")) int32 HarvestUnits = 3;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 SeedReturnUnits = 1;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1")) double SecondsPerStage = 3600.0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="3600")) double PlantLaborSeconds = 600.0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="3600")) double HarvestLaborSeconds = 450.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="1")) float MinimumPlantMoisture = 0.15f;
     /** Empty means year-round; otherwise planting is allowed only in these calendar months (1..12). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") TArray<int32> PlantMonths;
@@ -185,6 +207,7 @@ class MYPROJECT3_API UWorldAgricultureSubsystem : public UWorldSubsystem
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxCrops = 2048;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="16")) int32 MaxFieldActionDefinitions = 16;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxAnimals = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="4096")) int32 MaxAnimalPens = 256;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm") float MinimumGrowthMoisture = 0.15f;
@@ -204,6 +227,12 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Field") bool TryApplyFieldAction(
         const FGuid& OperationId, const FIntVector& Cell, EWorldFieldActionKind Action,
         int64 ExpectedRevision, float Amount = 0.25f);
+    bool RegisterFieldActionDefinition(const FWorldFieldActionDefinition& Definition);
+    /** Consumes configured item costs, applies the field state change and charges labor as one rollback-safe action. */
+    bool TryApplyFieldActionWithInventory(const FGuid& OperationId,
+        UInventoryCraftingComponent* Inventory, const FGuid& SurvivalEntityId,
+        const FIntVector& Cell, EWorldFieldActionKind Action, int64 ExpectedRevision,
+        FWorldFieldCellState& OutCell);
     UFUNCTION(BlueprintPure, Category="World|Farm|Field") bool GetFieldCell(
         const FIntVector& Cell, FWorldFieldCellState& OutCell) const;
 
@@ -212,9 +241,20 @@ public:
         const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
         int64 ExpectedSeedItemRevision, const FGuid& ExpectedInventoryOwnerId,
         const FIntVector& PlotCell, float InitialMoisture, FGuid& OutCropId);
+    /** Player-facing planting: requires a unique owned seed and charges authored work labor atomically. */
+    bool TryPlantCropWithLabor(const FGuid& OperationId, FName CropDefinitionId,
+        const FGuid& SeedItemId, int64 ExpectedSeedItemRevision,
+        UInventoryCraftingComponent* Inventory, const FGuid& SurvivalEntityId,
+        const FIntVector& PlotCell, float InitialMoisture, FGuid& OutCropId);
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCrop(
         const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
         TArray<FGuid>& OutItemIds);
+    /** Harvests a mature crop directly into a player's inventory as owned items; farm, ledger, inventory and work costs roll back together. */
+    bool TryHarvestCropToInventory(const FGuid& OperationId, const FGuid& CropId,
+        int64 ExpectedCropRevision, UInventoryCraftingComponent* Inventory,
+        const FGuid& SurvivalEntityId, TArray<FGuid>& OutItemIds);
+    /** Finds the unique active crop on a soil cell; false for an empty or ambiguous cell. */
+    bool GetCropAtPlotCell(const FIntVector& PlotCell, FWorldCropState& OutCrop) const;
     UFUNCTION(BlueprintCallable, Category="World|Animals|Pens") bool RegisterAnimalPen(const FWorldAnimalPenState& Pen);
     UFUNCTION(BlueprintPure, Category="World|Animals|Pens") bool GetAnimalPen(const FGuid& PenId, FWorldAnimalPenState& OutPen) const;
     UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryCaptureWildlife(
@@ -237,6 +277,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool RegisterCrop(const FWorldCropState& Crop);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool RegisterAnimal(const FWorldAnimalState& Animal);
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool SetCropMoisture(const FGuid& CropId, float Moisture, int64 ExpectedRevision);
+    /** Applies a deterministic climate/event effect to prepared fields and growing crops. Called inside the shared fixed-step transaction. */
+    bool ApplyEnvironmentalEffect(FName EffectId, float Severity, double DeltaSeconds);
     /** Legacy numeric simulation hook; player-facing feeding must use TryFeedAnimal so food ownership is consumed. */
     bool FeedAnimal(const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision);
     UFUNCTION(BlueprintPure, Category="World|Simulation") bool CanAdvanceAgricultureStep(double DeltaSeconds) const;
@@ -268,5 +310,7 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FGuid, FWorldCropState> Crops;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals") TMap<FGuid, FWorldAnimalState> Animals;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals|Pens") TMap<FGuid, FWorldAnimalPenState> AnimalPens;
+    UPROPERTY(VisibleAnywhere, Category="World|Farm|Actions") TArray<FWorldFieldActionDefinition> FieldActionDefinitions;
+
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FIntVector, FWorldFieldCellState> FieldCells;
 };

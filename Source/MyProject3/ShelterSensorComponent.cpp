@@ -2,6 +2,8 @@
 
 #include "ConstructionOpeningActor.h"
 #include "StructuralPieceInterface.h"
+#include "WallCoatingComponent.h"
+#include "EngineUtils.h"
 #include "WorldSurvivalSubsystem.h"
 
 #include "Engine/World.h"
@@ -13,6 +15,43 @@ UShelterSensorComponent::UShelterSensorComponent()
 
 namespace
 {
+    bool HasPlasteredSealNearRay(const UWorld* World, const FVector& From, const FVector& To, const AActor* Ignore)
+    {
+        if (!World)
+            return false;
+        const FVector Segment = To - From;
+        const double SegmentLengthSquared = Segment.SizeSquared();
+        if (SegmentLengthSquared <= SMALL_NUMBER)
+            return false;
+
+        for (TActorIterator<AActor> It(const_cast<UWorld*>(World)); It; ++It)
+        {
+            AActor* Actor = *It;
+            if (!IsValid(Actor) || Actor == Ignore)
+                continue;
+            const IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor);
+            const UWallCoatingComponent* Coating = Actor->FindComponentByClass<UWallCoatingComponent>();
+            if (!Piece || !Piece->IsStructurallyPlaced() || !IsValid(Coating) ||
+                !Coating->ProvidesShelterSeal())
+                continue;
+
+            const FBox Bounds = Actor->GetComponentsBoundingBox(true);
+            if (!Bounds.IsValid)
+                continue;
+
+            const double Alpha = FMath::Clamp(
+                FVector::DotProduct(Actor->GetActorLocation() - From, Segment) / SegmentLengthSquared,
+                0.0, 1.0);
+            const FVector RayPoint = From + Segment * Alpha;
+            const FVector NearestPointOnPiece = Bounds.GetClosestPointTo(RayPoint);
+            // Plaster bridges small seams near an otherwise weather-blocking piece;
+            // it does not make a whole open doorway or a distant wall count as cover.
+            if (FVector::DistSquared(RayPoint, NearestPointOnPiece) <= FMath::Square(35.0f))
+                return true;
+        }
+        return false;
+    }
+
     bool HitsBuiltPiece(const UWorld* World, const FVector& From, const FVector& To, const AActor* Ignore)
     {
         if (!World)
@@ -49,7 +88,7 @@ namespace
 
             Params.AddIgnoredActor(Actor);
         }
-        return false;
+        return HasPlasteredSealNearRay(World, From, To, Ignore);
     }
 }
 

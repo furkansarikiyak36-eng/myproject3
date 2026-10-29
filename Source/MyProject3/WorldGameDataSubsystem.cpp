@@ -103,6 +103,18 @@ namespace
         return false;
     }
 
+    bool ToFieldActionKind(FName ActionName, EWorldFieldActionKind& Out)
+    {
+        if (ActionName == TEXT("Clear")) { Out = EWorldFieldActionKind::Clear; return true; }
+        if (ActionName == TEXT("Till")) { Out = EWorldFieldActionKind::Till; return true; }
+        if (ActionName == TEXT("Fertilize")) { Out = EWorldFieldActionKind::Fertilize; return true; }
+        if (ActionName == TEXT("Water")) { Out = EWorldFieldActionKind::Water; return true; }
+        if (ActionName == TEXT("Weed")) { Out = EWorldFieldActionKind::Weed; return true; }
+        if (ActionName == TEXT("Mulch")) { Out = EWorldFieldActionKind::Mulch; return true; }
+        if (ActionName == TEXT("Fence")) { Out = EWorldFieldActionKind::Fence; return true; }
+        return false;
+    }
+
     EInventoryItemCategory ToCategory(FName Category)
     {
         if (Category == TEXT("Tool")) return EInventoryItemCategory::Tool;
@@ -129,16 +141,19 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, CalendarJson, ClimateJson, LayersJson, EventsJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, FieldActionsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("field_actions.json"), FieldActionsJson, Error) ||
+        !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
+        !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
+        !ReadJson(Directory, TEXT("events.json"), EventsJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
-        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error) ||
-        !ReadJson(Directory, TEXT("events.json"), EventsJson, Error))
+        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
         return Fail(Error);
 
     // Parse into locals; the subsystem changes only when everything is valid.
@@ -287,6 +302,126 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             return Fail(FString::Printf(TEXT("Equipment %s has an unknown slot"), *E.ItemId.ToString()));
     }
 
+    TArray<FGameDataFieldAction> NewFieldActions;
+    const TArray<TSharedPtr<FJsonValue>>* FieldActionValues =
+        ArrayField(FieldActionsJson, TEXT("field_actions"));
+    if (!FieldActionValues || FieldActionValues->Num() != 7)
+        return Fail(TEXT("field_actions.json must define all seven field actions"));
+
+    TSet<FName> FieldActionIds;
+    TSet<uint8> FieldActionKinds;
+    for (const TSharedPtr<FJsonValue>& Value : *FieldActionValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataFieldAction Action;
+        Action.Id = NameField(Entry, TEXT("id"));
+        const FName ActionName = NameField(Entry, TEXT("action"));
+        if (!ToFieldActionKind(ActionName, Action.Action))
+            return Fail(FString::Printf(TEXT("Field action %s has unknown action type %s"),
+                *Action.Id.ToString(), *ActionName.ToString()));
+        Action.Inputs = Amounts(Entry, TEXT("inputs"));
+        Action.Amount = static_cast<float>(NumberField(Entry, TEXT("amount"), 0.0));
+        Action.LaborSeconds = NumberField(Entry, TEXT("labor_seconds"), 0.0);
+
+        if (!ArrayField(Entry, TEXT("inputs")) || !ArrayField(Entry, TEXT("tools")))
+            return Fail(FString::Printf(TEXT("Field action %s requires inputs and tools arrays"),
+                *Action.Id.ToString()));
+        const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, TEXT("tools"));
+        TSet<FName> SeenTools;
+        for (const TSharedPtr<FJsonValue>& ToolValue : *Tools)
+        {
+            if (!ToolValue.IsValid() || ToolValue->Type != EJson::String)
+                return Fail(FString::Printf(TEXT("Field action %s has malformed tool IDs"),
+                    *Action.Id.ToString()));
+            const FName ToolId(*ToolValue->AsString());
+            const FGameDataItem* ToolDefinition = NewItems.Find(ToolId);
+            if (!ToolDefinition || ToolDefinition->Category != TEXT("Tool") ||
+                SeenTools.Contains(ToolId))
+                return Fail(FString::Printf(TEXT("Field action %s has unknown/duplicate tool %s"),
+                    *Action.Id.ToString(), *ToolId.ToString()));
+            SeenTools.Add(ToolId);
+            Action.RequiredTools.Add(ToolId);
+        }
+
+        TSet<FName> SeenInputs;
+        for (const FGameDataItemAmount& Input : Action.Inputs)
+        {
+            if (Input.ItemId.IsNone() || Input.Quantity <= 0 || Input.Quantity > 64 ||
+                !NewItems.Contains(Input.ItemId) || SeenInputs.Contains(Input.ItemId))
+                return Fail(FString::Printf(TEXT("Field action %s has invalid input %s"),
+                    *Action.Id.ToString(), *Input.ItemId.ToString()));
+            SeenInputs.Add(Input.ItemId);
+        }
+
+        const bool bNeedsAmount = Action.Action == EWorldFieldActionKind::Fertilize ||
+            Action.Action == EWorldFieldActionKind::Water ||
+            Action.Action == EWorldFieldActionKind::Weed ||
+            Action.Action == EWorldFieldActionKind::Mulch;
+        if (Action.Id.IsNone() || FieldActionIds.Contains(Action.Id) ||
+            FieldActionKinds.Contains(static_cast<uint8>(Action.Action)) ||
+            !FMath::IsFinite(Action.Amount) || Action.Amount < 0.0f || Action.Amount > 1.0f ||
+            (bNeedsAmount && Action.Amount <= 0.0f) ||
+            (!bNeedsAmount && Action.Amount != 0.0f) ||
+            !FMath::IsFinite(Action.LaborSeconds) || Action.LaborSeconds < 1.0 ||
+            Action.LaborSeconds > 3600.0)
+            return Fail(FString::Printf(TEXT("Bad/duplicate field action %s"), *Action.Id.ToString()));
+
+        FieldActionIds.Add(Action.Id);
+        FieldActionKinds.Add(static_cast<uint8>(Action.Action));
+        NewFieldActions.Add(Action);
+    }
+
+    TArray<FGameDataZone> NewZones;
+    const TArray<TSharedPtr<FJsonValue>>* ZoneValues = ArrayField(ZonesJson, TEXT("zones"));
+    if (!ZoneValues || ZoneValues->IsEmpty())
+        return Fail(TEXT("zones.json needs at least one zone"));
+    TSet<FName> ZoneIds;
+    TSet<int32> ZoneIndices;
+    for (const TSharedPtr<FJsonValue>& Value : *ZoneValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataZone Zone;
+        Zone.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Zone.Name);
+        Zone.Index = static_cast<int32>(NumberField(Entry, TEXT("index"), -1.0));
+        Zone.Center.X = NumberField(Entry, TEXT("center_x"));
+        Zone.Center.Y = NumberField(Entry, TEXT("center_y"));
+        Zone.Center.Z = NumberField(Entry, TEXT("center_z"));
+        Zone.RadiusCm = static_cast<float>(NumberField(Entry, TEXT("radius_cm"), 1000.0));
+        Entry->TryGetStringField(TEXT("obstacle"), Zone.Obstacle);
+        Entry->TryGetStringField(TEXT("solution"), Zone.PermanentSolution);
+        if (const TArray<TSharedPtr<FJsonValue>>* Resources = ArrayField(Entry, TEXT("resources")))
+        {
+            for (const TSharedPtr<FJsonValue>& Resource : *Resources)
+            {
+                if (!Resource.IsValid() || Resource->Type != EJson::String)
+                    return Fail(FString::Printf(TEXT("Zone %s contains a non-string resource"),
+                        *Zone.Id.ToString()));
+                const FName ResourceId(*Resource->AsString());
+                if (ResourceId.IsNone() || Zone.ResourceItemIds.Contains(ResourceId))
+                    return Fail(FString::Printf(TEXT("Zone %s has an empty or duplicate resource"),
+                        *Zone.Id.ToString()));
+                if (!NewItems.Contains(ResourceId))
+                    return Fail(FString::Printf(TEXT("Zone %s names unknown resource item %s"),
+                        *Zone.Id.ToString(), *ResourceId.ToString()));
+                Zone.ResourceItemIds.Add(ResourceId);
+            }
+        }
+        if (Zone.Id.IsNone() || ZoneIds.Contains(Zone.Id) || Zone.Name.IsEmpty() ||
+            Zone.Index < 0 || Zone.Index > 4 || ZoneIndices.Contains(Zone.Index) ||
+            !FMath::IsFinite(Zone.Center.X) || !FMath::IsFinite(Zone.Center.Y) ||
+            !FMath::IsFinite(Zone.Center.Z) ||
+            !FMath::IsFinite(Zone.RadiusCm) || Zone.RadiusCm < 100.0f ||
+            Zone.RadiusCm > 50000.0f || Zone.ResourceItemIds.IsEmpty() ||
+            Zone.Obstacle.IsEmpty() || Zone.PermanentSolution.IsEmpty())
+            return Fail(FString::Printf(TEXT("Bad or duplicate zone %s"), *Zone.Id.ToString()));
+        ZoneIds.Add(Zone.Id);
+        ZoneIndices.Add(Zone.Index);
+        NewZones.Add(Zone);
+    }
+    if (NewZones.Num() != 5 || ZoneIndices.Num() != 5)
+        return Fail(TEXT("zones.json must define exactly five unique zones with indices 0..4"));
+
     TArray<FGameDataCrop> NewCrops;
     if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(CropsJson, TEXT("crops")))
         for (const TSharedPtr<FJsonValue>& Value : *Values)
@@ -299,6 +434,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
             Crop.SeedReturnUnits = static_cast<int32>(NumberField(Entry, TEXT("seed_return_units"), 1.0));
             Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
+            Crop.PlantLaborSeconds = NumberField(Entry, TEXT("plant_labor_seconds"), 600.0);
+            Crop.HarvestLaborSeconds = NumberField(Entry, TEXT("harvest_labor_seconds"), 450.0);
             Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
             if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months")))
                 for (const TSharedPtr<FJsonValue>& Month : *Months)
@@ -307,75 +444,180 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
                 Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
                 Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
                 Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
-                Crop.SecondsPerStage <= 0.0 || Crop.PlantMonths.Num() == 0)
+                !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage < 3600.0 ||
+                !FMath::IsFinite(Crop.PlantLaborSeconds) || Crop.PlantLaborSeconds < 1.0 ||
+                Crop.PlantLaborSeconds > 3600.0 ||
+                !FMath::IsFinite(Crop.HarvestLaborSeconds) || Crop.HarvestLaborSeconds < 1.0 ||
+                Crop.HarvestLaborSeconds > 3600.0 || Crop.PlantMonths.Num() == 0)
                 return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
             NewCrops.Add(Crop);
         }
 
-    TArray<FWorldNaturalEventDefinition> NewNaturalEvents;
+    for (const FGameDataCrop& Crop : NewCrops)
+    {
+        if (!ZoneIndices.Contains(Crop.FoundInZone))
+            return Fail(FString::Printf(TEXT("Crop %s names unknown zone index %d"),
+                *Crop.Id.ToString(), Crop.FoundInZone));
+    }
+
+    // Natural-event contracts are data-driven and validated before replacing live data.
+    TArray<FGameDataWorldEvent> NewWorldEvents;
+    TSet<FName> WorldEventIds;
     const TArray<TSharedPtr<FJsonValue>>* EventValues = ArrayField(EventsJson, TEXT("events"));
-    if (!EventValues || EventValues->IsEmpty())
+    if (!EventValues)
         return Fail(TEXT("events.json has no events"));
-    TSet<FName> EventIds;
     for (const TSharedPtr<FJsonValue>& Value : *EventValues)
     {
         const FJson Entry = Value->AsObject();
-        FWorldNaturalEventDefinition D;
-        D.DefinitionId = NameField(Entry, TEXT("id"));
-        Entry->TryGetStringField(TEXT("name"), D.DisplayName);
-        D.EffectId = NameField(Entry, TEXT("effect"));
-        D.TriggerAfterEventId = NameField(Entry, TEXT("trigger_after"));
-        D.WarningDurationSeconds = NumberField(Entry, TEXT("warning_s"));
-        D.ActiveDurationSeconds = NumberField(Entry, TEXT("duration_s"));
-        D.CooldownSeconds = NumberField(Entry, TEXT("cooldown_s"));
-        D.MinimumIntervalSeconds = NumberField(Entry, TEXT("min_interval_s"));
-        D.MaximumIntervalSeconds = NumberField(Entry, TEXT("max_interval_s"));
-        D.TriggerChance = NumberField(Entry, TEXT("chance"));
-        if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("months")))
-            for (const TSharedPtr<FJsonValue>& Month : *Months)
-                D.AllowedMonths.Add(static_cast<int32>(Month->AsNumber()));
-        if (D.DefinitionId.IsNone() || EventIds.Contains(D.DefinitionId) || D.DisplayName.IsEmpty() ||
-            D.EffectId.IsNone() || !FMath::IsFinite(D.WarningDurationSeconds) || D.WarningDurationSeconds < 0.1 ||
-            !FMath::IsFinite(D.ActiveDurationSeconds) || D.ActiveDurationSeconds < 0.1 ||
-            !FMath::IsFinite(D.CooldownSeconds) || D.CooldownSeconds < 0.0 ||
-            !FMath::IsFinite(D.MinimumIntervalSeconds) || D.MinimumIntervalSeconds < 1.0 ||
-            !FMath::IsFinite(D.MaximumIntervalSeconds) || D.MaximumIntervalSeconds < D.MinimumIntervalSeconds ||
-            !FMath::IsFinite(D.TriggerChance) || D.TriggerChance < 0.0f || D.TriggerChance > 1.0f ||
-            D.AllowedMonths.Num() > 12)
-            return Fail(FString::Printf(TEXT("Bad or duplicate natural event %s"), *D.DefinitionId.ToString()));
-        TSet<int32> EventMonths;
-        for (const int32 Month : D.AllowedMonths)
+        FGameDataWorldEvent Event;
+        Event.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Event.Name);
+        Event.Trigger = NameField(Entry, TEXT("trigger"));
+        Event.Signal = NameField(Entry, TEXT("signal"));
+        Event.Effect = NameField(Entry, TEXT("effect"));
+        Event.WarningSeconds = NumberField(Entry, TEXT("warning_h")) * 3600.0;
+        Event.DurationSeconds = NumberField(Entry, TEXT("duration_h")) * 3600.0;
+        Event.TriggerMinimum = static_cast<float>(NumberField(Entry, TEXT("trigger_min"), 0.0));
+        Event.TriggerMaximum = static_cast<float>(NumberField(Entry, TEXT("trigger_max"), 1.0));
+        Event.MinimumSeverity = static_cast<float>(NumberField(Entry, TEXT("min_severity")));
+        Event.MaximumSeverity = static_cast<float>(NumberField(Entry, TEXT("max_severity"), 1.0));
+        Event.CounterItemId = NameField(Entry, TEXT("counter_item"));
+        Event.CounterQuantity = static_cast<int32>(NumberField(Entry, TEXT("counter_qty")));
+        if (Event.Id.IsNone() || WorldEventIds.Contains(Event.Id) || Event.Name.IsEmpty() ||
+            Event.Trigger.IsNone() || Event.Signal.IsNone() || Event.Effect.IsNone() ||
+            !FMath::IsFinite(Event.WarningSeconds) || Event.WarningSeconds < 0.0 ||
+            !FMath::IsFinite(Event.DurationSeconds) || Event.DurationSeconds <= 0.0 ||
+            !FMath::IsFinite(Event.TriggerMinimum) || !FMath::IsFinite(Event.TriggerMaximum) ||
+            !FMath::IsFinite(Event.MinimumSeverity) || !FMath::IsFinite(Event.MaximumSeverity) ||
+            Event.TriggerMinimum < 0.0f || Event.TriggerMaximum > 1.0f ||
+            Event.TriggerMinimum > Event.TriggerMaximum ||
+            Event.MinimumSeverity < 0.0f || Event.MaximumSeverity > 1.0f ||
+            Event.MinimumSeverity > Event.MaximumSeverity ||
+            ((!Event.CounterItemId.IsNone()) &&
+                (!HasItem(Event.CounterItemId) || Event.CounterQuantity <= 0)) ||
+            (Event.CounterItemId.IsNone() && Event.CounterQuantity != 0))
         {
-            if (Month < 1 || Month > 12 || EventMonths.Contains(Month))
-                return Fail(FString::Printf(TEXT("Invalid/repeated month in event %s"), *D.DefinitionId.ToString()));
-            EventMonths.Add(Month);
+            return Fail(FString::Printf(TEXT("Bad world event %s"), *Event.Id.ToString()));
         }
-        EventIds.Add(D.DefinitionId);
-        NewNaturalEvents.Add(D);
+        WorldEventIds.Add(Event.Id);
+        NewWorldEvents.Add(Event);
     }
-    TMap<FName, FName> EventPredecessors;
-    for (const FWorldNaturalEventDefinition& D : NewNaturalEvents)
+    if (NewWorldEvents.IsEmpty())
+        return Fail(TEXT("events.json needs at least one event"));
+
+    TArray<FGameDataDiscovery> NewDiscoveries;
+    TSet<FName> DiscoveryIds;
+    const TArray<TSharedPtr<FJsonValue>>* DiscoveryValues = ArrayField(DiscoveriesJson, TEXT("discoveries"));
+    if (!DiscoveryValues || DiscoveryValues->IsEmpty())
+        return Fail(TEXT("discoveries.json needs at least one discovery"));
+
+    for (const TSharedPtr<FJsonValue>& Value : *DiscoveryValues)
     {
-        if (!D.TriggerAfterEventId.IsNone())
+        const FJson Entry = Value->AsObject();
+        FGameDataDiscovery Discovery;
+        Discovery.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Discovery.Name);
+        Discovery.ZoneId = NameField(Entry, TEXT("zone"));
+        Discovery.Location.X = NumberField(Entry, TEXT("location_x"));
+        Discovery.Location.Y = NumberField(Entry, TEXT("location_y"));
+        Discovery.Location.Z = NumberField(Entry, TEXT("location_z"));
+        Discovery.RevealRadiusCm = static_cast<float>(NumberField(Entry, TEXT("reveal_radius_cm"), 300.0));
+        Discovery.RewardItemId = NameField(Entry, TEXT("reward_item"));
+        Discovery.RewardQuantity = static_cast<int32>(NumberField(Entry, TEXT("reward_qty"), 0.0));
+        Discovery.bRewardUniqueItems = BoolField(Entry, TEXT("reward_unique"));
+
+        auto ReadNameArray = [&Entry](const TCHAR* FieldName, TArray<FName>& OutNames) -> bool
         {
-            if (!EventIds.Contains(D.TriggerAfterEventId))
-                return Fail(FString::Printf(TEXT("Event %s references unknown predecessor %s"),
-                    *D.DefinitionId.ToString(), *D.TriggerAfterEventId.ToString()));
-            EventPredecessors.Add(D.DefinitionId, D.TriggerAfterEventId);
+            const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+            if (!Entry->TryGetArrayField(FieldName, Values))
+                return false;
+            TSet<FName> Seen;
+            for (const TSharedPtr<FJsonValue>& ArrayValue : *Values)
+            {
+                if (!ArrayValue.IsValid() || ArrayValue->Type != EJson::String)
+                    return false;
+                const FName Id(*ArrayValue->AsString());
+                if (Id.IsNone() || Seen.Contains(Id))
+                    return false;
+                Seen.Add(Id);
+                OutNames.Add(Id);
+            }
+            return true;
+        };
+        if (!ReadNameArray(TEXT("prerequisites"), Discovery.PrerequisiteDiscoveryIds) ||
+            !ReadNameArray(TEXT("required_equipment"), Discovery.RequiredEquipmentDefinitionIds) ||
+            !ReadNameArray(TEXT("unlocks"), Discovery.UnlockedDefinitionIds))
+            return Fail(FString::Printf(TEXT("Discovery %s has malformed name arrays"),
+                *Discovery.Id.ToString()));
+
+        const FGameDataZone* Zone = NewZones.FindByPredicate(
+            [&Discovery](const FGameDataZone& Candidate) { return Candidate.Id == Discovery.ZoneId; });
+        const double DistanceSquared = Zone
+            ? FVector::DistSquared2D(Zone->Center, Discovery.Location)
+            : TNumericLimits<double>::Max();
+        if (Discovery.Id.IsNone() || DiscoveryIds.Contains(Discovery.Id) ||
+            Discovery.Name.IsEmpty() || !Zone ||
+            !FMath::IsFinite(Discovery.Location.X) || !FMath::IsFinite(Discovery.Location.Y) ||
+            !FMath::IsFinite(Discovery.Location.Z) ||
+            !FMath::IsFinite(Discovery.RevealRadiusCm) ||
+            Discovery.RevealRadiusCm < 50.0f || Discovery.RevealRadiusCm > 2500.0f ||
+            DistanceSquared > FMath::Square(static_cast<double>(Zone->RadiusCm)) ||
+            Discovery.RewardQuantity < 0 || Discovery.RewardQuantity > 64 ||
+            (Discovery.RewardItemId.IsNone() != (Discovery.RewardQuantity == 0)) ||
+            (Discovery.bRewardUniqueItems && Discovery.RewardItemId.IsNone()) ||
+            (!Discovery.RewardItemId.IsNone() &&
+                (!NewItems.Contains(Discovery.RewardItemId) || NewItems.FindChecked(Discovery.RewardItemId).bConsumable)))
+            return Fail(FString::Printf(TEXT("Bad or duplicate discovery %s"), *Discovery.Id.ToString()));
+
+        for (const FName EquipmentId : Discovery.RequiredEquipmentDefinitionIds)
+        {
+            if (!NewEquipment.ContainsByPredicate(
+                [&EquipmentId](const FEquipment& Equipment) { return Equipment.ItemId == EquipmentId; }))
+                return Fail(FString::Printf(TEXT("Discovery %s requires unknown equipment %s"),
+                    *Discovery.Id.ToString(), *EquipmentId.ToString()));
+        }
+        for (const FName UnlockId : Discovery.UnlockedDefinitionIds)
+        {
+            if (!NewItems.Contains(UnlockId) && !TransformationIds.Contains(UnlockId))
+                return Fail(FString::Printf(TEXT("Discovery %s unlocks unknown definition %s"),
+                    *Discovery.Id.ToString(), *UnlockId.ToString()));
+        }
+        DiscoveryIds.Add(Discovery.Id);
+        NewDiscoveries.Add(Discovery);
+    }
+
+    // Require every prerequisite to exist and order definitions topologically,
+    // because UWorldSurvivalSubsystem registers prerequisite definitions first.
+    for (const FGameDataDiscovery& Discovery : NewDiscoveries)
+    {
+        for (const FName Required : Discovery.PrerequisiteDiscoveryIds)
+        {
+            if (Required == Discovery.Id || !DiscoveryIds.Contains(Required))
+                return Fail(FString::Printf(TEXT("Discovery %s has unknown/self prerequisite %s"),
+                    *Discovery.Id.ToString(), *Required.ToString()));
         }
     }
-    for (const FWorldNaturalEventDefinition& D : NewNaturalEvents)
+    TArray<FGameDataDiscovery> TopologicalDiscoveries;
+    TSet<FName> RegisteredDiscoveryIds;
+    while (TopologicalDiscoveries.Num() < NewDiscoveries.Num())
     {
-        TSet<FName> SeenChain;
-        FName Cursor = D.DefinitionId;
-        while (!Cursor.IsNone())
+        bool bAddedInPass = false;
+        for (const FGameDataDiscovery& Discovery : NewDiscoveries)
         {
-            if (SeenChain.Contains(Cursor))
-                return Fail(FString::Printf(TEXT("Natural event chain contains a cycle at %s"), *Cursor.ToString()));
-            SeenChain.Add(Cursor);
-            const FName* Next = EventPredecessors.Find(Cursor);
-            Cursor = Next ? *Next : NAME_None;
+            if (RegisteredDiscoveryIds.Contains(Discovery.Id))
+                continue;
+            bool bPrerequisitesMet = true;
+            for (const FName Required : Discovery.PrerequisiteDiscoveryIds)
+                if (!RegisteredDiscoveryIds.Contains(Required))
+                    bPrerequisitesMet = false;
+            if (!bPrerequisitesMet)
+                continue;
+            RegisteredDiscoveryIds.Add(Discovery.Id);
+            TopologicalDiscoveries.Add(Discovery);
+            bAddedInPass = true;
         }
+        if (!bAddedInPass)
+            return Fail(TEXT("discoveries.json contains a prerequisite cycle"));
     }
 
     FWorldCalendarConfig NewCalendar;
@@ -444,7 +686,10 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
-    NaturalEvents = MoveTemp(NewNaturalEvents);
+    FieldActions = MoveTemp(NewFieldActions);
+    Zones = MoveTemp(NewZones);
+    Discoveries = MoveTemp(TopologicalDiscoveries);
+    WorldEvents = MoveTemp(NewWorldEvents);
     Calendar = NewCalendar;
     ClimateMonths = MoveTemp(NewMonths);
     Layers = MoveTemp(NewLayers);
@@ -452,6 +697,51 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     bLoaded = true;
     bApplied = false;
     return true;
+}
+
+
+bool UWorldGameDataSubsystem::IsDiscoveryGatedDefinition(FName DefinitionId) const
+{
+    if (DefinitionId.IsNone())
+        return false;
+    return Discoveries.ContainsByPredicate([DefinitionId](const FGameDataDiscovery& Discovery)
+    {
+        return Discovery.UnlockedDefinitionIds.Contains(DefinitionId);
+    });
+}
+
+const FGameDataZone* UWorldGameDataSubsystem::FindZone(FName ZoneId) const
+{
+    if (ZoneId.IsNone())
+        return nullptr;
+    return Zones.FindByPredicate([ZoneId](const FGameDataZone& Zone)
+    {
+        return Zone.Id == ZoneId;
+    });
+}
+
+const FGameDataZone* UWorldGameDataSubsystem::FindZoneAtLocation(const FVector& WorldLocation) const
+{
+    if (!FMath::IsFinite(WorldLocation.X) || !FMath::IsFinite(WorldLocation.Y) ||
+        !FMath::IsFinite(WorldLocation.Z))
+        return nullptr;
+
+    const FGameDataZone* Best = nullptr;
+    double BestNormalizedDistance = TNumericLimits<double>::Max();
+    for (const FGameDataZone& Zone : Zones)
+    {
+        const double DistanceSquared = FVector::DistSquared2D(WorldLocation, Zone.Center);
+        const double RadiusSquared = FMath::Square(static_cast<double>(Zone.RadiusCm));
+        if (DistanceSquared > RadiusSquared)
+            continue;
+        const double NormalizedDistance = DistanceSquared / RadiusSquared;
+        if (NormalizedDistance < BestNormalizedDistance)
+        {
+            Best = &Zone;
+            BestNormalizedDistance = NormalizedDistance;
+        }
+    }
+    return Best;
 }
 
 bool UWorldGameDataSubsystem::GetToolStrength(FName ItemId, float& OutStrength) const
@@ -484,8 +774,7 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
     UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
     UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
-    UWorldEventDirectorSubsystem* EventDirector = World->GetSubsystem<UWorldEventDirectorSubsystem>();
-    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture || !EventDirector)
+    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture)
         return Fail(TEXT("A world subsystem is missing"));
 
     // Station recipes. A tool is put into the station and comes back with the output.
@@ -556,13 +845,42 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
             return Fail(FString::Printf(TEXT("Survival refused equipment %s"), *E.ItemId.ToString()));
     }
 
+    for (const FGameDataDiscovery& Discovery : Discoveries)
+    {
+        FWorldDiscoveryDefinition Definition;
+        Definition.DiscoveryId = Discovery.Id;
+        Definition.PrerequisiteDiscoveryIds = Discovery.PrerequisiteDiscoveryIds;
+        Definition.RequiredEquipmentDefinitionIds = Discovery.RequiredEquipmentDefinitionIds;
+        Definition.UnlockedDefinitionIds = Discovery.UnlockedDefinitionIds;
+        if (!Survival->RegisterDiscoveryDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Survival refused discovery %s"),
+                *Discovery.Id.ToString()));
+    }
+
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
-    for (const FWorldNaturalEventDefinition& D : NaturalEvents)
-        if (!EventDirector->RegisterEventDefinition(D))
-            return Fail(FString::Printf(TEXT("Event director refused definition %s"), *D.DefinitionId.ToString()));
 
     // The crop list is data, not a placeholder registration hidden in a demo actor.
+    for (const FGameDataFieldAction& Action : FieldActions)
+    {
+        FWorldFieldActionDefinition Definition;
+        Definition.Id = Action.Id;
+        Definition.Action = Action.Action;
+        Definition.Amount = Action.Amount;
+        Definition.LaborSeconds = Action.LaborSeconds;
+        for (const FGameDataItemAmount& Input : Action.Inputs)
+        {
+            FWorldFieldActionCost Cost;
+            Cost.ItemId = Input.ItemId;
+            Cost.Quantity = Input.Quantity;
+            Definition.Inputs.Add(Cost);
+        }
+        Definition.RequiredTools = Action.RequiredTools;
+        if (!Agriculture->RegisterFieldActionDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Agriculture refused field action %s"),
+                *Action.Id.ToString()));
+    }
+
     for (const FGameDataCrop& C : Crops)
     {
         FWorldCropDefinition Definition;
@@ -572,6 +890,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         Definition.HarvestUnits = C.HarvestUnits;
         Definition.SeedReturnUnits = C.SeedReturnUnits;
         Definition.SecondsPerStage = C.SecondsPerStage;
+        Definition.PlantLaborSeconds = C.PlantLaborSeconds;
+        Definition.HarvestLaborSeconds = C.HarvestLaborSeconds;
         Definition.PlantMonths = C.PlantMonths;
         Definition.FoundInZone = C.FoundInZone;
         if (!Agriculture->RegisterCropDefinition(Definition))

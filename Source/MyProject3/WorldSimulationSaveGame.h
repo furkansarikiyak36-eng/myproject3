@@ -13,6 +13,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
@@ -167,8 +168,8 @@ public:
     /** Schema v21: weather of the day, snow depth, ground wetness. */
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldClimateSnapshot Climate;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
-    /** Schema v28: deterministic natural-event lifecycle and completed event history. */
-    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldEventDirectorSnapshot NaturalEvents;
+    /** Schema v28: deterministic natural-event signals, active effects, and per-day trigger guards. */
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldEventDirectorSnapshot Events;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldOwnedItemRecord> Items;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldItemTransferReceipt> ItemTransferReceipts;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldItemSplitReceipt> ItemSplitReceipts;
@@ -196,4 +197,5 @@ public:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStorageIncomingReservation> StorageReservations;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldPhysicalActorSnapshot> PhysicalActors;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldStructuralNodeSnapshot> StructuralGraph;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldLogisticsRouteSnapshot Routes;
 };

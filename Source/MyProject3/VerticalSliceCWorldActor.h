@@ -10,6 +10,7 @@ class AHarvestableTreeActor;
 class AHelperCompanionActor;
 class ALogBuildPiece;
 class AProductionStationActor;
+class AWorldDiscoveryMarkerActor;
 class UHierarchicalInstancedStaticMeshComponent;
 class UMaterialInterface;
 class UProceduralMeshComponent;
@@ -113,6 +114,14 @@ private:
     bool bBuilt = false;
     bool bInputBound = false;
     bool bStarterToolsGranted = false;
+    bool bDiscoveryMarkersSpawned = false;
+    bool bGatherableZonesAssigned = false;
+    bool bFarmPlotBuilt = false;
+    float FarmPlotVisualRefreshTimer = 0.0f;
+    int32 SelectedFieldActionIndex = INDEX_NONE;
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> FarmPlotTiles;
+    TArray<FLinearColor> FarmPlotColours;
     int32 ChopSwingCount = 0;
     int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
@@ -134,6 +143,8 @@ private:
     void BuildHill();
     void BuildPalisade();
     void BuildLife();
+    void BuildFarmPlot();
+    void RefreshFarmPlotVisuals();
     void BuildCreekDam();
     void BuildHelper();
     void HelperOrderInput();
@@ -152,7 +163,15 @@ private:
 
     void SetupPlayer();
     void EnsureStarterTools();
+    void EnsureDiscoveryMarkers();
+    void AssignGatherableZones();
     void ChopInput();
+    void GatherInput();
+    void CycleFieldActionInput();
+    void ApplyFieldActionInput();
+    void PlantOrHarvestCropInput();
+    bool FindNearestFarmPlotCell(const FVector& WorldLocation, FIntVector& OutCell,
+        float MaxDistanceCm = 135.0f) const;
     void FillCreekWaterInput();
     void DrinkWaterInput();
     void BoilWaterInput();

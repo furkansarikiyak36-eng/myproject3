@@ -1,3 +1,5 @@
+> **FROZEN UNTIL P10:** Do not add mitre cuts, new NotchCradle sockets, cross-joint geometry, or new snap modes. Open items are tracked in `memory/modules/carry.md`: mirrored wall diagonals clip at crossings; 7 joinery meshes need authored NotchCradle sockets; deck-path behavior remains unverified. P10 owns these physical-assembly changes.
+
 # Placement kernel — guide for Claude
 
 One kernel decides where any piece goes and commits it all or nothing. Plan: `Docs/Architecture/GLOBAL_SNAP_SYSTEM_PLAN.md`.
@@ -16,6 +18,8 @@ One kernel decides where any piece goes and commits it all or nothing. Plan: `Do
 | `LogFeatureProvider.*`, `MaterialFeatureProviders.cpp`, `RopeFeatureProvider.cpp` | Logs, stones, sticks, ropes. |
 
 ## Rules
+
+The cross-system carry/placement contract is in [`carry.md`](carry.md). Read it before changing carry ownership, placement transactions, support, or physical-piece state.
 
 - The kernel files never name a material (no `ALogBuildPiece`, stone, stick, rope). The test `Placement.KernelNamesNoMaterial` enforces it. Material rules go in providers; numbers go in profile params.
 - Joints use feature ids (`End.A`, `End.B`, `Station.NN`, authored ids), never array indexes.

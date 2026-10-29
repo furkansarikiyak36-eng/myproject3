@@ -71,17 +71,7 @@ Plan = `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`, tasks = `ROADMAP.md`.
 
 ## Findings (newest first)
 
-- 2026-10-29 (evening) · Batch check of ChatGPT's blind pass on `game/p00-adopt-group-a` (492 commits since `0d91300`,
-  ~6.2k lines: events director, HUD data, geology, action costs, farming field/animal actions, charcoal pause, save v29):
-  6 compile errors in 3 files (const subsystem pointer, TObjectPtr in TestNotNull, local shadowing a member), fixed in
-  `a36ea21`; then **117/117 tests pass** (102 before + 15 new). Not played in PIE.
-- 2026-10-29 · **Four parallel ChatGPT lines** exist. `game/p00-adopt-group-a` (built, 117/117) and
-  `work/phase-3-4-closure` (+179 after `ea00757`, unbuilt, farming player loop/labor, events changes) share history.
-  `game/p06-farming-seed-cycle` (+198) and `game/p07-zone-entry-progression` (+116) forked from `0d91300` and hold a
-  **second, different farming/animal API** (`TryApplyFieldWork`, `TryCaptureAnimal`, `TryBuildAnimalPen` vs p00's
-  `TryApplyFieldAction`, `TryCaptureWildlife`, `TryMoveAnimalToPen`). None of the 3 side lines is merged; all conflict
-  with p00 (agriculture, game data, save schema, tests). p00 and phase-3-4 both say save schema 29 for different content.
-  Data files only on side lines: zones.json, routes.json, discoveries.json, animals.json, field_actions.json.
+- 2026-10-30 · `work/phase-3-4-closure` merged into p00 (126/126). Event director = phase-3-4's (effects: fire spread, flood route closure, raids, repair). Its 4 build errors and 3 wrong tests were fixed; tests were wrong, code right (preflight before clock advance; fire actors without identity/root; plaster without item weight).
 - 2026-10-29 · P2 continuation · source-audited, code-written · `TryBoilWaterAtFire` exists exactly once; inventory-owned definition transitions are allowed only when ownership remains the same valid inventory owner; `Water.Boiling` is present in valid `items.json` (89 items); save schema is v27. F7 reports body HP separately from survival HP. Rest/work and warm-shelter-drying tests are authored but not built/run. No PIE validation. `VerticalSlice_C` now emits transition-only wetness feedback for dry/damp/wet/soaked bands; this is UI feedback only and does not alter the simulation profile.
 - On `game/p00-adopt-group-a` after the 2026-10-29 partial-closure edits: P0.5 demo recipes are data-ID based. P6 has saved field cells, calendar-gated planting, seed return/soil exhaustion, and animal capture/pen/slaughter with four-array snapshots. P2 now has player inventory + game-data backfill, fired-pot creek fill (I), fire refuel (O), fatigue/sprint/chop gates, creek wetness/wet-cold illness, hard-fall Injury.Fall, and hostile bite Injury.AnimalBite. Save schema is v26. Regression tests were authored but **not compiled or executed**; prior 85/85 and 102/102 counts are baselines, not evidence for these edits.
 

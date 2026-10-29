@@ -16,6 +16,8 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "ShelterSensorComponent.h"
+#include "WallCoatingComponent.h"
+#include "InventoryCraftingComponent.h"
 
 #include "Components/InputComponent.h"
 #include "Engine/OverlapResult.h"
@@ -89,6 +91,7 @@ FString ULogBuildToolsComponent::GetHelpText()
         "Z choose building plan   Y place / remove plan   T pull or release sled\n"
         "Carrying a log: E on storage/sled stores it, on a fire burns it, on a zipline top sends it\n"
         "U carrying a log, aim at a sloped beam: fill the gable (one-sided apex) under it, row by row\n"
+        "F8 aim at a placed wall/log/stone and apply one Plaster to seal its gaps\n"
         "Carrying a log, E on another loose log puts it on your shoulder (two logs at once)\n"
         "Defensive wall plan: Y at the start, Y at the end of the line\n"
         "J helper: follow / collect logs into storage / bring logs here / finish the nearest plan / sharpen and repair walls / stay\n"
@@ -162,6 +165,7 @@ void ULogBuildToolsComponent::BindDefaultInput(UInputComponent* InputComponent)
     InputComponent->BindKey(EKeys::Q, IE_Pressed, this, &ULogBuildToolsComponent::ThrowInput);
     InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &ULogBuildToolsComponent::HelpInput);
     InputComponent->BindKey(EKeys::U, IE_Pressed, this, &ULogBuildToolsComponent::ApexInput);
+    InputComponent->BindKey(EKeys::F8, IE_Pressed, this, &ULogBuildToolsComponent::PlasterInput);
 }
 
 bool ULogBuildToolsComponent::GetSupportLine(const AActor* Support, FVector& OutA, FVector& OutB, float& OutRadius) const
@@ -770,6 +774,42 @@ bool ULogBuildToolsComponent::TryFillApex(ALogBuildPiece* SlopedBeam)
     }
     SetStatus(FString::Printf(TEXT("Gable row %d placed (%.0f cm)."), Row + 1, Length));
     return true;
+}
+
+void ULogBuildToolsComponent::PlasterInput()
+{
+    AActor* Owner = GetOwner();
+    UInventoryCraftingComponent* Inventory =
+        IsValid(Owner) ? Owner->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    if (!IsValid(Owner) || !IsValid(Inventory))
+    {
+        SetStatus(TEXT("Plaster failed: player inventory is unavailable."));
+        return;
+    }
+
+    FHitResult Hit;
+    if (!TraceView(InteractRange, Hit) || !IsValid(Hit.GetActor()))
+    {
+        SetStatus(TEXT("Aim at a placed wall piece to apply plaster."));
+        return;
+    }
+
+    UWallCoatingComponent* Coating = Hit.GetActor()->FindComponentByClass<UWallCoatingComponent>();
+    if (!IsValid(Coating))
+    {
+        SetStatus(TEXT("This piece cannot be plastered."));
+        return;
+    }
+
+    float NewCoating = 0.0f;
+    if (!Coating->TryApplyPlaster(FGuid::NewGuid(), Inventory, 1, Coating->Revision, NewCoating))
+    {
+        SetStatus(TEXT("Plaster failed: need a placed piece, one Plaster, and available coating capacity."));
+        return;
+    }
+
+    SetStatus(FString::Printf(TEXT("Plaster applied: %d%% sealed. F8 adds one unit."),
+        FMath::RoundToInt(NewCoating * 100.0f)));
 }
 
 void ULogBuildToolsComponent::ApexInput()
