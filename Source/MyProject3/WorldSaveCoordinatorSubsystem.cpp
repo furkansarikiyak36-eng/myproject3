@@ -789,6 +789,14 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Old stock is retained as-is; no historical intake identity is invented.
         Candidate->SchemaVersion = 18;
     }
+    if (Candidate->SchemaVersion == 18)
+    {
+        // Schema v19 adds durable survival-action, heat-fuel and incremental
+        // log-cut receipts plus raid pulse indices. Legacy saves deserialize
+        // these new receipt collections with their safe empty/default values;
+        // no previous actions or damage pulses are retroactively invented.
+        Candidate->SchemaVersion = 19;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
