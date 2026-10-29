@@ -5,6 +5,8 @@
 #include "LogCarryComponent.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
 #include "Components/InputComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -119,6 +121,22 @@ void UTerrainDigToolComponent::DigInput()
     FWorldTerrainCellState ExistingCell;
     const int64 ExpectedCellRevision = TerrainState->TryGetCell(LogicalCell, ExistingCell)
         ? ExistingCell.Revision : 0;
+
+    // Digging is strenuous work: resting and exhaustion block the attempt,
+    // while fatigue reduces the effective strength of each shovel/stick stroke.
+    const UShelterSensorComponent* SurvivalSensor = OwnerPawn
+        ? OwnerPawn->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+    if (Survival && SurvivalSensor && SurvivalSensor->SurvivalEntityId.IsValid())
+    {
+        if (!Survival->RecordActivity(
+            SurvivalSensor->SurvivalEntityId, ESurvivalActivity::Dig, 1.0f, 0.0f))
+        {
+            SetStatus(TEXT("Çok yorgunsun veya dinleniyorsun; kazmak için toparlan."));
+            return;
+        }
+        EffectiveToolStrength *= Survival->GetWorkEffectiveness(SurvivalSensor->SurvivalEntityId);
+    }
 
     FWorldTerrainCellState CommittedState;
     const bool bCommitted = TerrainState->TryApplyVoxelExcavation(
