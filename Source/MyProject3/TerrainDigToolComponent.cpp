@@ -3,6 +3,8 @@
 #include "VoxelTerrainChunkComponent.h"
 #include "WorldTerrainStateSubsystem.h"
 #include "LogCarryComponent.h"
+#include "InventoryCraftingComponent.h"
+#include "WorldGameDataSubsystem.h"
 #include "Components/InputComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -56,6 +58,21 @@ void UTerrainDigToolComponent::DigInput()
         return;
     }
 
+    const APawn* OwnerPawn = Cast<APawn>(GetOwner());
+    const UInventoryCraftingComponent* Inventory = OwnerPawn
+        ? OwnerPawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    const UWorldGameDataSubsystem* GameData = World->GetSubsystem<UWorldGameDataSubsystem>();
+    float DiggingStickStrength = 0.0f;
+    if (!Inventory || Inventory->GetItemCount(TEXT("Tool.DiggingStick")) <= 0 ||
+        !GameData || !GameData->IsApplied() ||
+        !GameData->GetToolStrength(TEXT("Tool.DiggingStick"), DiggingStickStrength))
+    {
+        SetStatus(TEXT("Kazmak için envanterde Tool.DiggingStick gerekir."));
+        return;
+    }
+    const float EffectiveToolStrength = FMath::Clamp(
+        ToolStrength * DiggingStickStrength, 0.01f, 100.0f);
+
     FVector ViewLocation;
     FRotator ViewRotation;
     if (!GetView(ViewLocation, ViewRotation))
@@ -105,7 +122,7 @@ void UTerrainDigToolComponent::DigInput()
 
     FWorldTerrainCellState CommittedState;
     const bool bCommitted = TerrainState->TryApplyVoxelExcavation(
-        FGuid::NewGuid(), Chunk, LocalHit, DigRadiusCm, ToolStrength,
+        FGuid::NewGuid(), Chunk, LocalHit, DigRadiusCm, EffectiveToolStrength,
         Chunk->GetDensityRevision(), LogicalCell, DepthLayer, ExpectedCellRevision,
         MaterialId, CommittedState);
 
