@@ -74,10 +74,11 @@ bool UWorldThreatDirectorSubsystem::CalculateRaidPressureAndTarget(
     TMap<FGuid, float> StorageUnitsById;
     TMap<FGuid, float> StorageFoodById;
     TArray<FThreatTargetCandidate> Candidates;
-    float StoredUnits = 0.0f;
-    float FoodSmellUnits = 0.0f;
-    float LightSignature = 0.0f;
-    float SmokeSignature = 0.0f;
+    TArray<TPair<FVector, TPair<float, float>>> HeatSignals;
+    double StoredUnits = 0.0;
+    double FoodSmellUnits = 0.0;
+    double LightSignature = 0.0;
+    double SmokeSignature = 0.0;
 
     // Resolve physical container and inventory positions before scoring owned items.
     for (TActorIterator<AActor> It(World); It; ++It)
@@ -110,17 +111,35 @@ bool UWorldThreatDirectorSubsystem::CalculateRaidPressureAndTarget(
                 ? FMath::Max(0.0f, Heat->GetRaidLightSignature()) : 0.0f;
             const float Smoke = FMath::IsFinite(Heat->GetRaidSmokeSignature())
                 ? FMath::Max(0.0f, Heat->GetRaidSmokeSignature()) : 0.0f;
-            LightSignature += Light;
-            SmokeSignature += Smoke;
-            const float Attraction = Light * 0.75f + Smoke;
-            if (Attraction > 0.0f && FMath::IsFinite(Attraction))
-                Candidates.Add({ Heat->GetComponentLocation(), Attraction });
+            HeatSignals.Add(TPair<FVector, TPair<float, float>>(
+                Heat->GetComponentLocation(), TPair<float, float>(Light, Smoke)));
         }
+    }
+
+    // Canonical ordering avoids TMap iteration order affecting floating-point sums.
+    HeatSignals.Sort([](const TPair<FVector, TPair<float, float>>& A,
+        const TPair<FVector, TPair<float, float>>& B)
+    {
+        if (!FMath::IsNearlyEqual(A.Key.X, B.Key.X)) return A.Key.X < B.Key.X;
+        if (!FMath::IsNearlyEqual(A.Key.Y, B.Key.Y)) return A.Key.Y < B.Key.Y;
+        if (!FMath::IsNearlyEqual(A.Key.Z, B.Key.Z)) return A.Key.Z < B.Key.Z;
+        if (!FMath::IsNearlyEqual(A.Value.Key, B.Value.Key)) return A.Value.Key < B.Value.Key;
+        return A.Value.Value < B.Value.Value;
+    });
+    for (const TPair<FVector, TPair<float, float>>& Signal : HeatSignals)
+    {
+        LightSignature += Signal.Value.Key;
+        SmokeSignature += Signal.Value.Value;
+        const float Attraction = Signal.Value.Key * 0.75f + Signal.Value.Value;
+        if (Attraction > 0.0f && FMath::IsFinite(Attraction))
+            Candidates.Add({ Signal.Key, Attraction });
     }
 
     TArray<FWorldOwnedItemRecord> Items;
     if (Ownership)
         Ownership->ExportSnapshot(Items);
+    Items.Sort([](const FWorldOwnedItemRecord& A, const FWorldOwnedItemRecord& B)
+        { return A.ItemId.ToString() < B.ItemId.ToString(); });
     for (const FWorldOwnedItemRecord& Item : Items)
     {
         if (Item.Quantity <= 0 || !FMath::IsFinite(static_cast<float>(Item.Quantity)) ||
@@ -183,8 +202,19 @@ bool UWorldThreatDirectorSubsystem::CalculateRaidPressureAndTarget(
         }
     }
 
+    // TMap iteration doesn't affect pressure or target choice: all signal sources
+    // and item records above are canonicalized before the aggregate is consumed.
+    Candidates.Sort([](const FThreatTargetCandidate& A, const FThreatTargetCandidate& B)
+    {
+        if (!FMath::IsNearlyEqual(A.Location.X, B.Location.X)) return A.Location.X < B.Location.X;
+        if (!FMath::IsNearlyEqual(A.Location.Y, B.Location.Y)) return A.Location.Y < B.Location.Y;
+        if (!FMath::IsNearlyEqual(A.Location.Z, B.Location.Z)) return A.Location.Z < B.Location.Z;
+        return A.Weight < B.Weight;
+    });
+
     OutPressure = ComputeRaidPressureFromSignals(
-        StoredUnits, FoodSmellUnits, LightSignature, SmokeSignature);
+        static_cast<float>(StoredUnits), static_cast<float>(FoodSmellUnits),
+        static_cast<float>(LightSignature), static_cast<float>(SmokeSignature));
     if (OutPressure < 0.0f || !FMath::IsFinite(OutPressure))
         return false;
 
