@@ -70,7 +70,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` lines 1–45 (include/dependency layout checked before adding agriculture integration).
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (edited: crop definitions carry plant-month restrictions and zone metadata).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (edited: validates unique months and calendar-gates planting).
-- `Source/MyProject3/WorldGameDataSubsystem.cpp` (edited: requires agriculture subsystem and registers the three parsed crop definitions, planting months, and zone IDs during `ApplyToWorld`).
+- `Source/MyProject3/WorldGameDataSubsystem.cpp` (edited: registers data-defined crop definitions with planting months and zone IDs).
+- `Source/MyProject3/WorldAgricultureSubsystem.h` (edited: adds persistent field-cell state, seven field actions, bounded settings, and overloads for exporting/restoring field snapshots).
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
