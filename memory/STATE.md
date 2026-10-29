@@ -22,6 +22,8 @@ Last built and tested: `bbc57b3` = 102/102.
 | `feature/simple-intent` | Newest. Contextual placement without modes, symmetric diagonals, bent end joints. |
 | `group-a-code-closure` | ChatGPT, +182 commits on simple-intent@321e55a: survival items, conditions, equipment, farming items, excavation yield, routes. Did not compile as pushed; fixed on `game/p00-adopt-group-a` (250ce13). |
 | `fix/vertical-slice-b-core-loop`, `phase-03…14-*-sequential` | Older separate lines without the placement kernel. Not merged anywhere. |
+| `work/phase-3-4-closure` | ChatGPT, +179 on p00@`ea00757`, unbuilt. Not merged; conflicts with p00. |
+| `game/p06-farming-seed-cycle`, `game/p07-zone-entry-progression` | ChatGPT, forked from `0d91300`; a second farming API. Not merged. |
 | PR #34 `architecture/global-snap-variation-library` | Has a second, conflicting kernel. Recommended: close it. |
 
 ## Works (build + 85 automation tests on game/p00-adopt-group-a)

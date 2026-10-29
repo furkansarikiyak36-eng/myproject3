@@ -4,6 +4,13 @@ Design (what the game is): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md` (Turkis
 This file (how we build it): ordered tasks, honest status, evidence. Any assistant with access to
 this GitHub repo can continue from here: Claude Code, Claude web, another account, ChatGPT.
 
+## One working branch only (from 2026-10-29 evening)
+
+All assistants commit to `game/p00-adopt-group-a` only. Do not open new feature branches: parallel lines
+(p06, p07, phase-3-4) built the same systems twice with different APIs and both claimed save schema 29.
+Before starting: `git pull`; before pushing: `git pull --rebase`. A save schema number is taken only by the
+commit that pushes it first; rebase and renumber yours if it is taken.
+
 ## Writing code without a compiler (all assistants, from 2026-10-29)
 
 Work branch: `game/p00-adopt-group-a`; baseline build/test evidence is 102/102 at `bbc57b3`. The current partial-task edits after that commit are **not compiled or tested**. Status ceiling: `code-written`.
