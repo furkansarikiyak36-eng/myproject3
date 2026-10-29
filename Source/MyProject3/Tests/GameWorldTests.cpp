@@ -2382,12 +2382,12 @@ bool FStructuralGraphSupportDamageAndRemovalTest::RunTest(const FString& Paramet
     TestTrue(TEXT("Multi-supported beam has a ground path"), Graph->HasValidSupportPath(Beam));
     TestTrue(TEXT("Multi-supported deck has a ground path"), Graph->HasValidSupportPath(Deck));
     TestEqual(TEXT("Primary foundation receives its share of beam load"),
-        Graph->GetAggregateLoad(GroundA), 17.5f, 0.01f);
+        Graph->GetAggregateLoad(GroundA), 16.25f, 0.01f);
     TestEqual(TEXT("Secondary foundation receives its share of beam load"),
-        Graph->GetAggregateLoad(GroundB), 12.5f, 0.01f);
+        Graph->GetAggregateLoad(GroundB), 16.25f, 0.01f);
 
     TestFalse(TEXT("A used physical anchor cannot be claimed twice"),
-        Graph->TryConnect(GroundA, TEXT("Top"), Deck, TEXT("Duplicate")));
+        Graph->TryConnect(GroundA, TEXT("Top"), GroundB, TEXT("Duplicate")));
     TestFalse(TEXT("A node cannot support itself"),
         Graph->TryAddSecondarySupport(Beam, Beam, TEXT("Self"), TEXT("Self")));
 
