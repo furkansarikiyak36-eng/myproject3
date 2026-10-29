@@ -118,6 +118,8 @@ private:
     FGuid PlayerSurvivalId;
     float Hours = 13.5f;
     float TimeToSurvivalUpdate = 0.0f;
+    /** Last user-notified wetness band: 0 dry, 1 damp, 2 wet, 3 soaked; -1 uninitialized. */
+    int32 LastReportedWetnessBand = INDEX_NONE;
     bool bIntroShown = false;
     TWeakObjectPtr<ADirectionalLight> Sun;
 
