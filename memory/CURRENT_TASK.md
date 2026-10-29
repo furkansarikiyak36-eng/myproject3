@@ -43,9 +43,11 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - P2.3 has wetness and wet-cold condition triggers; visible drying feedback/threshold tuning remains.
 - P2.5 has dirty-water/spoiled-food/wet-cold, fall and animal-bite triggers; toxic-rain and player-visible condition status remain.
 - Recent source changes on this branch are code-written, not built or PIE-verified.
+- `TryConsumeFoodItem` requires a unique item present in both inventory and ownership ledger; its condition and thirst effect are transactional. Hand-craft outputs are ordinary stacks today, so any boiling/drinking UI must not pretend ordinary stacks are ledger-owned.
+- `TryBeginRest` uses `UWorldSimulationClockSubsystem`; the current VerticalSlice_C actor creates a profile and binds I/O/J/F2/F3/F4 but has no explicit drink/rest key. Verify the shared clock advances in this demo before wiring rest.
 
 ### Changes
 - Checkpoint reset to the user's current Phase 2 task before source reads.
 
 ### Next step
-Fetch current P2-related headers/implementations, player input wiring and existing P2 tests; then implement one cohesive batch and update the ledger.
+Next: verify VerticalSlice_C clock stepping and inventory output semantics, then add clear player drinking/rest interactions that only consume valid ledger-owned consumables, with tests where safe.
