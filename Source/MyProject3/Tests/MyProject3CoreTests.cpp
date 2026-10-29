@@ -38,6 +38,8 @@
 #include "WorldTerrainStateSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldProductionSubsystem.h"
+#include "ProductionStationActor.h"
+#include "WorldGameDataSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 
 #include "Engine/Engine.h"
@@ -4253,6 +4255,99 @@ bool FWorldFuelWetnessAndDryingTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Inventory fuel was never changed"), InventoryStillDryAfter.DefinitionId, FName(TEXT("Firewood")));
     TestEqual(TEXT("Drying preserves root definition"), NearDry.BaseDefinitionId, FName(TEXT("Firewood")));
     TestEqual(TEXT("Drying increments item revision"), NearDry.Revision, static_cast<int64>(3));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FProductionStationActorInteractionTest,
+    "MyProject3.Production.StationDepositStartCollectTakePreservesToolType", TestFlags)
+bool FProductionStationActorInteractionTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World
+        ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldProductionSubsystem* Production = World
+        ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game-data subsystem"), GameData) ||
+        !TestNotNull(TEXT("Production subsystem"), Production))
+        return false;
+    TestTrue(TEXT("Load authored station and transformation definitions"), GameData->LoadDefault());
+    TestTrue(TEXT("Apply game data to production"), GameData->ApplyToWorld());
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item weights and hand recipes"), GameData->ApplyToInventory(Inventory));
+
+    auto AddGenericStack = [&](FName ItemId, bool bTool)
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = ItemId;
+        Stack.Quantity = 1;
+        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
+        Stack.bIsTool = bTool;
+        Stack.MaxStack = bTool ? 1 : 99;
+        return Inventory->TryAddItem(Stack);
+    };
+    TestTrue(TEXT("Add half log input"), AddGenericStack(TEXT("HalfLog"), false));
+    TestTrue(TEXT("Add wedge tool"), AddGenericStack(TEXT("Tool.Wedge"), true));
+    TestTrue(TEXT("Add chisel tool"), AddGenericStack(TEXT("Tool.Chisel"), true));
+
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    AProductionStationActor* Station = World->SpawnActor<AProductionStationActor>(
+        AProductionStationActor::StaticClass(), FTransform(FVector(200.0f, 0.0f, 0.0f)), SpawnParameters);
+    if (!TestNotNull(TEXT("Workbench station actor"), Station))
+        return false;
+    Station->StationDataId = TEXT("workbench_log");
+    TestTrue(TEXT("Register station after data application"), Station->EnsureRegistered());
+    TestTrue(TEXT("Deposit half log input"), Station->TryDeposit(Inventory, TEXT("HalfLog"), 1));
+    TestTrue(TEXT("Deposit wedge tool"), Station->TryDeposit(Inventory, TEXT("Tool.Wedge"), 1));
+    TestTrue(TEXT("Deposit chisel tool"), Station->TryDeposit(Inventory, TEXT("Tool.Chisel"), 1));
+    TestEqual(TEXT("Input stack leaves inventory"), Inventory->GetItemCount(TEXT("HalfLog")), 0);
+    TestEqual(TEXT("Tools remain off the player while station job owns them"), Inventory->GetItemCount(TEXT("Tool.Wedge")), 0);
+
+    FGuid JobId;
+    TestTrue(TEXT("Start the data-defined plank transformation"), Station->TryStartRecipe(TEXT("make_plank"), JobId));
+    TestTrue(TEXT("Job identity returned"), JobId.IsValid());
+
+    bool bJobCompleted = false;
+    for (int32 Step = 0; Step < 24 && !bJobCompleted; ++Step)
+    {
+        TestTrue(TEXT("Advance bounded production step"), Production->AdvanceProductionStep(3600.0));
+        FWorldProductionStation State;
+        if (!TestTrue(TEXT("Read station state"), Production->GetStation(Station->GetStationId(), State)))
+            return false;
+        const FWorldProductionJob* Job = State.Jobs.FindByPredicate(
+            [&JobId](const FWorldProductionJob& Candidate) { return Candidate.JobId == JobId; });
+        bJobCompleted = !Job || Job->State == EProductionJobState::Completed;
+    }
+    TestTrue(TEXT("Plank job completes under shared production steps"), bJobCompleted);
+    TestEqual(TEXT("Completed recipe produces two planks"), Station->GetStockCount(TEXT("Plank")), 2);
+    TestEqual(TEXT("Wedge tool is returned into station stock"), Station->GetStockCount(TEXT("Tool.Wedge")), 1);
+    TestEqual(TEXT("Chisel tool is returned into station stock"), Station->GetStockCount(TEXT("Tool.Chisel")), 1);
+    TestEqual(TEXT("Collect finished job metadata once"), Station->CollectFinishedJobs(), 1);
+    TestEqual(TEXT("Repeated collect does not collect a removed job twice"), Station->CollectFinishedJobs(), 0);
+
+    TestTrue(TEXT("Take one plank"), Station->TryTake(Inventory, TEXT("Plank"), 1));
+    TestEqual(TEXT("Plank transferred into inventory"), Inventory->GetItemCount(TEXT("Plank")), 1);
+    TestTrue(TEXT("Take returned wedge"), Station->TryTake(Inventory, TEXT("Tool.Wedge"), 1));
+    TestEqual(TEXT("Returned wedge exists in inventory"), Inventory->GetItemCount(TEXT("Tool.Wedge")), 1);
+    bool bWedgeKeepsToolMetadata = false;
+    for (const FInventoryStack& Stack : Inventory->Items)
+    {
+        if (Stack.ItemId == TEXT("Tool.Wedge"))
+            bWedgeKeepsToolMetadata = Stack.Category == EInventoryItemCategory::Tool &&
+                Stack.bIsTool && Stack.MaxStack == 1 && !Stack.OwnedWorldItemId.IsValid();
+    }
+    TestTrue(TEXT("Withdrawn tool preserves authored Tool category and singleton stack metadata"),
+        bWedgeKeepsToolMetadata);
     return true;
 }
 
