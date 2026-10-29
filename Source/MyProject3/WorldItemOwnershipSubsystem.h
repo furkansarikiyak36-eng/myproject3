@@ -47,6 +47,10 @@ struct FWorldOwnedItemRecord
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
     FVector WorldLocation = FVector::ZeroVector;
 
+    /** Creation time on the shared logical world clock; -1 means legacy/unknown. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
+    double CreatedAtWorldTimeSeconds = -1.0;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Items")
     int64 Revision = 1;
 };
