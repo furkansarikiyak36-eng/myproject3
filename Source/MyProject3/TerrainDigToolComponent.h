@@ -26,7 +26,8 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool", meta=(ClampMin="10.0", ClampMax="200.0"))
     float DigRadiusCm = 75.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool", meta=(ClampMin="0.01"))
+    /** Multiplier applied to the authored inventory tool strength. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool", meta=(ClampMin="0.01", ClampMax="10.0"))
     float ToolStrength = 1.0f;
 
     /** World-space grid used to assign the logical excavation ledger cell. */
