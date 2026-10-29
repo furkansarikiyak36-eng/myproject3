@@ -1455,6 +1455,9 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& ApplyFieldBinding = InputComponent->BindKey(
                 EKeys::F10, IE_Pressed, this, &AVerticalSliceCWorldActor::ApplyFieldActionInput);
             ApplyFieldBinding.bConsumeInput = false;
+            FInputKeyBinding& CropBinding = InputComponent->BindKey(
+                EKeys::P, IE_Pressed, this, &AVerticalSliceCWorldActor::PlantOrHarvestCropInput);
+            CropBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
@@ -2219,6 +2222,40 @@ void AVerticalSliceCWorldActor::GatherInput()
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, Reason);
 }
 
+bool AVerticalSliceCWorldActor::FindNearestFarmPlotCell(
+    const FVector& WorldLocation, FIntVector& OutCell, float MaxDistanceCm) const
+{
+    OutCell = FIntVector::ZeroValue;
+    if (!bFarmPlotBuilt || FarmPlotTiles.Num() != FarmPlotCellsPerAxis * FarmPlotCellsPerAxis ||
+        WorldLocation.ContainsNaN() || !FMath::IsFinite(MaxDistanceCm) || MaxDistanceCm <= 0.0f)
+        return false;
+
+    float BestDistanceSquared = TNumericLimits<float>::Max();
+    bool bFoundCell = false;
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const float DistanceSquared = FVector::DistSquared2D(
+                WorldLocation, FVector(WorldX, WorldY, 0.0f));
+            if (DistanceSquared >= BestDistanceSquared)
+                continue;
+
+            BestDistanceSquared = DistanceSquared;
+            OutCell = FIntVector(
+                FMath::RoundToInt(WorldX / 100.0f),
+                FMath::RoundToInt(WorldY / 100.0f),
+                FMath::RoundToInt(GetGroundHeight(WorldX, WorldY) / 100.0f));
+            bFoundCell = true;
+        }
+    }
+    return bFoundCell && BestDistanceSquared <= FMath::Square(MaxDistanceCm);
+}
+
 void AVerticalSliceCWorldActor::CycleFieldActionInput()
 {
     UWorld* World = GetWorld();
@@ -2243,7 +2280,7 @@ void AVerticalSliceCWorldActor::CycleFieldActionInput()
         ? TEXT("no materials") : FString::Join(Requirements, TEXT(", "));
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(160, 215, 255),
-            FString::Printf(TEXT("FIELD ACTION: %s | %s | labor %.0f game seconds | F9 apply"),
+            FString::Printf(TEXT("FIELD ACTION: %s | %s | labor %.0f game seconds | F10 apply"),
                 *Action.Id.ToString(), *CostText, Action.LaborSeconds));
 }
 
@@ -2273,31 +2310,7 @@ void AVerticalSliceCWorldActor::ApplyFieldActionInput()
     const FGameDataFieldAction& Action = GameData->GetFieldActions()[SelectedFieldActionIndex];
 
     FIntVector FieldCell = FIntVector::ZeroValue;
-    float BestDistanceSquared = TNumericLimits<float>::Max();
-    bool bFoundCell = false;
-    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
-    {
-        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
-        {
-            const float WorldX = FarmPlotCentre.X +
-                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
-            const float WorldY = FarmPlotCentre.Y +
-                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
-            const float DistanceSquared = FVector::DistSquared2D(
-                Pawn->GetActorLocation(), FVector(WorldX, WorldY, 0.0f));
-            if (DistanceSquared < BestDistanceSquared)
-            {
-                BestDistanceSquared = DistanceSquared;
-                FieldCell = FIntVector(
-                    FMath::RoundToInt(WorldX / 100.0f),
-                    FMath::RoundToInt(WorldY / 100.0f),
-                    FMath::RoundToInt(GetGroundHeight(WorldX, WorldY) / 100.0f));
-                bFoundCell = true;
-            }
-        }
-    }
-
-    if (!bFoundCell || BestDistanceSquared > FMath::Square(135.0f))
+    if (!FindNearestFarmPlotCell(Pawn->GetActorLocation(), FieldCell))
     {
         if (GEngine)
             GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
@@ -2344,6 +2357,153 @@ void AVerticalSliceCWorldActor::ApplyFieldActionInput()
                 *Action.Id.ToString(), FieldCell.X, FieldCell.Y,
                 static_cast<long long>(UpdatedCell.Revision)));
     }
+}
+
+void AVerticalSliceCWorldActor::PlantOrHarvestCropInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !GameData || !GameData->IsApplied() ||
+        !Agriculture || !Survival || !Ownership || !PlayerSurvivalId.IsValid())
+        return;
+
+    FIntVector FieldCell;
+    if (!FindNearestFarmPlotCell(Pawn->GetActorLocation(), FieldCell))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+                TEXT("P: stand close to one of the nine visible farm tiles to plant or harvest."));
+        return;
+    }
+
+    FWorldCropState ExistingCrop;
+    if (Agriculture->GetCropAtPlotCell(FieldCell, ExistingCrop))
+    {
+        if (ExistingCrop.Stage != ECropGrowthStage::Mature)
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(200, 200, 140),
+                    FString::Printf(TEXT("Crop %s is not mature yet (stage %d)."),
+                        *ExistingCrop.CropDefinitionId.ToString(),
+                        static_cast<int32>(ExistingCrop.Stage)));
+            return;
+        }
+
+        TArray<FGuid> HarvestedItemIds;
+        if (!Agriculture->TryHarvestCropToInventory(FGuid::NewGuid(),
+            ExistingCrop.CropId, ExistingCrop.Revision, Inventory, PlayerSurvivalId, HarvestedItemIds))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+                    TEXT("Harvest failed: check inventory capacity, rest, stamina and crop state."));
+            return;
+        }
+
+        TMap<FName, int32> OutputCounts;
+        for (const FGuid& ItemId : HarvestedItemIds)
+        {
+            FWorldOwnedItemRecord Item;
+            if (Ownership->TryGetItem(ItemId, Item) &&
+                Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+                Item.OwnerId == Inventory->GetInventoryOwnerId())
+                ++OutputCounts.FindOrAdd(Item.DefinitionId);
+        }
+        TArray<FName> OutputDefinitions;
+        OutputCounts.GetKeys(OutputDefinitions);
+        OutputDefinitions.Sort([](FName A, FName B) { return A.ToString() < B.ToString(); });
+        TArray<FString> OutputParts;
+        for (const FName DefinitionId : OutputDefinitions)
+            OutputParts.Add(FString::Printf(TEXT("%d x %s"),
+                OutputCounts.FindRef(DefinitionId), *DefinitionId.ToString()));
+
+        RefreshFarmPlotVisuals();
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(140, 220, 160),
+                FString::Printf(TEXT("HARVESTED %s: %s"),
+                    *ExistingCrop.CropDefinitionId.ToString(), *FString::Join(OutputParts, TEXT(", "))));
+        return;
+    }
+
+    FWorldFieldCellState Field;
+    if (!Agriculture->GetFieldCell(FieldCell, Field) ||
+        !Field.bCleared || !Field.bTilled || Field.Fertility <= 0.0f)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.3f, FColor::Orange,
+                TEXT("Prepare the tile first: use F9 to select Clear, then Till, and F10 to apply."));
+        return;
+    }
+
+    FWorldCalendarDate Date;
+    const UWorldSimulationClockSubsystem* Clock =
+        World->GetSubsystem<UWorldSimulationClockSubsystem>();
+    if (!Clock || !Clock->GetCalendarDate(Date))
+        return;
+
+    const FInventoryStack* SelectedSeedStack = nullptr;
+    const FGameDataCrop* SelectedCrop = nullptr;
+    FWorldOwnedItemRecord SelectedSeed;
+    for (const FInventoryStack& Stack : Inventory->Items)
+    {
+        if (!Stack.OwnedWorldItemId.IsValid() || Stack.Quantity != 1 || Stack.MaxStack != 1)
+            continue;
+        const FGameDataCrop* Crop = GameData->GetCrops().FindByPredicate(
+            [&Stack](const FGameDataCrop& Candidate) { return Candidate.SeedItemId == Stack.ItemId; });
+        if (!Crop || !Crop->PlantMonths.Contains(Date.Month) ||
+            (GameData->IsDiscoveryGatedDefinition(Stack.ItemId) &&
+             !Survival->IsDefinitionUnlocked(PlayerSurvivalId, Stack.ItemId)))
+            continue;
+
+        FWorldOwnedItemRecord Seed;
+        if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, Seed) ||
+            Seed.OwnerKind != EWorldItemOwnerKind::Inventory ||
+            Seed.OwnerId != Inventory->GetInventoryOwnerId() ||
+            Seed.DefinitionId != Stack.ItemId || Seed.Quantity != 1)
+            continue;
+
+        SelectedSeedStack = &Stack;
+        SelectedCrop = Crop;
+        SelectedSeed = Seed;
+        break;
+    }
+
+    if (!SelectedSeedStack || !SelectedCrop)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+                FString::Printf(TEXT("No plantable owned seed for month %d. Find the seed site for a crop in season."),
+                    Date.Month));
+        return;
+    }
+
+    FGuid NewCropId;
+    if (!Agriculture->TryPlantCrop(FGuid::NewGuid(), SelectedCrop->Id,
+        SelectedSeed.ItemId, SelectedSeed.Revision, Inventory->GetInventoryOwnerId(),
+        FieldCell, Field.Moisture, NewCropId))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange,
+                FString::Printf(TEXT("Planting %s failed: check moisture, season, soil or discovery."),
+                    *SelectedCrop->Id.ToString()));
+        return;
+    }
+
+    RefreshFarmPlotVisuals();
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 220, 160),
+            FString::Printf(TEXT("PLANTED %s in tile (%d,%d); the owned seed was consumed."),
+                *SelectedCrop->Id.ToString(), FieldCell.X, FieldCell.Y));
 }
 
 void AVerticalSliceCWorldActor::ChopInput()
