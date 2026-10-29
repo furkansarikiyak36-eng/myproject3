@@ -3108,4 +3108,94 @@ bool FThreatDamagePulseReceiptTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTerrainExcavationCreatesPersistentOwnedResourcesTest,
+    "MyProject3.Terrain.ExcavationCreatesRetrySafeOwnedResourceOutputs", TestFlags)
+bool FTerrainExcavationCreatesPersistentOwnedResourcesTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldTerrainStateSubsystem* Terrain = World
+        ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Terrain state"), Terrain) ||
+        !TestNotNull(TEXT("Item ownership"), Ownership))
+        return false;
+
+    AActor* ChunkActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Voxel chunk actor"), ChunkActor))
+        return false;
+    UWorldObjectIdentityComponent* Identity = NewObject<UWorldObjectIdentityComponent>(ChunkActor);
+    UVoxelTerrainChunkComponent* Voxel = NewObject<UVoxelTerrainChunkComponent>(ChunkActor);
+    if (!TestNotNull(TEXT("Stable chunk identity"), Identity) ||
+        !TestNotNull(TEXT("Voxel terrain component"), Voxel))
+        return false;
+    ChunkActor->AddInstanceComponent(Identity);
+    Identity->RegisterComponent();
+    TestTrue(TEXT("Chunk identity initialized"), Identity->EnsureIdentity());
+    ChunkActor->AddInstanceComponent(Voxel);
+    Voxel->CellsPerAxis = 8;
+    Voxel->VoxelSizeCm = 25.0f;
+    Voxel->EditableBoundsLocal = FBox(FVector::ZeroVector, FVector(200.0f));
+    Voxel->RegisterComponent();
+    Voxel->InitializeFlatGround(150.0f);
+    TestTrue(TEXT("Voxel density initialized"), Voxel->HasInitializedDensity());
+    TestTrue(TEXT("Voxel surface builds for the test pocket"), Voxel->RebuildMesh() > 0);
+
+    FWorldTerrainResourceYieldRule Rule;
+    Rule.SourceMaterialId = TEXT("Ore.CopperPocket");
+    Rule.OutputDefinitionId = TEXT("Resource.CopperOre");
+    Rule.MinimumDepthLayer = 1;
+    Rule.MaximumDepthLayer = 3;
+    Rule.UnitsPerCubicMetre = 100.0f;
+    Rule.MaxUnitsPerOperation = 16;
+    Terrain->ResourceYieldRules.Add(Rule);
+
+    const FGuid OperationId = FGuid::NewGuid();
+    const int32 ItemsBefore = Ownership->GetTrackedItemCount();
+    FWorldTerrainCellState Cell;
+    TArray<FGuid> OutputIds;
+    TestTrue(TEXT("Bounded excavation and output commit atomically"), Terrain->TryExcavateForResource(
+        OperationId, Voxel, FVector(100.0f, 100.0f, 75.0f), 30.0f, 1.0f,
+        Voxel->GetDensityRevision(), FIntVector(2, 2, 1), 1, 0,
+        Rule.SourceMaterialId, Cell, OutputIds));
+    TestTrue(TEXT("Successful excavation changed logical terrain"), Cell.bExcavated);
+    TestTrue(TEXT("The operation has a committed physical density revision"),
+        Voxel->GetDensityRevision() > 1);
+    TestTrue(TEXT("Yield is bounded"), OutputIds.Num() >= 0 && OutputIds.Num() <= Rule.MaxUnitsPerOperation);
+    TestEqual(TEXT("Tracked ownership grew by exactly the yield count"),
+        Ownership->GetTrackedItemCount(), ItemsBefore + OutputIds.Num());
+
+    for (const FGuid& OutputId : OutputIds)
+    {
+        FWorldOwnedItemRecord Output;
+        TestTrue(TEXT("Resource output exists in ownership ledger"), Ownership->TryGetItem(OutputId, Output));
+        TestEqual(TEXT("Resource output has the authored definition"),
+            Output.DefinitionId, Rule.OutputDefinitionId);
+        TestEqual(TEXT("Resource output is world-owned"), Output.OwnerKind, EWorldItemOwnerKind::World);
+    }
+
+    TArray<FGuid> RetryIds;
+    FWorldTerrainCellState RetryCell;
+    TestTrue(TEXT("Same extraction operation replays success"), Terrain->TryExcavateForResource(
+        OperationId, Voxel, FVector(100.0f, 100.0f, 75.0f), 30.0f, 1.0f,
+        1, FIntVector(2, 2, 1), 1, 0, Rule.SourceMaterialId, RetryCell, RetryIds));
+    TestTrue(TEXT("Extraction retry returns the original identities"), RetryIds == OutputIds);
+    TestEqual(TEXT("Extraction retry creates no duplicate resources"),
+        Ownership->GetTrackedItemCount(), ItemsBefore + OutputIds.Num());
+
+    TArray<FWorldTerrainCellState> Cells;
+    TArray<FWorldTerrainOperationReceipt> Receipts;
+    Terrain->ExportSnapshot(Cells, Receipts);
+    TestTrue(TEXT("Terrain receipts validate against voxel and item state on restore"),
+        Terrain->RestoreSnapshot(Cells, Receipts));
+    TArray<FGuid> RestoredRetryIds;
+    TestTrue(TEXT("Saved extraction receipt remains replayable"), Terrain->TryExcavateForResource(
+        OperationId, Voxel, FVector(100.0f, 100.0f, 75.0f), 30.0f, 1.0f,
+        1, FIntVector(2, 2, 1), 1, 0, Rule.SourceMaterialId, RetryCell, RestoredRetryIds));
+    TestTrue(TEXT("Post-restore retry returns the original identities"), RestoredRetryIds == OutputIds);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
