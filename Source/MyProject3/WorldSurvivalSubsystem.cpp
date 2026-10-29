@@ -1,6 +1,13 @@
 #include "WorldSurvivalSubsystem.h"
 
 #include "HeatSourceComponent.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
+#include "InventoryCraftingComponent.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 
 namespace
 {
@@ -20,7 +27,50 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
         InRange(Profile.CaloriesKcal, 0.0f, MaxCaloriesKcal) &&
         InRange(Profile.CoreTemperatureCelsius, 20.0f, 45.0f) &&
         InRange(Profile.PendingActivityKcal, 0.0f, 100000.0f) &&
-        !Profile.Location.ContainsNaN();
+        FMath::IsFinite(Profile.RestUntilTimeSeconds) && Profile.RestUntilTimeSeconds >= 0.0 &&
+        MaxActionReceiptsPerProfile > 0 &&
+        Profile.ActionReceipts.Num() <= MaxActionReceiptsPerProfile &&
+        !Profile.Location.ContainsNaN() &&
+        [&Profile]()
+        {
+            TSet<FGuid> SeenOperations;
+            for (const FWorldSurvivalActionReceipt& Receipt : Profile.ActionReceipts)
+            {
+                if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
+                    Receipt.EntityId != Profile.EntityId ||
+                    static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::BeginRest) ||
+                    Receipt.ExpectedProfileRevision <= 0 ||
+                    Receipt.ResultingProfileRevision != Receipt.ExpectedProfileRevision + 1 ||
+                    Receipt.ResultingProfileRevision > Profile.Revision)
+                    return false;
+                SeenOperations.Add(Receipt.OperationId);
+                if (Receipt.Action == EWorldSurvivalActionKind::ConsumeFoodItem)
+                {
+                    if (!Receipt.ItemId.IsValid() || !Receipt.ExpectedItemOwnerId.IsValid() ||
+                        Receipt.ExpectedItemRevision <= 0 ||
+                        Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                        Receipt.ItemDefinitionId.IsNone() ||
+                        !FMath::IsFinite(Receipt.CaloriesKcal) ||
+                        Receipt.CaloriesKcal < 0.0f || Receipt.CaloriesKcal > 10000.0f ||
+                        !FMath::IsFinite(Receipt.ThirstRelief) ||
+                        Receipt.ThirstRelief < 0.0f || Receipt.ThirstRelief > 100.0f)
+                        return false;
+                }
+                else
+                {
+                    if (!FMath::IsFinite(Receipt.RequestedStartTimeSeconds) ||
+                        Receipt.RequestedStartTimeSeconds < 0.0 ||
+                        !FMath::IsFinite(Receipt.RequestedDurationSeconds) ||
+                        Receipt.RequestedDurationSeconds <= 0.0 ||
+                        Receipt.RequestedDurationSeconds > 43200.0 ||
+                        !FMath::IsFinite(Receipt.ResultingRestUntilTimeSeconds) ||
+                        !FMath::IsNearlyEqual(Receipt.ResultingRestUntilTimeSeconds,
+                            Receipt.RequestedStartTimeSeconds + Receipt.RequestedDurationSeconds, 0.001))
+                        return false;
+                }
+            }
+            return true;
+        }();
 }
 
 bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profile)
@@ -28,6 +78,283 @@ bool UWorldSurvivalSubsystem::RegisterProfile(const FWorldSurvivalProfile& Profi
     if (Profiles.Contains(Profile.EntityId) || !IsValidProfile(Profile))
         return false;
     Profiles.Add(Profile.EntityId, Profile);
+    return true;
+}
+
+const FWorldSurvivalConsumableDefinition*
+UWorldSurvivalSubsystem::FindConsumableDefinition(FName DefinitionId) const
+{
+    if (DefinitionId.IsNone())
+        return nullptr;
+    return ConsumableDefinitions.FindByPredicate([DefinitionId](
+        const FWorldSurvivalConsumableDefinition& Definition)
+    {
+        return Definition.DefinitionId == DefinitionId;
+    });
+}
+
+const FWorldSurvivalActionReceipt*
+UWorldSurvivalSubsystem::FindActionReceipt(const FGuid& OperationId) const
+{
+    if (!OperationId.IsValid())
+        return nullptr;
+    for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
+    {
+        const FWorldSurvivalActionReceipt* Found = Pair.Value.ActionReceipts.FindByPredicate(
+            [OperationId](const FWorldSurvivalActionReceipt& Receipt)
+            {
+                return Receipt.OperationId == OperationId;
+            });
+        if (Found)
+            return Found;
+    }
+    return nullptr;
+}
+
+bool UWorldSurvivalSubsystem::RegisterConsumableDefinition(
+    const FWorldSurvivalConsumableDefinition& Definition)
+{
+    if (Definition.DefinitionId.IsNone() ||
+        !InRange(Definition.CaloriesKcal, 0.0f, 10000.0f) ||
+        !InRange(Definition.ThirstRelief, 0.0f, 100.0f) ||
+        (Definition.CaloriesKcal <= 0.0f && Definition.ThirstRelief <= 0.0f) ||
+        !FMath::IsFinite(Definition.FreshnessDurationSeconds) ||
+        Definition.FreshnessDurationSeconds < 0.0 ||
+        !InRange(Definition.SpoiledEnergyFraction, 0.0f, 1.0f) ||
+        MaxConsumableDefinitions <= 0 || MaxConsumableDefinitions > 4096)
+    {
+        return false;
+    }
+    if (FindConsumableDefinition(Definition.DefinitionId) ||
+        ConsumableDefinitions.Num() >= MaxConsumableDefinitions)
+    {
+        return false;
+    }
+    ConsumableDefinitions.Add(Definition);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryConsumeFoodItem(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& ExpectedInventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !ItemId.IsValid() || ExpectedItemRevision <= 0 || !ExpectedInventoryOwnerId.IsValid())
+    {
+        return false;
+    }
+
+    // A committed retry must be resolved before stale-revision checks: after the
+    // first commit both the profile and item revisions have advanced.
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldSurvivalActionKind::ConsumeFoodItem &&
+            Existing->EntityId == EntityId && Existing->ItemId == ItemId &&
+            Existing->ExpectedItemOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->ExpectedItemRevision == ExpectedItemRevision;
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Profile || !Ownership || !Clock || !Clock->IsClockInitialized() ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        MaxActionReceiptsPerProfile <= 0 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile)
+    {
+        return false;
+    }
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(ItemId, Item) ||
+        Item.Revision != ExpectedItemRevision || Item.Revision >= MAX_int64 - 1 ||
+        Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Item.OwnerId != ExpectedInventoryOwnerId || Item.Quantity != 1)
+    {
+        return false;
+    }
+    const FWorldSurvivalConsumableDefinition* Definition =
+        FindConsumableDefinition(Item.DefinitionId);
+    if (!Definition)
+        return false;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (!FMath::IsFinite(Now) || Now < 0.0 ||
+        !FMath::IsFinite(Item.CreatedAtWorldTimeSeconds) ||
+        Item.CreatedAtWorldTimeSeconds < 0.0)
+        return false;
+
+    const double Age = FMath::Max(0.0, Now - Item.CreatedAtWorldTimeSeconds);
+    const bool bSpoiled = Definition->FreshnessDurationSeconds > 0.0 &&
+        Age >= Definition->FreshnessDurationSeconds;
+    if (bSpoiled && Definition->SpoiledEnergyFraction <= 0.0f)
+        return false;
+    const float AppliedCalories = Definition->CaloriesKcal *
+        (bSpoiled ? Definition->SpoiledEnergyFraction : 1.0f);
+    const float AppliedThirstRelief = Definition->ThirstRelief;
+    if (AppliedCalories <= 0.0f && AppliedThirstRelief <= 0.0f)
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        UInventoryCraftingComponent* Candidate =
+            IsValid(*It) ? It->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+        if (IsValid(Candidate) && Candidate->GetInventoryOwnerId() == ExpectedInventoryOwnerId)
+        {
+            if (Inventory)
+                return false; // Duplicate inventory owners are ambiguous and fail closed.
+            Inventory = Candidate;
+        }
+    }
+    if (!Inventory)
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != ExpectedInventoryOwnerId)
+        return false;
+
+    bool bHasExactStack = false;
+    for (const FInventoryStack& Stack : InventoryItemsBefore)
+    {
+        if (Stack.OwnedWorldItemId == ItemId)
+        {
+            if (Stack.Quantity != 1 || Stack.ItemId.IsNone())
+                return false;
+            bHasExactStack = true;
+            break;
+        }
+    }
+    if (!bHasExactStack)
+        return false;
+
+    TArray<FWorldOwnedItemRecord> ItemsBefore;
+    TArray<FWorldItemTransferReceipt> TransferReceiptsBefore;
+    TArray<FWorldItemSplitReceipt> SplitReceiptsBefore;
+    Ownership->ExportSnapshot(ItemsBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+
+    auto RollbackOwnershipAndInventory = [&]() -> bool
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            ItemsBefore, TransferReceiptsBefore, SplitReceiptsBefore);
+        if (!bInventoryRestored || !bOwnershipRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Food-consumption rollback failed for item %s."),
+                *ItemId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Food consumption rollback failed; stop simulation and recover/reset the world."));
+            }
+            return false;
+        }
+        return true;
+    };
+
+    FInventoryStack RemovedStack;
+    if (!Inventory->TryRemoveOwnedItemReference(ItemId, RemovedStack))
+    {
+        return false;
+    }
+
+    if (!Ownership->TryConsumeItem(OperationId, ItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::Inventory))
+    {
+        RollbackOwnershipAndInventory();
+        return false;
+    }
+
+    FWorldOwnedItemRecord ConsumedItem;
+    if (!Ownership->TryGetItem(ItemId, ConsumedItem) ||
+        ConsumedItem.OwnerKind != EWorldItemOwnerKind::Consumed)
+    {
+        RollbackOwnershipAndInventory();
+        return false;
+    }
+
+    // From here on, all validation/capacity checks have passed. Mutate the
+    // survival profile once, then persist a receipt bound to the item identity.
+    Profile->CaloriesKcal = FMath::Min(MaxCaloriesKcal, Profile->CaloriesKcal + AppliedCalories);
+    Profile->Hunger = 100.0f * (1.0f - Profile->CaloriesKcal / MaxCaloriesKcal);
+    Profile->Thirst = FMath::Max(0.0f, Profile->Thirst - AppliedThirstRelief);
+    ++Profile->Revision;
+
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::ConsumeFoodItem;
+    Receipt.ItemId = ItemId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = ExpectedItemRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.ResultingItemRevision = ConsumedItem.Revision;
+    Receipt.ItemDefinitionId = Item.DefinitionId;
+    Receipt.CaloriesKcal = AppliedCalories;
+    Receipt.ThirstRelief = AppliedThirstRelief;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryBeginRest(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    double DurationSeconds)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !FMath::IsFinite(DurationSeconds) || DurationSeconds <= 0.0 ||
+        DurationSeconds > 43200.0)
+    {
+        return false;
+    }
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldSurvivalActionKind::BeginRest &&
+            Existing->EntityId == EntityId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            FMath::IsNearlyEqual(Existing->RequestedDurationSeconds, DurationSeconds, 0.001);
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Profile || !Clock || !Clock->IsClockInitialized() ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        MaxActionReceiptsPerProfile <= 0 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile)
+    {
+        return false;
+    }
+    const double Now = Clock->GetSimulationTimeSeconds();
+    const double RestUntil = Now + DurationSeconds;
+    if (!FMath::IsFinite(Now) || Now < 0.0 || !FMath::IsFinite(RestUntil) ||
+        Profile->RestUntilTimeSeconds > Now)
+    {
+        return false;
+    }
+
+    Profile->RestUntilTimeSeconds = RestUntil;
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::BeginRest;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.RequestedStartTimeSeconds = Now;
+    Receipt.RequestedDurationSeconds = DurationSeconds;
+    Receipt.ResultingRestUntilTimeSeconds = RestUntil;
+    Profile->ActionReceipts.Add(Receipt);
     return true;
 }
 
