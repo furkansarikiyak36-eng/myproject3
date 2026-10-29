@@ -1024,8 +1024,9 @@ void UWorldAgricultureSubsystem::ExportSnapshot(
 bool UWorldAgricultureSubsystem::RestoreSnapshot(
     const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot)
 {
-    TArray<FWorldFieldCellState> EmptyFields;
-    return RestoreSnapshot(CropSnapshot, AnimalSnapshot, EmptyFields);
+    TArray<FWorldFieldCellState> ExistingFields;
+    FieldCells.GenerateValueArray(ExistingFields);
+    return RestoreSnapshot(CropSnapshot, AnimalSnapshot, ExistingFields);
 }
 
 bool UWorldAgricultureSubsystem::RestoreSnapshot(
