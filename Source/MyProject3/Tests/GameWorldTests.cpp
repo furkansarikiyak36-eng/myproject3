@@ -1416,8 +1416,11 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
-        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival))
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Item ownership"), Ownership))
         return false;
 
     TestTrue(TEXT("Load game data"), GameData->LoadDefault());
@@ -1457,6 +1460,7 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     Marker->RevealRadiusCm = 300.0f;
     Marker->RewardItemId = TEXT("Seed.Grain");
     Marker->RewardQuantity = 2;
+    Marker->bRewardUniqueItems = true;
 
     Marker->Tick(1.0f);
     TestTrue(TEXT("Marker records the configured discovery"),
@@ -1465,6 +1469,20 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     TestTrue(TEXT("Discovery unlock is available through the survival ledger"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
     TestEqual(TEXT("Two seed items are granted"), Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
+    TArray<FGuid> OwnedSeedIds;
+    for (const FInventoryStack& Stack : Inventory->Items)
+        if (Stack.ItemId == TEXT("Seed.Grain") && Stack.OwnedWorldItemId.IsValid())
+            OwnedSeedIds.Add(Stack.OwnedWorldItemId);
+    TestEqual(TEXT("Each seed has its own ledger identity"), OwnedSeedIds.Num(), 2);
+    for (const FGuid& ItemId : OwnedSeedIds)
+    {
+        FWorldOwnedItemRecord Item;
+        TestTrue(TEXT("Seed exists in ownership ledger"), Ownership->TryGetItem(ItemId, Item));
+        TestTrue(TEXT("Seed is still owned by the inventory"),
+            Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            Item.OwnerId == Inventory->GetInventoryOwnerId() &&
+            Item.DefinitionId == TEXT("Seed.Grain"));
+    }
 
     Marker->Tick(1.0f);
     TestEqual(TEXT("Repeating marker tick cannot duplicate seed reward"),
