@@ -47,6 +47,12 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - After every repository step, update Findings/Changes and Next step here.
 
 ### Read
+- `Source/MyProject3/HeatSourceComponent.h/.cpp` (fuel definitions, BeginPlay identity, TryAddFuelItem, Ignite/GetHeatAt reviewed).
+- `Source/MyProject3/WorldGameDataSubsystem.cpp` (existing-source fuel application in ApplyToWorld added; `ApplyToHeatSource` materializes item fuel records).
+- `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`TryUpdateItemDefinition` supports world-owner wet/dry transitions with receipt and stable base definition).
+- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (world-owned fuel transitions added to shared survival step).
+- `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I creek-fill and O refuel/ignite inputs present).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (current blob refreshed after a wet-fuel test conflict; wet/dry test still absent).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (P2 API declarations: profile/location/activity/owned-item consume/rest/condition/weather/snapshots).
 - `Source/MyProject3/VerticalSliceCWorldActor.h` (scene has `IsInCreek`, `PlayerSurvivalId`, `SetupPlayer`, `ChopInput`, `HelperOrderInput`, and its own day/night timer).
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (Tick drives separate time/weather and updates survival location; only LMB chop and J helper inputs are bound; `IsInCreek` currently only classifies water for log drift).
