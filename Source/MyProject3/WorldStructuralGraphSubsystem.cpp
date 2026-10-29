@@ -588,11 +588,25 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
     {
         return false;
     }
-    for (const FStructuralSupportLink& Link : Child->SecondarySupports)
+    for (const FStructuralSupportLink& ExistingLink : Child->SecondarySupports)
     {
-        if (Link.SupportNodeId == SupportNodeId || Link.OwnAnchorId == OwnAnchorId)
+        if (ExistingLink.SupportNodeId == SupportNodeId || ExistingLink.OwnAnchorId == OwnAnchorId)
             return false;
     }
+
+    IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Child->Actor.Get());
+    IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support->Actor.Get());
+    FStructuralAnchorView ChildAnchor;
+    FStructuralAnchorView SupportAnchor;
+    const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+    if (bHasPhysicalAdapters &&
+        (!ChildPiece || !SupportPiece ||
+         !ChildPiece->GetStructuralAnchor(OwnAnchorId, ChildAnchor) ||
+         !SupportPiece->GetStructuralAnchor(SupportAnchorId, SupportAnchor) ||
+         !ChildAnchor.bCanConnect || !SupportAnchor.bCanReceive ||
+         ChildAnchor.bOccupied || SupportAnchor.bOccupied ||
+         ChildAnchor.Tag != SupportAnchor.Tag))
+        return false;
 
     FStructuralSupportLink Link;
     Link.SupportNodeId = SupportNodeId;
@@ -609,7 +623,29 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
         if (!bLoadValid || Aggregate > Pair.Value.MaxSupportedLoad)
         {
             Child = Nodes.Find(ChildNodeId);
-            Child->SecondarySupports.Pop();
+            if (Child)
+                Child->SecondarySupports.Pop();
+            return false;
+        }
+    }
+
+    // The canonical link and both physical anchor reservations must agree.
+    // Logical-only test nodes may omit both adapters, but a half-adapted edge is invalid.
+    if (bHasPhysicalAdapters)
+    {
+        if (!ChildPiece->SetStructuralAnchorOccupied(OwnAnchorId, true))
+        {
+            Child = Nodes.Find(ChildNodeId);
+            if (Child)
+                Child->SecondarySupports.Pop();
+            return false;
+        }
+        if (!SupportPiece->SetStructuralAnchorOccupied(SupportAnchorId, true))
+        {
+            ChildPiece->SetStructuralAnchorOccupied(OwnAnchorId, false);
+            Child = Nodes.Find(ChildNodeId);
+            if (Child)
+                Child->SecondarySupports.Pop();
             return false;
         }
     }
@@ -627,15 +663,16 @@ bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId
         Support->Revision == MAX_int64)
         return false;
 
-    const TArray<FStructuralSupportLink> PreviousSupports = Child->SecondarySupports;
-    const int32 Removed = Child->SecondarySupports.RemoveAll(
+    const FStructuralSupportLink* ExistingLink = Child->SecondarySupports.FindByPredicate(
         [&SupportNodeId](const FStructuralSupportLink& Link) { return Link.SupportNodeId == SupportNodeId; });
-    if (Removed == 0)
+    if (!ExistingLink)
         return false;
+    const FStructuralSupportLink RemovedLink = *ExistingLink;
+    const TArray<FStructuralSupportLink> PreviousSupports = Child->SecondarySupports;
+    Child->SecondarySupports.RemoveSingle(RemovedLink);
 
     // Removing a brace is not allowed to leave a still-registered piece
-    // unsupported or overload any remaining support. The caller must first
-    // detach/remove the dependent piece through the explicit removal path.
+    // unsupported or overload any remaining support.
     if (!HasValidSupportPath(ChildNodeId))
     {
         Child->SecondarySupports = PreviousSupports;
@@ -652,6 +689,35 @@ bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId
             Child = Nodes.Find(ChildNodeId);
             if (Child)
                 Child->SecondarySupports = PreviousSupports;
+            return false;
+        }
+    }
+
+    IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Child->Actor.Get());
+    IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support->Actor.Get());
+    FStructuralAnchorView ChildAnchor;
+    FStructuralAnchorView SupportAnchor;
+    const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+    if (bHasPhysicalAdapters &&
+        (!ChildPiece || !SupportPiece ||
+         !ChildPiece->GetStructuralAnchor(RemovedLink.OwnAnchorId, ChildAnchor) ||
+         !SupportPiece->GetStructuralAnchor(RemovedLink.SupportAnchorId, SupportAnchor)))
+    {
+        Child->SecondarySupports = PreviousSupports;
+        return false;
+    }
+
+    if (bHasPhysicalAdapters)
+    {
+        if (!ChildPiece->SetStructuralAnchorOccupied(RemovedLink.OwnAnchorId, false))
+        {
+            Child->SecondarySupports = PreviousSupports;
+            return false;
+        }
+        if (!SupportPiece->SetStructuralAnchorOccupied(RemovedLink.SupportAnchorId, false))
+        {
+            ChildPiece->SetStructuralAnchorOccupied(RemovedLink.OwnAnchorId, true);
+            Child->SecondarySupports = PreviousSupports;
             return false;
         }
     }
