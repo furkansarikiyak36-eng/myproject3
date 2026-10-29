@@ -1394,9 +1394,18 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
         HeldMaterialPiece = Item;
     }
 
+    UCarryLoadComponent* Load = GetOwner()->FindComponentByClass<UCarryLoadComponent>();
+    if (Load && !Load->RegisterCarried(Item))
+    {
+        if (Log)
+            HeldPiece = nullptr;
+        else
+            HeldMaterialPiece = nullptr;
+        Item->SetActorEnableCollision(true);
+        return false;
+    }
+
     CarryOwnerId = InCarryOwnerId;
-    if (UCarryLoadComponent* Load = GetOwner()->FindComponentByClass<UCarryLoadComponent>())
-        Load->RegisterCarried(Item);
     return true;
 }
 
