@@ -735,6 +735,16 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     TestTrue(FString::Printf(TEXT("Apply (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
     TestFalse(TEXT("Apply only once"), Data->ApplyToWorld());
     TestEqual(TEXT("Crop definitions are registered into agriculture"), Agriculture->CropDefinitions.Num(), Data->GetCrops().Num());
+    TestEqual(TEXT("Animal definitions are registered into agriculture"), Agriculture->AnimalDefinitions.Num(), Data->GetAnimals().Num());
+    const FWorldAnimalDefinition* GoatDefinition = Agriculture->AnimalDefinitions.FindByPredicate(
+        [](const FWorldAnimalDefinition& D) { return D.AnimalDefinitionId == TEXT("Animal.Goat"); });
+    TestNotNull(TEXT("Goat definition"), GoatDefinition);
+    if (GoatDefinition)
+    {
+        TestEqual(TEXT("Goat feed item"), GoatDefinition->FeedDefinitionId, FName(TEXT("Grass")));
+        TestEqual(TEXT("Goat milk item"), GoatDefinition->ProductDefinitionId, FName(TEXT("Milk.Raw")));
+        TestEqual(TEXT("Goat milk interval is six hours"), GoatDefinition->ProductIntervalSeconds, 21600.0);
+    }
     const FWorldCropDefinition* GrainDefinition = Agriculture->CropDefinitions.FindByPredicate(
         [](const FWorldCropDefinition& D) { return D.CropDefinitionId == TEXT("Crop.Grain"); });
     TestNotNull(TEXT("Grain crop definition"), GrainDefinition);
@@ -1153,6 +1163,193 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Field fertility round-trips"), Field.Fertility, SavedFertility);
     TestTrue(TEXT("Harvested crop still round-trips"), Agriculture->GetCrop(CropId, HarvestedCrop));
     TestTrue(TEXT("Restored seed outputs retain identity"), HarvestedCrop.SeedOutputItemIds[0] == ReturnedSeed.ItemId);
+    return true;
+}
+
+
+// P6.4: live capture, stake/rope pen, item-backed feeding, products and slaughter are retry-safe and saved.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAnimalCapturePenSlaughterLifecycleTest,
+    "MyProject3.World.Animals.CapturePenFeedCollectSlaughterAndRestore", Flags)
+bool FAnimalCapturePenSlaughterLifecycleTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Agriculture"), Agriculture) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply game data: %s"), *Data->GetLastError()), Data->ApplyToWorld());
+    TestTrue(TEXT("Initialize logical clock"), Clock->InitializeClock(9017, 0.0));
+
+    AActor* OwnerActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner actor"), OwnerActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(OwnerActor);
+    OwnerActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item weights to inventory"), Data->ApplyToInventory(Inventory));
+    Inventory->ItemWeightGrams.Add(TEXT("Stake"), 900);
+    Inventory->ItemWeightGrams.Add(TEXT("Rope"), 200);
+    Inventory->ItemWeightGrams.Add(TEXT("Net"), 100);
+    Inventory->ItemWeightGrams.Add(TEXT("Grass"), 500);
+
+    FInventoryStack Stakes;
+    Stakes.ItemId = TEXT("Stake");
+    Stakes.Quantity = 4;
+    Stakes.Category = EInventoryItemCategory::BuildingPart;
+    Stakes.MaxStack = 99;
+    TestTrue(TEXT("Add four stakes for pen"), Inventory->TryAddItem(Stakes));
+
+    FInventoryStack Rope;
+    Rope.ItemId = TEXT("Rope");
+    Rope.Quantity = 1;
+    Rope.Category = EInventoryItemCategory::Resource;
+    Rope.MaxStack = 99;
+    TestTrue(TEXT("Add rope for pen"), Inventory->TryAddItem(Rope));
+
+    auto AddUniqueInventoryItem = [&](FName DefinitionId) -> FWorldOwnedItemRecord
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = FGuid::NewGuid();
+        Item.DefinitionId = DefinitionId;
+        Item.BaseDefinitionId = DefinitionId;
+        Item.Quantity = 1;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = Inventory->GetInventoryOwnerId();
+        Item.Revision = 1;
+        TestTrue(FString::Printf(TEXT("Register unique item %s"), *DefinitionId.ToString()),
+            Ownership->RegisterItem(Item));
+
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.Category = EInventoryItemCategory::Tool;
+        Stack.MaxStack = 1;
+        Stack.bIsTool = true;
+        Stack.OwnedWorldItemId = Item.ItemId;
+        TestTrue(FString::Printf(TEXT("Put unique item %s in inventory"), *DefinitionId.ToString()),
+            Inventory->TryAddItem(Stack));
+        return Item;
+    };
+
+    const FWorldOwnedItemRecord NetItem = AddUniqueInventoryItem(TEXT("Net"));
+    const FWorldOwnedItemRecord FeedItem = AddUniqueInventoryItem(TEXT("Grass"));
+
+    FWorldAnimalState Goat;
+    Goat.AnimalId = FGuid::NewGuid();
+    Goat.AnimalDefinitionId = TEXT("Animal.Goat");
+    Goat.Hunger = 10.0f;
+    Goat.Health = 100.0f;
+    Goat.Location = FVector(400.0, 50.0, 0.0);
+    TestTrue(TEXT("Register wild goat"), Agriculture->RegisterAnimal(Goat));
+    FWorldAnimalState Animal;
+    TestTrue(TEXT("Read wild goat"), Agriculture->GetAnimal(Goat.AnimalId, Animal));
+    TestTrue(TEXT("Game data assigns feed and product definitions"), Animal.FeedDefinitionId == TEXT("Grass") &&
+        Animal.ProductDefinitionId == TEXT("Milk.Raw"));
+    TestFalse(TEXT("A feed item cannot be used as a capture tool"), Agriculture->TryCaptureAnimal(
+        FGuid::NewGuid(), Animal.AnimalId, Animal.Revision, FeedItem.ItemId, FeedItem.Revision,
+        Inventory->GetInventoryOwnerId()));
+
+    const FGuid CaptureOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Capture goat with owned net"), Agriculture->TryCaptureAnimal(
+        CaptureOperation, Animal.AnimalId, Animal.Revision, NetItem.ItemId, NetItem.Revision,
+        Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Capture retry returns success without consuming net"), Agriculture->TryCaptureAnimal(
+        CaptureOperation, Animal.AnimalId, Animal.Revision, NetItem.ItemId, NetItem.Revision,
+        Inventory->GetInventoryOwnerId()));
+    TestEqual(TEXT("Net remains in inventory"), Inventory->GetItemCount(TEXT("Net")), 1);
+
+    FGuid PenId;
+    FGuid RetriedPenId;
+    const FGuid BuildPenOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Build pen from four stakes and one rope"), Agriculture->TryBuildAnimalPen(
+        BuildPenOperation, Inventory->GetInventoryOwnerId(), FVector(600.0, 100.0, 0.0), 4, PenId));
+    TestTrue(TEXT("Pen build retry returns the same pen"), Agriculture->TryBuildAnimalPen(
+        BuildPenOperation, Inventory->GetInventoryOwnerId(), FVector(600.0, 100.0, 0.0), 4, RetriedPenId));
+    TestTrue(TEXT("Pen ID retry is stable"), PenId == RetriedPenId);
+    TestEqual(TEXT("Stake materials are consumed"), Inventory->GetItemCount(TEXT("Stake")), 0);
+    TestEqual(TEXT("Rope material is consumed"), Inventory->GetItemCount(TEXT("Rope")), 0);
+
+    FWorldAnimalPenState Pen;
+    TestTrue(TEXT("Read new pen"), Agriculture->GetAnimalPen(PenId, Pen));
+    const FGuid AssignOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Assign captured goat to pen"), Agriculture->TryAssignAnimalToPen(
+        AssignOperation, Animal.AnimalId, Animal.Revision + 1, PenId, Pen.Revision));
+    TestTrue(TEXT("Assignment retry replays successfully"), Agriculture->TryAssignAnimalToPen(
+        AssignOperation, Animal.AnimalId, Animal.Revision + 1, PenId, Pen.Revision));
+    TestTrue(TEXT("Close pen gate"), Agriculture->TrySetAnimalPenGate(
+        FGuid::NewGuid(), PenId, Pen.Revision + 1, true));
+    TestTrue(TEXT("A pen containing an animal cannot be opened"), Agriculture->TrySetAnimalPenGate(
+        FGuid::NewGuid(), PenId, Pen.Revision + 2, false));
+
+    TestTrue(TEXT("Read penned goat"), Agriculture->GetAnimal(Animal.AnimalId, Animal));
+    const FGuid FeedOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Feed with the exact owned grass item"), Agriculture->TryFeedAnimal(
+        FeedOperation, Animal.AnimalId, Animal.Revision, FeedItem.ItemId, FeedItem.Revision,
+        Inventory->GetInventoryOwnerId(), 30.0f));
+    TestTrue(TEXT("Feed retry cannot eat grass twice"), Agriculture->TryFeedAnimal(
+        FeedOperation, Animal.AnimalId, Animal.Revision, FeedItem.ItemId, FeedItem.Revision,
+        Inventory->GetInventoryOwnerId(), 30.0f));
+    TestEqual(TEXT("Grass is consumed once"), Inventory->GetItemCount(TEXT("Grass")), 0);
+
+    for (int32 Hour = 0; Hour < 6; ++Hour)
+        TestTrue(FString::Printf(TEXT("Advance husbandry hour %d"), Hour + 1), Agriculture->AdvanceAgricultureStep(3600.0));
+    TestTrue(TEXT("Read goat after production time"), Agriculture->GetAnimal(Animal.AnimalId, Animal));
+    TestTrue(TEXT("Goat produced at least one milk item"), Animal.ProductUnits >= 1);
+
+    TArray<FGuid> MilkIds;
+    const FGuid CollectOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Collect produced milk"), Agriculture->TryCollectAnimalProducts(
+        CollectOperation, Animal.AnimalId, Animal.Revision, MilkIds));
+    TestEqual(TEXT("One milk output was created"), MilkIds.Num(), 1);
+    TArray<FGuid> MilkRetryIds;
+    TestTrue(TEXT("Milk collection retry returns same outputs"), Agriculture->TryCollectAnimalProducts(
+        CollectOperation, Animal.AnimalId, Animal.Revision, MilkRetryIds));
+    TestTrue(TEXT("Milk output IDs are stable"), MilkRetryIds == MilkIds);
+    FWorldOwnedItemRecord Milk;
+    TestTrue(TEXT("Milk item is in the ownership ledger"), Ownership->TryGetItem(MilkIds[0], Milk));
+    TestTrue(TEXT("Milk has configured definition"), Milk.DefinitionId == TEXT("Milk.Raw"));
+
+    TestTrue(TEXT("Read goat after collection"), Agriculture->GetAnimal(Animal.AnimalId, Animal));
+    const FGuid SlaughterOperation = FGuid::NewGuid();
+    TArray<FGuid> SlaughterIds;
+    const int32 ItemCountBeforeSlaughter = Ownership->GetTrackedItemCount();
+    TestTrue(TEXT("Slaughter healthy penned goat with closed gate"), Agriculture->TrySlaughterAnimal(
+        SlaughterOperation, Animal.AnimalId, Animal.Revision, SlaughterIds));
+    TestEqual(TEXT("Configured goat slaughter creates six outputs"), SlaughterIds.Num(), 6);
+    TestEqual(TEXT("Slaughter adds exactly six owned items"), Ownership->GetTrackedItemCount(), ItemCountBeforeSlaughter + 6);
+
+    FWorldAnimalState SlaughteredAnimal;
+    TestTrue(TEXT("Read slaughtered animal state"), Agriculture->GetAnimal(Animal.AnimalId, SlaughteredAnimal));
+    TestTrue(TEXT("Slaughter marks animal dead"), SlaughteredAnimal.bSlaughtered && SlaughteredAnimal.Health == 0.0f);
+    TestFalse(TEXT("Slaughter clears animal's pen link"), SlaughteredAnimal.PenId.IsValid());
+    FWorldAnimalPenState PenAfterSlaughter;
+    TestTrue(TEXT("Read pen after slaughter"), Agriculture->GetAnimalPen(PenId, PenAfterSlaughter));
+    TestEqual(TEXT("Slaughter releases one pen slot"), PenAfterSlaughter.AnimalIds.Num(), 0);
+    TArray<FGuid> SlaughterRetry;
+    TestTrue(TEXT("Slaughter retry replays outputs"), Agriculture->TrySlaughterAnimal(
+        SlaughterOperation, Animal.AnimalId, Animal.Revision, SlaughterRetry));
+    TestTrue(TEXT("Slaughter output IDs remain stable"), SlaughterRetry == SlaughterIds);
+    TestEqual(TEXT("Slaughter retry creates no new items"), Ownership->GetTrackedItemCount(), ItemCountBeforeSlaughter + 6);
+
+    TArray<FWorldCropState> SavedCrops;
+    TArray<FWorldAnimalState> SavedAnimals;
+    TArray<FWorldFieldCellState> SavedFields;
+    TArray<FWorldAnimalPenState> SavedPens;
+    Agriculture->ExportSnapshot(SavedCrops, SavedAnimals, SavedFields, SavedPens);
+    TestTrue(TEXT("Open empty pen after snapshot"), Agriculture->TrySetAnimalPenGate(
+        FGuid::NewGuid(), PenId, PenAfterSlaughter.Revision, false));
+    TestTrue(TEXT("Restore crops, animals, fields and pens together"), Agriculture->RestoreSnapshot(
+        SavedCrops, SavedAnimals, SavedFields, SavedPens));
+    TestTrue(TEXT("Read restored closed pen"), Agriculture->GetAnimalPen(PenId, PenAfterSlaughter));
+    TestTrue(TEXT("Pen gate state is restored"), PenAfterSlaughter.bGateClosed);
+    TestTrue(TEXT("Read restored slaughter record"), Agriculture->GetAnimal(Animal.AnimalId, SlaughteredAnimal));
+    TestTrue(TEXT("Slaughter output identity persists"), SlaughteredAnimal.SlaughterOutputItemIds == SlaughterIds);
     return true;
 }
 
