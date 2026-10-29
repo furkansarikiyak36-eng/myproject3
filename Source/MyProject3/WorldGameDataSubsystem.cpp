@@ -564,10 +564,16 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Node.Location.Y = NumberField(Entry, TEXT("y"), TNumericLimits<double>::QuietNaN());
         Node.Location.Z = NumberField(Entry, TEXT("z"), TNumericLimits<double>::QuietNaN());
         Node.bEnabled = !Entry.IsValid() || !Entry->HasField(TEXT("enabled")) ? true : BoolField(Entry, TEXT("enabled"));
+        Node.DiscoveryId = NameField(Entry, TEXT("discovery_id"));
+        const double DiscoveryRadius = NumberField(Entry, TEXT("discovery_radius_cm"), 0.0);
         if (Node.NodeId.IsNone() || SeenRouteNodeIds.Contains(Node.NodeId) ||
             !SeenZoneIds.Contains(Node.ZoneId) || Node.Location.ContainsNaN() ||
-            !FMath::IsFinite(Node.Location.X) || !FMath::IsFinite(Node.Location.Y) || !FMath::IsFinite(Node.Location.Z))
+            !FMath::IsFinite(Node.Location.X) || !FMath::IsFinite(Node.Location.Y) || !FMath::IsFinite(Node.Location.Z) ||
+            !FMath::IsFinite(DiscoveryRadius) || DiscoveryRadius < 0.0 || DiscoveryRadius > 5000.0 ||
+            (Node.DiscoveryId.IsNone() && DiscoveryRadius != 0.0) ||
+            (!Node.DiscoveryId.IsNone() && DiscoveryRadius <= 0.0))
             return Fail(FString::Printf(TEXT("Bad route node %s"), *Node.NodeId.ToString()));
+        Node.DiscoveryRadiusCm = static_cast<float>(DiscoveryRadius);
         SeenRouteNodeIds.Add(Node.NodeId);
         NewRouteNodes.Add(Node);
     }
@@ -699,6 +705,13 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 
         SeenDiscoveryIds.Add(Discovery.DiscoveryId);
         NewDiscoveries.Add(Discovery);
+    }
+
+    for (const FGameDataRouteNode& Node : NewRouteNodes)
+    {
+        if (!Node.DiscoveryId.IsNone() && !SeenDiscoveryIds.Contains(Node.DiscoveryId))
+            return Fail(FString::Printf(TEXT("Route node %s references unknown discovery %s"),
+                *Node.NodeId.ToString(), *Node.DiscoveryId.ToString()));
     }
 
     TSet<FName> SeenZoneDiscoveryIds;
