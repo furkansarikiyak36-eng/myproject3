@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Bump `WorldSimulationSaveGame` to schema v26, add a v25→v26 migration step, and update current task/roadmap. Then add a regression test for fill success/retry and missing vessel; afterwards wire the interaction key in the slice.
+Add the v25→v26 migration step in `WorldSaveCoordinatorSubsystem.cpp`; then add the water fill regression test and update plan status.
