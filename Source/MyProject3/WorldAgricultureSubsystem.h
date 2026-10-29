@@ -10,9 +10,24 @@ UENUM(BlueprintType)
 enum class ECropGrowthStage : uint8 { Seed, Sprout, Growing, Mature, Withered, Harvested };
 
 UENUM(BlueprintType)
-enum class EWorldAgricultureActionKind : uint8 { PlantCrop, HarvestCrop, FeedAnimal, CollectAnimalProducts };
+enum class EWorldAgricultureActionKind : uint8
+{
+    PlantCrop,
+    HarvestCrop,
+    FeedAnimal,
+    CollectAnimalProducts,
+    ClearFieldCell,
+    TillFieldCell,
+    FertilizeFieldCell,
+    WeedFieldCell,
+    MulchFieldCell,
+    WaterFieldCell
+};
 
-/** Immutable retry result for an item-backed farming operation. */
+UENUM(BlueprintType)
+enum class EWorldFieldWorkKind : uint8 { Clear, Till, Fertilize, Weed, Mulch, Water };
+
+/** Immutable retry result for an item-backed farming operation or a field-state operation. */
 USTRUCT(BlueprintType)
 struct FWorldAgricultureActionReceipt
 {
@@ -28,6 +43,7 @@ struct FWorldAgricultureActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int64 ResultingItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FName DefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") float HungerReduction = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") float WorkAmount = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int32 RequestedOutputUnits = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") TArray<FGuid> OutputItemIds;
 };
@@ -42,6 +58,11 @@ struct FWorldCropDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="64")) int32 HarvestUnits = 3;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1")) double SecondsPerStage = 3600.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="1")) float MinimumPlantMoisture = 0.15f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") TArray<int32> PlantMonths;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 SeedReturnUnits = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="100")) float SoilExhaustionPerHarvest = 10.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="100")) float MinimumFertility = 10.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="1")) float MaximumPlantWeedPressure = 0.75f;
 };
 
 USTRUCT(BlueprintType)
@@ -62,10 +83,34 @@ struct FWorldCropState
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int64 SeedItemExpectedRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") FName HarvestDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int32 HarvestUnits = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int32 SeedReturnUnits = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") float SoilExhaustionPerHarvest = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") float MinimumFertility = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") FGuid HarvestOperationId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int64 HarvestExpectedRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") TArray<FGuid> HarvestOutputItemIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") TArray<FGuid> SeedOutputItemIds;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") TArray<FWorldAgricultureActionReceipt> ActionReceipts;
+};
+
+/** A logical 1x1 m farm cell. Tools/visuals are adapters; the field state is authoritative. */
+USTRUCT(BlueprintType)
+struct FWorldFieldCellState
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") FGuid FieldCellId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") FIntVector Cell = FIntVector::ZeroValue;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") bool bCleared = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") bool bTilled = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="100")) float Fertility = 50.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float WeedPressure = 0.25f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float MulchCoverage = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float Moisture = 0.5f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") FGuid PlantedCropId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") FName LastHarvestedCropDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") int32 ConsecutiveSameCropHarvests = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") int64 Revision = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field|Receipts") TArray<FWorldAgricultureActionReceipt> ActionReceipts;
 };
 
 USTRUCT(BlueprintType)
@@ -93,6 +138,7 @@ class MYPROJECT3_API UWorldAgricultureSubsystem : public UWorldSubsystem
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxCrops = 2048;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxFieldCells = 10000;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxAnimals = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm") float MinimumGrowthMoisture = 0.15f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float HungerPerHour = 5.0f;
@@ -102,10 +148,16 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") TArray<FWorldCropDefinition> CropDefinitions;
 
     UFUNCTION(BlueprintCallable, Category="World|Farm|Definitions") bool RegisterCropDefinition(const FWorldCropDefinition& Definition);
+    /** Compatibility entry point; uses the current field revision for the plot. */
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryPlantCrop(
         const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
         int64 ExpectedSeedItemRevision, const FGuid& ExpectedInventoryOwnerId,
         const FIntVector& PlotCell, float InitialMoisture, FGuid& OutCropId);
+    /** Revision-guarded player-facing planting contract. */
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryPlantCropOnField(
+        const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
+        int64 ExpectedSeedItemRevision, const FGuid& ExpectedInventoryOwnerId,
+        const FIntVector& PlotCell, int64 ExpectedFieldRevision, float InitialMoisture, FGuid& OutCropId);
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCrop(
         const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
         TArray<FGuid>& OutItemIds);
@@ -117,6 +169,12 @@ public:
         const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
         TArray<FGuid>& OutItemIds);
 
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Field") bool RegisterFieldCell(const FWorldFieldCellState& FieldCell);
+    UFUNCTION(BlueprintPure, Category="World|Farm|Field") bool GetFieldCell(const FIntVector& Cell, FWorldFieldCellState& OutFieldCell) const;
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Field") bool TryApplyFieldWork(
+        const FGuid& OperationId, const FIntVector& Cell, int64 ExpectedFieldRevision,
+        EWorldFieldWorkKind WorkKind, float WorkAmount, FWorldFieldCellState& OutFieldCell);
+
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool RegisterCrop(const FWorldCropState& Crop);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool RegisterAnimal(const FWorldAnimalState& Animal);
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool SetCropMoisture(const FGuid& CropId, float Moisture, int64 ExpectedRevision);
@@ -127,7 +185,11 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Farm") bool GetCrop(const FGuid& CropId, FWorldCropState& OutCrop) const;
     UFUNCTION(BlueprintPure, Category="World|Animals") bool GetAnimal(const FGuid& AnimalId, FWorldAnimalState& OutAnimal) const;
     void ExportSnapshot(TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals) const;
+    void ExportSnapshot(TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
+        TArray<FWorldFieldCellState>& OutFieldCells) const;
     bool RestoreSnapshot(const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot);
+    bool RestoreSnapshot(const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot,
+        const TArray<FWorldFieldCellState>& FieldCellSnapshot);
 private:
     const FWorldCropDefinition* FindCropDefinition(FName CropDefinitionId) const;
     const FWorldAgricultureActionReceipt* FindActionReceipt(const FGuid& OperationId) const;
@@ -139,5 +201,6 @@ private:
         const TArray<FVector>& Locations, TArray<FGuid>& OutItemIds);
 
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FGuid, FWorldCropState> Crops;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm|Field") TMap<FIntVector, FWorldFieldCellState> FieldCells;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals") TMap<FGuid, FWorldAnimalState> Animals;
 };
