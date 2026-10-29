@@ -158,6 +158,8 @@ public:
         const FGuid& EntityId, const FWorldSurvivalAffliction& Affliction, int64 ExpectedRevision);
     UFUNCTION(BlueprintCallable, Category="World|Survival|Afflictions") bool TryRemoveAffliction(
         const FGuid& EntityId, FName AfflictionId, int64 ExpectedRevision);
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Medical") bool TryApplyMedicalTreatment(
+        const FGuid& EntityId, float HealthRestore, FName AfflictionId, int64 ExpectedRevision);
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetActivityKcalPerHour(ESurvivalActivity Activity) const;
     /** The single felt-temperature function every system reads. */
     UFUNCTION(BlueprintPure, Category="World|Survival") float ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const;
