@@ -48,7 +48,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 
 ### Read
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
-- `Source/MyProject3/LogSnapCharacter.h` (current player input/movement declarations read to determine available interaction hooks).
+- `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
+- `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
 - `memory/ROADMAP.md` (current task dependencies, phase descriptions and progress log read for next P2 batch).
 - `memory/CURRENT_TASK.md` (checkpoint only).
 - `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
