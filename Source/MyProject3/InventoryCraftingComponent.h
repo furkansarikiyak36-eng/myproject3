@@ -17,6 +17,8 @@ public:
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory", meta=(ClampMin="1")) int32 MaxCarryWeightGrams = 30000;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory") TArray<FInventoryStack> Items;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") TArray<FCraftingRecipe> Recipes;
+ /** Prototype item catalog. Keep ItemId unique; a shared DataAsset/registry can populate it later. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Definitions") TArray<FInventoryItemDefinition> ItemDefinitions;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory") TMap<FName, int32> ItemWeightGrams;
  /** Explicit class map used when a unique ledger-owned item is materialized in the world. */
  UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Inventory|World Items") TMap<FName, TSubclassOf<AActor>> PhysicalItemActorClasses;
@@ -31,6 +33,17 @@ public:
  /** Spawns a configured physical actor and atomically transfers its unique item to world ownership. */
  UFUNCTION(BlueprintCallable, Category="Inventory|World Items") bool TryDropOwnedItem(FGuid ItemId, FVector SpawnLocation, AActor*& OutActor);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryRemoveItem(FName ItemId, int32 Quantity);
+ /** Consumes an unowned stack and applies its authored nutrition/water effect to a survival profile. */
+ UFUNCTION(BlueprintCallable, Category="Inventory|Consumable") bool TryConsumeFood(FName ItemId, FGuid SurvivalEntityId, int32 Quantity = 1);
+ /** Consumes authored feed from this inventory and applies its effect to one animal. */
+ UFUNCTION(BlueprintCallable, Category="Inventory|Animals") bool TryFeedAnimal(FName ItemId, FGuid AnimalId, int32 Quantity = 1);
+ /** Equips a single authored equipment item, replacing anything in the same slot. */
+ UFUNCTION(BlueprintCallable, Category="Inventory|Equipment") bool TryEquipItem(FName ItemId);
+ UFUNCTION(BlueprintCallable, Category="Inventory|Equipment") bool TryUnequipItem(FName EquipmentSlotId);
+ UFUNCTION(BlueprintPure, Category="Inventory|Equipment") float GetEquippedClothingInsulation() const;
+ /** Called by the shared fixed-step coordinator; perishable stacks age in logical seconds. */
+ bool CanAdvanceItemAging(double DeltaSeconds) const;
+ bool AdvanceItemAging(double DeltaSeconds);
  UFUNCTION(BlueprintCallable, Category="Inventory") bool SetQuickAccessItem(FName ItemId);
  UFUNCTION(BlueprintPure, Category="Inventory") int32 GetItemCount(FName ItemId) const;
  UFUNCTION(BlueprintPure, Category="Inventory") int32 GetCurrentWeightGrams() const;
@@ -44,6 +57,10 @@ public:
  FGuid GetInventoryOwnerId() const { return InventoryOwnerId; }
 private:
  int32 FindRecipeIndex(FName RecipeId) const;
+ const FInventoryItemDefinition* FindItemDefinition(FName ItemId) const;
+ int32 GetConfiguredWeightGrams(FName ItemId) const;
+ bool BuildRemovalPreview(FName ItemId, int32 Quantity, TArray<FInventoryStack>& OutItems) const;
+ bool CalculateClothingInsulation(const TArray<FInventoryStack>& SourceItems, float& OutInsulation) const;
  bool HasCapacityFor(const TArray<FInventoryStack>& Additions) const;
  UPROPERTY(VisibleAnywhere, SaveGame, Category="Inventory") FGuid InventoryOwnerId;
 };
