@@ -3,6 +3,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CarryLoadComponent.h"
+#include "LogSnapCharacter.h"
+#include "WorldClimateSubsystem.h"
 #include "VerticalSliceDemoActor.h"
 #include "VerticalSliceCWorldActor.h"
 #include "VerticalSliceBWorldActor.h"
@@ -2445,6 +2447,86 @@ bool FRouteCostContextTest::RunTest(const FString& Parameters)
     CostEdge.bHasBuiltInfrastructure = false;
     TestFalse(TEXT("Missing required infrastructure blocks edge"),
         Routes->ComputeEdgeCost(CostEdge, Context, ContextCost));
+    return true;
+}
+
+// P7.1: player route previews use the same graph model as logistics, with live carry mass and climate.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlayerWalkingRouteUsesLiveContextTest,
+    "MyProject3.Traversal.PlayerRouteUsesCarryAndWeatherContext", TestFlags)
+bool FPlayerWalkingRouteUsesLiveContextTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Routes"), Routes) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(77123, 0.0));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+    FWorldClimateSnapshot Storm = Climate->ExportSnapshot();
+    Storm.Weather = EWorldWeatherState::Storm;
+    Storm.Severity = 1.0f;
+    Storm.GroundWetness = 1.0f;
+    TestTrue(TEXT("Install deterministic storm context"), Climate->RestoreSnapshot(Storm));
+
+    ALogSnapCharacter* Character = World->SpawnActor<ALogSnapCharacter>();
+    if (!TestNotNull(TEXT("Player character"), Character) ||
+        !TestNotNull(TEXT("Player carry component"), Character->CarryLoad))
+        return false;
+
+    FLogisticsRouteNode Start;
+    Start.NodeId = TEXT("WalkStart");
+    Start.Location = FVector::ZeroVector;
+    FLogisticsRouteNode Goal;
+    Goal.NodeId = TEXT("WalkGoal");
+    Goal.Location = FVector(1000.0f, 0.0f, 0.0f);
+    TestTrue(TEXT("Add walking start"), Routes->UpsertNode(Start));
+    TestTrue(TEXT("Add walking goal"), Routes->UpsertNode(Goal));
+
+    FLogisticsRouteEdge Edge;
+    Edge.FromNode = Start.NodeId;
+    Edge.ToNode = Goal.NodeId;
+    Edge.Cost = 1.0f;
+    Edge.SlopeRatio = 1.0f;
+    Edge.SurfaceCostMultiplier = 1.2f;
+    Edge.WeatherSensitivity = 2.0f;
+    Edge.LoadSensitivity = 4.0f;
+    Edge.MissingInfrastructurePenalty = 0.5f;
+    Edge.bHasBuiltInfrastructure = false;
+    Edge.bRequiresInfrastructure = false;
+    TestTrue(TEXT("Add route edge"), Routes->UpsertEdge(Edge));
+
+    TArray<FName> PlayerPath;
+    float PlayerCost = 0.0f;
+    TestTrue(TEXT("Player walking route resolves"), Character->FindWalkingRoute(
+        Start.NodeId, Goal.NodeId, PlayerPath, PlayerCost));
+    TestEqual(TEXT("Walking route has start and goal"), PlayerPath.Num(), 2);
+    TestTrue(TEXT("Route begins at start"), PlayerPath[0] == Start.NodeId);
+    TestTrue(TEXT("Route ends at goal"), PlayerPath[1] == Goal.NodeId);
+
+    FLogisticsRouteCostContext ExpectedContext;
+    ExpectedContext.CarriedMassKg = Character->CarryLoad->GetCarriedMassKg();
+    ExpectedContext.MaxCarryMassKg = Character->CarryLoad->MaxCarryMassKg;
+    ExpectedContext.WeatherSeverity = Climate->GetWeatherSeverity();
+    float RecomputedCost = 0.0f;
+    TestTrue(TEXT("Recompute the same path under the live context"),
+        Routes->CalculatePathCost(PlayerPath, ExpectedContext, RecomputedCost));
+    TestTrue(TEXT("Player route cost uses the live context"),
+        FMath::IsNearlyEqual(PlayerCost, RecomputedCost, 0.001f));
+    // Flat load ratio is zero in this isolated test. Slope 1 -> 1.75; surface -> x1.2;
+    // storm severity 1 -> x3; missing infrastructure -> x1.5.
+    TestTrue(TEXT("Slope, surface, weather and infrastructure all affect walking cost"),
+        FMath::IsNearlyEqual(PlayerCost, 9.45f, 0.02f));
+
+    TArray<FName> InvalidPath = { TEXT("StaleNode") };
+    float InvalidCost = 10.0f;
+    TestFalse(TEXT("Missing route destination is rejected"), Character->FindWalkingRoute(
+        Start.NodeId, TEXT("MissingGoal"), InvalidPath, InvalidCost));
+    TestTrue(TEXT("Rejected walking query clears stale path"), InvalidPath.IsEmpty());
+    TestEqual(TEXT("Rejected walking query resets cost"), InvalidCost, 0.0f);
     return true;
 }
 
