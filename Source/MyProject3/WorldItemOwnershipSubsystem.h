@@ -53,6 +53,14 @@ struct FWorldOwnedItemRecord
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
     double CreatedAtWorldTimeSeconds = -1.0;
 
+    /** Spoilage age gathered until SpoilageAgeUpdatedAtSeconds, scaled by where the item was (P2.4). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
+    double SpoilageAgeSeconds = 0.0;
+
+    /** World time the spoilage age was last brought up to date; -1 means "since creation". */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
+    double SpoilageAgeUpdatedAtSeconds = -1.0;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Items")
     int64 Revision = 1;
 };
@@ -158,6 +166,13 @@ public:
 
     UFUNCTION(BlueprintPure, Category="World|Items")
     bool TryGetItem(const FGuid& ItemId, FWorldOwnedItemRecord& OutRecord) const;
+
+    /** Spoilage age now: time scaled by storage (cellar, smoke rack) and air temperature (P2.4). -1 if unknown. */
+    UFUNCTION(BlueprintPure, Category="World|Items")
+    double GetSpoilageAgeSeconds(const FGuid& ItemId) const;
+
+    /** How fast an item ages where it is now: storage multiplier x air temperature factor. */
+    float GetSpoilageRate(const FWorldOwnedItemRecord& Item) const;
 
     UFUNCTION(BlueprintPure, Category="World|Items")
     int32 GetTrackedItemCount() const { return Items.Num(); }

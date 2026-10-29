@@ -338,7 +338,10 @@ bool UWorldSurvivalSubsystem::TryConsumeFoodItem(
         Item.CreatedAtWorldTimeSeconds < 0.0)
         return false;
 
-    const double Age = FMath::Max(0.0, Now - Item.CreatedAtWorldTimeSeconds);
+    // Age follows where the item was kept and how warm it was (P2.4).
+    const double Age = Ownership->GetSpoilageAgeSeconds(ItemId);
+    if (Age < 0.0)
+        return false;
     const bool bSpoiled = Definition->FreshnessDurationSeconds > 0.0 &&
         Age >= Definition->FreshnessDurationSeconds;
     if (bSpoiled && Definition->SpoiledEnergyFraction <= 0.0f)

@@ -924,6 +924,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->Climate = FWorldClimateSnapshot();
         Candidate->SchemaVersion = 21;
     }
+    if (Candidate->SchemaVersion == 21)
+    {
+        // Schema v22 adds storage spoilage rates and per-item spoilage age. The
+        // defaults (rate 1, age 0 counted from creation) give the old behaviour.
+        Candidate->SchemaVersion = 22;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 

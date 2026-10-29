@@ -29,7 +29,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 0. [x] Adopt group-a (250ce13, 85/85): new branch, merge simple-intent, fix 10 UHT + 6 C++ errors, run all tests, fix failures.
 1. [x] P1.1 calendar (88/88) (day/month/season/year from clock, days per month 5)
 2. [x] P1.2 monthly climate, snow depth, ground wetness (91/91)
-3. [~] P2.1 water items + P2.5 consume triggers done (92/92); P2.2 rest quality done (93/93); P2.4 spoilage modifiers left
+3. [x] P2.1/P2.5 consume conditions (92), P2.2 rest quality (93), P2.4 spoilage by storage+temperature (94)
 4. [ ] P3.1 wet wood + charcoal fuel, P3.2 enclosure from graph
 5. [ ] P4.1-P4.4 gatherables, recipes, stations, tool requirements (needs data files P0.3/P0.4 first)
 6. [ ] P5.1 layer data
@@ -38,6 +38,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 9. [ ] P8.2-P8.3 raid signals, snow load/avalanche/fire, repair
 10. [ ] P9.2 helper uses stations; P10 thatch/notches (frozen: skip); save gaps
 Order may change; record why here.
+User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; skip P10 (frozen).
 
 ### Read
 - —
@@ -54,4 +55,4 @@ Order may change; record why here.
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 3c: P2.4 spoilage modifiers. Item record gets SpoilageAgeSeconds + AgeUpdatedAtSeconds; ownership accrues age on every owner change with the old owner's multiplier (storage record SpoilageRateMultiplier: cellar 0.4, smoke rack 0.2; inventory/world 1.0) and an air-temperature factor from climate; consume uses accrued age. Save schema v22 migration (age = now - created).
+Step 4: P3.1 wet wood + charcoal fuel (HeatSourceComponent fuel definitions: burn seconds per item; wet = climate ground wetness or item flag -> less burn time), P3.2 shelter enclosure from the structural graph. Read HeatSourceComponent.h/.cpp (TryAddFuelItem) and ShelterSensorComponent first.

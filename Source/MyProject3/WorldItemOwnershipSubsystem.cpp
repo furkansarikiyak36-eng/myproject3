@@ -1,6 +1,8 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "Engine/World.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldClimateSubsystem.h"
+#include "WorldStorageSubsystem.h"
 
 bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Record)
 {
@@ -13,7 +15,9 @@ bool UWorldItemOwnershipSubsystem::RegisterItem(const FWorldOwnedItemRecord& Rec
         !FMath::IsFinite(Record.WorldLocation.Y) ||
         !FMath::IsFinite(Record.WorldLocation.Z) ||
         !FMath::IsFinite(Record.CreatedAtWorldTimeSeconds) ||
-        Record.CreatedAtWorldTimeSeconds < -1.0)
+        Record.CreatedAtWorldTimeSeconds < -1.0 ||
+        !FMath::IsFinite(Record.SpoilageAgeSeconds) || Record.SpoilageAgeSeconds < 0.0 ||
+        !FMath::IsFinite(Record.SpoilageAgeUpdatedAtSeconds) || Record.SpoilageAgeUpdatedAtSeconds < -1.0)
     {
         return false;
     }
@@ -93,6 +97,19 @@ bool UWorldItemOwnershipSubsystem::TryTransferItem(
     }
 
     // All validation is complete before the record is changed.
+    // Close the old owner's spoilage segment at its rate (cellar, open air ...).
+    if (const UWorldSimulationClockSubsystem* Clock =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr)
+    {
+        if (Clock->IsClockInitialized())
+        {
+            const double Now = Clock->GetSimulationTimeSeconds();
+            const double From = Item->SpoilageAgeUpdatedAtSeconds >= 0.0
+                ? Item->SpoilageAgeUpdatedAtSeconds : FMath::Max(0.0, Item->CreatedAtWorldTimeSeconds);
+            Item->SpoilageAgeSeconds += FMath::Max(0.0, Now - From) * GetSpoilageRate(*Item);
+            Item->SpoilageAgeUpdatedAtSeconds = Now;
+        }
+    }
     Item->OwnerKind = NewOwner;
     Item->OwnerId = bRequiresOwnerId ? NewOwnerId : FGuid();
     Item->WorldLocation = NewWorldLocation;
@@ -334,6 +351,8 @@ bool UWorldItemOwnershipSubsystem::TrySplitItem(
         Output.OwnerId.Invalidate();
         Output.WorldLocation = OutputWorldLocations[Index];
         Output.CreatedAtWorldTimeSeconds = Source->CreatedAtWorldTimeSeconds;
+        Output.SpoilageAgeSeconds = Source->SpoilageAgeSeconds;
+        Output.SpoilageAgeUpdatedAtSeconds = Source->SpoilageAgeUpdatedAtSeconds;
         Output.Revision = 1;
         ProposedOutputs.Add(Output);
     }
@@ -402,7 +421,9 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
             !FMath::IsFinite(Item.WorldLocation.Y) ||
             !FMath::IsFinite(Item.WorldLocation.Z) ||
             !FMath::IsFinite(Item.CreatedAtWorldTimeSeconds) ||
-            Item.CreatedAtWorldTimeSeconds < -1.0)
+            Item.CreatedAtWorldTimeSeconds < -1.0 ||
+            !FMath::IsFinite(Item.SpoilageAgeSeconds) || Item.SpoilageAgeSeconds < 0.0 ||
+            !FMath::IsFinite(Item.SpoilageAgeUpdatedAtSeconds) || Item.SpoilageAgeUpdatedAtSeconds < -1.0)
         {
             return false;
         }
@@ -522,4 +543,36 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
     Receipts = MoveTemp(ProposedReceipts);
     SplitReceipts = MoveTemp(ProposedSplitReceipts);
     return true;
+}
+
+float UWorldItemOwnershipSubsystem::GetSpoilageRate(const FWorldOwnedItemRecord& Item) const
+{
+    const UWorld* World = GetWorld();
+    float StorageFactor = 1.0f;
+    if (Item.OwnerKind == EWorldItemOwnerKind::Storage)
+    {
+        const UWorldStorageSubsystem* Storage = World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+        FWorldStorageContainerRecord Record;
+        if (Storage && Storage->GetStorage(Item.OwnerId, Record))
+            StorageFactor = Record.SpoilageRateMultiplier;
+    }
+    // Air temperature: 15 C is the normal rate, freezing slows it a lot, heat speeds it up.
+    float TemperatureFactor = 1.0f;
+    const UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (Climate && Climate->IsClimateInitialized())
+        TemperatureFactor = FMath::Clamp((Climate->GetTemperatureCelsius() + 5.0f) / 20.0f, 0.1f, 2.0f);
+    return StorageFactor * TemperatureFactor;
+}
+
+double UWorldItemOwnershipSubsystem::GetSpoilageAgeSeconds(const FGuid& ItemId) const
+{
+    const FWorldOwnedItemRecord* Item = Items.Find(ItemId);
+    const UWorld* World = GetWorld();
+    const UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Item || !Clock || !Clock->IsClockInitialized())
+        return -1.0;
+    const double Now = Clock->GetSimulationTimeSeconds();
+    const double From = Item->SpoilageAgeUpdatedAtSeconds >= 0.0
+        ? Item->SpoilageAgeUpdatedAtSeconds : FMath::Max(0.0, Item->CreatedAtWorldTimeSeconds);
+    return Item->SpoilageAgeSeconds + FMath::Max(0.0, Now - From) * GetSpoilageRate(*Item);
 }

@@ -261,6 +261,8 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
     for (const FWorldStorageContainerRecord& Storage : StorageSnapshot)
     {
         if (!Storage.StorageId.IsValid() || Storage.CapacityUnits <= 0 ||
+            !FMath::IsFinite(Storage.SpoilageRateMultiplier) ||
+            Storage.SpoilageRateMultiplier < 0.0f || Storage.SpoilageRateMultiplier > 4.0f ||
             Storage.Revision <= 0 || ProposedStorages.Contains(Storage.StorageId))
             return false;
         FWorldStorageContainerRecord RestoredStorage = Storage;
@@ -334,5 +336,19 @@ bool UWorldStorageSubsystem::RestoreSnapshot(
 
     Storages = MoveTemp(ProposedStorages);
     IncomingReservations = MoveTemp(ProposedReservations);
+    return true;
+}
+
+bool UWorldStorageSubsystem::SetStorageSpoilageRate(const FGuid& StorageId, float Multiplier)
+{
+    FWorldStorageContainerRecord* Storage = Storages.Find(StorageId);
+    if (!Storage || !FMath::IsFinite(Multiplier) || Multiplier < 0.0f || Multiplier > 4.0f ||
+        Storage->Revision == MAX_int64)
+        return false;
+    if (Storage->SpoilageRateMultiplier != Multiplier)
+    {
+        Storage->SpoilageRateMultiplier = Multiplier;
+        ++Storage->Revision;
+    }
     return true;
 }

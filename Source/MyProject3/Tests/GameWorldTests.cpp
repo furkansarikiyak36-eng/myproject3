@@ -10,6 +10,7 @@
 #include "WorldSurvivalSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "InventoryCraftingComponent.h"
+#include "WorldStorageSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -455,6 +456,66 @@ bool FRestPlaceQualityTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Both rested"), OutsideAfter.Fatigue < 80.0f && CabinAfter.Fatigue < 80.0f);
     TestTrue(TEXT("The cabin sleeper is less tired"), CabinAfter.Fatigue < OutsideAfter.Fatigue);
     TestTrue(TEXT("The cabin sleeper has more stamina"), CabinAfter.Stamina > OutsideAfter.Stamina);
+    return true;
+}
+
+// P2.4: food ages slower in a cool cellar and in frost, normally in the open.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSpoilageByStorageTest,
+    "MyProject3.World.Needs.SpoilageFollowsStorageAndTemperature", Flags)
+bool FSpoilageByStorageTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldStorageSubsystem* Storage = World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership) ||
+        !TestNotNull(TEXT("Storage"), Storage) || !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(2, 0.0));
+
+    const FGuid Cellar = FGuid::NewGuid();
+    TestTrue(TEXT("Cellar"), Storage->RegisterStorage(Cellar, 32));
+    TestTrue(TEXT("Cellar is cool"), Storage->SetStorageSpoilageRate(Cellar, 0.25f));
+    TestFalse(TEXT("Rate limits"), Storage->SetStorageSpoilageRate(Cellar, 9.0f));
+
+    auto Register = [&](EWorldItemOwnerKind Kind, const FGuid& OwnerId) -> FGuid
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = FGuid::NewGuid();
+        Item.DefinitionId = TEXT("Meat.Cooked");
+        Item.OwnerKind = Kind;
+        Item.OwnerId = OwnerId;
+        Item.CreatedAtWorldTimeSeconds = 0.0;
+        TestTrue(TEXT("Register meat"), Ownership->RegisterItem(Item));
+        return Item.ItemId;
+    };
+    const FGuid Open = Register(EWorldItemOwnerKind::World, FGuid());
+    const FGuid Stored = Register(EWorldItemOwnerKind::Storage, Cellar);
+
+    TestTrue(TEXT("Four hours"), Clock->AdvanceSimulation(4.0 * 3600.0));
+    TestEqual(TEXT("Open air ages normally"), Ownership->GetSpoilageAgeSeconds(Open), 4.0 * 3600.0, 1.0);
+    TestEqual(TEXT("Cellar ages a quarter"), Ownership->GetSpoilageAgeSeconds(Stored), 1.0 * 3600.0, 1.0);
+
+    // Taking it out keeps the cellar time and continues at the open-air rate.
+    FWorldOwnedItemRecord Record;
+    TestTrue(TEXT("Read stored"), Ownership->TryGetItem(Stored, Record));
+    FWorldOwnedItemRecord Moved;
+    TestTrue(TEXT("Take out of the cellar"), Ownership->TryTransferItem(FGuid::NewGuid(), Stored, Record.Revision,
+        EWorldItemOwnerKind::Storage, EWorldItemOwnerKind::World, FGuid(), FVector::ZeroVector, Moved));
+    TestTrue(TEXT("Two more hours"), Clock->AdvanceSimulation(2.0 * 3600.0));
+    TestEqual(TEXT("Cellar hour + two open hours"), Ownership->GetSpoilageAgeSeconds(Stored), 3.0 * 3600.0, 1.0);
+
+    // Frost: start the climate in January; the open-air meat now ages at the frost rate.
+    TestTrue(TEXT("Jump to January"), Clock->RestoreSnapshot([&]()
+    {
+        FWorldSimulationClockSnapshot Snapshot = Clock->ExportSnapshot();
+        Snapshot.SimulationTimeSeconds = 16.0 * 3600.0 + 45.0 * Day;
+        return Snapshot;
+    }()));
+    TestTrue(TEXT("Winter climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Frost slows ageing"), Ownership->GetSpoilageRate(Moved) <= 0.25f);
     return true;
 }
 

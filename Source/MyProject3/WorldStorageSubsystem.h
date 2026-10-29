@@ -20,6 +20,10 @@ struct FWorldStorageContainerRecord
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Storage")
     bool bAvailable = true;
+
+    /** How fast food ages in here: 1 = open air, a cool cellar ~0.4, a smoke rack ~0.2 (P2.4). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Storage", meta=(ClampMin="0", ClampMax="4"))
+    float SpoilageRateMultiplier = 1.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -66,6 +70,10 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="World|Storage")
     bool SetStorageAvailable(const FGuid& StorageId, bool bAvailable);
+
+    /** Sets how fast food ages inside this storage (0 .. 4). */
+    UFUNCTION(BlueprintCallable, Category="World|Storage")
+    bool SetStorageSpoilageRate(const FGuid& StorageId, float Multiplier);
 
     UFUNCTION(BlueprintPure, Category="World|Storage")
     bool CanAcceptItem(const FGuid& StorageId, const FGuid& ItemId) const;
