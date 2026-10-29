@@ -241,6 +241,11 @@ public:
         const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
         int64 ExpectedSeedItemRevision, const FGuid& ExpectedInventoryOwnerId,
         const FIntVector& PlotCell, float InitialMoisture, FGuid& OutCropId);
+    /** Player-facing planting: requires a unique owned seed and charges authored work labor atomically. */
+    bool TryPlantCropWithLabor(const FGuid& OperationId, FName CropDefinitionId,
+        const FGuid& SeedItemId, int64 ExpectedSeedItemRevision,
+        UInventoryCraftingComponent* Inventory, const FGuid& SurvivalEntityId,
+        const FIntVector& PlotCell, float InitialMoisture, FGuid& OutCropId);
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCrop(
         const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
         TArray<FGuid>& OutItemIds);
