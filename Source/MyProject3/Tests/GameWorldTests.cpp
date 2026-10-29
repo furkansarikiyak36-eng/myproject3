@@ -681,7 +681,7 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Stations"), Data->GetStations().Num(), 10);
     TestEqual(TEXT("Three crops"), Data->GetCrops().Num(), 3);
     TestEqual(TEXT("Five ordered discoveries"), Data->GetDiscoveries().Num(), 5);
-    TestEqual(TEXT("Five route anchors for the current authored slice"), Data->GetRouteNodes().Num(), 6);
+    TestEqual(TEXT("Route anchors for the current authored slice"), Data->GetRouteNodes().Num(), 6);
     TestEqual(TEXT("Directed route edges"), Data->GetRouteEdges().Num(), 12);
     TestTrue(TEXT("Every material group has items"), Data->GetItems().Num() >= 80);
     return true;
@@ -980,6 +980,11 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Record high-forest discovery after creek"), RecordDiscovery(TEXT("Discovery.Zone2.HighForest")));
     TestTrue(TEXT("Lake/swamp opens after the high-forest discovery"),
         Data->CanEnterZone(Profile.EntityId, TEXT("Zone.3"), AccessReason));
+    FWorldSurvivalProfile OtherProfile;
+    OtherProfile.EntityId = FGuid::NewGuid();
+    TestTrue(TEXT("Register a second player profile"), Survival->RegisterProfile(OtherProfile));
+    TestFalse(TEXT("One player's discovery does not open a zone for another player"),
+        Data->CanEnterZone(OtherProfile.EntityId, TEXT("Zone.3"), AccessReason));
     TestTrue(TEXT("Record lake/swamp discovery"), RecordDiscovery(TEXT("Discovery.Zone3.LakeSwamp")));
 
     TestFalse(TEXT("Mountain pass requires cold-protection clothing in July"),
