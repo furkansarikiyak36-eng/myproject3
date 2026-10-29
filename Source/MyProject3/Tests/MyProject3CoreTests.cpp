@@ -3,6 +3,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "CarryLoadComponent.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "LogSnapCharacter.h"
 #include "WorldClimateSubsystem.h"
 #include "VerticalSliceDemoActor.h"
@@ -2375,6 +2377,45 @@ bool FDamagedRefusesTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+// P7.1: environment slowdown composes with, rather than replaces, the carried-mass multiplier.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTraversalMovementMultiplierTest,
+    "MyProject3.Carry.Load.EnvironmentAndMassMultipliersCompose", TestFlags)
+bool FTraversalMovementMultiplierTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    ACharacter* Carrier = World ? World->SpawnActor<ACharacter>() : nullptr;
+    if (!TestNotNull(TEXT("Character carrier"), Carrier))
+        return false;
+    UCharacterMovementComponent* Movement = Carrier->GetCharacterMovement();
+    if (!TestNotNull(TEXT("Character movement"), Movement))
+        return false;
+
+    const float BaseSpeed = Movement->MaxWalkSpeed;
+    TestTrue(TEXT("Base speed is positive"), FMath::IsFinite(BaseSpeed) && BaseSpeed > 0.0f);
+    UCarryLoadComponent* Load = NewObject<UCarryLoadComponent>(Carrier);
+    Carrier->AddInstanceComponent(Load);
+    Load->RegisterComponent();
+    if (!Load->GetCarrierId().IsValid())
+        Load->BeginPlay();
+
+    TestTrue(TEXT("Apply half-speed environment modifier"), Load->SetTraversalEnvironmentMultiplier(0.5f));
+    TestTrue(TEXT("Environment getter keeps the accepted modifier"),
+        FMath::IsNearlyEqual(Load->GetTraversalEnvironmentMultiplier(), 0.5f, 0.001f));
+    TestTrue(TEXT("Environment modifier reduces actual character speed"),
+        FMath::IsNearlyEqual(Movement->MaxWalkSpeed, BaseSpeed * Load->GetSpeedMultiplier() * 0.5f, 0.1f));
+
+    TestTrue(TEXT("Apply a new environment modifier"), Load->SetTraversalEnvironmentMultiplier(0.8f));
+    TestTrue(TEXT("Second modifier updates the speed"), FMath::IsNearlyEqual(
+        Movement->MaxWalkSpeed, BaseSpeed * Load->GetSpeedMultiplier() * 0.8f, 0.1f));
+    const float SpeedBeforeInvalidRequest = Movement->MaxWalkSpeed;
+    TestFalse(TEXT("Reject an out-of-range environment modifier"),
+        Load->SetTraversalEnvironmentMultiplier(3.0f));
+    TestTrue(TEXT("Rejected modifier leaves speed unchanged"),
+        FMath::IsNearlyEqual(Movement->MaxWalkSpeed, SpeedBeforeInvalidRequest, 0.1f));
+    return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRouteCostContextTest,
     "MyProject3.Logistics.RouteCost.IsDeterministicAndHonorsTraversalContext", TestFlags)
