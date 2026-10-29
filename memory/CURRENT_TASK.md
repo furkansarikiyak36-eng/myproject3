@@ -44,10 +44,10 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - P2.5 has dirty-water/spoiled-food/wet-cold, fall and animal-bite triggers; toxic-rain and player-visible condition status remain.
 - Recent source changes on this branch are code-written, not built or PIE-verified.
 - `TryConsumeFoodItem` requires a unique item present in both inventory and ownership ledger; its condition and thirst effect are transactional. Hand-craft outputs are ordinary stacks today, so any boiling/drinking UI must not pretend ordinary stacks are ledger-owned.
-- `TryBeginRest` uses `UWorldSimulationClockSubsystem`; the current VerticalSlice_C actor creates a profile and binds I/O/J/F2/F3/F4 but has no explicit drink/rest key. Verify the shared clock advances in this demo before wiring rest.
+- `TryBeginRest` uses `UWorldSimulationClockSubsystem`; the current VerticalSlice_C actor creates a profile and binds I/O/J/F2/F3/F4 but has no explicit drink/rest key. Confirmed: `AVerticalSliceCWorldActor::Tick` calls its base bootstrap tick, whose driver advances the shared coordinator/clock using fixed steps; `TryBeginRest` can use that clock when the bootstrap is ready.
 
 ### Changes
 - Checkpoint reset to the user's current Phase 2 task before source reads.
 
 ### Next step
-Next: verify VerticalSlice_C clock stepping and inventory output semantics, then add clear player drinking/rest interactions that only consume valid ledger-owned consumables, with tests where safe.
+Next: inspect ownership definition-update rollback and action receipt validation, then implement a receipt-backed dirty→boiled water transition plus player controls; preserve shared-clock rest and ledger-only consumption.
