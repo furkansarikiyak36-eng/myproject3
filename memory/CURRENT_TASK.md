@@ -120,7 +120,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WildlifeActor.h` (in-world wildlife enum, movable actor and private death handler reviewed).
 - `Source/MyProject3/WildlifeActor.cpp` (current spawning/tick/death behavior inspected).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed exact owned-item fields and owner kinds).
-- `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires a valid owner ID for Inventory, finite timestamps/location, bounded tracked-item count; fills `BaseDefinitionId` and normalizes missing creation time).
+- `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires an inventory owner ID, finite timestamps/location and capacity; fills `BaseDefinitionId`).
+- `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival condition records is present).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
@@ -152,4 +153,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Water fill now has an exact unique-slot preflight, missing-vessel/limited-capacity/success/retry test coverage, and the player inventory is a default character component with game-data backfill. Continue P2.5 by wiring fall damage and hostile-animal attack to configured `Injury.Fall` and `Injury.AnimalBite` conditions using saved receipt APIs, then add focused automation coverage. Do not build.
+Inspect the character's landing/movement state and wildlife hostile behavior to choose a single authoritative place for fall and bite triggers. Prefer a public survival helper that applies a condition by entity ID using the expected profile revision and existing `Injury.Fall`/`Injury.AnimalBite` definitions; avoid duplicate triggers across ticks.
