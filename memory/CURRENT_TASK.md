@@ -51,10 +51,12 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
 - `memory/CODE_INDEX.md` (raw unit index; used to identify code file names).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current declarations for survival, consumables, conditions, equipment, actions, and profile).
-- `Source/MyProject3/WorldDemoScenarioActor.cpp` (scenario initialization and recipe registration sites, for P0.5).
+- `Source/MyProject3/WorldDemoScenarioActor.cpp` (scenario initialization validates and registers a `ConfiguredRecipe` property).
+- `Source/MyProject3/WorldDemoScenarioActor.h` (scenario properties/default recipe shape, to determine P0.5 source of truth).
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
+- `WorldDemoScenarioActor.cpp` doesn't show hard-coded ingredient/output data; P0.5's listed gap may be stale or defined in the actor header, so do not rewrite it until the header is checked.
 - `CODE_INDEX.md` is the authoritative filename/type map; survival API names are recorded. `WorldDemoScenarioActor.cpp` does not contain literal ingredient/output values; it registers a `ConfiguredRecipe` property. Inspect its header before deciding whether P0.5 is still open or the status note is stale.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
 - Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
