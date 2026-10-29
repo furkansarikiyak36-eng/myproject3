@@ -1234,8 +1234,11 @@ bool UInventoryCraftingComponent::CanAdvanceItemAging(double DeltaSeconds) const
       Def.ClothingInsulation > 1.0f ||
       !FMath::IsFinite(Def.HealthRestore) || Def.HealthRestore < 0.0f || Def.HealthRestore > 100.0f ||
       !FMath::IsFinite(Def.MoistureGain) || Def.MoistureGain < 0.0f || Def.MoistureGain > 1.0f ||
+      (!Def.TreatAfflictionId.IsNone() &&
+       (!Def.bConsumable || Def.Category != EInventoryItemCategory::Consumable)) ||
       (Def.bConsumable && (Def.Category != EInventoryItemCategory::Consumable ||
-       (Def.CaloriesKcal <= 0.0f && Def.HydrationRelief <= 0.0f))) ||
+       (Def.CaloriesKcal <= 0.0f && Def.HydrationRelief <= 0.0f &&
+        Def.HealthRestore <= 0.0f && Def.TreatAfflictionId.IsNone()))) ||
       (!Def.EquipmentSlotId.IsNone() && Def.MaxStack != 1) ||
       (Def.AnimalFeedHungerReduction > 0.0f && Def.Category != EInventoryItemCategory::Consumable))
    return false;
