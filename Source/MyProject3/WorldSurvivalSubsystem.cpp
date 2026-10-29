@@ -186,8 +186,10 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
             break;
         case EWorldSurvivalActionKind::ApplyCondition:
             if (!Receipt.RelatedConditionId.IsValid() || Receipt.ConditionDefinitionId.IsNone() ||
+                !FindConditionDefinition(Receipt.ConditionDefinitionId) ||
                 !FMath::IsFinite(Receipt.ConditionEndTimeSeconds) ||
-                Receipt.ConditionEndTimeSeconds < 0.0)
+                Receipt.ConditionEndTimeSeconds < 0.0 ||
+                !InRange(Receipt.ConditionSeverity, 0.001f, 1.0f))
                 return false;
             break;
         case EWorldSurvivalActionKind::TreatCondition:
@@ -762,6 +764,7 @@ bool UWorldSurvivalSubsystem::TryTreatCondition(
         return false;
     }
 
+    const float PreviousHealth = Profile->Health;
     Profile->Conditions.RemoveAt(ConditionIndex);
     Profile->Health = FMath::Clamp(Profile->Health + Definition->TreatmentHealthRecovery, 0.0f, 100.0f);
     ++Profile->Revision;
@@ -772,7 +775,7 @@ bool UWorldSurvivalSubsystem::TryTreatCondition(
         // Roll back domain state too; a receipt must never claim a treatment
         // when the canonical item ledger did not commit its consumed state.
         Profile->Conditions.Insert(Condition, ConditionIndex);
-        Profile->Health = FMath::Clamp(Profile->Health - Definition->TreatmentHealthRecovery, 0.0f, 100.0f);
+        Profile->Health = PreviousHealth;
         --Profile->Revision;
         Rollback();
         return false;
@@ -1062,7 +1065,7 @@ bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
     const FWorldDiscoveryDefinition* Definition = FindDiscoveryDefinition(DiscoveryId);
     if (!Profile || !Definition || Profile->Revision != ExpectedProfileRevision ||
         Profile->Revision >= MAX_int64 - 1 || Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
-        MaxDiscoveryRecords <= 0 || Discoveries.Num() >= MaxDiscoveryRecords)
+        MaxDiscoveryRecords <= 0 || MaxDiscoveryRecords > 16384)
         return false;
 
     for (const FName RequiredDiscovery : Definition->PrerequisiteDiscoveryIds)
@@ -1080,6 +1083,8 @@ bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
 
     FWorldDiscoveryRecord* ExistingRecord = Discoveries.FindByPredicate([DiscoveryId](const FWorldDiscoveryRecord& Record)
         { return Record.DiscoveryId == DiscoveryId; });
+    if (!ExistingRecord && Discoveries.Num() >= MaxDiscoveryRecords)
+        return false;
     if (ExistingRecord)
     {
         // A single-player discovery is globally permanent. Reconciliation may
