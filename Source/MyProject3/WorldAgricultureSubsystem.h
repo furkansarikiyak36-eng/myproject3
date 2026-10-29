@@ -4,6 +4,8 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldAgricultureSubsystem.generated.h"
 
+class UInventoryCraftingComponent;
+
 UENUM(BlueprintType)
 enum class ECropGrowthStage : uint8 { Seed, Sprout, Growing, Mature, Withered, Harvested };
 
@@ -118,7 +120,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool RegisterCrop(const FWorldCropState& Crop);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool RegisterAnimal(const FWorldAnimalState& Animal);
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool SetCropMoisture(const FGuid& CropId, float Moisture, int64 ExpectedRevision);
-    UFUNCTION(BlueprintCallable, Category="World|Animals") bool FeedAnimal(const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision);
+    /** Legacy numeric simulation hook; player-facing feeding must use TryFeedAnimal so food ownership is consumed. */
+    bool FeedAnimal(const FGuid& AnimalId, float HungerReduction, int64 ExpectedRevision);
     UFUNCTION(BlueprintPure, Category="World|Simulation") bool CanAdvanceAgricultureStep(double DeltaSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Simulation") bool AdvanceAgricultureStep(double DeltaSeconds);
     UFUNCTION(BlueprintPure, Category="World|Farm") bool GetCrop(const FGuid& CropId, FWorldCropState& OutCrop) const;
@@ -128,10 +131,10 @@ public:
 private:
     const FWorldCropDefinition* FindCropDefinition(FName CropDefinitionId) const;
     const FWorldAgricultureActionReceipt* FindActionReceipt(const FGuid& OperationId) const;
-    bool FindInventoryForOwner(const FGuid& InventoryOwnerId, class UInventoryCraftingComponent*& OutInventory) const;
+    bool FindInventoryForOwner(const FGuid& InventoryOwnerId, UInventoryCraftingComponent*& OutInventory) const;
     bool ConsumeInventoryItemAtomically(const FGuid& OperationId, const FGuid& ItemId,
         int64 ExpectedItemRevision, const FGuid& InventoryOwnerId,
-        class UInventoryCraftingComponent* Inventory);
+        UInventoryCraftingComponent* Inventory);
     bool RegisterWorldOutputsAtomically(const TArray<FName>& Definitions,
         const TArray<FVector>& Locations, TArray<FGuid>& OutItemIds);
 
