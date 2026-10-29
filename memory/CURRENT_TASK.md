@@ -75,7 +75,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (implemented idempotent field actions, prepared planting, calendar gates, growth modifiers, soil exhaustion, and snapshot overloads; fixed harvest revision preflight).
 - `Source/MyProject3/WorldSimulationSaveGame.h` (edited: `CurrentSchemaVersion` advanced to 24; crop arrays serialize new seed fields with default legacy values).
 - `Source/MyProject3/WorldSaveCoordinatorSubsystem.cpp` (v23→v24 crop seed defaults are explicit).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` lines 2650–2795 (item-backed crop/animal test setup and existing harvest/animal assertions read to plan seed-return coverage).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (edited item-backed farming test: seed-return=1, advances crop to mature, checks two outputs + one seed item, verifies idempotent harvest retry, and uses three-array agriculture snapshot restore).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (edited farming test preps plot and added field action/snapshot regression test).
 - `Source/MyProject3/WorldGameDataSubsystem.h` (added `FGameDataCrop.SeedReturnUnits`).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (parses and bounds seed-return units).
@@ -110,4 +110,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect whether the existing item-backed test harvests its crop after growth; add a harvest maturity step if straightforward, then assert output definitions/count include configured returned seed. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Review `FWorldCropState` restore validation and update `PLAN_STATUS.md` to mark P6.2 soil/seed mechanics code-written while keeping animal chain partial; then begin animal capture/pen/slaughter. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
