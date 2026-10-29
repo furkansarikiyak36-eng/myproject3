@@ -23,7 +23,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Raid|Target")
     int32 TargetPriority = 0;
 
-    /** Local-space offset from the component transform to the settlement's raid objective. */
+    /** Local-space offset from the owning actor transform to the settlement's raid objective. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Raid|Target")
     FVector TargetOffset = FVector::ZeroVector;
 
