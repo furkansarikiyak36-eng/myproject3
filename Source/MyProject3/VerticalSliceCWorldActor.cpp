@@ -1361,6 +1361,7 @@ void AVerticalSliceCWorldActor::EnsureDiscoveryMarkers()
         Marker->RevealRadiusCm = Definition.RevealRadiusCm;
         Marker->RewardItemId = Definition.RewardItemId;
         Marker->RewardQuantity = Definition.RewardQuantity;
+        Marker->bRewardUniqueItems = Definition.bRewardUniqueItems;
     }
     bDiscoveryMarkersSpawned = bAllMarkersExist;
 }
