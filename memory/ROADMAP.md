@@ -315,3 +315,8 @@ Newest first, one line each: `date · task · status · evidence (commit, test c
 
 - 2026-10-29 · P4.4 · code-written · `FGameDataItem::ToolStrength` and `GetToolStrength` are data-backed; Tool.Axe=1.5, Tool.DiggingStick=1.0; legacy Tool rows default to 1.0, non-tools to 0, Tool values validate within 0.1–10; VerticalSlice_C grants missing prototype tools after data application; axe strength scales tree chop and log-cut work; N digging requires Tool.DiggingStick and multiplies the configured dig strength; `MyProject3.GameData.ToolStrengthIsAuthoredAndResolved` authored. No durability/wear model. **Unbuilt/unrun; no PIE validation.**
 - 2026-10-29 · P4.3 · code-written hardening · `AProductionStationActor::HasRequiredFire` now fails closed if world/game data is not ready or `StationDataId` is missing/unknown; interaction test covers valid no-fire workbench and unknown station rejection. Fire is still checked at recipe start only; pause/resume when fire goes out remains open. **Unbuilt/unrun.**
+
+
+## Active branch progress note (2026-10-29)
+
+The current working branch `work/phase-3-4-closure` now also contains `zones.json` (five canonical indexed ecological regions) and `discoveries.json` (six location-bound discoveries with generic rewards/unlocks). `UWorldGameDataSubsystem` validates region/resource/discovery references, registers unlock definitions, and resolves gatherable actors to regions. `AWorldDiscoveryMarkerActor` records permanent discovery and rolls back discovery/inventory if reward delivery fails. Player craft and authoritative production enqueue paths enforce definitions explicitly listed in discovery unlocks. Automation tests are authored but **unbuilt/unrun**; the parent branch's 102/102 metric does not cover these edits.
