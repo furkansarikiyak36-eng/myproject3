@@ -126,7 +126,7 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, ZonesJson, RoutesJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, ZonesJson, RoutesJson, DiscoveriesJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
@@ -135,6 +135,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         !ReadJson(Directory, TEXT("animals.json"), AnimalsJson, Error) ||
         !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
         !ReadJson(Directory, TEXT("routes.json"), RoutesJson, Error) ||
+        !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
         !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
@@ -559,6 +560,91 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         NewRouteEdges.Add(Edge);
     }
 
+    TArray<FGameDataDiscovery> NewDiscoveries;
+    const TArray<TSharedPtr<FJsonValue>>* DiscoveryValues = ArrayField(DiscoveriesJson, TEXT("discoveries"));
+    if (!DiscoveryValues || DiscoveryValues->IsEmpty() || DiscoveryValues->Num() > 512)
+        return Fail(TEXT("discoveries.json must define between 1 and 512 discoveries"));
+
+    TSet<FName> SeenDiscoveryIds;
+    auto IsKnownUnlockId = [&NewItems, &NewStations, &NewTransformations, &NewCrops,
+        &NewAnimals, &NewZones, &NewRouteEdges](FName Id)
+    {
+        if (Id.IsNone())
+            return false;
+        if (NewItems.Contains(Id) || NewStations.Contains(Id) ||
+            NewTransformations.ContainsByPredicate([Id](const FGameDataTransformation& T) { return T.Id == Id; }) ||
+            NewCrops.ContainsByPredicate([Id](const FGameDataCrop& C) { return C.Id == Id; }) ||
+            NewAnimals.ContainsByPredicate([Id](const FGameDataAnimal& A) { return A.Id == Id; }) ||
+            NewZones.ContainsByPredicate([Id](const FGameDataZone& Z) { return Z.Id == Id; }) ||
+            NewZones.ContainsByPredicate([Id](const FGameDataZone& Z) { return Z.PermanentSolutionIds.Contains(Id); }) ||
+            NewRouteEdges.ContainsByPredicate([Id](const FGameDataRouteEdge& E) { return E.InfrastructureId == Id; }))
+            return true;
+        return false;
+    };
+
+    for (const TSharedPtr<FJsonValue>& Value : *DiscoveryValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataDiscovery Discovery;
+        Discovery.DiscoveryId = NameField(Entry, TEXT("id"));
+
+        const TArray<TSharedPtr<FJsonValue>>* Prerequisites = ArrayField(Entry, TEXT("prerequisites"));
+        TSet<FName> SeenPrerequisites;
+        if (Prerequisites)
+        {
+            for (const TSharedPtr<FJsonValue>& PrerequisiteValue : *Prerequisites)
+            {
+                const FName PrerequisiteId(*PrerequisiteValue->AsString());
+                // Enforce topological file order: a prerequisite must be declared before its dependent.
+                if (PrerequisiteId.IsNone() || PrerequisiteId == Discovery.DiscoveryId ||
+                    SeenPrerequisites.Contains(PrerequisiteId) || !SeenDiscoveryIds.Contains(PrerequisiteId))
+                    return Fail(FString::Printf(TEXT("Discovery %s has an unknown, forward or repeated prerequisite"),
+                        *Discovery.DiscoveryId.ToString()));
+                SeenPrerequisites.Add(PrerequisiteId);
+                Discovery.PrerequisiteDiscoveryIds.Add(PrerequisiteId);
+            }
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* RequiredEquipment = ArrayField(Entry, TEXT("required_equipment"));
+        TSet<FName> SeenRequiredEquipment;
+        if (RequiredEquipment)
+        {
+            for (const TSharedPtr<FJsonValue>& EquipmentValue : *RequiredEquipment)
+            {
+                const FName EquipmentId(*EquipmentValue->AsString());
+                const bool bConfiguredEquipment = NewEquipment.ContainsByPredicate(
+                    [EquipmentId](const FEquipment& Equipment) { return Equipment.ItemId == EquipmentId; });
+                if (EquipmentId.IsNone() || !bConfiguredEquipment || SeenRequiredEquipment.Contains(EquipmentId))
+                    return Fail(FString::Printf(TEXT("Discovery %s has unknown or repeated required equipment"),
+                        *Discovery.DiscoveryId.ToString()));
+                SeenRequiredEquipment.Add(EquipmentId);
+                Discovery.RequiredEquipmentDefinitionIds.Add(EquipmentId);
+            }
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* Unlocked = ArrayField(Entry, TEXT("unlocks"));
+        TSet<FName> SeenUnlocks;
+        if (Unlocked)
+        {
+            for (const TSharedPtr<FJsonValue>& UnlockValue : *Unlocked)
+            {
+                const FName UnlockId(*UnlockValue->AsString());
+                if (!IsKnownUnlockId(UnlockId) || SeenUnlocks.Contains(UnlockId))
+                    return Fail(FString::Printf(TEXT("Discovery %s has an unknown or repeated unlock ID"),
+                        *Discovery.DiscoveryId.ToString()));
+                SeenUnlocks.Add(UnlockId);
+                Discovery.UnlockedDefinitionIds.Add(UnlockId);
+            }
+        }
+
+        if (Discovery.DiscoveryId.IsNone() || SeenDiscoveryIds.Contains(Discovery.DiscoveryId) ||
+            Discovery.UnlockedDefinitionIds.IsEmpty())
+            return Fail(FString::Printf(TEXT("Bad or duplicate discovery %s"), *Discovery.DiscoveryId.ToString()));
+
+        SeenDiscoveryIds.Add(Discovery.DiscoveryId);
+        NewDiscoveries.Add(Discovery);
+    }
+
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
     NewCalendar.DaysPerMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("days_per_month"), NewCalendar.DaysPerMonth));
@@ -618,6 +704,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
     Zones = MoveTemp(NewZones);
+    Discoveries = MoveTemp(NewDiscoveries);
     RouteNodes = MoveTemp(NewRouteNodes);
     RouteEdges = MoveTemp(NewRouteEdges);
     Calendar = NewCalendar;
@@ -719,6 +806,17 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
 
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
+
+    for (const FGameDataDiscovery& Discovery : Discoveries)
+    {
+        FWorldDiscoveryDefinition Definition;
+        Definition.DiscoveryId = Discovery.DiscoveryId;
+        Definition.PrerequisiteDiscoveryIds = Discovery.PrerequisiteDiscoveryIds;
+        Definition.RequiredEquipmentDefinitionIds = Discovery.RequiredEquipmentDefinitionIds;
+        Definition.UnlockedDefinitionIds = Discovery.UnlockedDefinitionIds;
+        if (!Survival->RegisterDiscoveryDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Survival refused discovery %s"), *Discovery.DiscoveryId.ToString()));
+    }
 
     for (const FGameDataRouteNode& Node : RouteNodes)
     {
