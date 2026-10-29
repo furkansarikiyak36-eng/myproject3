@@ -117,7 +117,10 @@ private:
     bool bDiscoveryMarkersSpawned = false;
     bool bGatherableZonesAssigned = false;
     bool bFarmPlotBuilt = false;
+    float FarmPlotVisualRefreshTimer = 0.0f;
     int32 SelectedFieldActionIndex = 0;
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> FarmPlotTiles;
     int32 ChopSwingCount = 0;
     int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
@@ -140,6 +143,7 @@ private:
     void BuildPalisade();
     void BuildLife();
     void BuildFarmPlot();
+    void RefreshFarmPlotVisuals();
     void BuildCreekDam();
     void BuildHelper();
     void HelperOrderInput();
