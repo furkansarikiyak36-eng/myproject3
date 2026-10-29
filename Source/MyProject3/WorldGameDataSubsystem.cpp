@@ -808,6 +808,16 @@ const FGameDataTransformation* UWorldGameDataSubsystem::FindTransformation(FName
     return Transformations.FindByPredicate([Id](const FGameDataTransformation& T) { return T.Id == Id; });
 }
 
+bool UWorldGameDataSubsystem::IsDefinitionUnlockRequired(FName DefinitionId) const
+{
+    if (!bLoaded || DefinitionId.IsNone())
+        return false;
+    return Discoveries.ContainsByPredicate([DefinitionId](const FGameDataDiscovery& Discovery)
+    {
+        return Discovery.UnlockedDefinitionIds.Contains(DefinitionId);
+    });
+}
+
 bool UWorldGameDataSubsystem::CanEnterZone(
     const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const
 {
