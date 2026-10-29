@@ -130,12 +130,12 @@ Question for the user: "`main` is 697 commits behind `feature/simple-intent`. Me
 `feature/simple-intent` into `main` and work from `main` from now on?" Also: close PR #34
 (second, conflicting kernel)? Done when: the user answered and the merge/close is made.
 
-**P0.2 · Freeze note** — `todo`
+**P0.2 · Freeze note** — `code-written` (committed; frozen follow-ups documented)
 Add a short "frozen until phase 10" note at the top of `Source/MyProject3/Placement/CLAUDE.md`
 and `memory/modules/carry.md`, listing the open items moved there (mitre cuts, NotchCradle sockets,
 crossing wall diagonals, deck path). Done when: committed.
 
-**P0.3 · Game data files** — `tested` (needs user review of the lists) · Needs: —
+**P0.3 · Game data files** — `code-written` (event definitions added; JSON/load validation not run on this branch) · Needs: —
 Create `Config/GameData/` with JSON files, content copied from the design doc:
 `materials.json` (§4.1), `items.json` (items produced by §4.3), `transformations.json` (38 rows:
 id, inputs, tool/station, outputs, kind E/F, duration, fuel), `stations.json` (8),
@@ -144,7 +144,7 @@ precipitation, possible events), `events.json` (§7.1: signal, effect, counters)
 Done when: files exist, valid JSON, each row has a stable id. Status ceiling for web: `code-written`
 is fine here (no build needed); mark `done` after the user reviews the lists.
 
-**P0.4 · Data loader** — `tested` (99/99) · Needs: P0.3
+**P0.4 · Data loader** — `code-written` (event parsing added after the historical 99/99 baseline; current edits unbuilt/unrun) · Needs: P0.3
 New `UGameDataSubsystem` (GameInstance subsystem) that loads `Config/GameData/*.json`, validates
 ids/references (every input/output item exists, every station exists) and exposes lookups.
 Tests: loads all files; a broken reference fails validation. Done when: `tested`.
@@ -170,7 +170,8 @@ Each day pick temperature and weather from the month's ranges in `calendar.json`
 (deterministic seed saved with the world). Call the existing `SetWeather`. Snow depth and
 ground wetness as world values that grow/melt. Tests: January never Heatwave; snow melts in March.
 
-**P1.3 · Event director** — `todo` · Needs: P1.2
+**P1.3 · Event director** — `in-progress` · Needs: P1.2
+Data contract layer is authored in `Config/GameData/events.json` and loaded/validated by `UWorldGameDataSubsystem`. Runtime scheduling, signal/effect lifecycle, coordinator rollback, and save/load state remain open.
 New `UWorldEventDirectorSubsystem`: events from `events.json`; each event has a **signal phase**
 (hours/days before) and an **effect phase**; conditions read world state (month, snow depth,
 dryness, wind). First three events only: snowstorm, heavy rain, flood (water level rises in
