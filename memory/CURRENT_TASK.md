@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Read `WorldProductionSubsystem.h` (SHA faef4c667c4e3c892face51c9b9c5d10fcdfb41c): both `TryEnqueueJob` and `EnqueueJob` remain public BlueprintCallable; `TryEnqueueJobForPlayer` exists. The implementation must be checked to confirm each unbound path rejects any recipe whose recipe/input/output IDs are discovery-gated, including idempotent retries and completed-job outputs.
 - Read `ProductionStationActor.cpp` (SHA 3762600238aacfcf3ea498c9e306c08fb4b3ddaf): legacy `TryStartRecipe` delegates to `TryEnqueueJob`, with a comment that the production subsystem rejects knowledge-gated recipes without player identity. `TryStartRecipeForInventory` requires `Inventory->ProgressionEntityId`; deposit and take check `IsDefinitionAvailableForProgression` before changing stock.
 - Read `ProductionStationActor.h` (SHA ee75beb71a704117925a06e5b22896ad3c9120b3): it still exposes an id-less `TryStartRecipe(RecipeId, OutJobId)` alongside `TryStartRecipeForPlayer` and `TryStartRecipeForInventory`, so Blueprints can call the ungated API unless the implementation fails closed internally.
 - Searched repository code for `TryStartRecipe` using the GitHub code-search connector; it returned no results, so that index/search surface cannot identify old station callers. Continue by inspecting production/station interfaces and use a local source call-site audit once files are available.
