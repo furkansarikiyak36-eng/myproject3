@@ -83,6 +83,24 @@ struct FGameDataCrop
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 FoundInZone = 0;
 };
 
+/** Authored trigger/effect contract for natural world events (P1.3/P8.1). */
+USTRUCT(BlueprintType)
+struct FGameDataWorldEvent
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Trigger = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Signal = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName Effect = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double WarningSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") double DurationSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MinimumSeverity = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") float MaximumSeverity = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") FName CounterItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Events") int32 CounterQuantity = 0;
+};
+
 /**
  * Loads and checks the primitive-era game data (Config/GameData/*.json, P0.3/P0.4) and
  * hands it to the systems that use it: production recipes and stations, survival
@@ -117,6 +135,7 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
+    const TArray<FGameDataWorldEvent>& GetWorldEvents() const { return WorldEvents; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
@@ -130,6 +149,7 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
+    TArray<FGameDataWorldEvent> WorldEvents;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 
