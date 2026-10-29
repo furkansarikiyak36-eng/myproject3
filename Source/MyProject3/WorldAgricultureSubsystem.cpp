@@ -5,6 +5,8 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
+#include "WorldCalendar.h"
 
 const FWorldCropDefinition* UWorldAgricultureSubsystem::FindCropDefinition(FName CropDefinitionId) const
 {
@@ -31,6 +33,15 @@ UWorldAgricultureSubsystem::FindActionReceipt(const FGuid& OperationId) const
             return Found;
     }
     for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
+    {
+        if (const FWorldAgricultureActionReceipt* Found =
+            Pair.Value.ActionReceipts.FindByPredicate([OperationId](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.OperationId == OperationId;
+            }))
+            return Found;
+    }
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
     {
         if (const FWorldAgricultureActionReceipt* Found =
             Pair.Value.ActionReceipts.FindByPredicate([OperationId](const FWorldAgricultureActionReceipt& Receipt)
@@ -212,9 +223,25 @@ bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefiniti
         Definition.SecondsPerStage <= 0.0 ||
         !FMath::IsFinite(Definition.MinimumPlantMoisture) ||
         Definition.MinimumPlantMoisture < 0.0f || Definition.MinimumPlantMoisture > 1.0f ||
-        MaxCropDefinitions <= 0 || MaxCropDefinitions > 4096 ||
-        CropDefinitions.Num() >= MaxCropDefinitions || FindCropDefinition(Definition.CropDefinitionId))
+        Definition.SeedReturnUnits < 0 || Definition.SeedReturnUnits > 64 ||
+        !FMath::IsFinite(Definition.SoilExhaustionPerHarvest) ||
+        Definition.SoilExhaustionPerHarvest < 0.0f || Definition.SoilExhaustionPerHarvest > 100.0f ||
+        !FMath::IsFinite(Definition.MinimumFertility) ||
+        Definition.MinimumFertility < 0.0f || Definition.MinimumFertility > 100.0f ||
+        !FMath::IsFinite(Definition.MaximumPlantWeedPressure) ||
+        Definition.MaximumPlantWeedPressure < 0.0f || Definition.MaximumPlantWeedPressure > 1.0f ||
+        Definition.PlantMonths.IsEmpty() || MaxCropDefinitions <= 0 ||
+        MaxCropDefinitions > 4096 || CropDefinitions.Num() >= MaxCropDefinitions ||
+        FindCropDefinition(Definition.CropDefinitionId))
         return false;
+
+    TSet<int32> SeenMonths;
+    for (const int32 Month : Definition.PlantMonths)
+    {
+        if (Month < 1 || Month > 12 || SeenMonths.Contains(Month))
+            return false;
+        SeenMonths.Add(Month);
+    }
     CropDefinitions.Add(Definition);
     return true;
 }
@@ -224,10 +251,28 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
     int64 ExpectedSeedItemRevision, const FGuid& ExpectedInventoryOwnerId,
     const FIntVector& PlotCell, float InitialMoisture, FGuid& OutCropId)
 {
+    FWorldFieldCellState FieldCell;
+    if (!GetFieldCell(PlotCell, FieldCell))
+    {
+        OutCropId.Invalidate();
+        return false;
+    }
+    return TryPlantCropOnField(OperationId, CropDefinitionId, SeedItemId,
+        ExpectedSeedItemRevision, ExpectedInventoryOwnerId, PlotCell,
+        FieldCell.Revision, InitialMoisture, OutCropId);
+}
+
+bool UWorldAgricultureSubsystem::TryPlantCropOnField(
+    const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
+    int64 ExpectedSeedItemRevision, const FGuid& ExpectedInventoryOwnerId,
+    const FIntVector& PlotCell, int64 ExpectedFieldRevision,
+    float InitialMoisture, FGuid& OutCropId)
+{
     OutCropId.Invalidate();
     if (!OperationId.IsValid() || CropDefinitionId.IsNone() || !SeedItemId.IsValid() ||
         ExpectedSeedItemRevision <= 0 || !ExpectedInventoryOwnerId.IsValid() ||
-        !FMath::IsFinite(InitialMoisture) || InitialMoisture < 0.0f || InitialMoisture > 1.0f)
+        ExpectedFieldRevision <= 0 || !FMath::IsFinite(InitialMoisture) ||
+        InitialMoisture < 0.0f || InitialMoisture > 1.0f)
         return false;
 
     if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
@@ -238,18 +283,32 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
             Existing->ExpectedInventoryOwnerId != ExpectedInventoryOwnerId ||
             Existing->DefinitionId != CropDefinitionId)
             return false;
-        if (!Crops.Contains(Existing->EntityId))
+        const FWorldCropState* ExistingCrop = Crops.Find(Existing->EntityId);
+        if (!ExistingCrop || ExistingCrop->PlotCell != PlotCell)
             return false;
         OutCropId = Existing->EntityId;
         return true;
     }
 
     const FWorldCropDefinition* Definition = FindCropDefinition(CropDefinitionId);
-    if (!Definition || InitialMoisture < Definition->MinimumPlantMoisture ||
+    FWorldFieldCellState* FieldCell = FieldCells.Find(PlotCell);
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    FWorldCalendarDate Date;
+    if (!Definition || !FieldCell || !Clock || !Clock->GetCalendarDate(Date) ||
+        !Definition->PlantMonths.Contains(Date.Month) ||
+        FieldCell->Revision != ExpectedFieldRevision ||
+        FieldCell->Revision >= MAX_int64 - 1 ||
+        !FieldCell->bCleared || !FieldCell->bTilled || FieldCell->PlantedCropId.IsValid() ||
+        FieldCell->Fertility < Definition->MinimumFertility ||
+        FieldCell->WeedPressure > Definition->MaximumPlantWeedPressure ||
+        InitialMoisture < Definition->MinimumPlantMoisture ||
         MaxCrops <= 0 || Crops.Num() >= MaxCrops ||
         MaxOperationReceiptsPerEntity <= 0 ||
         MaxOperationReceiptsPerEntity > 256)
         return false;
+
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         const FWorldCropState& ExistingCrop = Pair.Value;
@@ -260,7 +319,7 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
     }
 
     UWorldItemOwnershipSubsystem* Ownership =
-        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UInventoryCraftingComponent* Inventory = nullptr;
     FWorldOwnedItemRecord Seed;
     if (!Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
@@ -268,7 +327,8 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
         Seed.Revision != ExpectedSeedItemRevision ||
         Seed.OwnerKind != EWorldItemOwnerKind::Inventory ||
         Seed.OwnerId != ExpectedInventoryOwnerId || Seed.DefinitionId != Definition->SeedDefinitionId ||
-        Seed.Quantity != 1 || Seed.Revision >= MAX_int64 - 1)
+        Seed.Quantity != 1 || Seed.Revision >= MAX_int64 - 1 ||
+        FieldCell->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
         return false;
 
     FWorldCropState Crop;
@@ -285,6 +345,10 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
     Crop.SeedItemExpectedRevision = ExpectedSeedItemRevision;
     Crop.HarvestDefinitionId = Definition->HarvestDefinitionId;
     Crop.HarvestUnits = Definition->HarvestUnits;
+    Crop.SeedReturnUnits = Definition->SeedReturnUnits;
+    Crop.SoilExhaustionPerHarvest = Definition->SoilExhaustionPerHarvest;
+    Crop.MinimumFertility = Definition->MinimumFertility;
+    Crop.SeedOutputDefinitionId = Definition->SeedDefinitionId;
 
     if (!Crop.CropId.IsValid())
         return false;
@@ -306,6 +370,8 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
         return false;
 
     Crops.Add(Crop.CropId, Crop);
+    FieldCell->PlantedCropId = Crop.CropId;
+    ++FieldCell->Revision;
     OutCropId = Crop.CropId;
     return true;
 }
@@ -335,23 +401,46 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
         Crop->HarvestUnits > 64 || Crop->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
         return false;
 
+    FWorldFieldCellState* FieldCell = FieldCells.Find(Crop->PlotCell);
+    if (FieldCell && (FieldCell->PlantedCropId != CropId ||
+        FieldCell->Revision >= MAX_int64 - 1 ||
+        FieldCell->ConsecutiveSameCropHarvests >= MAX_int32 - 1))
+        return false;
+    if (Crop->SeedReturnUnits < 0 || Crop->SeedReturnUnits > 64 ||
+        (Crop->SeedReturnUnits > 0 && Crop->SeedOutputDefinitionId.IsNone()))
+        return false;
+
+    const int32 HarvestUnits = Crop->HarvestUnits;
+    const int32 SeedUnits = Crop->SeedReturnUnits;
     TArray<FName> Definitions;
     TArray<FVector> Locations;
-    Definitions.Reserve(Crop->HarvestUnits);
-    Locations.Reserve(Crop->HarvestUnits);
+    Definitions.Reserve(HarvestUnits + SeedUnits);
+    Locations.Reserve(HarvestUnits + SeedUnits);
     const FVector PlotOrigin(
         static_cast<double>(Crop->PlotCell.X) * 100.0,
         static_cast<double>(Crop->PlotCell.Y) * 100.0,
         static_cast<double>(Crop->PlotCell.Z) * 100.0);
-    for (int32 Index = 0; Index < Crop->HarvestUnits; ++Index)
+
+    for (int32 Index = 0; Index < HarvestUnits; ++Index)
     {
         Definitions.Add(Crop->HarvestDefinitionId);
         Locations.Add(PlotOrigin + FVector(static_cast<double>(Index) * 25.0, 0.0, 10.0));
+    }
+    for (int32 Index = 0; Index < SeedUnits; ++Index)
+    {
+        Definitions.Add(Crop->SeedOutputDefinitionId);
+        Locations.Add(PlotOrigin + FVector(static_cast<double>(HarvestUnits + Index) * 25.0, 15.0, 10.0));
     }
 
     TArray<FGuid> CreatedItems;
     if (!RegisterWorldOutputsAtomically(Definitions, Locations, CreatedItems))
         return false;
+
+    TArray<FGuid> HarvestItems;
+    TArray<FGuid> SeedItems;
+    HarvestItems.Append(CreatedItems.GetData(), HarvestUnits);
+    if (SeedUnits > 0)
+        SeedItems.Append(CreatedItems.GetData() + HarvestUnits, SeedUnits);
 
     FWorldAgricultureActionReceipt Receipt;
     Receipt.OperationId = OperationId;
@@ -360,15 +449,34 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     Receipt.ExpectedEntityRevision = ExpectedCropRevision;
     Receipt.ResultingEntityRevision = ExpectedCropRevision + 1;
     Receipt.DefinitionId = Crop->HarvestDefinitionId;
-    Receipt.RequestedOutputUnits = Crop->HarvestUnits;
+    Receipt.RequestedOutputUnits = HarvestUnits;
     Receipt.OutputItemIds = CreatedItems;
 
     Crop->Stage = ECropGrowthStage::Harvested;
     Crop->HarvestOperationId = OperationId;
     Crop->HarvestExpectedRevision = ExpectedCropRevision;
-    Crop->HarvestOutputItemIds = CreatedItems;
+    Crop->HarvestOutputItemIds = HarvestItems;
+    Crop->SeedOutputItemIds = SeedItems;
     ++Crop->Revision;
     Crop->ActionReceipts.Add(Receipt);
+
+    if (FieldCell)
+    {
+        FieldCell->PlantedCropId.Invalidate();
+        if (FieldCell->LastHarvestedCropDefinitionId == Crop->CropDefinitionId)
+            ++FieldCell->ConsecutiveSameCropHarvests;
+        else
+        {
+            FieldCell->LastHarvestedCropDefinitionId = Crop->CropDefinitionId;
+            FieldCell->ConsecutiveSameCropHarvests = 1;
+        }
+        const float ExhaustionMultiplier = 1.0f +
+            0.25f * static_cast<float>(FMath::Max(0, FieldCell->ConsecutiveSameCropHarvests - 1));
+        FieldCell->Fertility = FMath::Clamp(
+            FieldCell->Fertility - Crop->SoilExhaustionPerHarvest * ExhaustionMultiplier, 0.0f, 100.0f);
+        ++FieldCell->Revision;
+    }
+
     OutItemIds = MoveTemp(CreatedItems);
     return true;
 }
