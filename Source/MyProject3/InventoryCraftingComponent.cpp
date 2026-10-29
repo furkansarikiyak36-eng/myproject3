@@ -824,6 +824,158 @@ bool UInventoryCraftingComponent::BuildRemovalPreview(
  return true;
 }
 
+bool UInventoryCraftingComponent::BuildAdditionPreview(
+ const TArray<FInventoryStack>& Additions, TArray<FInventoryStack>& OutItems) const
+{
+ OutItems.Reset();
+ if (Additions.IsEmpty() || !HasCapacityFor(Additions)) return false;
+ OutItems = Items;
+ for (const FInventoryStack& Incoming : Additions)
+ {
+  if (Incoming.ItemId.IsNone() || Incoming.Quantity <= 0 || Incoming.MaxStack <= 0 ||
+      Incoming.Quantity > Incoming.MaxStack || Incoming.OwnedWorldItemId.IsValid() ||
+      !Incoming.EquippedSlotId.IsNone() || !FMath::IsFinite(Incoming.AgeSeconds) ||
+      Incoming.AgeSeconds < 0.0) return false;
+  int32 Remaining = Incoming.Quantity;
+  for (FInventoryStack& Existing : OutItems)
+  {
+   if (Existing.ItemId == Incoming.ItemId && !Existing.OwnedWorldItemId.IsValid() &&
+       Existing.EquippedSlotId.IsNone() && Existing.bSpoiled == Incoming.bSpoiled &&
+       FMath::IsNearlyEqual(Existing.AgeSeconds, Incoming.AgeSeconds, 1.0e-6) &&
+       Existing.Quantity < Existing.MaxStack)
+   {
+    const int32 Delta = FMath::Min(Remaining, Existing.MaxStack - Existing.Quantity);
+    Existing.Quantity += Delta; Remaining -= Delta;
+    if (Remaining == 0) break;
+   }
+  }
+  while (Remaining > 0)
+  {
+   FInventoryStack NewStack = Incoming;
+   NewStack.Quantity = FMath::Min(Remaining, Incoming.MaxStack);
+   Remaining -= NewStack.Quantity; OutItems.Add(NewStack);
+  }
+ }
+ int64 Weight = 0;
+ if (OutItems.Num() > MaxSlots) return false;
+ for (const FInventoryStack& Stack : OutItems)
+ {
+  const int32 UnitWeight = GetConfiguredWeightGrams(Stack.ItemId);
+  if (UnitWeight <= 0 || Stack.Quantity <= 0 || Stack.Quantity > Stack.MaxStack) return false;
+  Weight += static_cast<int64>(UnitWeight) * Stack.Quantity;
+  if (Weight > MaxCarryWeightGrams) return false;
+ }
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryUseMedicalItem(FName ItemId, FGuid SurvivalEntityId, int32 Quantity)
+{
+ if (!GetWorld() || ItemId.IsNone() || !SurvivalEntityId.IsValid() || Quantity <= 0 || Quantity > 10000)
+  return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(ItemId);
+ if (!Def || !Def->bConsumable || Def->Category != EInventoryItemCategory::Consumable ||
+     !FMath::IsFinite(Def->HealthRestore) || Def->HealthRestore < 0.0f ||
+     (Def->HealthRestore <= 0.0f && Def->TreatAfflictionId.IsNone()) ||
+     (!Def->TreatAfflictionId.IsNone() && Quantity != 1)) return false;
+ const double Restore = static_cast<double>(Def->HealthRestore) * Quantity;
+ if (!FMath::IsFinite(Restore) || Restore > 10000.0) return false;
+ UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+ FWorldSurvivalProfile Profile;
+ TArray<FInventoryStack> ProposedItems;
+ if (!Survival || !Survival->GetProfile(SurvivalEntityId, Profile) ||
+     Profile.Revision == MAX_int64 || !BuildRemovalPreview(ItemId, Quantity, ProposedItems)) return false;
+ if (!Survival->TryApplyMedicalTreatment(SurvivalEntityId, static_cast<float>(FMath::Min(100.0, Restore)),
+      Def->TreatAfflictionId, Profile.Revision)) return false;
+ Items = MoveTemp(ProposedItems);
+ if (QuickAccessItemId == ItemId && GetItemCount(ItemId) <= 0) QuickAccessItemId = NAME_None;
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryPlantSeed(
+ FName SeedItemId, FIntVector PlotCell, float InitialMoisture, double SecondsPerStage, FGuid& OutCropId)
+{
+ OutCropId.Invalidate();
+ if (!GetWorld() || SeedItemId.IsNone() || !FMath::IsFinite(InitialMoisture) ||
+     InitialMoisture < 0.0f || InitialMoisture > 1.0f ||
+     !FMath::IsFinite(SecondsPerStage) || SecondsPerStage < 1.0 || SecondsPerStage > 315360000.0)
+  return false;
+ const FInventoryItemDefinition* Seed = FindItemDefinition(SeedItemId);
+ if (!Seed || Seed->SeedCropDefinitionId.IsNone()) return false;
+ UWorldAgricultureSubsystem* Agriculture = GetWorld()->GetSubsystem<UWorldAgricultureSubsystem>();
+ if (!Agriculture || !Agriculture->IsCropDefinitionConfigured(Seed->SeedCropDefinitionId) ||
+     Agriculture->IsPlotCellOccupied(PlotCell)) return false;
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildRemovalPreview(SeedItemId, 1, ProposedItems)) return false;
+ FWorldCropState Crop;
+ Crop.CropId = FGuid::NewGuid(); Crop.CropDefinitionId = Seed->SeedCropDefinitionId;
+ Crop.PlotCell = PlotCell; Crop.Stage = ECropGrowthStage::Seed;
+ Crop.Moisture = InitialMoisture; Crop.GrowthProgressSeconds = 0.0;
+ Crop.SecondsPerStage = SecondsPerStage; Crop.Revision = 1;
+ if (!Crop.CropId.IsValid() || !Agriculture->RegisterCrop(Crop)) return false;
+ Items = MoveTemp(ProposedItems);
+ if (QuickAccessItemId == SeedItemId && GetItemCount(SeedItemId) <= 0) QuickAccessItemId = NAME_None;
+ OutCropId = Crop.CropId;
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryWaterCrop(
+ FName WaterItemId, FGuid CropId, int64 ExpectedCropRevision, int32 Quantity)
+{
+ if (!GetWorld() || WaterItemId.IsNone() || !CropId.IsValid() || ExpectedCropRevision <= 0 ||
+     Quantity <= 0 || Quantity > 10000) return false;
+ const FInventoryItemDefinition* Water = FindItemDefinition(WaterItemId);
+ if (!Water || !FMath::IsFinite(Water->MoistureGain) ||
+     Water->MoistureGain <= 0.0f || Water->MoistureGain > 1.0f) return false;
+ UWorldAgricultureSubsystem* Agriculture = GetWorld()->GetSubsystem<UWorldAgricultureSubsystem>();
+ FWorldCropState Crop;
+ if (!Agriculture || !Agriculture->GetCrop(CropId, Crop) ||
+     Crop.Revision != ExpectedCropRevision || Crop.Revision == MAX_int64 ||
+     Crop.Stage == ECropGrowthStage::Withered || Crop.Moisture >= 1.0f) return false;
+ const double NewMoisture = FMath::Min(1.0, static_cast<double>(Crop.Moisture) +
+     static_cast<double>(Water->MoistureGain) * Quantity);
+ if (!FMath::IsFinite(NewMoisture) || NewMoisture <= Crop.Moisture) return false;
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildRemovalPreview(WaterItemId, Quantity, ProposedItems)) return false;
+ if (!Agriculture->SetCropMoisture(CropId, static_cast<float>(NewMoisture), ExpectedCropRevision))
+  return false;
+ Items = MoveTemp(ProposedItems);
+ if (QuickAccessItemId == WaterItemId && GetItemCount(WaterItemId) <= 0) QuickAccessItemId = NAME_None;
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryHarvestCrop(FGuid CropId, int64 ExpectedCropRevision)
+{
+ if (!GetWorld() || !CropId.IsValid() || ExpectedCropRevision <= 0) return false;
+ UWorldAgricultureSubsystem* Agriculture = GetWorld()->GetSubsystem<UWorldAgricultureSubsystem>();
+ FWorldCropState Crop;
+ if (!Agriculture || !Agriculture->GetCrop(CropId, Crop) ||
+     Crop.Revision != ExpectedCropRevision || Crop.Stage != ECropGrowthStage::Mature) return false;
+ FName HarvestItemId = NAME_None;
+ int32 YieldUnits = 0;
+ if (!Agriculture->GetCropYield(Crop.CropDefinitionId, HarvestItemId, YieldUnits) ||
+     HarvestItemId.IsNone() || YieldUnits <= 0 || YieldUnits > 100000) return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(HarvestItemId);
+ if (!Def || Def->MaxStack <= 0 || Def->UnitWeightGrams <= 0) return false;
+ TArray<FInventoryStack> Additions;
+ for (int32 Remaining = YieldUnits; Remaining > 0;)
+ {
+  FInventoryStack Output;
+  Output.ItemId = Def->ItemId; Output.Category = Def->Category; Output.MaxStack = Def->MaxStack;
+  Output.bIsTool = Def->bIsTool; Output.AgeSeconds = 0.0; Output.bSpoiled = false;
+  Output.Quantity = FMath::Min(Remaining, Output.MaxStack);
+  if (Output.Quantity <= 0) return false;
+  Remaining -= Output.Quantity; Additions.Add(Output);
+ }
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildAdditionPreview(Additions, ProposedItems)) return false;
+ FName CommittedItemId = NAME_None;
+ int32 CommittedQuantity = 0;
+ if (!Agriculture->TryHarvestCrop(CropId, ExpectedCropRevision, CommittedItemId, CommittedQuantity) ||
+     CommittedItemId != HarvestItemId || CommittedQuantity != YieldUnits) return false;
+ Items = MoveTemp(ProposedItems);
+ return true;
+}
+
 bool UInventoryCraftingComponent::TryConsumeFood(
  FName ItemId, FGuid SurvivalEntityId, int32 Quantity)
 {
@@ -997,6 +1149,8 @@ bool UInventoryCraftingComponent::CanAdvanceItemAging(double DeltaSeconds) const
       Def.AnimalFeedHungerReduction < 0.0f || Def.AnimalFeedHungerReduction > 100.0f ||
       !FMath::IsFinite(Def.ClothingInsulation) || Def.ClothingInsulation < 0.0f ||
       Def.ClothingInsulation > 1.0f ||
+      !FMath::IsFinite(Def.HealthRestore) || Def.HealthRestore < 0.0f || Def.HealthRestore > 100.0f ||
+      !FMath::IsFinite(Def.MoistureGain) || Def.MoistureGain < 0.0f || Def.MoistureGain > 1.0f ||
       (Def.bConsumable && (Def.Category != EInventoryItemCategory::Consumable ||
        (Def.CaloriesKcal <= 0.0f && Def.HydrationRelief <= 0.0f))) ||
       (!Def.EquipmentSlotId.IsNone() && Def.MaxStack != 1) ||
