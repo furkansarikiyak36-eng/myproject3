@@ -37,6 +37,26 @@ struct FWorldFieldActionReceipt
 
 /** Persistent state of one logical farm cell. Empty cells can be prepared before planting. */
 USTRUCT(BlueprintType)
+struct FWorldFieldActionCost
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") FName ItemId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="1", ClampMax="64")) int32 Quantity = 1;
+};
+
+USTRUCT(BlueprintType)
+struct FWorldFieldActionDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") FName Id = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") EWorldFieldActionKind Action = EWorldFieldActionKind::Clear;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") TArray<FWorldFieldActionCost> Inputs;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions") TArray<FName> RequiredTools;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="0", ClampMax="1")) float Amount = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Actions", meta=(ClampMin="1", ClampMax="7200")) double LaborSeconds = 300.0;
+};
+
+USTRUCT(BlueprintType)
 struct FWorldFieldCellState
 {
     GENERATED_BODY()
@@ -185,6 +205,7 @@ class MYPROJECT3_API UWorldAgricultureSubsystem : public UWorldSubsystem
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxCrops = 2048;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="16")) int32 MaxFieldActionDefinitions = 16;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxAnimals = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="4096")) int32 MaxAnimalPens = 256;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm") float MinimumGrowthMoisture = 0.15f;
@@ -204,6 +225,12 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Field") bool TryApplyFieldAction(
         const FGuid& OperationId, const FIntVector& Cell, EWorldFieldActionKind Action,
         int64 ExpectedRevision, float Amount = 0.25f);
+    bool RegisterFieldActionDefinition(const FWorldFieldActionDefinition& Definition);
+    /** Consumes configured item costs, applies the field state change and charges labor as one rollback-safe action. */
+    bool TryApplyFieldActionWithInventory(const FGuid& OperationId,
+        UInventoryCraftingComponent* Inventory, const FGuid& SurvivalEntityId,
+        const FIntVector& Cell, EWorldFieldActionKind Action, int64 ExpectedRevision,
+        FWorldFieldCellState& OutCell);
     UFUNCTION(BlueprintPure, Category="World|Farm|Field") bool GetFieldCell(
         const FIntVector& Cell, FWorldFieldCellState& OutCell) const;
 
@@ -270,5 +297,7 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FGuid, FWorldCropState> Crops;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals") TMap<FGuid, FWorldAnimalState> Animals;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals|Pens") TMap<FGuid, FWorldAnimalPenState> AnimalPens;
+    UPROPERTY(VisibleAnywhere, Category="World|Farm|Actions") TArray<FWorldFieldActionDefinition> FieldActionDefinitions;
+
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FIntVector, FWorldFieldCellState> FieldCells;
 };
