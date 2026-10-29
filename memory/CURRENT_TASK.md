@@ -113,9 +113,9 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P0.5 source-of-truth change committed; status ledger corrected.
 - Seed return is JSON-configured, captured at planting, emitted as ledger-owned world items at harvest, and included in receipt/restore validation. Schema v24 migration avoids inventing seeds for legacy saves.
 - `AWildlifeActor` is a lightweight wandering actor with `SmallAnimal/Enemy/Plant`; death is private and currently only changes actor presentation/physics. It has no capture or pen state.
-- The canonical ownership ledger is item-centric and already supports World/Inventory/Storage/Held/etc. A live animal should not be converted into an ordinary item without a clear domain record and physical actor save identity.
+- The item ledger is item-centric; live animals should remain domain entities, not be converted to generic item records. A stable wildlife actor identity can bind capture receipts to a particular source actor.
 - The item-backed farming test now drives a crop to maturity and asserts produce+seed identity/count, single-commit retry, and three-array agriculture snapshot restoration. Not built/run yet.
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read the ownership header excerpt, then inspect the existing `FWorldAnimalState` saved record and actor identity/save APIs; implement the animal lifecycle with the least invasive compatible representation. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Read `WorldObjectIdentityComponent.h` and update `WildlifeActor` to carry a stable SaveGame wildlife ID; then add the animal lifecycle fields/actions to agriculture. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
