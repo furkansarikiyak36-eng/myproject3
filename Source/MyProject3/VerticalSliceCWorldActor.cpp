@@ -16,6 +16,7 @@
 #include "InventoryCraftingTypes.h"
 #include "ProductionStationActor.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
@@ -68,6 +69,10 @@ namespace
     const FVector2D CampCentre(0.0f, 0.0f);
     const FVector2D CabinCentre(-1350.0f, 380.0f);
     const FVector2D LookoutPoint(600.0f, 2650.0f);
+    // Small, intentionally low-cost three-by-three primitive field for P6.2 interaction tests.
+    const FVector2D FarmPlotCentre(-350.0f, 950.0f);
+    constexpr float FarmPlotCellSize = 180.0f;
+    constexpr int32 FarmPlotCellsPerAxis = 3;
     const float BridgeX = 760.0f;
     const float PalisadeX = 2050.0f;
 
@@ -1045,6 +1050,40 @@ void AVerticalSliceCWorldActor::HelperOrderInput()
 
 // ---------------------------------------------------------------- play
 
+void AVerticalSliceCWorldActor::BuildFarmPlot()
+{
+    if (bFarmPlotBuilt || !GetWorld())
+        return;
+
+    UStaticMesh* SoilCube = LoadEngineShape(TEXT("Cube"));
+    if (!SoilCube)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("VerticalSlice_C: farm placeholder mesh is not available yet."));
+        return;
+    }
+
+    // Visible, non-blocking soil tiles keep the backend logical grid discoverable
+    // without creating a large voxel field or interfering with traversal.
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const FVector Location(WorldX, WorldY, GetGroundHeight(WorldX, WorldY) + 5.0f);
+            const FTransform Transform(FRotator::ZeroRotator, Location, FVector(1.68f, 1.68f, 0.08f));
+            const FLinearColor SoilColour = ((X + Y) % 2 == 0)
+                ? FLinearColor(0.20f, 0.125f, 0.065f)
+                : FLinearColor(0.16f, 0.095f, 0.045f);
+            AddProp(SoilCube, Transform, SoilColour, false);
+        }
+    }
+
+    bFarmPlotBuilt = true;
+}
+
 bool AVerticalSliceCWorldActor::BuildWorld()
 {
     if (bBuilt || !GetWorld())
@@ -1070,6 +1109,7 @@ bool AVerticalSliceCWorldActor::BuildWorld()
         UE_LOG(LogTemp, Error, TEXT("VerticalSlice_C: log meshes missing under /Game/DemoAssets/Logs."));
     }
     BuildLife();
+    BuildFarmPlot();
     BuildHelper();
 
     // Phase 4: make the data-driven work stations discoverable in the continuous
