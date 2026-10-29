@@ -905,6 +905,14 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // no previous actions or damage pulses are retroactively invented.
         Candidate->SchemaVersion = 19;
     }
+    if (Candidate->SchemaVersion == 19)
+    {
+        // Schema v20 adds explicit SaveGame payloads for actor components.
+        // Legacy actor snapshots have no component payload; their flag remains
+        // false, so loading preserves the level's current component state rather
+        // than fabricating history that those saves never recorded.
+        Candidate->SchemaVersion = 20;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
