@@ -732,6 +732,18 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
             return Fail(FString::Printf(TEXT("Survival refused equipment %s"), *E.ItemId.ToString()));
     }
 
+    for (const FGameDataDiscovery& Discovery : Discoveries)
+    {
+        FWorldDiscoveryDefinition Definition;
+        Definition.DiscoveryId = Discovery.Id;
+        Definition.PrerequisiteDiscoveryIds = Discovery.PrerequisiteDiscoveryIds;
+        Definition.RequiredEquipmentDefinitionIds = Discovery.RequiredEquipmentDefinitionIds;
+        Definition.UnlockedDefinitionIds = Discovery.UnlockedDefinitionIds;
+        if (!Survival->RegisterDiscoveryDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Survival refused discovery %s"),
+                *Discovery.Id.ToString()));
+    }
+
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
 
