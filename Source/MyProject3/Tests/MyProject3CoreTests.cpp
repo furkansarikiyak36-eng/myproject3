@@ -4352,4 +4352,35 @@ bool FProductionStationActorInteractionTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGameDataToolStrengthTest,
+    "MyProject3.GameData.ToolStrengthIsAuthoredAndResolved", TestFlags)
+bool FGameDataToolStrengthTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldGameDataSubsystem* GameData = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game-data subsystem"), GameData))
+        return false;
+    TestTrue(TEXT("Load authored item/tool definitions"), GameData->LoadDefault());
+
+    float AxeStrength = 0.0f;
+    float DiggingStickStrength = 0.0f;
+    float ExistingToolDefaultStrength = 0.0f;
+    float FirewoodStrength = -1.0f;
+    TestTrue(TEXT("Stone axe has authored strength"), GameData->GetToolStrength(TEXT("Tool.Axe"), AxeStrength));
+    TestTrue(TEXT("Digging stick has authored strength"), GameData->GetToolStrength(
+        TEXT("Tool.DiggingStick"), DiggingStickStrength));
+    TestTrue(TEXT("Legacy tool with no explicit field keeps safe default strength"),
+        GameData->GetToolStrength(TEXT("Tool.Chisel"), ExistingToolDefaultStrength));
+    TestFalse(TEXT("Non-tool item cannot be used as a tool"), GameData->GetToolStrength(
+        TEXT("Firewood"), FirewoodStrength));
+    TestTrue(TEXT("Axe is stronger than the primitive digging stick"), AxeStrength > DiggingStickStrength);
+    TestTrue(TEXT("Authored axe strength is 1.5"), FMath::IsNearlyEqual(AxeStrength, 1.5f));
+    TestTrue(TEXT("Authored digging-stick strength is 1.0"), FMath::IsNearlyEqual(DiggingStickStrength, 1.0f));
+    TestTrue(TEXT("Legacy tool default remains 1.0"), FMath::IsNearlyEqual(ExistingToolDefaultStrength, 1.0f));
+    TestEqual(TEXT("Failed non-tool lookup clears output"), FirewoodStrength, 0.0f);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
