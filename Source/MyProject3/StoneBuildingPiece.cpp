@@ -3,6 +3,7 @@
 #include "MaterialConnectionSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneComponent.h"
 #include "WallCoatingComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
@@ -28,6 +29,9 @@ void AStoneBuildingPiece::BeginPlay()
     // The placeholder kit is only a fallback for the newly authored archetypes;
     // any Blueprint-assigned physical mesh remains authoritative.
     BuildStructuralProxyIfNeeded();
+    BuildMovingLeafIfNeeded();
+    bIsOpen = bStartsOpen;
+    ApplyMovingLeafState();
     // Its top and bottom joints exist from the start; placement queries never add them.
     EnsureAutomaticAnchors();
 
@@ -84,8 +88,19 @@ void AStoneBuildingPiece::BeginPlay()
 
     UWorldStructuralGraphSubsystem* Graph =
         GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
+    float DamageThreshold = 100.0f;
+    switch (PieceType)
+    {
+    case EStonePieceType::Gate: DamageThreshold = 70.0f; break;
+    case EStonePieceType::DoorFrame: DamageThreshold = 65.0f; break;
+    case EStonePieceType::FenceSegment: DamageThreshold = 45.0f; break;
+    case EStonePieceType::RailingSegment: DamageThreshold = 35.0f; break;
+    case EStonePieceType::WallSegment: DamageThreshold = 130.0f; break;
+    case EStonePieceType::DefensiveWall: DamageThreshold = 180.0f; break;
+    default: break;
+    }
     if (!Graph || !Graph->RegisterNode(this, StructuralIdentity->GetInstanceId(),
-        EStructuralNodeKind::Stone, bIsPlaced, 1.0f, 100000.0f, 100.0f))
+        EStructuralNodeKind::Stone, bIsPlaced, 1.0f, 100000.0f, DamageThreshold))
     {
         FStructuralNodeRecord ExistingNode;
         if (!Graph || !Graph->GetNode(StructuralIdentity->GetInstanceId(), ExistingNode) ||
@@ -167,6 +182,11 @@ bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
 
 void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    const TArray<TWeakObjectPtr<AStoneBuildingPiece>> RopeOwnersCopy = ConnectedRopeOwners;
+    for (const TWeakObjectPtr<AStoneBuildingPiece>& Owner : RopeOwnersCopy)
+        if (Owner.IsValid()) Owner->DisconnectRopeConnection();
+    ConnectedRopeOwners.Reset();
+    DisconnectRopeConnection();
     RemoveConnection(true);
     if (UMaterialConnectionSubsystem* Connections =
         GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr)
@@ -746,6 +766,433 @@ void AStoneBuildingPiece::ApplyStructuralProxyCollision()
     }
 }
 
+
+
+void AStoneBuildingPiece::BuildMovingLeafIfNeeded()
+{
+    if (!bGenerateMovingLeaf || !Mesh ||
+        (PieceType != EStonePieceType::DoorFrame &&
+         PieceType != EStonePieceType::Gate &&
+         PieceType != EStonePieceType::WindowFrame))
+        return;
+
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!Cube)
+        return;
+
+    MovingLeafPivot = NewObject<USceneComponent>(this, TEXT("MovingLeafPivot"));
+    if (!MovingLeafPivot)
+        return;
+    AddInstanceComponent(MovingLeafPivot);
+    MovingLeafPivot->SetupAttachment(Mesh);
+    MovingLeafPivot->SetRelativeLocation(FVector(-120.0, 0.0, 100.0));
+    MovingLeafPivot->RegisterComponent();
+
+    auto AddLeafPart = [this, Cube](const TCHAR* Name, const FVector& PivotLocalCenter,
+        const FVector& SizeCm)
+    {
+        UStaticMeshComponent* Part = NewObject<UStaticMeshComponent>(this, FName(Name));
+        if (!Part)
+            return;
+        AddInstanceComponent(Part);
+        Part->SetupAttachment(MovingLeafPivot);
+        Part->SetStaticMesh(Cube);
+        Part->SetRelativeLocation(PivotLocalCenter);
+        Part->SetRelativeScale3D(SizeCm / 100.0);
+        Part->SetCollisionProfileName(TEXT("BlockAll"));
+        Part->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Part->SetSimulatePhysics(false);
+        Part->RegisterComponent();
+        MovingLeafParts.Add(Part);
+    };
+
+    if (PieceType == EStonePieceType::DoorFrame)
+    {
+        AddLeafPart(TEXT("DoorLeaf"), FVector(120.0, 0.0, 0.0), FVector(240.0, 8.0, 180.0));
+    }
+    else if (PieceType == EStonePieceType::WindowFrame)
+    {
+        AddLeafPart(TEXT("WindowShutter"), FVector(120.0, 0.0, 0.0), FVector(240.0, 8.0, 100.0));
+    }
+    else
+    {
+        for (const float X : {-80.0f, -40.0f, 0.0f, 40.0f, 80.0f})
+            AddLeafPart(*FString::Printf(TEXT("GateBar_%02d"), static_cast<int32>((X + 80.0f) / 40.0f)),
+                FVector(X + 120.0, 0.0, -5.0), FVector(12.0, 15.0, 160.0));
+        AddLeafPart(TEXT("GateLeafTopRail"), FVector(120.0, 0.0, 85.0), FVector(280.0, 18.0, 18.0));
+    }
+}
+
+void AStoneBuildingPiece::ApplyMovingLeafState()
+{
+    if (MovingLeafPivot)
+        MovingLeafPivot->SetRelativeRotation(FRotator(0.0, bIsOpen ? DoorOpenYawDegrees : 0.0, 0.0));
+    for (UStaticMeshComponent* Part : MovingLeafParts)
+    {
+        if (IsValid(Part))
+        {
+            Part->SetCollisionProfileName(TEXT("BlockAll"));
+            Part->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        }
+    }
+}
+
+bool AStoneBuildingPiece::TrySetOpen(bool bOpen)
+{
+    if (PieceType != EStonePieceType::DoorFrame &&
+        PieceType != EStonePieceType::WindowFrame &&
+        PieceType != EStonePieceType::Gate)
+        return false;
+    if (!bGenerateMovingLeaf || !MovingLeafPivot || MovingLeafParts.IsEmpty())
+        return false;
+    if (bIsOpen == bOpen)
+        return true;
+    bIsOpen = bOpen;
+    ApplyMovingLeafState();
+    return true;
+}
+
+bool AStoneBuildingPiece::IsPassageClear() const
+{
+    switch (PieceType)
+    {
+    case EStonePieceType::WallOpening:
+        return true;
+    case EStonePieceType::DoorFrame:
+    case EStonePieceType::Gate:
+        return bIsOpen;
+    default:
+        return false;
+    }
+}
+
+bool AStoneBuildingPiece::IsRaidBlocking() const
+{
+    switch (PieceType)
+    {
+    case EStonePieceType::WallOpening:
+    case EStonePieceType::FloorSlab:
+    case EStonePieceType::RoofPanel:
+    case EStonePieceType::Ramp:
+    case EStonePieceType::Stair:
+    case EStonePieceType::BridgeDeck:
+    case EStonePieceType::ElevatedWalkway:
+    case EStonePieceType::RopeCrossingAnchor:
+        return false;
+    case EStonePieceType::DoorFrame:
+    case EStonePieceType::Gate:
+        return !bIsOpen;
+    case EStonePieceType::WindowFrame:
+        return true;
+    case EStonePieceType::RawStone:
+    case EStonePieceType::Block:
+    case EStonePieceType::Slab:
+    case EStonePieceType::Column:
+    case EStonePieceType::Lintel:
+    case EStonePieceType::Corner:
+    case EStonePieceType::Other:
+    case EStonePieceType::WallSegment:
+    case EStonePieceType::FenceSegment:
+    case EStonePieceType::RailingSegment:
+    case EStonePieceType::DefensiveWall:
+    default:
+        return true;
+    }
+}
+
+bool AStoneBuildingPiece::CanAcceptAdditionalSupport(FName OwnAnchorId) const
+{
+    if (PieceType != EStonePieceType::BridgeDeck &&
+        PieceType != EStonePieceType::ElevatedWalkway)
+        return true;
+    if (OwnAnchorId != TEXT("SupportLeft") && OwnAnchorId != TEXT("SupportRight"))
+        return false;
+
+    const UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    FStructuralNodeRecord Node;
+    if (!Graph || !StructuralIdentity ||
+        !Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) ||
+        !Node.ParentNodeId.IsValid() || Node.OwnAnchorId == OwnAnchorId)
+        return false;
+    const bool bPrimaryIsSupportAnchor =
+        Node.OwnAnchorId == TEXT("SupportLeft") || Node.OwnAnchorId == TEXT("SupportRight");
+    if (!bPrimaryIsSupportAnchor)
+        return false;
+    return FVector::Dist(
+        GetAnchorWorldTransform(TEXT("SupportLeft")).GetLocation(),
+        GetAnchorWorldTransform(TEXT("SupportRight")).GetLocation()) <= MaxSupportSpanCm;
+}
+
+
+bool AStoneBuildingPiece::CanCarryTraversalLoad(float WeightKg) const
+{
+    if ((PieceType != EStonePieceType::BridgeDeck &&
+         PieceType != EStonePieceType::ElevatedWalkway) ||
+        !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f ||
+        WeightKg > MaxConcurrentTraversalWeightKg)
+        return false;
+    const UWorldStructuralGraphSubsystem* Graph =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    FStructuralNodeRecord Node;
+    if (!Graph || !StructuralIdentity ||
+        !Graph->GetNode(StructuralIdentity->GetInstanceId(), Node) ||
+        !Node.ParentNodeId.IsValid() || Node.SecondarySupports.IsEmpty() ||
+        !Graph->HasValidSupportPath(Node.NodeId) ||
+        (Node.OwnAnchorId != TEXT("SupportLeft") && Node.OwnAnchorId != TEXT("SupportRight")) ||
+        FVector::Dist(GetAnchorWorldTransform(TEXT("SupportLeft")).GetLocation(),
+            GetAnchorWorldTransform(TEXT("SupportRight")).GetLocation()) > MaxSupportSpanCm)
+        return false;
+    const FName OtherEnd = Node.OwnAnchorId == TEXT("SupportLeft")
+        ? FName(TEXT("SupportRight")) : FName(TEXT("SupportLeft"));
+    const bool bHasOtherEndSupport = Node.SecondarySupports.ContainsByPredicate(
+        [OtherEnd](const FStructuralSupportLink& Link) { return Link.OwnAnchorId == OtherEnd; });
+    FStructuralAnchorView PrimaryAnchor;
+    FStructuralAnchorView OtherAnchor;
+    return bHasOtherEndSupport &&
+        GetStructuralAnchor(Node.OwnAnchorId, PrimaryAnchor) && PrimaryAnchor.bOccupied &&
+        GetStructuralAnchor(OtherEnd, OtherAnchor) && OtherAnchor.bOccupied;
+}
+
+bool AStoneBuildingPiece::TryReserveBridgeTraversal(FGuid TraversalId, float WeightKg)
+{
+    if (!TraversalId.IsValid() || ActiveBridgeTraversalWeights.Contains(TraversalId) ||
+        !CanCarryTraversalLoad(WeightKg))
+        return false;
+    float CurrentLoad = 0.0f;
+    for (const TPair<FGuid, float>& Pair : ActiveBridgeTraversalWeights)
+        CurrentLoad += Pair.Value;
+    if (!FMath::IsFinite(CurrentLoad) ||
+        CurrentLoad + WeightKg > MaxConcurrentTraversalWeightKg)
+        return false;
+    ActiveBridgeTraversalWeights.Add(TraversalId, WeightKg);
+    return true;
+}
+
+bool AStoneBuildingPiece::ReleaseBridgeTraversal(FGuid TraversalId)
+{
+    return TraversalId.IsValid() && ActiveBridgeTraversalWeights.Remove(TraversalId) > 0;
+}
+
+AStoneBuildingPiece* AStoneBuildingPiece::GetRopeConnectionOwner() const
+{
+    if (bOwnsRopeConnection)
+        return const_cast<AStoneBuildingPiece*>(this);
+    return RopeOtherEnd.Get();
+}
+
+bool AStoneBuildingPiece::TryConnectRopeTo(
+    AStoneBuildingPiece* TargetPiece, FName OwnAnchorId, FName TargetAnchorId)
+{
+    if (!IsValid(TargetPiece) || TargetPiece == this ||
+        PieceType != EStonePieceType::RopeCrossingAnchor ||
+        TargetPiece->PieceType != EStonePieceType::RopeCrossingAnchor ||
+        RopeOtherEnd.IsValid() || TargetPiece->RopeOtherEnd.IsValid() ||
+        OwnAnchorId.IsNone() || TargetAnchorId.IsNone())
+        return false;
+
+    FStructuralAnchorView OwnAnchor;
+    FStructuralAnchorView TargetAnchor;
+    if (!GetStructuralAnchor(OwnAnchorId, OwnAnchor) ||
+        !TargetPiece->GetStructuralAnchor(TargetAnchorId, TargetAnchor) ||
+        !OwnAnchor.bCanConnect || !OwnAnchor.bCanReceive ||
+        !TargetAnchor.bCanConnect || !TargetAnchor.bCanReceive ||
+        OwnAnchor.bOccupied || TargetAnchor.bOccupied ||
+        OwnAnchor.Tag != TargetAnchor.Tag)
+        return false;
+
+    const FVector Start = GetAnchorWorldTransform(OwnAnchorId).GetLocation();
+    const FVector End = TargetPiece->GetAnchorWorldTransform(TargetAnchorId).GetLocation();
+    const float Span = FVector::Distance(Start, End);
+    const float AllowedSpan = FMath::Min(MaxRopeSpanCm, TargetPiece->MaxRopeSpanCm);
+    if (!FMath::IsFinite(Span) || Span < 100.0f || Span > AllowedSpan)
+        return false;
+
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!Cube)
+        return false;
+
+    const FVector LocalStart = GetActorTransform().InverseTransformPosition(Start);
+    const FVector LocalEnd = GetActorTransform().InverseTransformPosition(End);
+    const FVector LocalDelta = LocalEnd - LocalStart;
+    const float LocalLength = LocalDelta.Size();
+    if (!FMath::IsFinite(LocalLength) || LocalLength < 100.0f)
+        return false;
+
+    TArray<TObjectPtr<UStaticMeshComponent>> NewSegments;
+    const int32 SegmentCount = FMath::Clamp(FMath::CeilToInt(LocalLength / 100.0f), 1, 128);
+    NewSegments.Reserve(SegmentCount);
+    for (int32 Index = 0; Index < SegmentCount; ++Index)
+    {
+        const float AlphaA = static_cast<float>(Index) / SegmentCount;
+        const float AlphaB = static_cast<float>(Index + 1) / SegmentCount;
+        const FVector A = FMath::Lerp(LocalStart, LocalEnd, AlphaA);
+        const FVector B = FMath::Lerp(LocalStart, LocalEnd, AlphaB);
+        const FVector Delta = B - A;
+        UStaticMeshComponent* Segment = NewObject<UStaticMeshComponent>(
+            this, FName(*FString::Printf(TEXT("RopeSpan_%03d"), Index)));
+        if (!Segment)
+            break;
+        AddInstanceComponent(Segment);
+        Segment->SetupAttachment(Mesh);
+        Segment->SetStaticMesh(Cube);
+        Segment->SetRelativeLocation((A + B) * 0.5f);
+        Segment->SetRelativeRotation(FQuat::FindBetweenVectors(FVector::ForwardVector, Delta.GetSafeNormal()).Rotator());
+        Segment->SetRelativeScale3D(FVector(Delta.Size() / 100.0f, 0.035f, 0.035f));
+        Segment->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        Segment->SetSimulatePhysics(false);
+        Segment->RegisterComponent();
+        NewSegments.Add(Segment);
+    }
+    if (NewSegments.Num() != SegmentCount)
+    {
+        for (UStaticMeshComponent* Segment : NewSegments)
+            if (IsValid(Segment)) Segment->DestroyComponent();
+        return false;
+    }
+
+    if (!SetStructuralAnchorOccupied(OwnAnchorId, true) ||
+        !TargetPiece->SetStructuralAnchorOccupied(TargetAnchorId, true))
+    {
+        SetStructuralAnchorOccupied(OwnAnchorId, false);
+        TargetPiece->SetStructuralAnchorOccupied(TargetAnchorId, false);
+        for (UStaticMeshComponent* Segment : NewSegments)
+            if (IsValid(Segment)) Segment->DestroyComponent();
+        return false;
+    }
+
+    RopeVisualSegments = MoveTemp(NewSegments);
+    RopeOtherEnd = TargetPiece;
+    RopeLocalAnchorId = OwnAnchorId;
+    RopeRemoteAnchorId = TargetAnchorId;
+    bOwnsRopeConnection = true;
+    TargetPiece->RopeOtherEnd = this;
+    TargetPiece->RopeLocalAnchorId = TargetAnchorId;
+    TargetPiece->RopeRemoteAnchorId = OwnAnchorId;
+    TargetPiece->bOwnsRopeConnection = false;
+    TargetPiece->ConnectedRopeOwners.AddUnique(this);
+    return true;
+}
+
+void AStoneBuildingPiece::DisconnectRopeConnection()
+{
+    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
+    if (Owner && Owner != this)
+    {
+        Owner->DisconnectRopeConnection();
+        return;
+    }
+
+    AStoneBuildingPiece* Other = RopeOtherEnd.Get();
+    for (UStaticMeshComponent* Segment : RopeVisualSegments)
+        if (IsValid(Segment)) Segment->DestroyComponent();
+    RopeVisualSegments.Reset();
+    ActiveRopeTravelerWeights.Reset();
+    ActiveRopeTravelers.Reset();
+    ActiveRopeTraversalStartsAtOwner.Reset();
+
+    if (IsValid(Other))
+    {
+        if (!RopeRemoteAnchorId.IsNone())
+            Other->SetStructuralAnchorOccupied(RopeRemoteAnchorId, false);
+        Other->ConnectedRopeOwners.RemoveAll(
+            [this](const TWeakObjectPtr<AStoneBuildingPiece>& Ref) { return !Ref.IsValid() || Ref.Get() == this; });
+        Other->RopeOtherEnd.Reset();
+        Other->RopeLocalAnchorId = NAME_None;
+        Other->RopeRemoteAnchorId = NAME_None;
+        Other->bOwnsRopeConnection = false;
+    }
+    if (!RopeLocalAnchorId.IsNone())
+        SetStructuralAnchorOccupied(RopeLocalAnchorId, false);
+    RopeOtherEnd.Reset();
+    RopeLocalAnchorId = NAME_None;
+    RopeRemoteAnchorId = NAME_None;
+    bOwnsRopeConnection = false;
+}
+
+bool AStoneBuildingPiece::CanBeginRopeTraversal(float WeightKg) const
+{
+    const AStoneBuildingPiece* Owner = bOwnsRopeConnection ? this : RopeOtherEnd.Get();
+    if (!Owner || !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f)
+        return false;
+    const AStoneBuildingPiece* Other = Owner->RopeOtherEnd.Get();
+    if (!Other || Other == Owner || Owner->PieceType != EStonePieceType::RopeCrossingAnchor ||
+        Other->PieceType != EStonePieceType::RopeCrossingAnchor)
+        return false;
+    const float Span = FVector::Distance(
+        Owner->GetAnchorWorldTransform(Owner->RopeLocalAnchorId).GetLocation(),
+        Other->GetAnchorWorldTransform(Owner->RopeRemoteAnchorId).GetLocation());
+    if (!FMath::IsFinite(Span) || Span > FMath::Min(Owner->MaxRopeSpanCm, Other->MaxRopeSpanCm) ||
+        WeightKg > FMath::Min(Owner->MaxRopeTravelerWeightKg, Other->MaxRopeTravelerWeightKg))
+        return false;
+    float CurrentLoad = 0.0f;
+    for (const TPair<FGuid, float>& Pair : Owner->ActiveRopeTravelerWeights)
+        CurrentLoad += Pair.Value;
+    return FMath::IsFinite(CurrentLoad) &&
+        CurrentLoad + WeightKg <= FMath::Min(Owner->MaxConcurrentTraversalWeightKg,
+            Other->MaxConcurrentTraversalWeightKg);
+}
+
+bool AStoneBuildingPiece::TryBeginRopeTraversal(
+    AActor* Traveler, float WeightKg, FGuid& OutTraversalId)
+{
+    OutTraversalId.Invalidate();
+    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
+    if (!Owner || !IsValid(Traveler) || !CanBeginRopeTraversal(WeightKg))
+        return false;
+    const bool bStartsAtOwner = Owner == this;
+    const FName StartAnchor = bStartsAtOwner ? Owner->RopeLocalAnchorId : Owner->RopeRemoteAnchorId;
+    const FVector Start = GetAnchorWorldTransform(StartAnchor).GetLocation();
+    const FGuid Ticket = FGuid::NewGuid();
+    if (!Ticket.IsValid() || Owner->ActiveRopeTravelers.Contains(Ticket))
+        return false;
+    if (!Traveler->SetActorLocation(Start, false, nullptr, ETeleportType::TeleportPhysics))
+        return false;
+    Owner->ActiveRopeTravelers.Add(Ticket, Traveler);
+    Owner->ActiveRopeTravelerWeights.Add(Ticket, WeightKg);
+    Owner->ActiveRopeTraversalStartsAtOwner.Add(Ticket, bStartsAtOwner);
+    OutTraversalId = Ticket;
+    return true;
+}
+
+bool AStoneBuildingPiece::AdvanceRopeTraversal(FGuid TraversalId, float Alpha)
+{
+    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
+    if (!Owner)
+        Owner = this;
+    TWeakObjectPtr<AActor>* TravelerRef = Owner->ActiveRopeTravelers.Find(TraversalId);
+    const bool* StartsAtOwner = Owner->ActiveRopeTraversalStartsAtOwner.Find(TraversalId);
+    AStoneBuildingPiece* Other = Owner->RopeOtherEnd.Get();
+    if (!TravelerRef || !TravelerRef->IsValid() || !StartsAtOwner || !Other ||
+        !FMath::IsFinite(Alpha))
+    {
+        Owner->CancelRopeTraversal(TraversalId);
+        return false;
+    }
+    const FVector Start = (*StartsAtOwner ? Owner : Other)->GetAnchorWorldTransform(
+        *StartsAtOwner ? Owner->RopeLocalAnchorId : Owner->RopeRemoteAnchorId).GetLocation();
+    const FVector End = (*StartsAtOwner ? Other : Owner)->GetAnchorWorldTransform(
+        *StartsAtOwner ? Owner->RopeRemoteAnchorId : Owner->RopeLocalAnchorId).GetLocation();
+    const float Progress = FMath::Clamp(Alpha, 0.0f, 1.0f);
+    const FVector Position = FMath::Lerp(Start, End, Progress);
+    if (!TravelerRef->Get()->SetActorLocation(Position, false, nullptr, ETeleportType::TeleportPhysics))
+        return false;
+    if (Progress >= 1.0f)
+        return Owner->CancelRopeTraversal(TraversalId);
+    return true;
+}
+
+bool AStoneBuildingPiece::CancelRopeTraversal(FGuid TraversalId)
+{
+    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
+    if (!Owner)
+        Owner = this;
+    const bool bHadTicket = Owner->ActiveRopeTravelers.Remove(TraversalId) > 0;
+    Owner->ActiveRopeTravelerWeights.Remove(TraversalId);
+    Owner->ActiveRopeTraversalStartsAtOwner.Remove(TraversalId);
+    return bHadTicket;
+}
+
 void AStoneBuildingPiece::EnsureAutomaticAnchors()
 {
     if (!Mesh)
@@ -810,4 +1257,7 @@ void AStoneBuildingPiece::EnsureAutomaticAnchors()
         if (FindAnchorIndex(TEXT("SupportRight")) == INDEX_NONE)
             AddCustomAnchor(TEXT("SupportRight"), TEXT("Stone"), FTransform(Right), false, true);
     }
+    if (PieceType == EStonePieceType::RopeCrossingAnchor &&
+        FindAnchorIndex(TEXT("RopeSocket")) == INDEX_NONE)
+        AddCustomAnchor(TEXT("RopeSocket"), TEXT("Rope"), FTransform(Top), true, true);
 }
