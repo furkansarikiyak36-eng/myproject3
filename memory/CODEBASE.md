@@ -97,3 +97,4 @@ Plan = `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`, tasks = `ROADMAP.md`.
 - 2026-10-29 · `HeatSourceComponent` fuel is a number of seconds, not consumed items.
 
 | Player tool strength | P4.4 | code-written | `FGameDataItem::ToolStrength` parsed from `items.json`; Axe 1.5, DiggingStick 1.0; `GetToolStrength` rejects non-tools; axe scales tree/log work and digging stick scales N voxel excavation. Starter tools are granted after data apply. Automation authored; unbuilt/unrun. |
+| Station fire validation | P4.3 | code-written | `HasRequiredFire` requires applied game data and a known station ID; missing definitions fail closed. Fire is still checked at recipe start only; running-job pause/resume is not implemented. Test authored, unbuilt/unrun. |
