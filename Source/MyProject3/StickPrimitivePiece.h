@@ -110,6 +110,9 @@ public:
      * bounds when they are missing, so loose pieces can be stacked and placed.
      */
     void EnsureAutomaticAnchors();
+    /** Rebuilds actor-local same-material links after canonical graph rollback. */
+    void ResetActorLocalAttachmentStateForGraphRestore(bool bPlaced);
+    bool RestoreSameMaterialAttachmentFromGraph(AStickPrimitivePiece* Parent, FName ParentAnchorId, FName OwnAnchorId);
     virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) override;
     virtual bool IsStructurallyPlaced() const override { return bIsPlaced; }
     virtual bool CanAttachAsCrossMaterialChild() const override;

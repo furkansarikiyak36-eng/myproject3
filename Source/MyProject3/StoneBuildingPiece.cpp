@@ -1193,6 +1193,72 @@ bool AStoneBuildingPiece::CancelRopeTraversal(FGuid TraversalId)
     return bHadTicket;
 }
 
+void AStoneBuildingPiece::ResetActorLocalAttachmentStateForGraphRestore(bool bPlaced)
+{
+    if (AStoneBuildingPiece* Parent = ParentPiece.Get())
+    {
+        Parent->ReleaseAnchorReservation(ParentAnchorId);
+        Parent->AttachedPieces.Remove(this);
+    }
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    ParentPiece.Reset();
+    ParentAnchorId = NAME_None;
+    OwnAnchorIdUsed = NAME_None;
+    AttachedPieces.Reset();
+    CrossMaterialParent.Reset();
+    for (FStoneSnapAnchor& Anchor : Anchors)
+        Anchor.bOccupied = false;
+    bIsHeld = false;
+    bIsPlaced = bPlaced;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : !bIsPlaced);
+        Mesh->SetCollisionProfileName(bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
+        Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+    }
+    ApplyStructuralProxyCollision();
+}
+
+bool AStoneBuildingPiece::RestoreSameMaterialAttachmentFromGraph(
+    AStoneBuildingPiece* Parent, FName ParentAnchorIdIn, FName OwnAnchorIdIn)
+{
+    if (!IsValid(Parent) || Parent == this || ParentPiece.IsValid() ||
+        ParentAnchorIdIn.IsNone() || OwnAnchorIdIn.IsNone())
+        return false;
+    FStructuralAnchorView ParentAnchor;
+    FStructuralAnchorView OwnAnchor;
+    if (!Parent->GetStructuralAnchor(ParentAnchorIdIn, ParentAnchor) ||
+        !GetStructuralAnchor(OwnAnchorIdIn, OwnAnchor) ||
+        !ParentAnchor.bCanReceive || !OwnAnchor.bCanConnect ||
+        ParentAnchor.Tag != OwnAnchor.Tag || ParentAnchor.bOccupied || OwnAnchor.bOccupied)
+        return false;
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+        return false;
+    if (!Parent->SetStructuralAnchorOccupied(ParentAnchorIdIn, true) ||
+        !SetStructuralAnchorOccupied(OwnAnchorIdIn, true))
+    {
+        Parent->SetStructuralAnchorOccupied(ParentAnchorIdIn, false);
+        SetStructuralAnchorOccupied(OwnAnchorIdIn, false);
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        return false;
+    }
+    ParentPiece = Parent;
+    this->ParentAnchorId = ParentAnchorIdIn;
+    OwnAnchorIdUsed = OwnAnchorIdIn;
+    Parent->AttachedPieces.AddUnique(this);
+    CrossMaterialParent.Reset();
+    bIsHeld = false;
+    bIsPlaced = true;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(FName(TEXT("BlockAll")));
+        Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+    }
+    ApplyStructuralProxyCollision();
+    return true;
+}
+
 void AStoneBuildingPiece::EnsureAutomaticAnchors()
 {
     if (!Mesh)

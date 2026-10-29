@@ -150,6 +150,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="Structure|Traversal")
     bool CancelRopeTraversal(FGuid TraversalId);
 
+    /** Restores same-material actor-local references after a canonical graph rollback. */
+    void ResetActorLocalAttachmentStateForGraphRestore(bool bPlaced);
+    bool RestoreSameMaterialAttachmentFromGraph(AStoneBuildingPiece* Parent, FName ParentAnchorId, FName OwnAnchorId);
+
     /** Preflight for graph-side secondary support creation of a bridge/walkway. */
     bool CanAcceptAdditionalSupport(FName OwnAnchorId) const;
 

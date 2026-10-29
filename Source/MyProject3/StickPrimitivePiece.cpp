@@ -593,6 +593,71 @@ void AStickPrimitivePiece::GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) c
         OutAnchorIds.Add(Anchor.AnchorId);
 }
 
+void AStickPrimitivePiece::ResetActorLocalAttachmentStateForGraphRestore(bool bPlaced)
+{
+    if (AStickPrimitivePiece* Parent = ParentPiece.Get())
+    {
+        Parent->ReleaseAnchor(ParentAnchorId);
+        Parent->AttachedPieces.Remove(this);
+    }
+    DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+    ParentPiece.Reset();
+    ParentAnchorId = NAME_None;
+    OwnAnchorIdUsed = NAME_None;
+    AttachedPieces.Reset();
+    CrossMaterialParent.Reset();
+    for (FPrimitiveAnchor& Anchor : Anchors)
+        Anchor.bOccupied = false;
+    bIsHeld = false;
+    bIsPlaced = bPlaced;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(!bIsPlaced);
+        Mesh->SetCollisionProfileName(bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+}
+
+bool AStickPrimitivePiece::RestoreSameMaterialAttachmentFromGraph(
+    AStickPrimitivePiece* Parent, FName ParentAnchorIdIn, FName OwnAnchorIdIn)
+{
+    if (!IsValid(Parent) || Parent == this || ParentPiece.IsValid() ||
+        ParentAnchorIdIn.IsNone() || OwnAnchorIdIn.IsNone())
+        return false;
+    FStructuralAnchorView ParentAnchor;
+    FStructuralAnchorView OwnAnchor;
+    if (!Parent->GetStructuralAnchor(ParentAnchorIdIn, ParentAnchor) ||
+        !GetStructuralAnchor(OwnAnchorIdIn, OwnAnchor) ||
+        !ParentAnchor.bCanReceive || !OwnAnchor.bCanConnect ||
+        ParentAnchor.Tag != OwnAnchor.Tag || ParentAnchor.bOccupied || OwnAnchor.bOccupied)
+        return false;
+    if (!AttachToActor(Parent, FAttachmentTransformRules::KeepWorldTransform))
+        return false;
+    if (!Parent->SetStructuralAnchorOccupied(ParentAnchorIdIn, true) ||
+        !SetStructuralAnchorOccupied(OwnAnchorIdIn, true))
+    {
+        Parent->SetStructuralAnchorOccupied(ParentAnchorIdIn, false);
+        SetStructuralAnchorOccupied(OwnAnchorIdIn, false);
+        DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+        return false;
+    }
+    ParentPiece = Parent;
+    this->ParentAnchorId = ParentAnchorIdIn;
+    OwnAnchorIdUsed = OwnAnchorIdIn;
+    Parent->AttachedPieces.AddUnique(this);
+    CrossMaterialParent.Reset();
+    bIsHeld = false;
+    bIsPlaced = true;
+    TrapState = EPrimitiveTrapState::Incomplete;
+    if (Mesh)
+    {
+        Mesh->SetSimulatePhysics(false);
+        Mesh->SetCollisionProfileName(FName(TEXT("BlockAll")));
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    }
+    return true;
+}
+
 void AStickPrimitivePiece::EnsureAutomaticAnchors()
 {
     if (!Mesh || !Mesh->GetStaticMesh() || FindAnchorIndex(TEXT("AutoTop")) != INDEX_NONE)

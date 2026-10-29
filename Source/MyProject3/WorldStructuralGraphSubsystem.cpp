@@ -3,6 +3,8 @@
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
 #include "LogBuildPiece.h"
+#include "StoneBuildingPiece.h"
+#include "StickPrimitivePiece.h"
 #include "MaterialConnectionSubsystem.h"
 #include "StructuralPieceInterface.h"
 #include "EngineUtils.h"
@@ -227,34 +229,26 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
     UMaterialConnectionSubsystem* Connections =
         GetWorld() ? GetWorld()->GetSubsystem<UMaterialConnectionSubsystem>() : nullptr;
 
-    // First clear stale actor-local pointers/reservations. The canonical graph
-    // remains untouched and is the only authority for parent/anchor relations.
+    // First clear all domain-local references and anchor reservations. The
+    // canonical graph remains authoritative and is restored in topological order below.
     for (TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
         AActor* Actor = Pair.Value.Actor.Get();
-        if (IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
+        const bool bPlaced = Pair.Value.bGroundSupported || Pair.Value.ParentNodeId.IsValid();
+        if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Actor))
+            Stone->ResetActorLocalAttachmentStateForGraphRestore(bPlaced);
+        else if (AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Actor))
+            Stick->ResetActorLocalAttachmentStateForGraphRestore(bPlaced);
+        else if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
+            Log->ResetActorLocalSnapStateForGraphRestore();
+        else if (IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
         {
             if (Piece->GetCrossMaterialParent())
             {
                 Actor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
                 Piece->ClearCrossMaterialAttachment();
             }
-            // Release both anchors of a mixed-material edge so the rebuild can
-            // reserve them again from the canonical record.
-            const FStructuralNodeRecord* ParentNode = Pair.Value.ParentNodeId.IsValid()
-                ? Nodes.Find(Pair.Value.ParentNodeId) : nullptr;
-            if (ParentNode && ParentNode->Kind != Pair.Value.Kind)
-            {
-                Piece->SetStructuralAnchorOccupied(Pair.Value.OwnAnchorId, false);
-                if (IStructuralPieceInterface* ParentPiece =
-                    Cast<IStructuralPieceInterface>(ParentNode->Actor.Get()))
-                {
-                    ParentPiece->SetStructuralAnchorOccupied(Pair.Value.ParentAnchorId, false);
-                }
-            }
         }
-        if (ALogBuildPiece* Log = Cast<ALogBuildPiece>(Actor))
-            Log->ResetActorLocalSnapStateForGraphRestore();
     }
 
     TArray<FGuid> OrderedIds;
@@ -285,20 +279,43 @@ bool UWorldStructuralGraphSubsystem::RebuildLogActorAttachmentsFromSnapshot()
             continue;
         }
 
-        ALogBuildPiece* Child = Cast<ALogBuildPiece>(ChildNode->Actor.Get());
-        ALogBuildPiece* Parent = ParentNode
-            ? Cast<ALogBuildPiece>(ParentNode->Actor.Get()) : nullptr;
+        AActor* ChildActor = ChildNode->Actor.Get();
+        AActor* ParentActor = ParentNode ? ParentNode->Actor.Get() : nullptr;
+        if (!ChildActor || !ParentActor)
+            return false;
 
-        // Non-log structural adapters own their own local anchor bookkeeping.
-        // Do not fabricate a log-only link for a cross-domain edge.
-        if (!Child || !Parent)
+        bool bRestored = true;
+        if (ALogBuildPiece* ChildLog = Cast<ALogBuildPiece>(ChildActor))
+        {
+            if (ALogBuildPiece* ParentLog = Cast<ALogBuildPiece>(ParentActor))
+                bRestored = ChildLog->RestoreActorLocalSnapLinkFromGraph(
+                    ParentLog, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId, true);
+            else
+                continue;
+        }
+        else if (AStoneBuildingPiece* ChildStone = Cast<AStoneBuildingPiece>(ChildActor))
+        {
+            if (AStoneBuildingPiece* ParentStone = Cast<AStoneBuildingPiece>(ParentActor))
+                bRestored = ChildStone->RestoreSameMaterialAttachmentFromGraph(
+                    ParentStone, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId);
+            else
+                continue;
+        }
+        else if (AStickPrimitivePiece* ChildStick = Cast<AStickPrimitivePiece>(ChildActor))
+        {
+            if (AStickPrimitivePiece* ParentStick = Cast<AStickPrimitivePiece>(ParentActor))
+                bRestored = ChildStick->RestoreSameMaterialAttachmentFromGraph(
+                    ParentStick, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId);
+            else
+                continue;
+        }
+        else
             continue;
 
-        if (!Child->RestoreActorLocalSnapLinkFromGraph(
-            Parent, ChildNode->ParentAnchorId, ChildNode->OwnAnchorId, true))
+        if (!bRestored)
         {
             UE_LOG(LogTemp, Error,
-                TEXT("Structural graph restored but log-local anchor reconstruction failed for node %s."),
+                TEXT("Structural graph restored but same-material actor link reconstruction failed for node %s."),
                 *NodeId.ToString());
             return false;
         }
