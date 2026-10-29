@@ -1,5 +1,6 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -29,6 +30,34 @@ void UInventoryCraftingComponent::BeginPlay()
   if (GameData->IsApplied())
    GameData->ApplyToInventory(this);
  }
+}
+
+void UInventoryCraftingComponent::SetProgressionEntityId(const FGuid& EntityId)
+{
+ ProgressionEntityId = EntityId;
+}
+
+bool UInventoryCraftingComponent::IsDefinitionAvailableForProgression(FName DefinitionId) const
+{
+ if (DefinitionId.IsNone())
+  return false;
+
+ // Inventories not bound to a player profile remain useful for world storage,
+ // debugging and legacy flows; progression restrictions are per player.
+ if (!ProgressionEntityId.IsValid())
+  return true;
+
+ UWorld* World = GetWorld();
+ const UWorldGameDataSubsystem* GameData =
+  World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+ const UWorldSurvivalSubsystem* Survival =
+  World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+ // A player-bound inventory must not bypass discovery checks if data is unavailable.
+ if (!GameData || !GameData->IsLoaded() || !Survival)
+  return false;
+ if (!GameData->IsDefinitionUnlockRequired(DefinitionId))
+  return true;
+ return Survival->IsDefinitionUnlocked(ProgressionEntityId, DefinitionId);
 }
 
 int32 UInventoryCraftingComponent::GetItemCount(FName ItemId) const
@@ -794,6 +823,19 @@ bool UInventoryCraftingComponent::CanCraft(FName RecipeId, TArray<FInventoryStac
  const int32 Index = FindRecipeIndex(RecipeId);
  if (!Recipes.IsValidIndex(Index) || !Recipes[Index].bEnabled) return false;
  const FCraftingRecipe& Recipe = Recipes[Index];
+
+ // Gate the recipe key plus any input/output definition explicitly locked by knowledge.
+ // Non-player inventories are intentionally unaffected by progression requirements.
+ if (!IsDefinitionAvailableForProgression(Recipe.RecipeId) ||
+     !IsDefinitionAvailableForProgression(Recipe.Output.ItemId))
+  return false;
+ for (const FRecipeIngredient& Ingredient : Recipe.Ingredients)
+  if (!IsDefinitionAvailableForProgression(Ingredient.ItemId))
+   return false;
+ for (const FInventoryStack& Byproduct : Recipe.Byproducts)
+  if (!IsDefinitionAvailableForProgression(Byproduct.ItemId))
+   return false;
+
  // Everything must be in hand; a tool (bConsume = false) is needed but not used up.
  TMap<FName,int32> Required;
  for (const FRecipeIngredient& I : Recipe.Ingredients) Required.FindOrAdd(I.ItemId) += I.Quantity;
