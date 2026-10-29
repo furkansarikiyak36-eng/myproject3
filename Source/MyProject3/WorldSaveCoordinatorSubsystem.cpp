@@ -765,16 +765,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         for (FWorldItemSplitReceipt& Receipt : Candidate->ItemSplitReceipts)
             for (FWorldOwnedItemRecord& ResultItem : Receipt.ResultRecords)
                 MigrateCreatedAt(ResultItem);
-        for (FWorldProductionStation& Station : Candidate->ProductionStations)
-        {
-            for (FWorldProductionMaterializationReceipt& Receipt : Station.MaterializationReceipts)
-            {
-                // The ownership record is the source of truth. Its timestamp was
-                // migrated above; no second age is invented in the station receipt.
-                (void)Receipt;
-            }
-        }
         Candidate->SchemaVersion = 16;
+    }
+    if (Candidate->SchemaVersion == 16)
+    {
+        // Schema v17 adds resource-yield details to terrain edit receipts.
+        // Legacy edits remain logical terrain edits with no inferred resources.
+        Candidate->SchemaVersion = 17;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
