@@ -1586,7 +1586,8 @@ bool UWorldStructuralGraphSubsystem::TryRemoveConnectedStructure(
         if (!IsValid(Identity) ||
             Identity->GetLifecycleState() != Entry.Lifecycle ||
             Identity->StateRevision != Entry.IdentityRevision ||
-            !GetNode(Entry.NodeId, LiveNode) || LiveNode.Revision != Entry.Node.Revision ||
+            !GetNode(Entry.NodeId, LiveNode) || LiveNode.Actor.Get() != Entry.Actor.Get() ||
+            LiveNode.ParentNodeId.IsValid() || !LiveNode.SecondarySupports.IsEmpty() ||
             !Ownership->TryGetItem(Entry.NodeId, LiveItem) ||
             LiveItem.OwnerKind != EWorldItemOwnerKind::Consumed ||
             LiveItem.OwnerId.IsValid() || LiveItem.Revision != Entry.Item.Revision + 1)
