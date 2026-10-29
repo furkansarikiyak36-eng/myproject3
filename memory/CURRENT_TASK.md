@@ -73,7 +73,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing automation-test conventions and representative farming/survival tests inspected).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing test conventions; current branch already contains `FWaterFillAndWetColdExposureTest` near the end with fill, retry, and wet-cold assertions).
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: scenario recipe selection resolves from game data).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Water-fill API is committed with schema v26 + v25→v26 migration and receipt validation. Next add automation coverage for fired-pot creek fill (invalid/missing vessel, success, ledger owner, retry, snapshot restore), then wire a simple VerticalSlice_C interaction key that only triggers while the player is in the creek. After that continue P2 injury triggers and remaining P3/P4/P7/P8/P9 tasks. New code is unbuilt; do not run builds until the batch stage.
+Audit existing `FWaterFillAndWetColdExposureTest` assertions against the fill implementation and snapshot rules. Fix any test/source contract mismatches, then wire player interaction in VerticalSlice_C only when carrying a `Pot.Fired` in inventory and standing in the creek. Keep unbuilt; do not add duplicate tests.
