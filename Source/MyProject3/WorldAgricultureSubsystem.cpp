@@ -5,6 +5,8 @@
 bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
 {
     if (!Crop.CropId.IsValid() || Crop.CropDefinitionId.IsNone() ||
+        !IsCropDefinitionConfigured(Crop.CropDefinitionId) ||
+        IsPlotCellOccupied(Crop.PlotCell) ||
         !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
         !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
         !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
@@ -14,6 +16,69 @@ bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
         return false;
     }
     Crops.Add(Crop.CropId, Crop);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::IsCropDefinitionConfigured(FName CropDefinitionId) const
+{
+    if (CropDefinitionId.IsNone()) return false;
+    const FWorldCropYieldRule* Found = nullptr;
+    for (const FWorldCropYieldRule& Rule : CropYieldRules)
+    {
+        if (Rule.CropDefinitionId != CropDefinitionId) continue;
+        if (Found || Rule.HarvestItemDefinitionId.IsNone() ||
+            Rule.YieldUnits <= 0 || Rule.YieldUnits > 100000)
+            return false;
+        Found = &Rule;
+    }
+    return Found != nullptr;
+}
+
+bool UWorldAgricultureSubsystem::IsPlotCellOccupied(FIntVector PlotCell) const
+{
+    return Crops.ContainsByPredicate([PlotCell](const TPair<FGuid, FWorldCropState>& Pair)
+        { return Pair.Value.PlotCell == PlotCell; });
+}
+
+bool UWorldAgricultureSubsystem::GetCropYield(
+    FName CropDefinitionId, FName& OutItemDefinitionId, int32& OutYieldUnits) const
+{
+    OutItemDefinitionId = NAME_None;
+    OutYieldUnits = 0;
+    if (CropDefinitionId.IsNone()) return false;
+    const FWorldCropYieldRule* Found = nullptr;
+    for (const FWorldCropYieldRule& Rule : CropYieldRules)
+    {
+        if (Rule.CropDefinitionId != CropDefinitionId) continue;
+        if (Found || Rule.HarvestItemDefinitionId.IsNone() ||
+            Rule.YieldUnits <= 0 || Rule.YieldUnits > 100000)
+            return false;
+        Found = &Rule;
+    }
+    if (!Found) return false;
+    OutItemDefinitionId = Found->HarvestItemDefinitionId;
+    OutYieldUnits = Found->YieldUnits;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryHarvestCrop(
+    const FGuid& CropId, int64 ExpectedRevision, FName& OutItemDefinitionId, int32& OutYieldUnits)
+{
+    OutItemDefinitionId = NAME_None;
+    OutYieldUnits = 0;
+    FWorldCropState* Crop = Crops.Find(CropId);
+    if (!Crop || Crop->Revision != ExpectedRevision || Crop->Revision == MAX_int64 ||
+        Crop->Stage != ECropGrowthStage::Mature)
+        return false;
+
+    FName YieldDefinition = NAME_None;
+    int32 YieldUnits = 0;
+    if (!GetCropYield(Crop->CropDefinitionId, YieldDefinition, YieldUnits))
+        return false;
+
+    Crops.Remove(CropId);
+    OutItemDefinitionId = YieldDefinition;
+    OutYieldUnits = YieldUnits;
     return true;
 }
 
@@ -263,11 +328,14 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
     TMap<FGuid, FWorldAnimalState> NewAnimals;
     for (const FWorldCropState& C : CropSnapshot)
     {
-        if (!C.CropId.IsValid() || C.CropDefinitionId.IsNone() || C.Revision <= 0 ||
+        if (!C.CropId.IsValid() || C.CropDefinitionId.IsNone() ||
+            !IsCropDefinitionConfigured(C.CropDefinitionId) || C.Revision <= 0 ||
             !FMath::IsFinite(C.Moisture) || C.Moisture < 0.0f || C.Moisture > 1.0f ||
             !FMath::IsFinite(C.GrowthProgressSeconds) || C.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(C.SecondsPerStage) || C.SecondsPerStage <= 0.0 ||
-            NewCrops.Contains(C.CropId)) return false;
+            NewCrops.Contains(C.CropId) ||
+            NewCrops.ContainsByPredicate([&C](const TPair<FGuid, FWorldCropState>& Pair)
+                { return Pair.Value.PlotCell == C.PlotCell; })) return false;
         NewCrops.Add(C.CropId, C);
     }
     for (const FWorldAnimalState& A : AnimalSnapshot)
