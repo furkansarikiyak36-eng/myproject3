@@ -1885,26 +1885,64 @@ FWorldOperationResult ALogBuildPiece::TryApplyCutAction(
     ELogCutAction Action,
     FGuid OperationId)
 {
-    // Preserve idempotent retries first: after a successful commit, prerequisites
-    // are intentionally false, but CommitCutAction can resolve its durable receipt.
+    if (!OperationId.IsValid())
+        OperationId = FGuid::NewGuid();
+
+    // Resolve incremental-progress receipts before checking prerequisites: a
+    // successful final cut changes those prerequisites by design.
+    if (CutProgressReceipts.ContainsByPredicate([&OperationId](const FLogCutProgressReceipt& Receipt)
+        { return Receipt.OperationId == OperationId; }))
+    {
+        return TryAdvanceCutProgress(Action, 1.0f, OperationId);
+    }
+
+    // Compatibility path for older callers and previously committed split
+    // receipts which predate the incremental-progress receipt array.
     if (!CanApplyCutAction(Action))
         return CommitCutAction(Action, OperationId);
 
-    // Compatibility entry point for existing Blueprints. Chopping tools can call
-    // TryAdvanceCutProgress repeatedly; one-shot actions still pass through the
-    // same progress state and geometry commit boundary.
     return TryAdvanceCutProgress(Action, 1.0f, OperationId);
 }
 
 FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
     ELogCutAction Action, float NormalizedWork, FGuid OperationId)
 {
+    if (!OperationId.IsValid())
+        OperationId = FGuid::NewGuid();
+
+    for (const FLogCutProgressReceipt& Receipt : CutProgressReceipts)
+    {
+        if (Receipt.OperationId != OperationId)
+            continue;
+        if (Receipt.Action != Action ||
+            !FMath::IsNearlyEqual(Receipt.NormalizedWork, NormalizedWork, 0.000001f))
+        {
+            return FWorldOperationResult::Failure(
+                EWorldOperationResultCode::Conflict, OperationId,
+                FText::FromString(TEXT("This operation ID was already used for a different cut action or work amount.")));
+        }
+        if (Receipt.ResultCode != EWorldOperationResultCode::Success)
+        {
+            return FWorldOperationResult::Failure(Receipt.ResultCode, OperationId, Receipt.ResultMessage);
+        }
+        return FWorldOperationResult::Success(
+            OperationId, Receipt.ResultMessage, Receipt.AffectedObjectIds);
+    }
+
     if (!FMath::IsFinite(NormalizedWork) || NormalizedWork <= 0.0f ||
         NormalizedWork > 1.0f)
     {
         return FWorldOperationResult::Failure(
             EWorldOperationResultCode::InvalidState, OperationId,
             FText::FromString(TEXT("Cut work must be finite and within (0, 1].")));
+    }
+
+    if (MaxCutProgressReceipts <= 0 || MaxCutProgressReceipts > 1024 ||
+        CutProgressReceipts.Num() >= MaxCutProgressReceipts)
+    {
+        return FWorldOperationResult::Failure(
+            EWorldOperationResultCode::CapacityExceeded, OperationId,
+            FText::FromString(TEXT("Cut-progress receipt capacity is exhausted; no work was applied.")));
     }
 
     if (!CanApplyCutAction(Action))
@@ -1922,18 +1960,35 @@ FWorldOperationResult ALogBuildPiece::TryAdvanceCutProgress(
     }
 
     CutProgress = FMath::Clamp(CutProgress + NormalizedWork, 0.0f, 1.0f);
+    FWorldOperationResult Result;
     if (CutProgress < 1.0f)
     {
-        return FWorldOperationResult::Success(
+        Result = FWorldOperationResult::Success(
             OperationId,
             FText::FromString(FString::Printf(TEXT("Cut progress: %.0f%%."), CutProgress * 100.0f)),
             TArray<FGuid>());
     }
+    else
+    {
+        Result = CommitCutAction(Action, OperationId);
+        CutProgress = 0.0f;
+        bHasActiveCutProgress = false;
+    }
 
-    const FWorldOperationResult CommitResult = CommitCutAction(Action, OperationId);
-    CutProgress = 0.0f;
-    bHasActiveCutProgress = false;
-    return CommitResult;
+    // Keep only successful outcomes. A failed commit has no progress receipt,
+    // so a corrected configuration can be retried without falsifying a success.
+    if (Result.IsSuccess())
+    {
+        FLogCutProgressReceipt& Receipt = CutProgressReceipts.AddDefaulted_GetRef();
+        Receipt.OperationId = OperationId;
+        Receipt.Action = Action;
+        Receipt.NormalizedWork = NormalizedWork;
+        Receipt.ResultingProgress = CutProgress;
+        Receipt.ResultCode = Result.Code;
+        Receipt.ResultMessage = Result.Message;
+        Receipt.AffectedObjectIds = Result.AffectedObjectIds;
+    }
+    return Result;
 }
 
 FWorldOperationResult ALogBuildPiece::CommitCutAction(
