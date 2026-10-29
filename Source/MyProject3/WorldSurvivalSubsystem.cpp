@@ -440,6 +440,12 @@ bool UWorldSurvivalSubsystem::RecordDiscovery(
     {
         return false;
     }
+    // IDs with authored unlock effects must use TryDiscover so the record-only
+    // compatibility API cannot bypass radius and equipment prerequisites.
+    if (DiscoveryDefinitions.ContainsByPredicate(
+        [DiscoveryId](const FWorldDiscoveryDefinition& Definition)
+        { return Definition.DiscoveryId == DiscoveryId; }))
+        return false;
     if (Discoveries.ContainsByPredicate([DiscoveryId](const FWorldDiscoveryRecord& D)
         { return D.DiscoveryId == DiscoveryId; }))
     {
