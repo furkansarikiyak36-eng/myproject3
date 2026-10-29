@@ -43,6 +43,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter|Wave", meta=(ClampMin="0.0", ClampMax="20000.0"))
     float SpawnDistanceFromTargetCm = 1800.0f;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter|Wave", meta=(ClampMin="10.0", ClampMax="2000.0"))
+    float RaidTargetAcceptanceRadiusCm = 250.0f;
+
     UFUNCTION(BlueprintCallable, Category="Threat|Adapter")
     bool AdvanceRaidWorldAdapter();
 
@@ -61,6 +64,12 @@ private:
 
     UPROPERTY(Transient)
     FGuid MaterializedTargetNodeId;
+
+    UPROPERTY(Transient)
+    FVector MaterializedRaidTargetLocation = FVector::ZeroVector;
+
+    UPROPERTY(Transient)
+    bool bHasMaterializedRaidTargetLocation = false;
 
     /** Cached boundary only; pulse identity is derived from raid ID + pulse index and stored in the operation ledger. */
     UPROPERTY(Transient)
