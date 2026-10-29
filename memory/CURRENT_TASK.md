@@ -12,33 +12,33 @@
 
 ## Task
 
-Status: `open`
-Goal: Finish the previous response's A group: blind-codeable backend rules and data contracts, excluding anything frozen under P10 and anything that requires in-game tuning to call complete.
+Status: `in-progress`
+Goal: Close blind-codeable backend gaps across Phases 1–10, then hand off one batch build/test and later PIE verification. Do not start P11/P12 story/polish/demo work until after the demo foundation exists.
 Branch: `work/phase-3-4-closure`
 Started: 2026-10-29 · ChatGPT
 
 ### Scope
-- P0.2 placement rules documentation.
-- P1.3 natural-event state/definition layer and P1.4 calendar/event presentation contract where existing UI architecture allows.
-- Close code/data gaps for P2.1/P2.2/P2.3/P2.5, P3.1/P3.2/P3.3/P3.4, P4.1/P4.3/P4.4, P5.2, P6.2/P6.3, P7.1-P7.4, P8.1-P8.3, P9.1/P9.2/P9.3, P11/P12 and save consistency.
-- P10 remains frozen; no physical joinery geometry work.
-- Do not call a task tested/played/done without actual local evidence.
+- P0.2 ownership/carry/placement contract (done as docs).
+- P1.3 natural-event data, deterministic lifecycle, effects and rollback-safe routing; P1.4 date/event status using existing presentation paths.
+- Close blind-codeable portions of P2.1–P2.6, P3.1–P3.4, P4.1–P4.4, P5.1–P5.2, P6.1–P6.4, P7.1–P7.4, P8.1–P8.3 and P9.1–P9.3.
+- Reconcile save schema and migration chain; write focused automation tests with each change.
+- P10 physical assembly stays frozen until upstream mechanics close; do not add mitres, sockets, cross-joints or geometry follow-ups now.
+- P11/P12 are deferred until after the playable demo foundation; no cinematics, polished UI, art or content production in this pass.
+- Do not call a task compiled, tested, played or done without actual local evidence.
 
-### Plan
-1. [x] Make the placement/carry contracts explicit; P0.2 documentation is committed.
-2. [in-progress] Implement the natural-event runtime and connect it to existing shared-clock orchestration without bypassing rollback semantics. Event data loading/validation is now authored.
-3. [in-progress] Close safe backend-only gaps in survival, shelter/plaster, gathering/stations, farming/regions/routes/raids/repair/helper. Plaster/charcoal data-contract test is authored.
-4. [todo] Add focused automation tests for all changed contracts; author only, do not claim run.
-5. [todo] Reconcile remaining status docs and keep the session note current; batch build/test remains for local Unreal session.
+### Current plan
+1. [x] Make placement/carry ownership and transaction rules explicit; P0.2 contract is committed.
+2. [code-written] Natural-event runtime is in place: data parsing/validation, deterministic signal/active lifecycle, trigger cooldown, snapshot/rollback participation, weather/condition/crop/structure effects, fire damage to nearby wood/stick nodes, and post-commit flood-route closures. Compile/tests remain unverified.
+3. [code-written] Close safe back-end gaps in survival movement, gathering ownership rollback, batch station inventory transfer, material-cost repair, signal-driven raid pressure/targeting, route persistence and save migration.
+4. [in-progress] Add/refine focused automation coverage for every changed contract; tests are authored only and must not be reported as run.
+5. [in-progress] Reconcile plan/status/session documents and continue on the remaining blind-codeable Phase 1–10 items. Batch Unreal build/automation is deferred to the user's later local pass.
 
 ### Findings
-- This branch contains station placement, gatherable spawning and charcoal recipe/fire-pause changes authored earlier in this work session.
-- P0.2 is now documented in the placement guide and carry module note. Open geometry issues remain frozen until P10.
-- Added `Config/GameData/events.json` with 9 natural-event contracts, a `FGameDataWorldEvent` data type, loader parsing/validation, and authored checks for the event data alongside plaster/charcoal contracts. Static JSON/reference sanity was checked in-tool; Unreal tests remain unrun.
-- `mix_plaster` has no persistent wall-coating behavior yet; natural-event runtime and date/event UI are still open. Event definitions are data only until the scheduler/effect lifecycle is implemented.
-- The status ledger was reconciled for P0.2/P3.3/P3.4, but broader task closure and one batch validation remain.
-- Current known baseline evidence does not cover these recent unbuilt changes. All new work stays `code-written / unbuilt-unrun`.
-
-
-## User scope update (2026-10-29)
-User approved blind coding through Phases 1–10; Phases 11–12 are deferred until after demo. Author tests as mechanisms are coded, but batch Unreal build/automation/PIE validation is reserved for the user's later pass. P10 physical joinery remains last/frozen until upstream mechanics are closed.
+- Work branch includes primitive station placement, six gatherable types and charcoal fire-pause flow; scene/PIE state is still unverified.
+- P0.2 is documented in `Source/MyProject3/Placement/carry.md`, `Source/MyProject3/Placement/CLAUDE.md` and `memory/modules/carry.md`. P10 geometry remains frozen.
+- `Config/GameData/events.json` defines nine events; the loader validates their fields/references; the director runs through shared-clock preflight/rollback. Tests cover event lifecycle, flood-route closure, fire spread, raid signal pressure, plaster and charcoal data contracts, but nothing on this branch has been built or run in Unreal.
+- P3.3 now has persistent wall-coating state and shelter-seal ray integration. P4.1 gather grants validate item definitions and roll back partial ledger/inventory changes. P4.3 F3/F4 batch generic station transfers.
+- P7.1 applies carried mass, ground slope, weather and snow to player movement. P7.4 flood-prone route edges are blocked by active event claims and the graph is included in save schema v29.
+- P8.2 raid pressure/target derives from stored quantity, food location/smell, fire light and fuel-adjusted smoke. P8.3 has material-gated repair and rollback-safe structural fire damage; snow-load/collapse physics remain open.
+- No local Unreal build or automation suite has run for the current branch. Historical baseline metrics must not be used as proof for these changes.
+- Next: continue blind-code closure from the most self-contained remaining gap; preserve P10 freeze and update the status ledger with only code-written evidence.
