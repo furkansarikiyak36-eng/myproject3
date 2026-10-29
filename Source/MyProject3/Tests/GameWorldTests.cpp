@@ -809,6 +809,67 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// P7.4: bridge infrastructure changes traversal cost and its built state survives route snapshot restore.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRouteInfrastructureSnapshotTest,
+    "MyProject3.Logistics.InfrastructureBridgeReducesRouteCostAndPersists", Flags)
+bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Route graph"), Routes))
+        return false;
+
+    TestTrue(TEXT("Load zone and route data"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply world data (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
+    TestTrue(TEXT("All route nodes were applied"), Routes->GetNodeCount() == Data->GetRouteNodes().Num());
+    TestTrue(TEXT("All route edges were applied"), Routes->GetEdgeCount() == Data->GetRouteEdges().Num());
+
+    const FName StartNode(TEXT("Route.Camp"));
+    const FName DestinationNode(TEXT("Route.Creek.EastBank"));
+    FLogisticsRouteCostContext Context;
+    TArray<FName> BeforePath;
+    float BeforeCost = 0.0f;
+    TestTrue(TEXT("Find route before bridge construction"),
+        Routes->FindRouteWithContext(StartNode, DestinationNode, Context, BeforePath, BeforeCost));
+    TestTrue(TEXT("Before the bridge, the route detours through the ford"),
+        BeforePath.Contains(TEXT("Route.Ford.WestBank")) &&
+        BeforePath.Contains(TEXT("Route.Ford.EastBank")));
+
+    TestTrue(TEXT("Bridge construction marks its two route directions built"),
+        Routes->SetInfrastructureBuilt(TEXT("Infrastructure.CreekBridge"), true));
+    TArray<FName> AfterPath;
+    float AfterCost = 0.0f;
+    TestTrue(TEXT("Find route after bridge construction"),
+        Routes->FindRouteWithContext(StartNode, DestinationNode, Context, AfterPath, AfterCost));
+    TestTrue(TEXT("After the bridge, the route uses the direct crossing"),
+        AfterPath.Contains(TEXT("Route.Creek.WestBank")) &&
+        AfterPath.Contains(TEXT("Route.Creek.EastBank")) &&
+        !AfterPath.Contains(TEXT("Route.Ford.WestBank")));
+    TestTrue(TEXT("Bridge lowers the same journey's route cost"), AfterCost < BeforeCost);
+
+    TArray<FLogisticsRouteNode> SavedNodes;
+    TArray<FLogisticsRouteEdge> SavedEdges;
+    Routes->ExportSnapshot(SavedNodes, SavedEdges);
+    TestTrue(TEXT("Temporarily remove bridge state"),
+        Routes->SetInfrastructureBuilt(TEXT("Infrastructure.CreekBridge"), false));
+    TArray<FName> UnbuiltPath;
+    float UnbuiltCost = 0.0f;
+    TestTrue(TEXT("Find route while bridge is marked absent"),
+        Routes->FindRouteWithContext(StartNode, DestinationNode, Context, UnbuiltPath, UnbuiltCost));
+    TestTrue(TEXT("Removed bridge restores ford detour"), UnbuiltPath.Contains(TEXT("Route.Ford.WestBank")));
+    TestTrue(TEXT("Restore route graph snapshot"), Routes->RestoreSnapshot(SavedNodes, SavedEdges));
+
+    TArray<FName> RestoredPath;
+    float RestoredCost = 0.0f;
+    TestTrue(TEXT("Route resolves after snapshot restore"),
+        Routes->FindRouteWithContext(StartNode, DestinationNode, Context, RestoredPath, RestoredCost));
+    TestTrue(TEXT("Built bridge state survives snapshot restore"),
+        RestoredPath == AfterPath && FMath::IsNearlyEqual(RestoredCost, AfterCost, 0.001f));
+    return true;
+}
+
 // P4.1: a gather spot needs its tool, empties, and grows back on the world clock.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGatherableResourceTest,
     "MyProject3.World.Gather.ToolEmptiesAndRefills", Flags)
