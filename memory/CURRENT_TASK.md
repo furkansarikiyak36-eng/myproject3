@@ -86,7 +86,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` lines 350–442 (planting and feed paths re-read).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` lines 443–530 (harvest output construction and crop state read).
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (crop state stores seed definition and seed-return count).
-- `Source/MyProject3/WorldAgricultureSubsystem.cpp` (captures seed definition/count at planting; harvest emits produce+seeds in one output registration; validation caps total at 64 and uses matching receipt/snapshot counts).
+- `Source/MyProject3/WorldAgricultureSubsystem.cpp` (captures seed definition/count at planting; harvest emits produce+seeds as one batch; validators use total outputs).
+- `Source/MyProject3/WildlifeActor.h` (current in-world wildlife and death API inspected before adding capture/pen/slaughter).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
@@ -108,9 +109,10 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - Replaced stale checkpoint for the current request before gameplay source reads.
 - Recorded current codebase map limitations and newer roadmap test-count reference.
 - P0.5 source-of-truth change committed; status ledger corrected.
-- Seed return is now JSON-configured, captured in crop state at planting, emitted as ledger-owned world items at harvest, and included in receipt/restore validation. Save schema v24 plus v23→v24 migration prevents inventing seeds for legacy saves.
+- Seed return is JSON-configured, captured at planting, emitted as ledger-owned world items at harvest, and included in receipt/restore validation. Schema v24 migration avoids inventing seeds for legacy saves.
+- Wildlife API is being checked before defining capture: logical agriculture animal records are not currently connected to a physical `WildlifeActor` by the header map.
 - The item-backed farming test now drives a crop to maturity and asserts produce+seed identity/count, single-commit retry, and three-array agriculture snapshot restoration. Not built/run yet.
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `WildlifeActor.h` and `WildlifeActor.cpp` using the code index to determine how live animals exist in-world; then design capture/pen/slaughter around current ownership and save conventions, without introducing a parallel item ledger. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Read `WildlifeActor.cpp` death/spawn behavior; then update checkpoint and inspect `WorldItemOwnershipSubsystem.h` before designing a captured-animal ledger transition. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
