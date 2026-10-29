@@ -950,4 +950,56 @@ bool FDigLayersFromDataTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+ 
+// P3.3/P3.4: data contracts must reference real items and a registered station.
+// This does not prove wall coating visuals or in-world placement; those remain PIE work.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPlasterAndCharcoalDataContractsTest,
+    "MyProject3.World.GameData.PlasterAndCharcoalContracts", Flags)
+bool FPlasterAndCharcoalDataContractsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data subsystem"), Data))
+        return false;
+    TestTrue(TEXT("All game data loads and applies"), Data->LoadDefault() && Data->ApplyToWorld());
+
+    const FGameDataTransformation* Plaster = Data->FindTransformation(TEXT("mix_plaster"));
+    if (!TestNotNull(TEXT("Plaster recipe exists"), Plaster))
+        return false;
+    TestEqual(TEXT("Plaster is hand mixed"), Plaster->Where, FName(TEXT("hand")));
+    TestEqual(TEXT("Plaster output count"), Plaster->Outputs.Num(), 1);
+    if (Plaster->Outputs.Num() == 1)
+    {
+        TestEqual(TEXT("Plaster output item"), Plaster->Outputs[0].ItemId, FName(TEXT("Plaster")));
+        TestEqual(TEXT("Plaster output quantity"), Plaster->Outputs[0].Quantity, 2);
+    }
+    auto HasInput = [Plaster](FName ItemId)
+    {
+        return Plaster->Inputs.ContainsByPredicate([ItemId](const FGameDataItemAmount& Amount)
+            { return Amount.ItemId == ItemId && Amount.Quantity > 0; });
+    };
+    TestTrue(TEXT("Clay is consumed"), HasInput(TEXT("Clay")));
+    TestTrue(TEXT("Sand is consumed"), HasInput(TEXT("Sand")));
+    TestTrue(TEXT("Water is consumed"), HasInput(TEXT("Water.Dirty")));
+
+    const FGameDataStation* CharcoalStation = Data->GetStations().Find(TEXT("charcoal_pit"));
+    if (!TestNotNull(TEXT("Charcoal station exists"), CharcoalStation))
+        return false;
+    TestTrue(TEXT("Charcoal pit requires fire"), CharcoalStation->bNeedsFire);
+    const FGameDataTransformation* Charcoal = Data->FindTransformation(TEXT("burn_charcoal"));
+    if (!TestNotNull(TEXT("Charcoal recipe exists"), Charcoal))
+        return false;
+    TestEqual(TEXT("Recipe is assigned to charcoal pit"), Charcoal->Where, FName(TEXT("charcoal_pit")));
+    TestEqual(TEXT("Charcoal duration is eight simulation hours"), Charcoal->DurationSeconds, 28800.0);
+    TestTrue(TEXT("Firewood input exists"), Charcoal->Inputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Firewood") && Amount.Quantity == 6; }));
+    TestTrue(TEXT("Charcoal output exists"), Charcoal->Outputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Charcoal") && Amount.Quantity == 3; }));
+    TestTrue(TEXT("Ash output exists"), Charcoal->Outputs.ContainsByPredicate(
+        [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Ash") && Amount.Quantity == 1; }));
+    return true;
+}
+
 #endif
