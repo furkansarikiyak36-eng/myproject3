@@ -2696,7 +2696,6 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
                 AnchorIds.Contains(TEXT("SupportLeft")) && AnchorIds.Contains(TEXT("SupportRight")));
         }
     }
-    }
 
     // Blueprint/authored meshes must receive the same two support anchors;
     // no proxy fallback should be needed when the root mesh is already configured.
@@ -2713,8 +2712,9 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TestTrue(TEXT("Authored bridge exposes left/right support anchors"),
         AuthoredAnchorIds.Contains(TEXT("SupportLeft")) &&
         AuthoredAnchorIds.Contains(TEXT("SupportRight")));
-    TestFalse(TEXT("Authored bridge does not need placeholder components"),
-        AuthoredBridge->GetComponents<UStaticMeshComponent>().Num() > 1);
+    TArray<UStaticMeshComponent*> AuthoredBridgeMeshes;
+    AuthoredBridge->GetComponents<UStaticMeshComponent>(AuthoredBridgeMeshes);
+    TestEqual(TEXT("Authored bridge retains only its root mesh component"), AuthoredBridgeMeshes.Num(), 1);
     return true;
 }
 
