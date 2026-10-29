@@ -656,6 +656,42 @@ bool FShelterKeepsFireHeatTest::RunTest(const FString& Parameters)
 }
 
 // P0.3/P0.4: the primitive-era data loads, every reference resolves, all 38 plan steps are there.
+// P7.1: the effort multiplier scales energy and stamina without advancing the world clock.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTraversalEffortCostsEnergyAndStaminaTest,
+    "MyProject3.World.Survival.TraversalEffortMultiplierScalesCosts", Flags)
+bool FTraversalEffortCostsEnergyAndStaminaTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldSurvivalSubsystem* Survival = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+
+    FWorldSurvivalProfile NormalWalk;
+    NormalWalk.EntityId = FGuid::NewGuid();
+    NormalWalk.Stamina = 100.0f;
+    FWorldSurvivalProfile HeavyWalk;
+    HeavyWalk.EntityId = FGuid::NewGuid();
+    HeavyWalk.Stamina = 100.0f;
+    TestTrue(TEXT("Register normal walker"), Survival->RegisterProfile(NormalWalk));
+    TestTrue(TEXT("Register high-effort walker"), Survival->RegisterProfile(HeavyWalk));
+
+    TestTrue(TEXT("Record ordinary one-hour walking effort"),
+        Survival->RecordActivity(NormalWalk.EntityId, ESurvivalActivity::Walk, 3600.0f, 0.0f, 1.0f));
+    TestTrue(TEXT("Record the same duration at twice the terrain effort"),
+        Survival->RecordActivity(HeavyWalk.EntityId, ESurvivalActivity::Walk, 3600.0f, 0.0f, 2.0f));
+
+    FWorldSurvivalProfile NormalAfter;
+    FWorldSurvivalProfile HeavyAfter;
+    TestTrue(TEXT("Read normal walker"), Survival->GetProfile(NormalWalk.EntityId, NormalAfter));
+    TestTrue(TEXT("Read high-effort walker"), Survival->GetProfile(HeavyWalk.EntityId, HeavyAfter));
+    TestEqual(TEXT("Normal walking adds 200 kcal to pending activity"), NormalAfter.PendingActivityKcal, 200.0f);
+    TestEqual(TEXT("Twice the effort adds 400 kcal"), HeavyAfter.PendingActivityKcal, 400.0f);
+    TestEqual(TEXT("Normal walk drains 30 stamina"), NormalAfter.Stamina, 70.0f);
+    TestEqual(TEXT("Twice the effort drains 60 stamina"), HeavyAfter.Stamina, 40.0f);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGameDataLoadsTest,
     "MyProject3.World.GameData.LoadsAndCoversThePlan", Flags)
 bool FGameDataLoadsTest::RunTest(const FString& Parameters)
