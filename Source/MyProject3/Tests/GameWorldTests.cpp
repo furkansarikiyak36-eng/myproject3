@@ -2626,6 +2626,53 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TestFalse(TEXT("Removed edge releases deck-side anchor"), RightAnchor.bOccupied);
     TestFalse(TEXT("Removed edge releases support-side anchor"), TopAnchor.bOccupied);
     TestTrue(TEXT("Primary support remains valid"), Graph->HasValidSupportPath(Bridge->GetStructuralNodeId()));
+
+    // Every planned physical archetype gets a basic engine-cube fallback when
+    // no Blueprint mesh is assigned. These are functional blockout shapes, not final art.
+    const EStonePieceType ProxyKinds[] =
+    {
+        EStonePieceType::WallSegment,
+        EStonePieceType::DoorFrame,
+        EStonePieceType::WindowFrame,
+        EStonePieceType::WallOpening,
+        EStonePieceType::FloorSlab,
+        EStonePieceType::RoofPanel,
+        EStonePieceType::Ramp,
+        EStonePieceType::Stair,
+        EStonePieceType::RopeCrossingAnchor,
+        EStonePieceType::ElevatedWalkway,
+        EStonePieceType::Gate,
+        EStonePieceType::FenceSegment,
+        EStonePieceType::RailingSegment,
+        EStonePieceType::DefensiveWall
+    };
+    for (int32 Index = 0; Index < UE_ARRAY_COUNT(ProxyKinds); ++Index)
+    {
+        const FTransform Transform(FRotator::ZeroRotator,
+            FVector(2000.0 + static_cast<double>(Index) * 600.0, 2000.0, 0.0));
+        AStoneBuildingPiece* Proxy = World->SpawnActorDeferred<AStoneBuildingPiece>(
+            AStoneBuildingPiece::StaticClass(), Transform);
+        if (!TestNotNull(FString::Printf(TEXT("Spawn structural proxy %d"), Index), Proxy))
+            return false;
+        Proxy->PieceType = ProxyKinds[Index];
+        Proxy->FinishSpawning(Transform);
+
+        TArray<UStaticMeshComponent*> ProxyMeshes;
+        Proxy->GetComponents<UStaticMeshComponent>(ProxyMeshes);
+        TestTrue(FString::Printf(TEXT("Proxy kind %d has blockout geometry"), Index),
+            ProxyMeshes.Num() > 1);
+        TArray<FName> AnchorIds;
+        Proxy->GetStructuralAnchorIds(AnchorIds);
+        TestTrue(FString::Printf(TEXT("Proxy kind %d has top anchor"), Index),
+            AnchorIds.Contains(TEXT("AutoTop")));
+        TestTrue(FString::Printf(TEXT("Proxy kind %d has bottom anchor"), Index),
+            AnchorIds.Contains(TEXT("AutoBottom")));
+        if (ProxyKinds[Index] == EStonePieceType::ElevatedWalkway)
+        {
+            TestTrue(TEXT("Elevated walkway exposes two support anchors"),
+                AnchorIds.Contains(TEXT("SupportLeft")) && AnchorIds.Contains(TEXT("SupportRight")));
+        }
+    }
     return true;
 }
 
