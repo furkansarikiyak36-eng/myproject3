@@ -4,6 +4,7 @@
 #include "ConstructionHelpers.h"
 #include "HarvestableTreeActor.h"
 #include "GatherableResourceActor.h"
+#include "WorldDiscoveryMarkerActor.h"
 #include "HeatSourceComponent.h"
 #include "HelperCompanionActor.h"
 #include "LogAttachmentComponents.h"
@@ -1204,6 +1205,81 @@ void AVerticalSliceCWorldActor::EnsureStarterTools()
         Inventory->GetItemCount(TEXT("Tool.DiggingStick")) > 0;
 }
 
+void AVerticalSliceCWorldActor::AssignGatherableZones()
+{
+    if (bGatherableZonesAssigned)
+        return;
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !GameData || !GameData->IsApplied() || GameData->GetZones().IsEmpty())
+        return;
+
+    bool bAllAssigned = true;
+    for (TActorIterator<AGatherableResourceActor> It(World); It; ++It)
+    {
+        AGatherableResourceActor* Resource = *It;
+        if (!IsValid(Resource) || !Resource->ZoneId.IsNone())
+            continue;
+        const FGameDataZone* Zone = GameData->FindZoneAtLocation(Resource->GetActorLocation());
+        if (Zone)
+            Resource->ZoneId = Zone->Id;
+        else
+            bAllAssigned = false;
+    }
+    bGatherableZonesAssigned = bAllAssigned;
+}
+
+void AVerticalSliceCWorldActor::EnsureDiscoveryMarkers()
+{
+    if (bDiscoveryMarkersSpawned)
+        return;
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !GameData || !GameData->IsApplied() || GameData->GetDiscoveries().IsEmpty())
+        return;
+
+    bool bAllMarkersExist = true;
+    for (const FGameDataDiscovery& Definition : GameData->GetDiscoveries())
+    {
+        if (Definition.Id.IsNone())
+        {
+            bAllMarkersExist = false;
+            continue;
+        }
+
+        bool bAlreadySpawned = false;
+        for (TActorIterator<AWorldDiscoveryMarkerActor> It(World); It; ++It)
+        {
+            if (IsValid(*It) && (*It)->DiscoveryId == Definition.Id)
+            {
+                bAlreadySpawned = true;
+                break;
+            }
+        }
+        if (bAlreadySpawned)
+            continue;
+
+        const FVector MarkerLocation(Definition.Location.X, Definition.Location.Y,
+            GetGroundHeight(Definition.Location.X, Definition.Location.Y) + 38.0f);
+        AWorldDiscoveryMarkerActor* Marker = World->SpawnActor<AWorldDiscoveryMarkerActor>(
+            AWorldDiscoveryMarkerActor::StaticClass(), MarkerLocation, FRotator::ZeroRotator);
+        if (!Marker)
+        {
+            bAllMarkersExist = false;
+            continue;
+        }
+
+        Marker->DiscoveryId = Definition.Id;
+        Marker->DisplayName = Definition.Name;
+        Marker->RevealRadiusCm = Definition.RevealRadiusCm;
+        Marker->RewardItemId = Definition.RewardItemId;
+        Marker->RewardQuantity = Definition.RewardQuantity;
+    }
+    bDiscoveryMarkersSpawned = bAllMarkersExist;
+}
+
 void AVerticalSliceCWorldActor::SetupPlayer()
 {
     APlayerController* Controller = GetWorld()->GetFirstPlayerController();
@@ -2255,6 +2331,8 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     if (!PlayerSurvivalId.IsValid())
         SetupPlayer();
     EnsureStarterTools();
+    AssignGatherableZones();
+    EnsureDiscoveryMarkers();
 
     UpdateCreek(DeltaSeconds);
     if (Helper && Helper->GetStatus() != LastHelperStatus && GEngine)
