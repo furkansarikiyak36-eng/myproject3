@@ -61,13 +61,14 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: scenario recipe selection resolves from game data).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
-- `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: all production-recipe lookups use `ProductionRecipeId`; the recipe payload is constructed from `transformations.json`).
+- `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: all production-recipe lookups use `ProductionRecipeId`; recipe payload comes from transformations data).
+- `memory/PLAN_STATUS.md` (P0.5 updated to Var; aggregate counts corrected from 9/22/12 to 10/21/12).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
 - `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`, so P0.5 should be resolved by making the game-data loader authoritative and not silently registering a parallel demo recipe.
-- `WorldGameDataSubsystem.cpp` already converts `transformations.json` to production and hand recipes. The scenario actor now exposes only an ID and refuses a recipe unless loaded game data says it is a non-physical production transform for the selected station tag.
+- `WorldGameDataSubsystem.cpp` already converts `transformations.json` to production and hand recipes. Scenario actor no longer authors a second production recipe. `PLAN_STATUS.md` now reflects this source correction; compile/PIE remain unverified.
 - `InventoryCraftingComponent.cpp` confirms unique physical items are consumed through the ownership ledger and non-consuming tools remain in inventory. Existing survival methods already implement owned-item consumption, conditions/treatment, activity stamina cost, wetness, rest quality, and temperature exposure; remaining gaps include environment/player triggers and UI/world wiring, not those bases.
 - Current production API can be checked against `FWorldProductionRecipe` and `FWorldProductionStation`; `WorldGameDataSubsystem` converts transformation JSON to these types, while the demo actor has an optional second editable recipe path. Use the exact fields from this header if validating it against data.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
