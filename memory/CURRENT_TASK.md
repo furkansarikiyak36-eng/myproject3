@@ -73,7 +73,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (edited: registers data-defined crop definitions with planting months and zone IDs).
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (added persisted field cells/actions and snapshot overloads).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (implemented idempotent field actions, prepared planting, calendar gates, growth modifiers, soil exhaustion, and snapshot overloads; fixed harvest revision preflight).
-- `Source/MyProject3/WorldSimulationSaveGame.h` (current save schema fields for crop/animal snapshots, inspected for field-cell integration).
+- `Source/MyProject3/WorldSimulationSaveGame.h` (edited: schema v23 now contains persisted `FieldCells`).
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
