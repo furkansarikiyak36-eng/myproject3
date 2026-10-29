@@ -4055,4 +4055,73 @@ bool FFallImpactAppliesPhysicalAndSurvivalInjuryTest::RunTest(const FString& Par
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHostileBiteAppliesInjuryAndRespectsCooldownTest,
+    "MyProject3.Survival.HostileBiteAppliesInjuryAndRespectsCooldown", TestFlags)
+bool FHostileBiteAppliesInjuryAndRespectsCooldownTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+    TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(9418, 500.0));
+
+    FWorldSurvivalConditionDefinition Bite;
+    Bite.DefinitionId = TEXT("Injury.AnimalBite");
+    Bite.Kind = EWorldSurvivalConditionKind::Injury;
+    Bite.HealthLossPerHour = 1.0f;
+    Bite.FatiguePerHour = 1.0f;
+    Bite.StaminaLossPerHour = 3.0f;
+    Bite.DurationSeconds = 72.0 * 3600.0;
+    TestTrue(TEXT("Register animal-bite injury definition"), Survival->RegisterConditionDefinition(Bite));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(0.0f, 0.0f, 200.0f);
+    TestTrue(TEXT("Register player survival profile"), Survival->RegisterProfile(Profile));
+
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    const FTransform PlayerTransform(FVector(0.0f, 0.0f, 200.0f));
+    ALogSnapCharacter* Player = World->SpawnActor<ALogSnapCharacter>(
+        ALogSnapCharacter::StaticClass(), PlayerTransform, SpawnParameters);
+    if (!TestNotNull(TEXT("Player character"), Player) ||
+        !TestNotNull(TEXT("Player physical health"), Player->PhysicalHealth) ||
+        !TestNotNull(TEXT("Player shelter sensor"), Player->ShelterSensor))
+        return false;
+    Player->ShelterSensor->SurvivalEntityId = Profile.EntityId;
+
+    const FTransform EnemyTransform(FVector(150.0f, 0.0f, 200.0f));
+    AWildlifeActor* Enemy = World->SpawnActor<AWildlifeActor>(
+        AWildlifeActor::StaticClass(), EnemyTransform, SpawnParameters);
+    if (!TestNotNull(TEXT("Hostile wildlife"), Enemy))
+        return false;
+    Enemy->ConfigureKind(EWildlifeKind::Enemy);
+
+    const float InitialHealth = Player->PhysicalHealth->Health;
+    TestTrue(TEXT("Enemy lands its first close-range bite"), Enemy->TryBiteTarget(Player));
+    TestTrue(TEXT("Bite reduces physical health"), Player->PhysicalHealth->Health < InitialHealth);
+    FWorldSurvivalProfile AfterBite;
+    TestTrue(TEXT("Read profile after bite"), Survival->GetProfile(Profile.EntityId, AfterBite));
+    TestEqual(TEXT("Bite creates one persistent condition"), AfterBite.Conditions.Num(), 1);
+    TestEqual(TEXT("Bite uses configured injury definition"),
+        AfterBite.Conditions[0].DefinitionId, FName(TEXT("Injury.AnimalBite")));
+
+    const float HealthAfterFirstBite = Player->PhysicalHealth->Health;
+    const int64 RevisionAfterFirstBite = AfterBite.Revision;
+    TestFalse(TEXT("Cooldown blocks a second bite in the same moment"), Enemy->TryBiteTarget(Player));
+    TestEqual(TEXT("Cooldown prevents repeat physical damage"),
+        Player->PhysicalHealth->Health, HealthAfterFirstBite);
+    FWorldSurvivalProfile AfterBlockedBite;
+    TestTrue(TEXT("Read profile after blocked bite"), Survival->GetProfile(Profile.EntityId, AfterBlockedBite));
+    TestEqual(TEXT("Cooldown prevents duplicate injury"), AfterBlockedBite.Conditions.Num(), 1);
+    TestEqual(TEXT("Blocked bite doesn't mutate profile revision"),
+        AfterBlockedBite.Revision, RevisionAfterFirstBite);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
