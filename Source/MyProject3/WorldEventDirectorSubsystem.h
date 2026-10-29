@@ -88,12 +88,18 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Events")
     FString GetEventStatusText() const;
 
+    /** Called after a committed simulation step; emits transition-only on-screen notices. */
+    void PublishEventNotifications();
+
     FWorldEventDirectorSnapshot ExportSnapshot() const { return State; }
     bool RestoreSnapshot(const FWorldEventDirectorSnapshot& Snapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Events")
     FWorldEventDirectorSnapshot State;
+
+    TSet<FGuid> PresentedSignalIds;
+    TSet<FGuid> PresentedActiveIds;
 
     UWorldGameDataSubsystem* GetGameData() const;
     bool IsValidSnapshot(const FWorldEventDirectorSnapshot& Snapshot) const;
