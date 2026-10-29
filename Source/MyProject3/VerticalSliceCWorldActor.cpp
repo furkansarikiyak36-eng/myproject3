@@ -1861,13 +1861,16 @@ void AVerticalSliceCWorldActor::ChopInput()
     }
 
     UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
-    if (Survival && PlayerSurvivalId.IsValid() &&
-        !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+    if (Survival && PlayerSurvivalId.IsValid())
     {
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
-                TEXT("Too exhausted to work. Rest or recover stamina first."));
-        return;
+        if (!Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
+                    TEXT("Too exhausted or resting. Wait for rest to end or recover stamina."));
+            return;
+        }
+        AxeStrength *= Survival->GetWorkEffectiveness(PlayerSurvivalId);
     }
 
     FVector Location;
