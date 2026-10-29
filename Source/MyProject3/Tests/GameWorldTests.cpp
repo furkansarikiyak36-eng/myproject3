@@ -882,8 +882,19 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Firing starts"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
     TestEqual(TEXT("The raw pot is used"), Kiln->GetStockCount(TEXT("Pot.Raw")), 0);
 
-    for (int32 Hour = 0; Hour < 4; ++Hour)
-        TestTrue(TEXT("Kiln hour"), Production->AdvanceProductionStep(3600.0));
+    TestTrue(TEXT("First kiln hour"), Production->AdvanceProductionStep(3600.0));
+    FWorldProductionStation ProgressState;
+    TestTrue(TEXT("Read kiln progress"), Production->GetStation(Kiln->GetStationId(), ProgressState));
+    TestEqual(TEXT("One hour of progress"), ProgressState.Jobs[0].ProgressSeconds, 3600.0);
+
+    Fire->Extinguish();
+    TestTrue(TEXT("Clock step while fire is out"), Production->AdvanceProductionStep(3600.0));
+    TestTrue(TEXT("Read paused kiln"), Production->GetStation(Kiln->GetStationId(), ProgressState));
+    TestEqual(TEXT("Progress pauses without hot fire"), ProgressState.Jobs[0].ProgressSeconds, 3600.0);
+
+    TestTrue(TEXT("Relight charcoal-hot fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
+    for (int32 Hour = 0; Hour < 3; ++Hour)
+        TestTrue(TEXT("Kiln resumes after fire returns"), Production->AdvanceProductionStep(3600.0));
     TestEqual(TEXT("Collect"), Kiln->CollectFinishedJobs(), 1);
     TestEqual(TEXT("A fired pot"), Kiln->GetStockCount(TEXT("Pot.Fired")), 1);
     TestTrue(TEXT("Take it"), Kiln->TryTake(Inventory, TEXT("Pot.Fired"), 1));
