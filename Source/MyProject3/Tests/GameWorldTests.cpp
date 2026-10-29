@@ -25,6 +25,9 @@
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldEventDirectorSubsystem.h"
 #include "WorldHudDataSubsystem.h"
+#include "LogContainerActor.h"
+#include "ShelterSensorComponent.h"
+#include "GameFramework/Pawn.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
@@ -1025,6 +1028,53 @@ bool FGeologyResolverTest::RunTest(const FString& Parameters)
         Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone99"), 0, 981, Repeat));
     TestFalse(TEXT("Depth outside editable range fails"),
         Terrain->ResolveGeologyMaterial(Cell, TEXT("Zone0"), 4, 981, Repeat));
+    return true;
+}
+
+
+// P2.2: ongoing sled tow charges from elapsed shared world time, not render-frame delta.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSledTowOngoingCostTest,
+    "MyProject3.World.Needs.SledTowChargesSharedClockActivity", Flags)
+bool FSledTowOngoingCostTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival))
+        return false;
+    TestTrue(TEXT("Shared clock initializes"), Clock->InitializeClock(7331, 0.0));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Stamina = 100.0f;
+    Profile.Fatigue = 20.0f;
+    TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+
+    APawn* Puller = World->SpawnActor<APawn>();
+    if (!TestNotNull(TEXT("Puller pawn"), Puller))
+        return false;
+    UShelterSensorComponent* Sensor = NewObject<UShelterSensorComponent>(Puller);
+    Puller->AddInstanceComponent(Sensor);
+    Sensor->SurvivalEntityId = Profile.EntityId;
+    Sensor->RegisterComponent();
+
+    ALogContainerActor* Sled = World->SpawnActor<ALogContainerActor>();
+    if (!TestNotNull(TEXT("Sled"), Sled))
+        return false;
+    Sled->ConfigureKind(ELogContainerKind::BasicSled);
+    TestTrue(TEXT("Begin towing"), Sled->ToggleTow(Puller));
+
+    TestTrue(TEXT("Advance shared time by one minute"), Clock->AdvanceSimulation(60.0));
+    // Tick delta is intentionally tiny: activity cost must follow logical time, not this render delta.
+    Sled->Tick(0.016f);
+
+    FWorldSurvivalProfile After;
+    TestTrue(TEXT("Read charged profile"), Survival->GetProfile(Profile.EntityId, After));
+    TestEqual(TEXT("One minute of towing costs two stamina"), After.Stamina, 98.0f, 0.01f);
+    TestTrue(TEXT("Towing reports activity energy"), After.PendingActivityKcal > 0.0f);
+    TestFalse(TEXT("The sled remains towed when the puller has stamina"), !Sled->IsTowed());
+    TestTrue(TEXT("Release towing"), Sled->ToggleTow(Puller));
     return true;
 }
 
