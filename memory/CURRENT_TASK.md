@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `ProductionStationActor` and `WorldGameDataSubsystem` test includes, then add one integration test: `LoadDefault`+`ApplyToWorld`, create and data-initialize an inventory, create `workbench_log`, add generic HalfLog/Wedge/Chisel stacks, deposit via station API, start `make_plank`, advance by a bounded 3600-second step, collect job metadata, take Plank + a returned tool, and assert category/max-stack survive station storage. Source-only/unrun.
+Audit the new station integration test against production/job/stock semantics. Confirm the chosen data IDs (`workbench_log`, `make_plank`, `HalfLog`, `Tool.Wedge`, `Tool.Chisel`, output `Plank`) are exact and that `TryCollectCompletedJob` removes the completed job only after output stock is committed. Fix any test assumptions before status updates.
