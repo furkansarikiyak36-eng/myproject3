@@ -1043,6 +1043,57 @@ void AVerticalSliceCWorldActor::BeginPlay()
     }
 }
 
+void AVerticalSliceCWorldActor::EnsureStarterTools()
+{
+    if (bStarterToolsGranted)
+        return;
+
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    if (!World || !GameData || !GameData->IsApplied() || !Pawn || !Inventory ||
+        !GameData->ApplyToInventory(Inventory))
+        return;
+
+    TArray<FInventoryStack> MissingTools;
+    const FName ToolIds[] = { FName(TEXT("Tool.Axe")), FName(TEXT("Tool.DiggingStick")) };
+    for (const FName ToolId : ToolIds)
+    {
+        if (Inventory->GetItemCount(ToolId) > 0)
+            continue;
+
+        float Strength = 0.0f;
+        if (!GameData->GetToolStrength(ToolId, Strength))
+            return;
+
+        FInventoryStack Stack;
+        Stack.ItemId = ToolId;
+        Stack.Quantity = 1;
+        Stack.Category = EInventoryItemCategory::Tool;
+        Stack.bIsTool = true;
+        Stack.MaxStack = 1;
+        MissingTools.Add(Stack);
+    }
+
+    if (!MissingTools.IsEmpty() && !Inventory->CanAddItems(MissingTools))
+        return;
+    for (const FInventoryStack& Stack : MissingTools)
+    {
+        if (!Inventory->TryAddItem(Stack))
+            return; // Capacity was preflighted; retry on the next Tick if the state changed.
+    }
+
+    // Prototype C starts with the visible stone axe and primitive digging stick.
+    // They are normal inventory tool stacks, consistent with hand-craft outputs.
+    bStarterToolsGranted =
+        Inventory->GetItemCount(TEXT("Tool.Axe")) > 0 &&
+        Inventory->GetItemCount(TEXT("Tool.DiggingStick")) > 0;
+}
+
 void AVerticalSliceCWorldActor::SetupPlayer()
 {
     APlayerController* Controller = GetWorld()->GetFirstPlayerController();
@@ -1513,11 +1564,25 @@ void AVerticalSliceCWorldActor::FillCreekWaterInput()
 
 void AVerticalSliceCWorldActor::ChopInput()
 {
-    APlayerController* Controller = GetWorld()->GetFirstPlayerController();
-    if (!Controller)
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    float AxeStrength = 0.0f;
+    if (!World || !Controller || !Pawn || !Inventory || !GameData || !GameData->IsApplied() ||
+        Inventory->GetItemCount(TEXT("Tool.Axe")) <= 0 ||
+        !GameData->GetToolStrength(TEXT("Tool.Axe"), AxeStrength))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                TEXT("A usable Tool.Axe is required for chopping and log processing."));
         return;
+    }
 
-    UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+    UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
     if (Survival && PlayerSurvivalId.IsValid() &&
         !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
     {
@@ -1580,7 +1645,7 @@ void AVerticalSliceCWorldActor::ChopInput()
         return;
     }
 
-    const bool bAccepted = Tree->ApplyChopDamage(1.0f, Rotation.Vector());
+    const bool bAccepted = Tree->ApplyChopDamage(AxeStrength, Rotation.Vector());
     if (bAccepted)
         ++SuccessfulChopCount;
 
@@ -1588,7 +1653,7 @@ void AVerticalSliceCWorldActor::ChopInput()
     const FColor FeedbackColor = !bAccepted ? FColor::Red : (bFelled ? FColor::Green : FColor::Orange);
     const FString Feedback = FString::Printf(
         TEXT("AXE SWING #%d | TREE HIT #%d | %s | Damage: %.1f | Tree HP: %.1f / %.1f%s"),
-        ChopSwingCount, SuccessfulChopCount, *Tree->GetName(), bAccepted ? 1.0f : 0.0f,
+        ChopSwingCount, SuccessfulChopCount, *Tree->GetName(), bAccepted ? AxeStrength : 0.0f,
         Tree->ChopHealth, Tree->MaxChopHealth, !bAccepted ? TEXT(" | BLOCKED") : (bFelled ? TEXT(" | FELLED") : TEXT("")));
 
     DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 15.0f, 10, FeedbackColor,
@@ -1616,6 +1681,7 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
     if (!PlayerSurvivalId.IsValid())
         SetupPlayer();
+    EnsureStarterTools();
 
     UpdateCreek(DeltaSeconds);
     if (Helper && Helper->GetStatus() != LastHelperStatus && GEngine)
