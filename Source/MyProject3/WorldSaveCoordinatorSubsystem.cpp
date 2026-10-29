@@ -773,6 +773,12 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Legacy edits remain logical terrain edits with no inferred resources.
         Candidate->SchemaVersion = 17;
     }
+    if (Candidate->SchemaVersion == 17)
+    {
+        // Schema v18 adds generic item-intake receipts to production stations.
+        // Old stock is retained as-is; no historical intake identity is invented.
+        Candidate->SchemaVersion = 18;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
