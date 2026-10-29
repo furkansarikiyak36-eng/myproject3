@@ -1,4 +1,5 @@
 #include "WorldAgricultureSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Actor.h"
@@ -206,7 +207,15 @@ bool UWorldAgricultureSubsystem::RegisterWorldOutputsAtomically(
 
 bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefinition& Definition)
 {
-    if (Definition.CropDefinitionId.IsNone() || Definition.SeedDefinitionId.IsNone() ||
+    TSet<int32> SeenPlantMonths;
+    for (const int32 Month : Definition.PlantMonths)
+    {
+        if (Month < 1 || Month > 12 || SeenPlantMonths.Contains(Month))
+            return false;
+        SeenPlantMonths.Add(Month);
+    }
+    if (Definition.FoundInZone < 0 || Definition.FoundInZone > 4 ||
+        Definition.CropDefinitionId.IsNone() || Definition.SeedDefinitionId.IsNone() ||
         Definition.HarvestDefinitionId.IsNone() || Definition.HarvestUnits <= 0 ||
         Definition.HarvestUnits > 64 || !FMath::IsFinite(Definition.SecondsPerStage) ||
         Definition.SecondsPerStage <= 0.0 ||
@@ -245,7 +254,21 @@ bool UWorldAgricultureSubsystem::TryPlantCrop(
     }
 
     const FWorldCropDefinition* Definition = FindCropDefinition(CropDefinitionId);
-    if (!Definition || InitialMoisture < Definition->MinimumPlantMoisture ||
+    if (!Definition)
+        return false;
+
+    // Data-defined crops obey the shared calendar. Empty PlantMonths is reserved
+    // for tests/special crops that explicitly permit year-round planting.
+    if (!Definition->PlantMonths.IsEmpty())
+    {
+        const UWorldSimulationClockSubsystem* Clock =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+        FWorldCalendarDate Date;
+        if (!Clock || !Clock->GetCalendarDate(Date) || !Definition->PlantMonths.Contains(Date.Month))
+            return false;
+    }
+
+    if (InitialMoisture < Definition->MinimumPlantMoisture ||
         MaxCrops <= 0 || Crops.Num() >= MaxCrops ||
         MaxOperationReceiptsPerEntity <= 0 ||
         MaxOperationReceiptsPerEntity > 256)
