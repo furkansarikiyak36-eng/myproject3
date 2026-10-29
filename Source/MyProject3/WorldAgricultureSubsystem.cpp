@@ -18,6 +18,16 @@ const FWorldCropDefinition* UWorldAgricultureSubsystem::FindCropDefinition(FName
     });
 }
 
+const FWorldAnimalDefinition* UWorldAgricultureSubsystem::FindAnimalDefinition(FName AnimalDefinitionId) const
+{
+    if (AnimalDefinitionId.IsNone())
+        return nullptr;
+    return AnimalDefinitions.FindByPredicate([AnimalDefinitionId](const FWorldAnimalDefinition& Definition)
+    {
+        return Definition.AnimalDefinitionId == AnimalDefinitionId;
+    });
+}
+
 const FWorldAgricultureActionReceipt*
 UWorldAgricultureSubsystem::FindActionReceipt(const FGuid& OperationId) const
 {
@@ -42,6 +52,15 @@ UWorldAgricultureSubsystem::FindActionReceipt(const FGuid& OperationId) const
             return Found;
     }
     for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        if (const FWorldAgricultureActionReceipt* Found =
+            Pair.Value.ActionReceipts.FindByPredicate([OperationId](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.OperationId == OperationId;
+            }))
+            return Found;
+    }
+    for (const TPair<FGuid, FWorldAnimalPenState>& Pair : AnimalPens)
     {
         if (const FWorldAgricultureActionReceipt* Found =
             Pair.Value.ActionReceipts.FindByPredicate([OperationId](const FWorldAgricultureActionReceipt& Receipt)
@@ -243,6 +262,41 @@ bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefiniti
         SeenMonths.Add(Month);
     }
     CropDefinitions.Add(Definition);
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::RegisterAnimalDefinition(const FWorldAnimalDefinition& Definition)
+{
+    if (Definition.AnimalDefinitionId.IsNone() || Definition.FeedDefinitionId.IsNone() ||
+        Definition.CaptureToolDefinitionIds.IsEmpty() ||
+        !FMath::IsFinite(Definition.ProductIntervalSeconds) || Definition.ProductIntervalSeconds <= 0.0 ||
+        Definition.ProductUnitsPerInterval <= 0 || Definition.ProductUnitsPerInterval > 64 ||
+        (Definition.ProductDefinitionId.IsNone() == false &&
+            (Definition.ProductIntervalSeconds < 1.0 || Definition.ProductUnitsPerInterval < 1)) ||
+        Definition.SlaughterYields.IsEmpty() || AnimalDefinitions.ContainsByPredicate(
+            [&Definition](const FWorldAnimalDefinition& Existing)
+            { return Existing.AnimalDefinitionId == Definition.AnimalDefinitionId; }) ||
+        AnimalDefinitions.Num() >= 256)
+        return false;
+
+    TSet<FName> SeenTools;
+    for (const FName ToolId : Definition.CaptureToolDefinitionIds)
+    {
+        if (ToolId.IsNone() || SeenTools.Contains(ToolId))
+            return false;
+        SeenTools.Add(ToolId);
+    }
+    TSet<FName> SeenYieldIds;
+    int32 TotalYieldUnits = 0;
+    for (const FWorldAnimalYieldDefinition& Yield : Definition.SlaughterYields)
+    {
+        if (Yield.ItemDefinitionId.IsNone() || Yield.Units <= 0 || Yield.Units > 64 ||
+            SeenYieldIds.Contains(Yield.ItemDefinitionId) || TotalYieldUnits > 64 - Yield.Units)
+            return false;
+        SeenYieldIds.Add(Yield.ItemDefinitionId);
+        TotalYieldUnits += Yield.Units;
+    }
+    AnimalDefinitions.Add(Definition);
     return true;
 }
 
