@@ -362,10 +362,15 @@ bool UWorldEventDirectorSubsystem::ApplyConditionEffect(
         if (!OperationId.IsValid())
             OperationId.A = 1;
 
-        // Each profile receipt is idempotent. A profile with a full condition
-        // receipt list is skipped without blocking the rest of the simulation.
-        Survival->TryApplyCondition(OperationId, Profile.EntityId, Profile.Revision,
-            ConditionId, EffectiveSeverity);
+        // Capacity is a deliberate skip; other failures indicate a stale or
+        // conflicting transaction and must abort the step so coordinator rollback
+        // can restore the event and every condition already applied this tick.
+        if (Profile.Conditions.Num() >= 128 ||
+            Profile.ActionReceipts.Num() >= Survival->MaxActionReceiptsPerProfile)
+            continue;
+        if (!Survival->TryApplyCondition(OperationId, Profile.EntityId, Profile.Revision,
+            ConditionId, EffectiveSeverity))
+            return false;
     }
     return true;
 }
