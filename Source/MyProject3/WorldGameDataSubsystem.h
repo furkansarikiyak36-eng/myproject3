@@ -96,16 +96,6 @@ struct FGameDataZone
 };
 
 USTRUCT(BlueprintType)
-struct FGameDataDiscovery
-{
-    GENERATED_BODY()
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") FName Id = NAME_None;
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> PrerequisiteDiscoveryIds;
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> RequiredEquipmentItemIds;
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> UnlockedDefinitionIds;
-};
-
-USTRUCT(BlueprintType)
 struct FGameDataRouteNode
 {
     GENERATED_BODY()
@@ -200,7 +190,6 @@ public:
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
     const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
     const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
-    const TArray<FGameDataDiscovery>& GetDiscoveryDefinitions() const { return GameDiscoveries; }
     /** Evaluates season, required clothing capabilities and prerequisite discoveries for a zone. */
     UFUNCTION(BlueprintPure, Category="GameData|Zones") bool CanEnterZone(const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const;
     const FGameDataTransformation* FindTransformation(FName Id) const;
@@ -221,7 +210,6 @@ private:
     TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataRouteNode> RouteNodes;
     TArray<FGameDataRouteEdge> RouteEdges;
-    TArray<FGameDataDiscovery> GameDiscoveries;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 
