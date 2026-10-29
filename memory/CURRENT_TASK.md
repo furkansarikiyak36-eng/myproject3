@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `ROADMAP.md` progress log and `CODEBASE.md` Fire/Shelter row with P3.2 opening-ray fix/test. Then inspect current P4.3 station interaction and P4.4 tool strength/tool preservation data paths; do not extend P10 physical assembly.
+Read production station interaction, game-data station definitions and item/tool properties for P4.3/P4.4. Find whether the prototype currently has any station placement/use input and whether tools are preserved as `bConsume=false` transformations. Then close one concrete gap (station player use or tool strength/degradation) and update status only to code-written.
