@@ -2557,6 +2557,78 @@ bool FStructuralRepairAndDismantleTransactionTest::RunTest(const FString& Parame
     return true;
 }
 
+// P7 / M065-M066: primitive proxy geometry and secondary-support anchors.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FStructuralProxyAndSecondaryAnchorReservationTest,
+    "MyProject3.World.Structure.ProxyVariantsAndSecondaryAnchorReservations", Flags)
+bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldStructuralGraphSubsystem* Graph = World
+        ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Structural graph"), Graph) ||
+        !TestNotNull(TEXT("Engine cube"), Cube))
+        return false;
+
+    auto SpawnGroundStone = [World, Cube](const FVector& Location) -> AStoneBuildingPiece*
+    {
+        const FTransform Transform(FRotator::ZeroRotator, Location);
+        AStoneBuildingPiece* Piece = World->SpawnActorDeferred<AStoneBuildingPiece>(
+            AStoneBuildingPiece::StaticClass(), Transform);
+        if (!Piece)
+            return nullptr;
+        Piece->PieceType = EStonePieceType::RawStone;
+        Piece->bStartsPlaced = true;
+        Piece->Mesh->SetStaticMesh(Cube);
+        Piece->FinishSpawning(Transform);
+        return Piece;
+    };
+
+    AStoneBuildingPiece* SupportA = SpawnGroundStone(FVector(0.0, 0.0, 0.0));
+    AStoneBuildingPiece* SupportB = SpawnGroundStone(FVector(500.0, 0.0, 0.0));
+    const FTransform BridgeTransform(FRotator::ZeroRotator, FVector(250.0, 0.0, 100.0));
+    AStoneBuildingPiece* Bridge = World->SpawnActorDeferred<AStoneBuildingPiece>(
+        AStoneBuildingPiece::StaticClass(), BridgeTransform);
+    if (!TestNotNull(TEXT("Primary support"), SupportA) ||
+        !TestNotNull(TEXT("Secondary support"), SupportB) ||
+        !TestNotNull(TEXT("Bridge deck proxy"), Bridge))
+        return false;
+    Bridge->PieceType = EStonePieceType::BridgeDeck;
+    Bridge->bCanBeCarried = true;
+    Bridge->FinishSpawning(BridgeTransform);
+
+    TArray<UStaticMeshComponent*> BridgeMeshes;
+    Bridge->GetComponents<UStaticMeshComponent>(BridgeMeshes);
+    TestTrue(TEXT("Bridge deck builds multiple placeholder box parts"), BridgeMeshes.Num() >= 2);
+    FStructuralAnchorView LeftAnchor;
+    FStructuralAnchorView RightAnchor;
+    FStructuralAnchorView TopAnchor;
+    TestTrue(TEXT("Bridge declares a left support anchor"), Bridge->GetStructuralAnchor(TEXT("SupportLeft"), LeftAnchor));
+    TestTrue(TEXT("Bridge declares a right support anchor"), Bridge->GetStructuralAnchor(TEXT("SupportRight"), RightAnchor));
+    TestTrue(TEXT("Second foundation exposes a receiving top anchor"), SupportB->GetStructuralAnchor(TEXT("AutoTop"), TopAnchor));
+    TestTrue(TEXT("Bridge can be held for primary placement"), Bridge->SetHeldState(true));
+    TestTrue(TEXT("Connect deck to first support"),
+        Bridge->TryConnectToAnchor(SupportA, TEXT("AutoTop"), TEXT("SupportLeft")));
+    TestTrue(TEXT("Reserve secondary bridge support through the canonical graph"),
+        Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId(),
+            TEXT("AutoTop"), TEXT("SupportRight")));
+
+    Bridge->GetStructuralAnchor(TEXT("SupportRight"), RightAnchor);
+    SupportB->GetStructuralAnchor(TEXT("AutoTop"), TopAnchor);
+    TestTrue(TEXT("Secondary edge occupies deck-side anchor"), RightAnchor.bOccupied);
+    TestTrue(TEXT("Secondary edge occupies support-side anchor"), TopAnchor.bOccupied);
+
+    TestTrue(TEXT("Remove secondary bridge support"),
+        Graph->TryRemoveSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId()));
+    Bridge->GetStructuralAnchor(TEXT("SupportRight"), RightAnchor);
+    SupportB->GetStructuralAnchor(TEXT("AutoTop"), TopAnchor);
+    TestFalse(TEXT("Removed edge releases deck-side anchor"), RightAnchor.bOccupied);
+    TestFalse(TEXT("Removed edge releases support-side anchor"), TopAnchor.bOccupied);
+    TestTrue(TEXT("Primary support remains valid"), Graph->HasValidSupportPath(Bridge->GetStructuralNodeId()));
+    return true;
+}
+
 // P5.2: dug terrain gets a purpose. A roofed cellar is a cool store and caves in without a
 // support; a cistern collects rain; a trench must be a dug line.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEarthworkPurposesTest,

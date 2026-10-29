@@ -11,7 +11,7 @@
 - `structure_repairs.json` defines wood, stone and stick repairs with target kind, consumed material, reusable tool, repair amount and conservative salvage output.
 - `TryRepairDamageWithInventory` validates node kind/revision/damage, material count and tool presence, then consumes the material and repairs the same authoritative graph damage value. The tool remains reusable.
 - `TryDismantleStandaloneNodeToInventory` consumes the physical item's ledger identity and returns authored salvage only for a standalone node without parent links, secondary supports or dependents. Connected pieces are rejected instead of being removed with stale anchor/graph references.
-- Automation source covers missing-material failure, resource-backed repair, tool preservation, standalone salvage, stale revisions, support-preserving disconnect, load distribution and snapshot export.
+- Automation source covers missing-material failure, resource-backed repair, tool preservation, standalone salvage, stale revisions, support-preserving disconnect, load distribution, snapshot export, procedural bridge proxy pieces and physical secondary-anchor reservation/release.
 - Stone-piece authoring has distinct enum slots for wall, door/window frame, wall opening, floor/roof, ramp/stair, bridge/walkway, gate/fence/railing and defensive wall variants. Those slots require appropriate physical meshes/anchors in Blueprint content; the enum does not claim geometry is already authored.
 
 ## Remaining physical construction work (not fully closed)

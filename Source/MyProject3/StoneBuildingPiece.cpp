@@ -299,7 +299,7 @@ bool AStoneBuildingPiece::TryCommitGroundPlacement(
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : false);
+        Mesh->SetSimulatePhysics(false);
         Mesh->SetCollisionProfileName(TEXT("BlockAll"));
         Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
     }
