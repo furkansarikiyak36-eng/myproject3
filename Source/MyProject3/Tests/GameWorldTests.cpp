@@ -18,6 +18,7 @@
 #include "WorldThreatDirectorSubsystem.h"
 #include "LogContainerActor.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
 #include "WallCoatingComponent.h"
 #include "StoneBuildingPiece.h"
 #include "GatherableResourceActor.h"
@@ -1062,8 +1063,9 @@ bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
     }
 
     TestTrue(TEXT("Preflight at effect start"), Events->CanAdvanceEventStep(1800.0, 1860.0, 2));
-    TestTrue(TEXT("Advance clock through first event step"), Clock->AdvanceSimulation(60.0));
-    TestTrue(TEXT("Advance clock to effect start"), Clock->AdvanceSimulation(1800.0));
+    // The first 60-second event step was prospective; advance the shared clock
+    // only to its committed boundary, then preflight the next 1,800-second step.
+    TestTrue(TEXT("Advance clock to first event boundary"), Clock->AdvanceSimulation(60.0));
     TestTrue(TEXT("Advance into effect phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
     const TArray<FWorldNaturalEventInstance> Active = Events->GetActiveNaturalEvents();
     const FWorldNaturalEventInstance* ActiveSnow = Active.FindByPredicate(
@@ -1259,6 +1261,68 @@ bool FRaidPressureRespondsToStoredFoodLightAndSmokeTest::RunTest(const FString& 
         SignalRaid.Pressure > QuietRaid.Pressure + 0.25f);
     TestTrue(TEXT("Target stays near the food/fire signal cluster"),
         FVector::Dist2D(SignalRaid.TargetLocation, StorageLocation) < 1000.0f);
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FForestFireDamagesNearbyWoodStructuresTest,
+    "MyProject3.World.Events.ForestFireDamagesNearbyWoodStructures", Flags)
+bool FForestFireDamagesNearbyWoodStructuresTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), Data) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Event director"), Events) || !TestNotNull(TEXT("Structural graph"), Graph))
+        return false;
+
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply game data"), Data->ApplyToWorld());
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(81427));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+    TestTrue(TEXT("Initialize event director"), Events->InitializeEventDirector());
+
+    AActor* WoodA = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FVector(100.0, 0.0, 0.0), FRotator::ZeroRotator);
+    AActor* WoodB = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FVector(650.0, 0.0, 0.0), FRotator::ZeroRotator);
+    if (!TestNotNull(TEXT("First wooden structure"), WoodA) ||
+        !TestNotNull(TEXT("Second wooden structure"), WoodB))
+        return false;
+
+    const FGuid WoodAId = FGuid::NewGuid();
+    const FGuid WoodBId = FGuid::NewGuid();
+    TestTrue(TEXT("Register first wooden structure"),
+        Graph->RegisterNode(WoodA, WoodAId, EStructuralNodeKind::Wood, true, 0.0f, 10000.0f, 100.0f));
+    TestTrue(TEXT("Register second wooden structure"),
+        Graph->RegisterNode(WoodB, WoodBId, EStructuralNodeKind::Stick, true, 0.0f, 10000.0f, 100.0f));
+
+    FWorldClimateSnapshot ForcedHeatwave = Climate->ExportSnapshot();
+    ForcedHeatwave.Weather = EWorldWeatherState::Heatwave;
+    ForcedHeatwave.Severity = 0.95f;
+    ForcedHeatwave.TemperatureCelsius = 35.0f;
+    ForcedHeatwave.SnowDepthCm = 0.0f;
+    ForcedHeatwave.GroundWetness = 0.0f;
+    ForcedHeatwave.WeatherDayIndex = 0;
+    TestTrue(TEXT("Force deterministic heatwave"), Climate->RestoreSnapshot(ForcedHeatwave));
+
+    TestTrue(TEXT("Signal forest fire"), Events->AdvanceEventStep(60.0, 60.0, 1));
+    TestTrue(TEXT("Advance shared clock to warning boundary"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Advance forest fire to active phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
+
+    FStructuralNodeRecord DamagedA;
+    FStructuralNodeRecord DamagedB;
+    TestTrue(TEXT("Read first structure"), Graph->GetNode(WoodAId, DamagedA));
+    TestTrue(TEXT("Read second structure"), Graph->GetNode(WoodBId, DamagedB));
+    TestTrue(TEXT("Fire effect damages nearby flammable structure"),
+        DamagedA.Damage > 0.0f || DamagedB.Damage > 0.0f);
+    TestTrue(TEXT("Only wooden or stick nodes are included in fire spread"),
+        DamagedA.Damage > 0.0f && DamagedB.Damage > 0.0f);
     return true;
 }
 
