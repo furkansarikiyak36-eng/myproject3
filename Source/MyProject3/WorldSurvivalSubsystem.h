@@ -288,6 +288,10 @@ public:
     bool TryRecordConfiguredDiscovery(const FGuid& OperationId, const FGuid& EntityId,
         int64 ExpectedProfileRevision, FName DiscoveryId, FVector Location,
         double LogicalTimeSeconds);
+    /** Checks an exact committed discovery request so zone-entry retries stay idempotent if weather/season/equipment later changes. */
+    UFUNCTION(BlueprintPure, Category="World|Exploration")
+    bool HasDiscoveryOperationReceipt(const FGuid& OperationId, const FGuid& EntityId,
+        FName DiscoveryId, FVector RequestedLocation) const;
     UFUNCTION(BlueprintPure, Category="World|Exploration")
     bool IsDefinitionUnlocked(const FGuid& EntityId, FName DefinitionId) const;
     UFUNCTION(BlueprintPure, Category="World|Survival|Equipment")
