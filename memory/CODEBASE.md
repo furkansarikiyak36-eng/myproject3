@@ -95,3 +95,5 @@ Plan = `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`, tasks = `ROADMAP.md`.
 - 2026-10-29 · Recipes are registered in C++ (`WorldDemoScenarioActor.cpp:227`), not from data.
 - 2026-10-29 · No code mentions season, month, spoilage, disease, flood, avalanche, wildfire, fertility.
 - 2026-10-29 · `HeatSourceComponent` fuel is a number of seconds, not consumed items.
+
+| Player tool strength | P4.4 | code-written | `FGameDataItem::ToolStrength` parsed from `items.json`; Axe 1.5, DiggingStick 1.0; `GetToolStrength` rejects non-tools; axe scales tree/log work and digging stick scales N voxel excavation. Starter tools are granted after data apply. Automation authored; unbuilt/unrun. |
