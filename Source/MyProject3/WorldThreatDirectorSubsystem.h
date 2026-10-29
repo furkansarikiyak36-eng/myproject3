@@ -48,6 +48,10 @@ struct FThreatRaidRecord
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
     int64 Revision = 0;
+
+    /** Last raid damage pulse claimed by the world adapter; -1 means none was committed. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat|Damage")
+    int64 LastAppliedDamagePulseIndex = -1;
 };
 
 /**
@@ -108,6 +112,9 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool ResolveCurrentRaid(bool bRepelled);
+
+    /** Claims a deterministic pulse once; the claimed index persists with the raid record. */
+    bool TryClaimDamagePulse(const FGuid& RaidId, int64 PulseIndex);
 
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool CancelCurrentRaid();
