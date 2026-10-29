@@ -1549,8 +1549,9 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     TestTrue(TEXT("Read survival state before planting labor"),
         Survival->GetProfile(Profile.EntityId, BeforePlantingWork));
     FGuid CropId;
+    const FGuid PlantOperation = FGuid::NewGuid();
     TestTrue(TEXT("Discovered seed can now be planted through the labor transaction"),
-        Agriculture->TryPlantCropWithLabor(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
+        Agriculture->TryPlantCropWithLabor(PlantOperation, TEXT("Crop.Grain"), InitialSeed.ItemId,
             InitialSeed.Revision, Inventory, Profile.EntityId, PlotCell, 0.5f, CropId));
     FWorldSurvivalProfile AfterPlantingWork;
     TestTrue(TEXT("Read survival state after planting labor"),
@@ -1559,6 +1560,19 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
         AfterPlantingWork.PendingActivityKcal > BeforePlantingWork.PendingActivityKcal);
     TestTrue(TEXT("Planting charges stamina"),
         AfterPlantingWork.Stamina < BeforePlantingWork.Stamina);
+
+    FGuid RetryCropId;
+    TestTrue(TEXT("Planting retry returns the original crop"),
+        Agriculture->TryPlantCropWithLabor(PlantOperation, TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory, Profile.EntityId, PlotCell, 0.5f, RetryCropId));
+    TestTrue(TEXT("Planting retry preserves the original crop identity"), RetryCropId == CropId);
+    FWorldSurvivalProfile AfterPlantingRetry;
+    TestTrue(TEXT("Read profile after planting retry"),
+        Survival->GetProfile(Profile.EntityId, AfterPlantingRetry));
+    TestEqual(TEXT("Planting retry does not charge labor twice"),
+        AfterPlantingRetry.PendingActivityKcal, AfterPlantingWork.PendingActivityKcal);
+    TestEqual(TEXT("Planting retry does not drain stamina twice"),
+        AfterPlantingRetry.Stamina, AfterPlantingWork.Stamina);
     FWorldCropState PlantedCrop;
     TestTrue(TEXT("Successful planting produces a crop record"),
         Agriculture->GetCrop(CropId, PlantedCrop));
