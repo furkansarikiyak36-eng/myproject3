@@ -2826,4 +2826,138 @@ bool FHeatFuelOwnershipReceiptTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSurvivalConsumesOwnedFoodAndAppliesFreshnessTest,
+    "MyProject3.Survival.FoodConsumesOwnedItemAndUsesSharedClockFreshness", TestFlags)
+bool FSurvivalConsumesOwnedFoodAndAppliesFreshnessTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Initialize logical clock"), Clock->InitializeClock(9876, 100.0));
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+
+    auto AddOwnedFood = [&](const FName DefinitionId, const FGuid& ItemId)
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = ItemId;
+        Item.DefinitionId = DefinitionId;
+        Item.BaseDefinitionId = DefinitionId;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = InventoryOwnerId;
+        Item.Quantity = 1;
+        return Ownership->RegisterItem(Item);
+    };
+
+    const FGuid MealId = FGuid::NewGuid();
+    const FGuid RottenId = FGuid::NewGuid();
+    TestTrue(TEXT("Register meal ownership"), AddOwnedFood(TEXT("Test.Meal"), MealId));
+    TestTrue(TEXT("Register rotten meal ownership"), AddOwnedFood(TEXT("Test.RottenMeal"), RottenId));
+    Inventory->ItemWeightGrams.Add(TEXT("Test.Meal"), 200);
+    Inventory->ItemWeightGrams.Add(TEXT("Test.RottenMeal"), 200);
+
+    FInventoryStack MealStack;
+    MealStack.ItemId = TEXT("Test.Meal");
+    MealStack.Quantity = 1;
+    MealStack.MaxStack = 1;
+    MealStack.OwnedWorldItemId = MealId;
+    FInventoryStack RottenStack;
+    RottenStack.ItemId = TEXT("Test.RottenMeal");
+    RottenStack.Quantity = 1;
+    RottenStack.MaxStack = 1;
+    RottenStack.OwnedWorldItemId = RottenId;
+    TestTrue(TEXT("Inventory snapshot contains both unique food items"), Inventory->RestoreSnapshot(
+        InventoryOwnerId, { MealStack, RottenStack }, NAME_None));
+
+    FWorldSurvivalConsumableDefinition MealDefinition;
+    MealDefinition.DefinitionId = TEXT("Test.Meal");
+    MealDefinition.CaloriesKcal = 400.0f;
+    MealDefinition.ThirstRelief = 15.0f;
+    MealDefinition.FreshnessDurationSeconds = 10.0;
+    MealDefinition.SpoiledEnergyFraction = 0.25f;
+    TestTrue(TEXT("Register meal effects"), Survival->RegisterConsumableDefinition(MealDefinition));
+
+    FWorldSurvivalConsumableDefinition RottenDefinition;
+    RottenDefinition.DefinitionId = TEXT("Test.RottenMeal");
+    RottenDefinition.CaloriesKcal = 500.0f;
+    RottenDefinition.ThirstRelief = 0.0f;
+    RottenDefinition.FreshnessDurationSeconds = 5.0;
+    RottenDefinition.SpoiledEnergyFraction = 0.0f;
+    TestTrue(TEXT("Register non-edible spoiled food policy"),
+        Survival->RegisterConsumableDefinition(RottenDefinition));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.CaloriesKcal = 1000.0f;
+    Profile.Hunger = 60.0f;
+    Profile.Thirst = 20.0f;
+    TestTrue(TEXT("Register profile"), Survival->RegisterProfile(Profile));
+
+    TestTrue(TEXT("Advance shared clock past the meal freshness interval"),
+        Clock->AdvanceSimulation(20.0));
+    const FGuid EatOperationId = FGuid::NewGuid();
+    TestTrue(TEXT("Consume stale but partially edible meal"), Survival->TryConsumeFoodItem(
+        EatOperationId, Profile.EntityId, Profile.Revision, MealId, 1, InventoryOwnerId));
+
+    FWorldSurvivalProfile AfterMeal;
+    TestTrue(TEXT("Read state after meal"), Survival->GetProfile(Profile.EntityId, AfterMeal));
+    TestTrue(TEXT("Spoiled meal applies configured fractional calories"),
+        FMath::IsNearlyEqual(AfterMeal.CaloriesKcal, 1100.0f, 0.01f));
+    TestTrue(TEXT("Meal applies thirst relief"), FMath::IsNearlyEqual(AfterMeal.Thirst, 5.0f, 0.01f));
+    TestEqual(TEXT("Meal item leaves inventory"), Inventory->GetItemCount(TEXT("Test.Meal")), 0);
+    const int64 AfterMealRevision = AfterMeal.Revision;
+
+    TestTrue(TEXT("Eat retry returns original success"), Survival->TryConsumeFoodItem(
+        EatOperationId, Profile.EntityId, Profile.Revision, MealId, 1, InventoryOwnerId));
+    FWorldSurvivalProfile AfterEatRetry;
+    TestTrue(TEXT("Read state after retry"), Survival->GetProfile(Profile.EntityId, AfterEatRetry));
+    TestEqual(TEXT("Eat retry does not add calories or revise state"),
+        AfterEatRetry.Revision, AfterMealRevision);
+    TestTrue(TEXT("Eat retry doesn't alter the calorie result"),
+        FMath::IsNearlyEqual(AfterEatRetry.CaloriesKcal, 1100.0f, 0.01f));
+
+    TestTrue(TEXT("Advance shared clock to rot the second meal"), Clock->AdvanceSimulation(5.0));
+    TestFalse(TEXT("Fully spoiled food is rejected"), Survival->TryConsumeFoodItem(
+        FGuid::NewGuid(), Profile.EntityId, AfterEatRetry.Revision, RottenId, 1, InventoryOwnerId));
+    TestEqual(TEXT("Rejected spoiled food remains in inventory"),
+        Inventory->GetItemCount(TEXT("Test.RottenMeal")), 1);
+    FWorldOwnedItemRecord RottenItem;
+    TestTrue(TEXT("Rejected spoiled item remains ledger-owned"), Ownership->TryGetItem(RottenId, RottenItem));
+    TestEqual(TEXT("Rejected item remains inventory-owned"), RottenItem.OwnerKind, EWorldItemOwnerKind::Inventory);
+    FWorldSurvivalProfile AfterReject;
+    TestTrue(TEXT("Read state after rejected food"), Survival->GetProfile(Profile.EntityId, AfterReject));
+    TestEqual(TEXT("Rejected food changes no survival state"), AfterReject.Revision, AfterEatRetry.Revision);
+
+    TArray<FWorldSurvivalProfile> Profiles;
+    TArray<FWorldDiscoveryRecord> Discoveries;
+    EWorldWeatherState Weather;
+    float Severity = 0.0f;
+    Survival->ExportSnapshot(Profiles, Discoveries, Weather, Severity);
+    TestTrue(TEXT("Save/load validation preserves the consumption receipt"),
+        Survival->RestoreSnapshot(Profiles, Discoveries, Weather, Severity));
+    TestTrue(TEXT("Consumed food retry remains successful after restore"),
+        Survival->TryConsumeFoodItem(EatOperationId, Profile.EntityId, Profile.Revision,
+            MealId, 1, InventoryOwnerId));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
