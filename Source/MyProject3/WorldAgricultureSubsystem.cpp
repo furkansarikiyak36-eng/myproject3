@@ -1923,7 +1923,9 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                     return false;
                 if (Receipt.InputItemId.IsValid())
                 {
-                    if (Receipt.ExpectedItemRevision <= 0 || Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1)
+                    // Unique capture tools are not consumed or transferred.
+                    if (Receipt.ExpectedItemRevision <= 0 ||
+                        Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision)
                         return false;
                     bNeedsItemValidation = true;
                 }
