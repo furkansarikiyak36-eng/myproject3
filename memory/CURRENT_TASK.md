@@ -87,7 +87,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` lines 443–530 (harvest output construction and crop state read).
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (crop state stores seed definition and seed-return count).
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (captures seed definition/count at planting; harvest emits produce+seeds as one batch; validators use total outputs).
-- `Source/MyProject3/WildlifeActor.h` (current in-world wildlife and death API inspected before adding capture/pen/slaughter).
+- `Source/MyProject3/WildlifeActor.h` (in-world wildlife enum, movable actor and private death handler reviewed).
+- `Source/MyProject3/WildlifeActor.cpp` (current spawning/tick/death behavior inspected).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
@@ -110,9 +111,9 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - Recorded current codebase map limitations and newer roadmap test-count reference.
 - P0.5 source-of-truth change committed; status ledger corrected.
 - Seed return is JSON-configured, captured at planting, emitted as ledger-owned world items at harvest, and included in receipt/restore validation. Schema v24 migration avoids inventing seeds for legacy saves.
-- Wildlife API is being checked before defining capture: logical agriculture animal records are not currently connected to a physical `WildlifeActor` by the header map.
+- `AWildlifeActor` is a lightweight wandering actor with `SmallAnimal/Enemy/Plant`; death is private and currently destroys/replaces actor based on kind. It has no capture or pen state. Capture should use an explicit, saved logical animal record and a one-way ownership transition.
 - The item-backed farming test now drives a crop to maturity and asserts produce+seed identity/count, single-commit retry, and three-array agriculture snapshot restoration. Not built/run yet.
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `WildlifeActor.cpp` death/spawn behavior; then update checkpoint and inspect `WorldItemOwnershipSubsystem.h` before designing a captured-animal ledger transition. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Read `WorldItemOwnershipSubsystem.h` for the canonical owner kinds and transition API; then add the minimal saved capture/pen/slaughter API to agriculture. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
