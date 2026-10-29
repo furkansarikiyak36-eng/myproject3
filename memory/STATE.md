@@ -26,6 +26,7 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 
 ## Plan
 
+- Next work: `ROADMAP.md` (first open task P0.1 waits for the user: merge into `main`?).
 - Game plan (draft): `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`. Physical assembly frozen until phase 10.
 
 ## Open

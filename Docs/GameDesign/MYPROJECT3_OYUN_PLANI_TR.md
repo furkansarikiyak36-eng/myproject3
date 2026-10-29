@@ -1,7 +1,7 @@
 # MyProject3 — Oyun Planı (baştan sona)
 
 Tarih: 2026-10-29 · Durum: taslak, kullanıcı onayı bekliyor
-Bu belge oyunun tasarımını ve geliştirme sırasını tek yerde toplar. Teknik ayrıntı modül belgelerinde, kararların özeti `memory/DECISIONS.md` içinde.
+Bu belge oyunun tasarımını ve geliştirme sırasını tek yerde toplar. **Adım adım görevler, dürüst durum ve kaldığı yerden devam etme kuralları: [`memory/ROADMAP.md`](../../memory/ROADMAP.md)** (herhangi bir asistan oradan devam eder). Teknik ayrıntı modül belgelerinde, kararların özeti `memory/DECISIONS.md` içinde.
 
 ---
 
@@ -289,17 +289,19 @@ Zorunlu bir bitiş yok (hikâye en son eklenecek). Oyuncunun hedefleri dünyanı
 | Eşya sahipliği, işlem defteri, kayıt | Kodda var; oyunda doğrulanmadı |
 | Saat | `WorldSimulationClockSubsystem` var. Ay, mevsim ve takvim yok |
 | Hava | 6 durum var (açık, yağmur, rüzgâr, kar, fırtına, sıcak hava). Olay zinciri, sel, çığ, yangın, zehirli yağmur yok |
-| İhtiyaçlar | Kalori, hissedilen sıcaklık, aktivite var. Susuzluk kısmen var. Yorgunluk zayıf. Hastalık ve bozulma yok |
+| İhtiyaçlar | Kalori, susuzluk ve yorgunluk değerleri, hissedilen sıcaklık, aktivite var. Su eşyası, uyku, ıslaklık, hastalık ve bozulma yok |
 | Isı, barınak | `HeatSourceComponent`, `ShelterSensorComponent` var |
 | Taşıma | `CarryLoadComponent`, kargo ve lojistik altsistemleri var. Eğim ve zemin etkisi doğrulanmadı |
 | Kazı | Voxel prototipi ve arazi durumu var. Katman → malzeme kuralı yok |
-| Üretim | İstasyon, tarif ve iş kuyruğu var (`WorldProductionSubsystem`). 38 dönüşümün çoğu tanımlı değil |
+| Üretim | İstasyon, tarif ve iş kuyruğu var (`WorldProductionSubsystem`). Tarifler veride değil, demo aktöründe koda gömülü. 38 dönüşümün çoğu tanımlı değil |
 | Tarım | Ekin aşamaları + nem + süre var ("koy, bitsin"). Tarla zinciri, alet şartı, tohum, yorulma yok |
 | Hayvan | Açlık, sağlık, ürün var. Yakalama, ağıl, kesim zinciri yok |
 | Tehdit | Tehdit yöneticisi ve baskın adaptörü var. İşaretle tetiklenme yok |
 | Yapı | Yapı grafiği, hasar, kar yükü olmadan var |
 | Fiziksel montaj | Kütük ve snap çekirdeği ileri (68 test). Son aşamaya kadar donduruldu |
 | Keşif | Keşif kaydı var. Bölge, yatak, bilgi açılımı yok |
+
+Not: `main`, `feature/simple-intent` dalının 697 commit gerisinde.
 
 Genel: **kod iskeletlerinin çoğu var, sistemler arası bağlantılar ve oyun içi deneme yok.**
 

@@ -4,6 +4,7 @@ Branch: feature/simple-intent
 - Wrote `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`: principles, primitive-era materials,
   38 transformations, systems, farming chain, calendar/events, exploration zones, repo status, phases 0-12.
 - Decision summary in `DECISIONS.md`.
+- `memory/ROADMAP.md`: ordered tasks P0-P12, honest status levels, resume protocol, open questions Q0-Q8.
 ## Found
 - No code for seasons/months, spoilage, disease, flood, avalanche, wildfire, soil fertility.
 - Agriculture is plant -> stages by time and moisture only.
