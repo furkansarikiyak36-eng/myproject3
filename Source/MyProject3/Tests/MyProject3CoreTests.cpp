@@ -2745,4 +2745,85 @@ bool FAgricultureConsumesInputsAndCollectsProductsTest::RunTest(const FString& P
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHeatFuelOwnershipReceiptTest,
+    "MyProject3.Survival.HeatSourceConsumesFuelItemOnce", TestFlags)
+bool FHeatFuelOwnershipReceiptTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Ownership subsystem"), Ownership))
+        return false;
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    AActor* HeatActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor) ||
+        !TestNotNull(TEXT("Heat actor"), HeatActor))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryActor);
+    UHeatSourceComponent* Heat =
+        NewObject<UHeatSourceComponent>(HeatActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory) ||
+        !TestNotNull(TEXT("Heat component"), Heat))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    HeatActor->AddInstanceComponent(Heat);
+    Heat->RegisterComponent();
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    const FGuid FuelItemId = FGuid::NewGuid();
+    FWorldOwnedItemRecord FuelItem;
+    FuelItem.ItemId = FuelItemId;
+    FuelItem.DefinitionId = TEXT("Test.WoodFuel");
+    FuelItem.BaseDefinitionId = FuelItem.DefinitionId;
+    FuelItem.OwnerKind = EWorldItemOwnerKind::Inventory;
+    FuelItem.OwnerId = InventoryOwnerId;
+    TestTrue(TEXT("Register authoritative fuel item"), Ownership->RegisterItem(FuelItem));
+
+    Inventory->ItemWeightGrams.Add(FuelItem.DefinitionId, 50);
+    FInventoryStack FuelStack;
+    FuelStack.ItemId = FuelItem.DefinitionId;
+    FuelStack.Quantity = 1;
+    FuelStack.MaxStack = 1;
+    FuelStack.OwnedWorldItemId = FuelItemId;
+    TestTrue(TEXT("Inventory contains the unique fuel item"), Inventory->RestoreSnapshot(
+        InventoryOwnerId, { FuelStack }, NAME_None));
+
+    Heat->MaxFuelSeconds = 600.0f;
+    FHeatFuelDefinition FuelDefinition;
+    FuelDefinition.ItemDefinitionId = FuelItem.DefinitionId;
+    FuelDefinition.BurnSecondsPerItem = 120.0f;
+    TestTrue(TEXT("Register fuel definition"), Heat->RegisterFuelDefinition(FuelDefinition));
+
+    const FGuid FuelOperationId = FGuid::NewGuid();
+    TestTrue(TEXT("Refuel consumes the inventory-owned item"), Heat->TryAddFuelItem(
+        FuelOperationId, FuelItemId, 1, InventoryOwnerId));
+    TestTrue(TEXT("Fuel duration is added"), FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f));
+    TestEqual(TEXT("Fuel stack was removed"), Inventory->GetItemCount(FuelItem.DefinitionId), 0);
+
+    TestTrue(TEXT("Duplicate refuel replays success"), Heat->TryAddFuelItem(
+        FuelOperationId, FuelItemId, 1, InventoryOwnerId));
+    TestTrue(TEXT("Duplicate refuel does not add burn time twice"),
+        FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f));
+
+    AActor* SecondHeatActor = World->SpawnActor<AActor>();
+    UHeatSourceComponent* SecondHeat = NewObject<UHeatSourceComponent>(SecondHeatActor);
+    SecondHeatActor->AddInstanceComponent(SecondHeat);
+    SecondHeat->RegisterComponent();
+    SecondHeat->MaxFuelSeconds = 600.0f;
+    TestTrue(TEXT("Second heat source rejects cross-source reuse of operation ID"),
+        !SecondHeat->TryAddFuelItem(FuelOperationId, FuelItemId, 1, InventoryOwnerId));
+    TestTrue(TEXT("Second heat source receives no duplicated fuel"),
+        FMath::IsNearlyEqual(SecondHeat->GetFuelSeconds(), 0.0f));
+
+    FWorldOwnedItemRecord ConsumedFuel;
+    TestTrue(TEXT("Consumed fuel retains identity history"), Ownership->TryGetItem(FuelItemId, ConsumedFuel));
+    TestEqual(TEXT("Fuel ownership is Consumed"), ConsumedFuel.OwnerKind, EWorldItemOwnerKind::Consumed);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
