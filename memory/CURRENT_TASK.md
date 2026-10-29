@@ -81,7 +81,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing `FCreekWaterFillWithReusablePotTest` covers missing vessel, dirty-water output, reusable pot unchanged, retry, and profile snapshot restore; `FCreekWetColdExposureIllnessTest` also exists. Both are source-only/unrun).
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
-- `Source/MyProject3/LogSnapCharacter.cpp` (constructor/create-subobject path contains no `UInventoryCraftingComponent`, so the new I-key action cannot work on the plain C++ pawn unless a Blueprint adds inventory).
+- `Source/MyProject3/LogSnapCharacter.cpp` (now creates one canonical `UInventoryCraftingComponent` default subobject adjacent to carry/build components).
+- `Source/MyProject3/WorldDemoBootstrapActor.cpp` (bootstrap calls `LoadDefault` + `ApplyToWorld` before coordinator initialization; this is a world actor BeginPlay path, so player inventory may already have run BeginPlay before data is applied).
 - GitHub code search found no canonical player inventory attachment.
 - `Source/MyProject3/LogSnapCharacter.h` now forward-declares `UInventoryCraftingComponent` and exposes the intended canonical `Inventory` default-subobject property.
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
@@ -147,4 +148,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-`ALogSnapCharacter` now constructs a default `UInventoryCraftingComponent`. Check `WorldDemoBootstrapActor` and `WorldGameDataSubsystem` to ensure the newly added inventory receives data-backed item weights after bootstrap even if component BeginPlay ran first; then tighten capacity preflight for unique water stacks.
+Ensure `ApplyToWorld()` registers game-data weights and consumables on all existing inventory components, not only those whose BeginPlay happens after data load. Inspect its current world-application implementation and add idempotent inventory refresh if missing; also check `CanAddItems` accounting for unique owned water stacks.
