@@ -582,6 +582,25 @@ bool UWorldSurvivalSubsystem::TryFillWaterFromCreek(
         Container.DefinitionId != FName(TEXT("Pot.Fired")))
         return false;
 
+    // One reusable pot holds one uniquely owned water item at a time. A new
+    // request cannot duplicate a filled vessel, but retrying the original
+    // operation above still resolves to the same committed water identity.
+    for (const FWorldSurvivalActionReceipt& Receipt : Profile->ActionReceipts)
+    {
+        if (Receipt.Action != EWorldSurvivalActionKind::FillWaterFromCreek ||
+            Receipt.ItemId != ContainerItemId || !Receipt.ResultingItemId.IsValid())
+            continue;
+        FWorldOwnedItemRecord ExistingWater;
+        if (Ownership->TryGetItem(Receipt.ResultingItemId, ExistingWater) &&
+            ExistingWater.OwnerKind == EWorldItemOwnerKind::Inventory &&
+            ExistingWater.OwnerId == ExpectedInventoryOwnerId &&
+            ExistingWater.Quantity == 1 &&
+            (ExistingWater.DefinitionId == FName(TEXT("Water.Dirty")) ||
+             ExistingWater.DefinitionId == FName(TEXT("Water.Boiling")) ||
+             ExistingWater.DefinitionId == FName(TEXT("Water.Boiled"))))
+            return false;
+    }
+
     UInventoryCraftingComponent* Inventory = nullptr;
     if (!FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory))
         return false;
