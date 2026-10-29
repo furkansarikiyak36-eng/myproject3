@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Read `Source/MyProject3/BuildPlanActor.cpp` (2026-10-29): every completed plan goes through a private `Complete()` function, which handles only storage/hutch-specific outputs and then destroys the plan. No bridge plan or general completion callback exists.
 - 2026-10-29 · Read `Source/MyProject3/BuildPlanActor.h` (SHA 945f0a5f5eb40102c19b663af1754998e14d486e): `ABuildPlanActor` supports ghost-slot construction and `IsComplete()`, but exposes no completion delegate/ID for infrastructure semantics; only `LogWall`, shelter, storage, ramp and other generic plans exist, not a dedicated creek bridge plan.
 - 2026-10-29 · Read `Source/MyProject3/LogBuildToolsComponent.cpp` (SHA 918d232e2a5aa9fb3077fd0f4580ee91281dfdb6): `CommitHeldSolution`, plan-slot fill, dismantle, and rope creation exist, but no explicit point identifies a completed crossing as `Infrastructure.CreekBridge`; individual log placements cannot safely auto-enable a bridge route.
 - Field state now tracks clear/till, fertility, weeds, mulch, moisture, planted crop, last-crop/repeat count and revision-bound receipts. These are logical contracts; field visuals/tools/player controls are not wired.
