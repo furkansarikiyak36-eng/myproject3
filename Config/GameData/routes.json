@@ -6,14 +6,18 @@
       "zone": "Zone.0",
       "x": 0,
       "y": 0,
-      "z": 0
+      "z": 0,
+      "discovery_id": "Discovery.Zone0.Camp",
+      "discovery_radius_cm": 700
     },
     {
       "id": "Route.Creek.WestBank",
       "zone": "Zone.1",
       "x": 760,
       "y": -882,
-      "z": 0
+      "z": 0,
+      "discovery_id": "Discovery.Zone1.Creek",
+      "discovery_radius_cm": 280
     },
     {
       "id": "Route.Creek.EastBank",
@@ -41,7 +45,9 @@
       "zone": "Zone.2",
       "x": 600,
       "y": 2650,
-      "z": 700
+      "z": 700,
+      "discovery_id": "Discovery.Zone2.HighForest",
+      "discovery_radius_cm": 420
     }
   ],
   "edges": [
