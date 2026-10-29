@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Do a source-only consistency audit of the new receipt enum maximum (`FillWaterFromCreek`), save v26 migration and test compatibility. If clean enough, proceed to P3.1 fire behavior: wet fuel in rain, item-state update, and fire interaction feedback. All new code remains unbuilt; don't claim test success.
+Water-fill receipt/schema audit is source-consistent. Start P3.1 by inspecting current authored fuel/item rows and heat fuel definition/advance APIs. Implement rain exposure changing only authoritative dry firewood item definitions to wet, ensure wet fuel has reduced burn/heat output, and write automation coverage without running it.
