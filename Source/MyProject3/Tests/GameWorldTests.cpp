@@ -1418,14 +1418,27 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     UWorldItemOwnershipSubsystem* Ownership =
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("World"), World) || !TestNotNull(TEXT("Game data"), GameData) ||
         !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) ||
-        !TestNotNull(TEXT("Item ownership"), Ownership))
+        !TestNotNull(TEXT("Item ownership"), Ownership) || !TestNotNull(TEXT("Agriculture"), Agriculture))
         return false;
 
     TestTrue(TEXT("Load game data"), GameData->LoadDefault());
-    TestTrue(TEXT("Apply zones/discoveries and recipe gates"), GameData->ApplyToWorld());
+    TestTrue(TEXT("Apply zones/discoveries, crop definitions and recipe gates"), GameData->ApplyToWorld());
     TestTrue(TEXT("Initialize shared clock"), Clock->InitializeClock(90123));
+
+    // Grain can only be planted in April or May. Advance via the common clock,
+    // not by editing crop state or bypassing the calendar.
+    FWorldCalendarDate Date;
+    TestTrue(TEXT("Read initial calendar date"), Clock->GetCalendarDate(Date));
+    for (int32 Day = 0; Day < 6 && Date.Month != 4; ++Day)
+    {
+        TestTrue(TEXT("Advance one whole game day"), Clock->AdvanceSimulation(86400.0));
+        TestTrue(TEXT("Read updated calendar date"), Clock->GetCalendarDate(Date));
+    }
+    TestEqual(TEXT("Test planting happens in April"), Date.Month, 4);
 
     const FVector Location(930.0f, -690.0f, 100.0f);
     APlayerController* Controller = World->SpawnActor<APlayerController>(
@@ -1444,12 +1457,55 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
     if (!TestNotNull(TEXT("Player shelter profile link"), Shelter) ||
         !TestNotNull(TEXT("Player inventory"), Inventory))
         return false;
+    TestTrue(TEXT("Configure player inventory weights/recipes"), GameData->ApplyToInventory(Inventory));
 
     FWorldSurvivalProfile Profile;
     Profile.EntityId = FGuid::NewGuid();
     Profile.Location = Location;
     TestTrue(TEXT("Register player survival profile"), Survival->RegisterProfile(Profile));
     Shelter->SurvivalEntityId = Profile.EntityId;
+
+    const FIntVector PlotCell(9, -7, 0);
+    FWorldFieldCellState FieldCell;
+    TestTrue(TEXT("Prepare the target soil cell"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), PlotCell,
+            EWorldFieldActionKind::Clear, 0, 0.0f));
+    TestTrue(TEXT("Till the cleared soil cell"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), PlotCell,
+            EWorldFieldActionKind::Till, 1, 0.0f));
+
+    // Add a valid but undiscovered unique seed to prove the gate belongs inside
+    // TryPlantCrop itself, not just the discovery-marker interaction.
+    FWorldOwnedItemRecord InitialSeed;
+    InitialSeed.ItemId = FGuid::NewGuid();
+    InitialSeed.DefinitionId = TEXT("Seed.Grain");
+    InitialSeed.BaseDefinitionId = TEXT("Seed.Grain");
+    InitialSeed.Quantity = 1;
+    InitialSeed.OwnerKind = EWorldItemOwnerKind::Inventory;
+    InitialSeed.OwnerId = Inventory->GetInventoryOwnerId();
+    InitialSeed.WorldLocation = Location;
+    TestTrue(TEXT("Register the initial unique seed in the ownership ledger"),
+        Ownership->RegisterItem(InitialSeed));
+
+    FInventoryStack InitialSeedStack;
+    InitialSeedStack.ItemId = TEXT("Seed.Grain");
+    InitialSeedStack.Quantity = 1;
+    InitialSeedStack.Category = EInventoryItemCategory::Resource;
+    InitialSeedStack.MaxStack = 1;
+    InitialSeedStack.OwnedWorldItemId = InitialSeed.ItemId;
+    TestTrue(TEXT("Add the seed as an owned inventory reference"),
+        Inventory->TryAddItem(InitialSeedStack));
+
+    FGuid RejectedCropId;
+    TestFalse(TEXT("Seed ownership alone cannot bypass the discovery gate"),
+        Agriculture->TryPlantCrop(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory->GetInventoryOwnerId(), PlotCell, 0.5f, RejectedCropId));
+    FWorldOwnedItemRecord SeedBeforeDiscovery;
+    TestTrue(TEXT("Rejected planting leaves the seed in the ownership ledger"),
+        Ownership->TryGetItem(InitialSeed.ItemId, SeedBeforeDiscovery));
+    TestTrue(TEXT("Rejected planting preserves seed inventory ownership"),
+        SeedBeforeDiscovery.OwnerKind == EWorldItemOwnerKind::Inventory &&
+        SeedBeforeDiscovery.OwnerId == Inventory->GetInventoryOwnerId());
 
     AWorldDiscoveryMarkerActor* Marker = World->SpawnActor<AWorldDiscoveryMarkerActor>(
         AWorldDiscoveryMarkerActor::StaticClass(), Location, FRotator::ZeroRotator);
@@ -1468,17 +1524,18 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
         { return Record.DiscoveryId == TEXT("Discovery.GrainSeeds"); }));
     TestTrue(TEXT("Discovery unlock is available through the survival ledger"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
-    TestEqual(TEXT("Two seed items are granted"), Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
+    TestEqual(TEXT("Two new seed items are granted"), Inventory->GetItemCount(TEXT("Seed.Grain")), 3);
+
     TArray<FGuid> OwnedSeedIds;
     for (const FInventoryStack& Stack : Inventory->Items)
         if (Stack.ItemId == TEXT("Seed.Grain") && Stack.OwnedWorldItemId.IsValid())
             OwnedSeedIds.Add(Stack.OwnedWorldItemId);
-    TestEqual(TEXT("Each seed has its own ledger identity"), OwnedSeedIds.Num(), 2);
+    TestEqual(TEXT("Original seed plus two rewards each have a ledger identity"), OwnedSeedIds.Num(), 3);
     for (const FGuid& ItemId : OwnedSeedIds)
     {
         FWorldOwnedItemRecord Item;
         TestTrue(TEXT("Seed exists in ownership ledger"), Ownership->TryGetItem(ItemId, Item));
-        TestTrue(TEXT("Seed is still owned by the inventory"),
+        TestTrue(TEXT("Seed is owned by this inventory"),
             Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
             Item.OwnerId == Inventory->GetInventoryOwnerId() &&
             Item.DefinitionId == TEXT("Seed.Grain"));
@@ -1486,7 +1543,20 @@ bool FDiscoveryMarkerGrantsRewardAtomicallyTest::RunTest(const FString& Paramete
 
     Marker->Tick(1.0f);
     TestEqual(TEXT("Repeating marker tick cannot duplicate seed reward"),
-        Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
+        Inventory->GetItemCount(TEXT("Seed.Grain")), 3);
+
+    FGuid CropId;
+    TestTrue(TEXT("Discovered seed can now be planted through the ownership transaction"),
+        Agriculture->TryPlantCrop(FGuid::NewGuid(), TEXT("Crop.Grain"), InitialSeed.ItemId,
+            InitialSeed.Revision, Inventory->GetInventoryOwnerId(), PlotCell, 0.5f, CropId));
+    TestTrue(TEXT("Successful planting produces a crop record"),
+        Agriculture->GetCrop(CropId, /* OutCrop */ *new FWorldCropState()));
+    FWorldOwnedItemRecord ConsumedSeed;
+    TestTrue(TEXT("Consumed seed remains traceable in the ledger"),
+        Ownership->TryGetItem(InitialSeed.ItemId, ConsumedSeed));
+    TestTrue(TEXT("Planting transitions the seed out of inventory ownership"),
+        ConsumedSeed.OwnerKind == EWorldItemOwnerKind::Consumed);
+    TestEqual(TEXT("Only the two unplanted reward seeds remain"), Inventory->GetItemCount(TEXT("Seed.Grain")), 2);
     return true;
 }
 
