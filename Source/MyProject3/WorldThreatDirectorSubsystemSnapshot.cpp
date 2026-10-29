@@ -25,7 +25,12 @@ bool UWorldThreatDirectorSubsystem::RestoreSnapshot(const FWorldThreatDirectorSn
 
     auto IsValidRaid = [](const FThreatRaidRecord& Raid, bool bMayBeEmpty)
     {
-        if (Raid.State == EThreatRaidState::None && bMayBeEmpty) return true;
+        if (Raid.LastAppliedDamagePulseIndex < -1)
+            return false;
+        if (Raid.State == EThreatRaidState::None && bMayBeEmpty)
+            return !Raid.RaidId.IsValid() && Raid.LastAppliedDamagePulseIndex == -1;
+        if (static_cast<uint8>(Raid.State) > static_cast<uint8>(EThreatRaidState::Cancelled))
+            return false;
         return Raid.RaidId.IsValid() && Raid.Serial >= 0 && Raid.Revision >= 0 &&
             Raid.LastAppliedDamagePulseIndex >= -1 &&
             FMath::IsFinite(Raid.WarningStartTime) && Raid.WarningStartTime >= 0.0 &&
