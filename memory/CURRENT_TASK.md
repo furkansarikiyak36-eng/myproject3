@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add the v25→v26 migration step in `WorldSaveCoordinatorSubsystem.cpp`; then add the water fill regression test and update plan status.
+Add a survival automation test for filling a creek with `Pot.Fired`: failed fill without a pot, valid unique pot→unique owned Water.Dirty item without consuming pot, idempotent retry returns original ID, and v26-style receipt survives snapshot restore. First inspect current test setup helpers and `RegisterItem`/inventory APIs; then wire a dedicated creek input.
