@@ -70,4 +70,5 @@ private:
     FVector Home = FVector::ZeroVector;
     FVector WanderTarget = FVector::ZeroVector;
     float TimeToNewTarget = 0.0f;
+    float TimeToNextBiteSeconds = 0.0f;
 };
