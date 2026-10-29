@@ -19,6 +19,23 @@ struct FLogisticsRouteNode
     bool bEnabled = true;
 };
 
+/** Caller-supplied context for a deterministic, asset-independent route-cost estimate. */
+USTRUCT(BlueprintType)
+struct FLogisticsRouteCostContext
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Logistics")
+    float CargoMassKg = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Logistics", meta=(ClampMin="0.0", ClampMax="1.0"))
+    float WeatherSeverity = 0.0f;
+
+    /** Extra cost added per unit of edge weather exposure at severity 1.0. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Logistics", meta=(ClampMin="0.0", ClampMax="10.0"))
+    float WeatherPenaltyPerSeverity = 0.5f;
+};
+
 USTRUCT(BlueprintType)
 struct FLogisticsRouteEdge
 {
@@ -30,8 +47,31 @@ struct FLogisticsRouteEdge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics")
     FName ToNode = NAME_None;
 
+    /** Authored base traversal cost; not a physical distance or a time value by itself. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.0"))
     float Cost = 1.0f;
+
+    /** Surface and infrastructure remain authored data until world actors provide adapters. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.25", ClampMax="10.0"))
+    float SurfaceCostMultiplier = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.1", ClampMax="4.0"))
+    float InfrastructureCostMultiplier = 1.0f;
+
+    /** Angle penalty applied to the absolute endpoint slope, in degrees. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.0", ClampMax="0.25"))
+    float SlopePenaltyPerDegree = 0.01f;
+
+    /** Load penalty added per 100 kg of carried mass. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.0", ClampMax="10.0"))
+    float LoadPenaltyPer100Kg = 0.0f;
+
+    /** 0 means unlimited. A configured limit makes an overloaded edge unavailable. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.0", ClampMax="1000000.0"))
+    float MaxPayloadMassKg = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.0", ClampMax="1.0"))
+    float WeatherExposure = 0.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics")
     bool bEnabled = true;
@@ -68,6 +108,12 @@ public:
     UFUNCTION(BlueprintCallable, Category="Logistics")
     bool FindRoute(FName StartNode, FName GoalNode, TArray<FName>& OutPath, float& OutTotalCost) const;
 
+    /** Same bounded Dijkstra solver with caller-supplied weather/load context. */
+    UFUNCTION(BlueprintCallable, Category="Logistics")
+    bool FindRouteWithContext(FName StartNode, FName GoalNode,
+        const FLogisticsRouteCostContext& Context,
+        TArray<FName>& OutPath, float& OutTotalCost) const;
+
     UFUNCTION(BlueprintPure, Category="Logistics")
     int32 GetNodeCount() const { return Nodes.Num(); }
 
@@ -82,4 +128,7 @@ private:
     TArray<FLogisticsRouteEdge> Edges;
 
     int32 FindEdgeIndex(FName FromNode, FName ToNode) const;
+    bool ComputeEffectiveEdgeCost(const FLogisticsRouteEdge& Edge,
+        const FLogisticsRouteNode& From, const FLogisticsRouteNode& To,
+        const FLogisticsRouteCostContext& Context, float& OutCost) const;
 };
