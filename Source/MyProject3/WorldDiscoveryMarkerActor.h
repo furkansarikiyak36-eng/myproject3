@@ -40,6 +40,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Discovery", meta=(ClampMin="0", ClampMax="64"))
     int32 RewardQuantity = 0;
 
+    /** When true, each reward unit receives a distinct ownership-ledger identity. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Discovery")
+    bool bRewardUniqueItems = false;
+
 private:
     float TimeUntilScan = 0.0f;
     bool bResolved = false;
