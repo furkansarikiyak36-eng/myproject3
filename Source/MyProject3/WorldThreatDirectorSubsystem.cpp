@@ -157,6 +157,21 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirector()
     return AdvanceDirectorAtTime(Clock->GetSimulationTimeSeconds(), Clock->GetTickIndex());
 }
 
+bool UWorldThreatDirectorSubsystem::TryClaimDamagePulse(const FGuid& RaidId, int64 PulseIndex)
+{
+    if (!RaidId.IsValid() || PulseIndex < 0 ||
+        CurrentRaid.RaidId != RaidId || CurrentRaid.State != EThreatRaidState::Active ||
+        CurrentRaid.Revision >= MAX_int64 - 1 ||
+        CurrentRaid.LastAppliedDamagePulseIndex >= PulseIndex)
+        return false;
+
+    // Persist the pulse claim before any actor damage/destruction. A failed
+    // materialization/collapse may block the result, but must not replay damage.
+    CurrentRaid.LastAppliedDamagePulseIndex = PulseIndex;
+    ++CurrentRaid.Revision;
+    return true;
+}
+
 bool UWorldThreatDirectorSubsystem::ResolveCurrentRaid(bool bRepelled)
 {
     UWorldSimulationClockSubsystem* Clock = GetClock();
