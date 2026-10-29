@@ -28,6 +28,13 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
         return true;
     }
 
+    if (MaxOperationReceipts <= 0 || Receipts.Num() >= MaxOperationReceipts)
+    {
+        // Never evict an old operation receipt: eviction would make a replay capable
+        // of applying the same edit twice. Capacity exhaustion is fail-closed.
+        return false;
+    }
+
     FWorldTerrainCellState* Existing = Cells.Find(Cell);
     const int64 CurrentRevision = Existing ? Existing->Revision : 0;
     if (ExpectedRevision != CurrentRevision || (Existing && Existing->Revision == MAX_int64))
@@ -117,6 +124,9 @@ bool UWorldTerrainStateSubsystem::TryApplyVoxelExcavation(
         return true;
     }
 
+    if (MaxOperationReceipts <= 0 || Receipts.Num() >= MaxOperationReceipts)
+        return false;
+
     // Capture a rollback point before touching either authority. The voxel
     // component validates its own revision, bounds, material and structure guard.
     TArray<float> BeforeDensity;
@@ -166,7 +176,16 @@ bool UWorldTerrainStateSubsystem::TryGetCell(
     return true;
 }
 
-void UWorldTerrainStateSubsystem::ExportSnapshot(TArray<FWorldTerrainCellState>& OutCells) const
+void UWorldTerrainStateSubsystem::ExportSnapshot(
+    TArray<FWorldTerrainCellState>& OutCells) const
+{
+    TArray<FWorldTerrainOperationReceipt> IgnoredReceipts;
+    ExportSnapshot(OutCells, IgnoredReceipts);
+}
+
+void UWorldTerrainStateSubsystem::ExportSnapshot(
+    TArray<FWorldTerrainCellState>& OutCells,
+    TArray<FWorldTerrainOperationReceipt>& OutReceipts) const
 {
     OutCells.Reset();
     Cells.GenerateValueArray(OutCells);
@@ -176,22 +195,79 @@ void UWorldTerrainStateSubsystem::ExportSnapshot(TArray<FWorldTerrainCellState>&
         if (A.Cell.Y != B.Cell.Y) return A.Cell.Y < B.Cell.Y;
         return A.Cell.Z < B.Cell.Z;
     });
+
+    OutReceipts.Reset();
+    Receipts.GenerateValueArray(OutReceipts);
+    OutReceipts.Sort([](const FWorldTerrainOperationReceipt& A, const FWorldTerrainOperationReceipt& B)
+    {
+        return A.OperationId.ToString() < B.OperationId.ToString();
+    });
 }
 
-bool UWorldTerrainStateSubsystem::RestoreSnapshot(const TArray<FWorldTerrainCellState>& Snapshot)
+bool UWorldTerrainStateSubsystem::RestoreSnapshot(
+    const TArray<FWorldTerrainCellState>& Snapshot)
 {
-    if (Snapshot.Num() > MaxEditedCells || MaxEditedCells <= 0) return false;
-    TMap<FIntVector, FWorldTerrainCellState> Proposed;
+    return RestoreSnapshot(Snapshot, TArray<FWorldTerrainOperationReceipt>());
+}
+
+bool UWorldTerrainStateSubsystem::RestoreSnapshot(
+    const TArray<FWorldTerrainCellState>& Snapshot,
+    const TArray<FWorldTerrainOperationReceipt>& ReceiptSnapshot)
+{
+    if (Snapshot.Num() > MaxEditedCells || MaxEditedCells <= 0 ||
+        ReceiptSnapshot.Num() > MaxOperationReceipts || MaxOperationReceipts <= 0)
+        return false;
+
+    TMap<FIntVector, FWorldTerrainCellState> ProposedCells;
     for (const FWorldTerrainCellState& Cell : Snapshot)
     {
         if (Cell.DepthLayer < 0 || Cell.DepthLayer >= MaxEditableDepthLayers ||
             Cell.DepthLayer >= MaxDepthPerCell || Cell.Revision <= 0 ||
-            Proposed.Contains(Cell.Cell) ||
+            ProposedCells.Contains(Cell.Cell) ||
             (PermittedDepthLayers.Num() > 0 && !PermittedDepthLayers.Contains(Cell.DepthLayer)))
             return false;
-        Proposed.Add(Cell.Cell, Cell);
+        ProposedCells.Add(Cell.Cell, Cell);
     }
-    Cells = MoveTemp(Proposed);
-    Receipts.Reset();
+
+    TMap<FGuid, FWorldTerrainOperationReceipt> ProposedReceipts;
+    for (const FWorldTerrainOperationReceipt& Receipt : ReceiptSnapshot)
+    {
+        const uint8 EditValue = static_cast<uint8>(Receipt.RequestedEdit);
+        const FWorldTerrainCellState* CurrentCell = ProposedCells.Find(Receipt.Cell);
+        if (!Receipt.OperationId.IsValid() || ProposedReceipts.Contains(Receipt.OperationId) ||
+            !CurrentCell || Receipt.ExpectedRevision < 0 || Receipt.ExpectedRevision >= MAX_int64 ||
+            Receipt.ResultingRevision != Receipt.ExpectedRevision + 1 ||
+            Receipt.ResultState.Cell != Receipt.Cell ||
+            Receipt.ResultState.Revision != Receipt.ResultingRevision ||
+            Receipt.ResultState.DepthLayer != Receipt.RequestedDepthLayer ||
+            Receipt.RequestedDepthLayer < 0 ||
+            Receipt.RequestedDepthLayer >= MaxEditableDepthLayers ||
+            Receipt.RequestedDepthLayer >= MaxDepthPerCell ||
+            EditValue > static_cast<uint8>(ETerrainCellEdit::ReplaceMaterial) ||
+            CurrentCell->Revision < Receipt.ResultingRevision ||
+            ((Receipt.RequestedEdit == ETerrainCellEdit::Fill ||
+              Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial) &&
+             Receipt.RequestedMaterialId.IsNone()))
+        {
+            return false;
+        }
+
+        if (Receipt.RequestedEdit == ETerrainCellEdit::Excavate && !Receipt.ResultState.bExcavated)
+            return false;
+        if (Receipt.RequestedEdit == ETerrainCellEdit::Fill &&
+            (Receipt.ResultState.bExcavated ||
+             Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId))
+            return false;
+        if (Receipt.RequestedEdit == ETerrainCellEdit::ReplaceMaterial &&
+            Receipt.ResultState.MaterialId != Receipt.RequestedMaterialId)
+            return false;
+
+        ProposedReceipts.Add(Receipt.OperationId, Receipt);
+    }
+
+    // Validate everything before swapping either map; a malformed save cannot
+    // partially replace live terrain state or silently discard retry receipts.
+    Cells = MoveTemp(ProposedCells);
+    Receipts = MoveTemp(ProposedReceipts);
     return true;
 }
