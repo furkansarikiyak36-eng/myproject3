@@ -45,6 +45,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxCrops = 2048;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxAnimals = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm") float MinimumGrowthMoisture = 0.15f;
+    /** Soil-moisture rates are fractions of the [0,1] moisture scale per in-game hour. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="1")) float BaseSoilDryingPerHour = 0.01f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="1")) float RainMoistureGainPerHour = 0.12f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="1")) float StormMoistureGainPerHour = 0.08f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="1")) float WindMoistureLossPerHour = 0.04f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="1")) float HeatwaveMoistureLossPerHour = 0.15f;
     /** Full-severity weather multipliers; actual value interpolates from 1.0 by severity. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float RainGrowthMultiplier = 1.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Climate", meta=(ClampMin="0", ClampMax="2")) float WindGrowthMultiplier = 0.9f;
