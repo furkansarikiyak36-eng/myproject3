@@ -37,7 +37,40 @@
 #include "GameFramework/Pawn.h"
 #include "InputCoreTypes.h"
 
-namespace { FVector LocalAxisVector(ELogLongitudinalAxis Axis); }
+namespace
+{
+    FVector LocalAxisVector(ELogLongitudinalAxis Axis);
+
+    bool CanRecordOwnerActivity(AActor* Owner, ESurvivalActivity Activity,
+        float DurationSeconds, float CarriedMassKg)
+    {
+        UWorld* World = IsValid(Owner) ? Owner->GetWorld() : nullptr;
+        UWorldSurvivalSubsystem* Survival =
+            World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        UShelterSensorComponent* Sensor =
+            IsValid(Owner) ? Owner->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        // Older test maps can run without a survival profile; when a valid profile
+        // is attached, its shared activity contract is authoritative.
+        if (!Survival || !IsValid(Sensor) || !Sensor->SurvivalEntityId.IsValid())
+            return true;
+        return Survival->CanRecordActivity(
+            Sensor->SurvivalEntityId, Activity, DurationSeconds, CarriedMassKg);
+    }
+
+    bool RecordOwnerActivity(AActor* Owner, ESurvivalActivity Activity,
+        float DurationSeconds, float CarriedMassKg)
+    {
+        UWorld* World = IsValid(Owner) ? Owner->GetWorld() : nullptr;
+        UWorldSurvivalSubsystem* Survival =
+            World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        UShelterSensorComponent* Sensor =
+            IsValid(Owner) ? Owner->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        if (!Survival || !IsValid(Sensor) || !Sensor->SurvivalEntityId.IsValid())
+            return true;
+        return Survival->RecordActivity(
+            Sensor->SurvivalEntityId, Activity, DurationSeconds, CarriedMassKg);
+    }
+}
 
 ULogCarryComponent::ULogCarryComponent()
 {
@@ -361,6 +394,13 @@ bool ULogCarryComponent::TryPickupPiece(AActor* Target)
         return false;
     }
 
+    const float CarryMassKg = MyProject3Construction::EstimateMassKg(Piece);
+    if (!CanRecordOwnerActivity(GetOwner(), ESurvivalActivity::Carry, 2.0f, CarryMassKg))
+    {
+        PlacementStatus = TEXT("Too exhausted or resting to pick up another piece.");
+        return false;
+    }
+
     FWorldOwnedItemRecord HeldRecord;
     if (!Piece->TryTransferOwnership(EWorldItemOwnerKind::World,
         EWorldItemOwnerKind::Held, CarryOwnerId, Piece->GetActorLocation(), HeldRecord))
@@ -416,6 +456,9 @@ bool ULogCarryComponent::TryPickupPiece(AActor* Target)
     bHasPlacementSurface = false;
     TimeUntilSnapRefresh = 0.0f;
     ClearSnapCandidate();
+
+    if (!RecordOwnerActivity(GetOwner(), ESurvivalActivity::Carry, 2.0f, CarryMassKg))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after committed log pickup."));
 
     return true;
 }
@@ -1397,6 +1440,12 @@ bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
         PlacementStatus = Reason;
         return false;
     }
+    const float CarryMassKg = MyProject3Construction::EstimateMassKg(Piece);
+    if (!CanRecordOwnerActivity(GetOwner(), ESurvivalActivity::Carry, 2.0f, CarryMassKg))
+    {
+        PlacementStatus = TEXT("Too exhausted or resting to pick up another piece.");
+        return false;
+    }
     if (!TransferMaterialOwnership(Piece, EWorldItemOwnerKind::World, EWorldItemOwnerKind::Held, Piece->GetActorLocation()))
     {
         PlacementStatus = TEXT("The ownership ledger rejected the pickup.");
@@ -1417,6 +1466,8 @@ bool ULogCarryComponent::TryPickupMaterialPiece(AActor* Piece)
     if (Load)
         Load->RegisterCarried(Piece);
     PlacementStatus = TEXT("Holding: aim at the ground, a placed stone or the top of a log, then E.");
+    if (!RecordOwnerActivity(GetOwner(), ESurvivalActivity::Carry, 2.0f, CarryMassKg))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after committed material pickup."));
     return true;
 }
 
@@ -1530,6 +1581,12 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
     UPlacementKernelSubsystem* Kernel = GetKernel();
     if (!Piece || !Target || Target == Piece || !Kernel || !Cast<IStructuralPieceInterface>(Target))
         return false;
+    const float CarryMassKg = MyProject3Construction::EstimateMassKg(Piece);
+    if (!CanRecordOwnerActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, CarryMassKg))
+    {
+        PlacementStatus = TEXT("Too exhausted or resting to place this building piece.");
+        return false;
+    }
     EnsureMaterialAnchors(Target);
     // Aim straight at the asked point so the kernel takes that one.
     FPlacementFeature Wanted;
@@ -1550,6 +1607,8 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOn(AActor* Target, FName TargetAnch
         return false;
     }
     FinishMaterialPlacement(Piece);
+    if (!RecordOwnerActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, CarryMassKg))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after committed material placement."));
     PlacementStatus = TEXT("Placed.");
     return true;
 }
@@ -1560,6 +1619,12 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
     UPlacementKernelSubsystem* Kernel = GetKernel();
     if (!Piece || GroundPoint.ContainsNaN() || !Kernel)
         return false;
+    const float CarryMassKg = MyProject3Construction::EstimateMassKg(Piece);
+    if (!CanRecordOwnerActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, CarryMassKg))
+    {
+        PlacementStatus = TEXT("Too exhausted or resting to place this building piece.");
+        return false;
+    }
     FString Reason;
     if (!Kernel->CommitGroundPlacement(Piece, MakeUprightTransform(Piece, GroundPoint), FPlacementCommitOptions(), Reason))
     {
@@ -1567,6 +1632,8 @@ bool ULogCarryComponent::TryPlaceHeldMaterialOnGround(FVector GroundPoint)
         return false;
     }
     FinishMaterialPlacement(Piece);
+    if (!RecordOwnerActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, CarryMassKg))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after committed ground placement."));
     PlacementStatus = TEXT("Placed on the ground.");
     return true;
 }
@@ -2960,6 +3027,11 @@ bool ULogCarryComponent::CommitHeldSolution(const FPlacementSolution& Solution)
     UPlacementKernelSubsystem* Kernel = GetKernel();
     if (!IsValid(Piece) || !Kernel)
         return false;
+    if (!CanRecordOwnerActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+    {
+        PlacementStatus = TEXT("Too exhausted or resting to place this log.");
+        return false;
+    }
     // Set first: what reacts to the placement (lifted ends, braces) adds to it.
     PlacementStatus = TEXT("Placed.");
     FString Reason;
@@ -2980,6 +3052,8 @@ bool ULogCarryComponent::CommitHeldSolution(const FPlacementSolution& Solution)
     StrutSolution = FPlacementSolution();
     ClearSnapCandidate();
     CommitHeldLifts(Piece);
+    if (!RecordOwnerActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after committed log placement."));
     return true;
 }
 
