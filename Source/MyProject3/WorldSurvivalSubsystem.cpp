@@ -1495,14 +1495,22 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     const TArray<FWorldDiscoveryRecord>& DiscoverySnapshot,
     EWorldWeatherState InWeather, float InSeverity)
 {
-    if (!InRange(InSeverity, 0.0f, 1.0f)) return false;
+    if (!InRange(InSeverity, 0.0f, 1.0f) ||
+        static_cast<uint8>(InWeather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
+        DiscoverySnapshot.Num() > MaxDiscoveryRecords ||
+        MaxDiscoveryRecords <= 0)
+        return false;
+
     TMap<FGuid, FWorldSurvivalProfile> Proposed;
     for (const FWorldSurvivalProfile& P : ProfileSnapshot)
     {
-        if (Proposed.Contains(P.EntityId) || !IsValidProfile(P)) return false;
+        if (Proposed.Contains(P.EntityId) || !IsValidProfile(P))
+            return false;
         Proposed.Add(P.EntityId, P);
     }
+
     TSet<FGuid> SeenActionOperationIds;
+    bool bNeedsOwnershipValidation = false;
     for (const FWorldSurvivalProfile& P : ProfileSnapshot)
     {
         for (const FWorldSurvivalActionReceipt& Receipt : P.ActionReceipts)
@@ -1510,16 +1518,110 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
             if (!Receipt.OperationId.IsValid() || SeenActionOperationIds.Contains(Receipt.OperationId))
                 return false;
             SeenActionOperationIds.Add(Receipt.OperationId);
+            if (Receipt.Action == EWorldSurvivalActionKind::ConsumeFoodItem ||
+                Receipt.Action == EWorldSurvivalActionKind::TreatCondition ||
+                Receipt.Action == EWorldSurvivalActionKind::EquipItem ||
+                Receipt.Action == EWorldSurvivalActionKind::UnequipItem)
+                bNeedsOwnershipValidation = true;
         }
+        if (!P.EquippedItems.IsEmpty())
+            bNeedsOwnershipValidation = true;
     }
+
     TSet<FName> SeenDiscoveries;
     for (const FWorldDiscoveryRecord& D : DiscoverySnapshot)
     {
         if (D.DiscoveryId.IsNone() || SeenDiscoveries.Contains(D.DiscoveryId) ||
             D.Location.ContainsNaN() || !FMath::IsFinite(D.DiscoveredAtTime) ||
-            D.DiscoveredAtTime < 0.0) return false;
+            D.DiscoveredAtTime < 0.0 ||
+            (D.EntityId.IsValid() != D.OperationId.IsValid()))
+            return false;
+
+        TSet<FName> SeenUnlocks;
+        for (const FName Unlock : D.UnlockedDefinitionIds)
+        {
+            if (Unlock.IsNone() || SeenUnlocks.Contains(Unlock))
+                return false;
+            SeenUnlocks.Add(Unlock);
+        }
+
+        if (D.OperationId.IsValid())
+        {
+            const FWorldDiscoveryDefinition* Definition = FindDiscoveryDefinition(D.DiscoveryId);
+            if (!Definition || Definition->UnlockedDefinitionIds != D.UnlockedDefinitionIds)
+                return false;
+            for (const FName Prerequisite : Definition->PrerequisiteDiscoveryIds)
+            {
+                if (!DiscoverySnapshot.ContainsByPredicate([Prerequisite](const FWorldDiscoveryRecord& Candidate)
+                    { return Candidate.DiscoveryId == Prerequisite; }))
+                    return false;
+            }
+        }
         SeenDiscoveries.Add(D.DiscoveryId);
     }
+
+    // Validate saved equipment ownership and all item-bound action receipts
+    // before mutating the live profile/discovery maps.
+    if (bNeedsOwnershipValidation)
+    {
+        UWorldItemOwnershipSubsystem* Ownership =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        if (!Ownership)
+            return false;
+
+        for (const FWorldSurvivalProfile& P : ProfileSnapshot)
+        {
+            for (const FWorldEquippedItemState& Equipped : P.EquippedItems)
+            {
+                FWorldOwnedItemRecord Item;
+                if (!Ownership->TryGetItem(Equipped.ItemId, Item) ||
+                    Item.OwnerKind != EWorldItemOwnerKind::Equipped || Item.OwnerId != P.EntityId ||
+                    Item.DefinitionId != Equipped.ItemDefinitionId ||
+                    Item.Revision < Equipped.ItemRevision)
+                    return false;
+            }
+
+            for (const FWorldSurvivalActionReceipt& Receipt : P.ActionReceipts)
+            {
+                if (Receipt.Action != EWorldSurvivalActionKind::ConsumeFoodItem &&
+                    Receipt.Action != EWorldSurvivalActionKind::TreatCondition &&
+                    Receipt.Action != EWorldSurvivalActionKind::EquipItem &&
+                    Receipt.Action != EWorldSurvivalActionKind::UnequipItem)
+                    continue;
+                FWorldOwnedItemRecord Item;
+                if (!Ownership->TryGetItem(Receipt.ItemId, Item) ||
+                    Item.DefinitionId != Receipt.ItemDefinitionId ||
+                    Item.Revision < Receipt.ResultingItemRevision)
+                    return false;
+                if ((Receipt.Action == EWorldSurvivalActionKind::ConsumeFoodItem ||
+                     Receipt.Action == EWorldSurvivalActionKind::TreatCondition) &&
+                    Item.OwnerKind != EWorldItemOwnerKind::Consumed)
+                    return false;
+                if (Receipt.Action == EWorldSurvivalActionKind::EquipItem &&
+                    Item.Revision == Receipt.ResultingItemRevision &&
+                    Item.OwnerKind != EWorldItemOwnerKind::Equipped)
+                    return false;
+            }
+        }
+    }
+
+    for (const FWorldSurvivalProfile& P : ProfileSnapshot)
+    {
+        for (const FWorldSurvivalActionReceipt& Receipt : P.ActionReceipts)
+        {
+            if (Receipt.Action != EWorldSurvivalActionKind::RecordDiscovery)
+                continue;
+            const bool bDiscoveryPresent = DiscoverySnapshot.ContainsByPredicate(
+                [&Receipt, &P](const FWorldDiscoveryRecord& D)
+                {
+                    return D.DiscoveryId == Receipt.DiscoveryId &&
+                        (!D.EntityId.IsValid() || D.EntityId == P.EntityId);
+                });
+            if (!bDiscoveryPresent)
+                return false;
+        }
+    }
+
     Profiles = MoveTemp(Proposed);
     Discoveries = DiscoverySnapshot;
     Weather = InWeather;
