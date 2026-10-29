@@ -45,21 +45,36 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         return true;
     }
 
-    if ((Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active) &&
-        (!ActiveRaidPawn.IsValid() || !MaterializedRaidId.IsValid() || MaterializedRaidId != Raid.RaidId))
+    const bool bRaidNeedsWorldPresence =
+        Raid.State == EThreatRaidState::Warning || Raid.State == EThreatRaidState::Active;
+    const bool bNewRaid = !MaterializedRaidId.IsValid() || MaterializedRaidId != Raid.RaidId;
+    const bool bNeedVisualPawn = RaidPawnClass &&
+        (!ActiveRaidPawn.IsValid() || MaterializedRaidId != Raid.RaidId);
+    if (bRaidNeedsWorldPresence && (bNewRaid || bNeedVisualPawn))
     {
-        if (!RaidPawnClass) return false;
-        const FVector SpawnLocation = Raid.TargetLocation + FVector(0.0f, 0.0f, SpawnHeightOffset);
-        FActorSpawnParameters Params;
-        Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-        APawn* Spawned = World->SpawnActor<APawn>(RaidPawnClass, SpawnLocation, FRotator::ZeroRotator, Params);
-        if (!Spawned) return false;
-        Spawned->SpawnDefaultController();
-        ActiveRaidPawn = Spawned;
+        if (ActiveRaidPawn.IsValid() && MaterializedRaidId != Raid.RaidId)
+            ActiveRaidPawn->Destroy();
+        ActiveRaidPawn.Reset();
+
+        if (RaidPawnClass)
+        {
+            if (!FMath::IsFinite(SpawnHeightOffset))
+                return false;
+            const FVector SpawnLocation = Raid.TargetLocation + FVector(0.0f, 0.0f, SpawnHeightOffset);
+            FActorSpawnParameters Params;
+            Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+            APawn* Spawned = World->SpawnActor<APawn>(RaidPawnClass, SpawnLocation, FRotator::ZeroRotator, Params);
+            if (!Spawned) return false;
+            Spawned->SpawnDefaultController();
+            ActiveRaidPawn = Spawned;
+        }
+
+        // A pawn Blueprint is optional. Without one the structural raid still
+        // runs; absence of a presentation/AI asset is not a simulation failure.
         MaterializedRaidId = Raid.RaidId;
         if (Raid.LastAppliedDamagePulseIndex >= MAX_int64 - 1)
         {
-            Spawned->Destroy();
+            if (ActiveRaidPawn.IsValid()) ActiveRaidPawn->Destroy();
             ActiveRaidPawn.Reset();
             MaterializedRaidId.Invalidate();
             return false;
@@ -68,7 +83,7 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             (static_cast<double>(Raid.LastAppliedDamagePulseIndex) + 1.0) * AttackIntervalSeconds;
         if (!FMath::IsFinite(NextDamageTimeSeconds))
         {
-            Spawned->Destroy();
+            if (ActiveRaidPawn.IsValid()) ActiveRaidPawn->Destroy();
             ActiveRaidPawn.Reset();
             MaterializedRaidId.Invalidate();
             return false;

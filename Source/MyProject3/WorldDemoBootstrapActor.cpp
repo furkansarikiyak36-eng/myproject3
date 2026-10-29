@@ -2,6 +2,7 @@
 
 #include "Engine/World.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldRaidAdapterSubsystem.h"
 #include "WorldGameDataSubsystem.h"
 
 AWorldDemoBootstrapActor::AWorldDemoBootstrapActor()
@@ -51,6 +52,18 @@ void AWorldDemoBootstrapActor::Tick(float DeltaSeconds)
     {
         if (!Coordinator->AdvanceFixedStep(FixedStepSeconds))
         {
+            StopSimulation();
+            return;
+        }
+
+        // Physical raid effects use the same fixed-step clock as the logical
+        // threat director. Failure after this committed step must fail closed.
+        UWorldRaidAdapterSubsystem* RaidAdapter =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+        if (!RaidAdapter || !RaidAdapter->AdvanceRaidWorldAdapter())
+        {
+            Coordinator->MarkSimulationFaulted(
+                TEXT("World raid adapter failed after a committed fixed step; stop and recover/reset the world."));
             StopSimulation();
             return;
         }
