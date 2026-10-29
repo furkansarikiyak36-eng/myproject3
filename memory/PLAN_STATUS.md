@@ -15,7 +15,7 @@ Update this file whenever a task changes state.
 | Status | Count | Tasks |
 |---|---:|---|
 | Var | 8 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.3 |
-| Kısmi | 25 | (P4.2 done, P0.5 now partial) P2.1, P2.2, P2.4, P2.5, P3.1, P3.2, P4.1–P4.4, P5.1, P6.2–P6.4, P7.1–P7.4, P8.2, P8.3, P9.2, P10, and save (all phases) |
+| Kısmi | 23 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P5.1, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
 | Yok | 12 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
