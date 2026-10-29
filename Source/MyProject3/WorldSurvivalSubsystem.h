@@ -253,6 +253,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool UpdateLocation(const FGuid& EntityId, FVector NewLocation);
     /** Adds environmental wetness (for example, wading in the creek); drying is handled by the shared survival step. */
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool ApplyWetnessExposure(const FGuid& EntityId, float WetnessDelta);
+    /** Pure preflight for a costly action; shares rest/exhaustion gates with RecordActivity. */
+    UFUNCTION(BlueprintPure, Category="World|Survival") bool CanRecordActivity(const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg) const;
     /** Adds the calorie and stamina cost of an activity; the energy burns on the next step. */
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool RecordActivity(const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg);
     /** Data-driven consumable registry. Unknown definitions fail closed. */
