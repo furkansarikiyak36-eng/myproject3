@@ -7,6 +7,14 @@
 class UHeatSourceComponent;
 class UInventoryCraftingComponent;
 
+/** Runtime-only rollback record; weak references do not keep components alive. */
+struct FWorldHeatSourceRuntimeState
+{
+    TWeakObjectPtr<UHeatSourceComponent> Source;
+    float FuelSeconds = 0.0f;
+    bool bLit = false;
+};
+
 UENUM(BlueprintType)
 enum class EWorldWeatherState : uint8 { Clear, Rain, Wind, Snow, Storm, Heatwave };
 
@@ -281,6 +289,10 @@ public:
 
     void RegisterHeatSource(UHeatSourceComponent* Source);
     void UnregisterHeatSource(UHeatSourceComponent* Source);
+
+    /** Captures transient heat state so a failed fixed step can roll back fuel and ignition state. */
+    void CaptureHeatSourceRuntimeState(TArray<FWorldHeatSourceRuntimeState>& OutStates) const;
+    bool RestoreHeatSourceRuntimeState(const TArray<FWorldHeatSourceRuntimeState>& Snapshot);
 
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Survival") TMap<FGuid, FWorldSurvivalProfile> Profiles;
