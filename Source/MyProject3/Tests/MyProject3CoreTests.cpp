@@ -32,6 +32,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -2356,6 +2357,119 @@ bool FDamagedRefusesTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Badly damaged"), Player.Carry->IsBadlyDamaged(Beam));
     Graph->RepairDamage(Beam->GetStructuralNodeId(), Node.DamageThreshold);
     TestFalse(TEXT("Repaired"), Player.Carry->IsBadlyDamaged(Beam));
+    return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRouteCostContextTest,
+    "MyProject3.Logistics.RouteCost.IsDeterministicAndHonorsTraversalContext", TestFlags)
+bool FRouteCostContextTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldLogisticsRouteSubsystem* Routes = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Route subsystem"), Routes))
+        return false;
+
+    auto AddNode = [Routes](FName Id)
+    {
+        FLogisticsRouteNode Node;
+        Node.NodeId = Id;
+        return Routes->UpsertNode(Node);
+    };
+    TestTrue(TEXT("Node A"), AddNode(TEXT("A")));
+    TestTrue(TEXT("Node B"), AddNode(TEXT("B")));
+    TestTrue(TEXT("Node C"), AddNode(TEXT("C")));
+    TestTrue(TEXT("Node D"), AddNode(TEXT("D")));
+
+    FLogisticsRouteEdge AB;
+    AB.FromNode = TEXT("A"); AB.ToNode = TEXT("B"); AB.Cost = 1.0f;
+    FLogisticsRouteEdge AC;
+    AC.FromNode = TEXT("A"); AC.ToNode = TEXT("C"); AC.Cost = 1.0f;
+    FLogisticsRouteEdge BD;
+    BD.FromNode = TEXT("B"); BD.ToNode = TEXT("D"); BD.Cost = 1.0f;
+    FLogisticsRouteEdge CD;
+    CD.FromNode = TEXT("C"); CD.ToNode = TEXT("D"); CD.Cost = 1.0f;
+
+    // Insert in a deliberately non-lexical order; route choice must remain stable.
+    TestTrue(TEXT("Insert AC"), Routes->UpsertEdge(AC));
+    TestTrue(TEXT("Insert CD"), Routes->UpsertEdge(CD));
+    TestTrue(TEXT("Insert AB"), Routes->UpsertEdge(AB));
+    TestTrue(TEXT("Insert BD"), Routes->UpsertEdge(BD));
+
+    FLogisticsRouteCostContext Context;
+    TArray<FName> FirstPath;
+    TArray<FName> SecondPath;
+    float FirstCost = 0.0f;
+    float SecondCost = 0.0f;
+    TestTrue(TEXT("Find first route"), Routes->FindRouteWithContext(
+        TEXT("A"), TEXT("D"), Context, FirstPath, FirstCost));
+    TestTrue(TEXT("Find repeated route"), Routes->FindRouteWithContext(
+        TEXT("A"), TEXT("D"), Context, SecondPath, SecondCost));
+    TestEqual(TEXT("Equal-cost tie selects the lexical route"), FirstPath.Num() > 1 ? FirstPath[1] : NAME_None, FName(TEXT("B")));
+    TestTrue(TEXT("Repeated route path is identical"), FirstPath == SecondPath);
+    TestTrue(TEXT("Repeated route cost is identical"), FMath::IsNearlyEqual(FirstCost, SecondCost));
+    TestTrue(TEXT("Path cost validates"), Routes->CalculatePathCost(FirstPath, Context, SecondCost));
+    TestTrue(TEXT("Path cost equals route result"), FMath::IsNearlyEqual(FirstCost, SecondCost));
+
+    FLogisticsRouteEdge CostEdge;
+    CostEdge.FromNode = TEXT("A"); CostEdge.ToNode = TEXT("B");
+    CostEdge.Cost = 2.0f;
+    CostEdge.SlopeRatio = 1.0f;
+    CostEdge.SurfaceCostMultiplier = 2.0f;
+    CostEdge.WeatherSensitivity = 3.0f;
+    CostEdge.LoadSensitivity = 4.0f;
+    CostEdge.bHasBuiltInfrastructure = true;
+    Context.CarriedMassKg = 50.0f;
+    Context.MaxCarryMassKg = 100.0f;
+    Context.WeatherSeverity = 0.5f;
+    float ContextCost = 0.0f;
+    TestTrue(TEXT("Context edge cost resolves"), Routes->ComputeEdgeCost(CostEdge, Context, ContextCost));
+    TestTrue(TEXT("Slope/surface/weather/load contribute deterministically"),
+        FMath::IsNearlyEqual(ContextCost, 52.5f, 0.01f));
+
+    CostEdge.bRequiresInfrastructure = true;
+    CostEdge.bHasBuiltInfrastructure = false;
+    TestFalse(TEXT("Missing required infrastructure blocks edge"),
+        Routes->ComputeEdgeCost(CostEdge, Context, ContextCost));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTerrainOperationReceiptPersistenceTest,
+    "MyProject3.Terrain.LogicalEditReceiptSurvivesSnapshotRestore", TestFlags)
+bool FTerrainOperationReceiptPersistenceTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorldTerrainStateSubsystem* Terrain = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Terrain subsystem"), Terrain))
+        return false;
+
+    const FGuid OperationId = FGuid::NewGuid();
+    const FIntVector Cell(3, 4, 2);
+    FWorldTerrainCellState First;
+    TestTrue(TEXT("Initial excavation commits"), Terrain->TryApplyCellEdit(
+        OperationId, Cell, 2, ETerrainCellEdit::Excavate, NAME_None, 0, First));
+    TestEqual(TEXT("First revision is one"), First.Revision, static_cast<int64>(1));
+
+    TArray<FWorldTerrainCellState> Cells;
+    TArray<FWorldTerrainOperationReceipt> Receipts;
+    Terrain->ExportSnapshot(Cells, Receipts);
+    TestEqual(TEXT("One logical cell captured"), Cells.Num(), 1);
+    TestEqual(TEXT("One operation receipt captured"), Receipts.Num(), 1);
+
+    TestTrue(TEXT("Snapshot restores with receipt history"), Terrain->RestoreSnapshot(Cells, Receipts));
+    FWorldTerrainCellState Retried;
+    TestTrue(TEXT("Matching operation ID replays success"), Terrain->TryApplyCellEdit(
+        OperationId, Cell, 2, ETerrainCellEdit::Excavate, NAME_None, 0, Retried));
+    TestEqual(TEXT("Retry returns the original revision"), Retried.Revision, First.Revision);
+    TestEqual(TEXT("Retry did not create another edit"), Terrain->GetEditedCellCount(), 1);
+
+    FWorldTerrainCellState Conflict;
+    TestFalse(TEXT("Reusing operation ID for a different request is rejected"),
+        Terrain->TryApplyCellEdit(OperationId, FIntVector(9, 9, 9), 2,
+            ETerrainCellEdit::Excavate, NAME_None, 0, Conflict));
+    TestEqual(TEXT("Conflicting replay leaves cell count unchanged"), Terrain->GetEditedCellCount(), 1);
     return true;
 }
 
