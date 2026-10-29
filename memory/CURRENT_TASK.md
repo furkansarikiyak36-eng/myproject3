@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add shelter regression assertions to `FShelterCoverTest`: empty doorway gives no wall cover; when a real structural piece is behind the opening the multi-trace still finds it. Preserve existing roof assertion. Then inspect the door opening actor path for built closed/open panel behavior and update P3.2 status.
+Replace the multi-trace shelter helper with a bounded loop of single traces: return true for a structurally placed piece or a built/closed opening panel; otherwise add the hit actor to ignored actors and trace again. Then add the opening regression in `FShelterCoverTest`.
