@@ -2601,6 +2601,10 @@ bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
     const float WorkEffectivenessBeforeRest = Survival->GetWorkEffectiveness(Profile.EntityId);
     TestTrue(TEXT("Fatigue reduces work effectiveness"),
         WorkEffectivenessBeforeRest < 1.0f && WorkEffectivenessBeforeRest > 0.5f);
+    TestTrue(TEXT("Construction activity preflight allows work before rest"),
+        Survival->CanRecordActivity(Profile.EntityId, ESurvivalActivity::Build, 1.0f, 0.0f));
+    TestTrue(TEXT("Carry activity preflight allows pickup before rest"),
+        Survival->CanRecordActivity(Profile.EntityId, ESurvivalActivity::Carry, 1.0f, 5.0f));
 
     const FGuid RestOperationId = FGuid::NewGuid();
     TestTrue(TEXT("Begin rest interval"), Survival->TryBeginRest(
@@ -2610,6 +2614,10 @@ bool FSurvivalRestClockReceiptTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Rest end is expressed on shared world time"),
         FMath::IsNearlyEqual(Resting.RestUntilTimeSeconds, 3700.0, 0.001));
     const int64 RestCommittedRevision = Resting.Revision;
+    TestFalse(TEXT("Construction activity preflight rejects work during rest"),
+        Survival->CanRecordActivity(Profile.EntityId, ESurvivalActivity::Build, 1.0f, 0.0f));
+    TestFalse(TEXT("Carry activity preflight rejects pickup during rest"),
+        Survival->CanRecordActivity(Profile.EntityId, ESurvivalActivity::Carry, 1.0f, 5.0f));
     TestFalse(TEXT("Strenuous work is rejected during active rest"),
         Survival->RecordActivity(Profile.EntityId, ESurvivalActivity::Chop, 1.0f, 0.0f));
 
