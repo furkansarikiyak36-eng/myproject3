@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add P4.4 automation coverage: game data returns the authored Tool.Axe/Tool.DiggingStick strengths, non-tools have no tool strength, invalid tool-strength values reject loading; and a player with Axe damage/cut work uses data strength while missing tools block the action. Existing private input handlers may require a public helper or test through existing component API; keep the test deterministic and do not build.
+Audit P4.4 implementations for compile/interface mismatches and test that starter tools are idempotent and actually available after data application. Then update `PLAN_STATUS.md` P4.4 and P4.3 (with unbuilt status), add P4.4 roadmap entry, update codebase map, and keep scene station actors/meshes deferred.
