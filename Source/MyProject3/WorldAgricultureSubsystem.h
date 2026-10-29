@@ -50,6 +50,7 @@ struct FWorldAgricultureActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int64 ResultingEntityRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int64 ResultingItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FName DefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FName RequestedInputDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") float HungerReduction = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") float WorkAmount = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int32 RequestedOutputUnits = 0;
@@ -181,6 +182,7 @@ struct FWorldAnimalState
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FVector Location = FVector::ZeroVector;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Transactions") FGuid CaptureOperationId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Transactions") FGuid CaptureToolItemId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Transactions") FName CaptureToolDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Transactions") FGuid CaptureInventoryOwnerId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Transactions") int64 CaptureToolExpectedRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Transactions") FGuid SlaughterOperationId;
@@ -230,6 +232,10 @@ public:
         const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
         const FGuid& CaptureToolItemId, int64 ExpectedToolItemRevision,
         const FGuid& ExpectedInventoryOwnerId);
+    /** Capture with a count-based inventory tool stack such as a crafted net or basket. */
+    UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryCaptureAnimalWithToolStack(
+        const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+        FName CaptureToolDefinitionId, const FGuid& ExpectedInventoryOwnerId);
     /** Builds a logical 4-stake/1-rope pen and consumes those materials from the named inventory. */
     UFUNCTION(BlueprintCallable, Category="World|Animals|Pen") bool TryBuildAnimalPen(
         const FGuid& OperationId, const FGuid& ExpectedInventoryOwnerId,
