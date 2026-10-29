@@ -506,7 +506,7 @@ bool AStoneBuildingPiece::RemoveConnection(bool bAllowGraphFailure)
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : false);
+        Mesh->SetSimulatePhysics(false);
         Mesh->SetCollisionProfileName(TEXT("PhysicsActor"));
         if (bUsesStructuralProxy)
             Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -702,7 +702,7 @@ void AStoneBuildingPiece::BuildStructuralProxyIfNeeded()
     {
         const FProxyBox& Shape = Boxes[Index];
         UStaticMeshComponent* Part = NewObject<UStaticMeshComponent>(
-            this, *FString::Printf(TEXT("StructuralProxy_%02d"), Index));
+            this, FName(*FString::Printf(TEXT("StructuralProxy_%02d"), Index)));
         if (!Part)
         {
             bUsesStructuralProxy = false;

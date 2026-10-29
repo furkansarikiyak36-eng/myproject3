@@ -647,8 +647,10 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
             return false;
     }
 
-    IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(Child->Actor.Get());
-    IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support->Actor.Get());
+    AActor* ChildActor = Child->Actor.Get();
+    AActor* SupportActor = Support->Actor.Get();
+    IStructuralPieceInterface* ChildPiece = Cast<IStructuralPieceInterface>(ChildActor);
+    IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(SupportActor);
     FStructuralAnchorView ChildAnchor;
     FStructuralAnchorView SupportAnchor;
     const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
@@ -659,8 +661,8 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
          !ChildAnchor.bCanConnect || !SupportAnchor.bCanReceive ||
          ChildAnchor.bOccupied || SupportAnchor.bOccupied ||
          ChildAnchor.Tag != SupportAnchor.Tag ||
-         FVector::Dist(Child->Actor->GetActorTransform().TransformPosition(ChildAnchor.LocalTransform.GetLocation()),
-             Support->Actor->GetActorTransform().TransformPosition(SupportAnchor.LocalTransform.GetLocation())) > 50.0f))
+         FVector::Dist(ChildActor->GetActorTransform().TransformPosition(ChildAnchor.LocalTransform.GetLocation()),
+             SupportActor->GetActorTransform().TransformPosition(SupportAnchor.LocalTransform.GetLocation())) > 50.0f))
         return false;
 
     FStructuralSupportLink Link;

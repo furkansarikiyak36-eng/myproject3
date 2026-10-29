@@ -2170,7 +2170,15 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
     if (!TestNotNull(TEXT("Game data subsystem"), Data))
         return false;
 
-    TestTrue(TEXT("Load all game data including animals"), Data->LoadDefault());
+    TestTrue(TEXT("Load all game data including animals and repair profiles"), Data->LoadDefault());
+    TestEqual(TEXT("Three structural repair profiles are loaded"), Data->GetStructuralRepairs().Num(), 3);
+    const FGameDataStructuralRepair* WoodRepair = Data->FindStructuralRepair(TEXT("repair_wood_structure"));
+    TestNotNull(TEXT("Wood repair profile exists"), WoodRepair);
+    if (WoodRepair)
+        TestTrue(TEXT("Wood repair requires short log, reusable axe and grants bounded repair"),
+            WoodRepair->TargetKind == TEXT("Wood") && WoodRepair->MaterialItemId == TEXT("ShortLog") &&
+            WoodRepair->MaterialUnits == 1 && WoodRepair->ToolItemId == TEXT("Tool.Axe") &&
+            WoodRepair->RepairAmount == 35.0f && WoodRepair->RecoveryItemId == TEXT("ShortLog"));
     TestEqual(TEXT("Three crop profiles are available"), Data->GetCrops().Num(), 3);
     TestEqual(TEXT("Two animal capture profiles are available"),
         Data->GetAnimalCaptureDefinitions().Num(), 2);
@@ -2610,6 +2618,18 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TestTrue(TEXT("Bridge can be held for primary placement"), Bridge->SetHeldState(true));
     TestTrue(TEXT("Connect deck to first support"),
         Bridge->TryConnectToAnchor(SupportA, TEXT("AutoTop"), TEXT("SupportLeft")));
+    AStoneBuildingPiece* SupportFar = SpawnGroundStone(FVector(800.0, 0.0, 0.0));
+    if (!TestNotNull(TEXT("Far-away support"), SupportFar))
+        return false;
+    TestFalse(TEXT("Secondary support rejects an anchor too far from the deck"),
+        Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportFar->GetStructuralNodeId(),
+            TEXT("AutoTop"), TEXT("SupportRight")));
+    Bridge->GetStructuralAnchor(TEXT("SupportRight"), RightAnchor);
+    FStructuralAnchorView FarTopAnchor;
+    SupportFar->GetStructuralAnchor(TEXT("AutoTop"), FarTopAnchor);
+    TestFalse(TEXT("Rejected distance leaves deck anchor free"), RightAnchor.bOccupied);
+    TestFalse(TEXT("Rejected distance leaves support anchor free"), FarTopAnchor.bOccupied);
+
     TestTrue(TEXT("Deck support anchor meets the second foundation in world space"),
         FVector::Dist(Bridge->GetAnchorWorldTransform(TEXT("SupportRight")).GetLocation(),
             SupportB->GetAnchorWorldTransform(TEXT("AutoTop")).GetLocation()) <= 50.0f);
