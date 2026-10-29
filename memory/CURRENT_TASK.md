@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Extend `FGameDataItem` with `ToolStrength` and add `UWorldGameDataSubsystem::GetToolStrength`. Parse optional `tool_strength` on `items.json` Tool records (default 1.0 for existing tools; bound 0.1–10); author `Tool.Axe=1.5`, `Tool.DiggingStick=1.0`. Then wire `ChopInput`, log cutting and `TerrainDigToolComponent::DigInput` to require/read the respective inventory tool, and have VerticalSlice_C grant missing starter Axe + DiggingStick once after game data is applied. Add a data/action automation regression.
+Implement `GetToolStrength` and parser/bounds in `WorldGameDataSubsystem.cpp`; then add explicit tool-strength fields to `items.json` for Tool.Axe and Tool.DiggingStick.
