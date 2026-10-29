@@ -4285,19 +4285,20 @@ bool FProductionStationActorInteractionTest::RunTest(const FString& Parameters)
     Inventory->RegisterComponent();
     TestTrue(TEXT("Apply item weights and hand recipes"), GameData->ApplyToInventory(Inventory));
 
-    auto AddGenericStack = [&](FName ItemId, bool bTool)
+    auto AddGenericStack = [&](FName ItemId, EInventoryItemCategory Category)
     {
         FInventoryStack Stack;
         Stack.ItemId = ItemId;
         Stack.Quantity = 1;
-        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
-        Stack.bIsTool = bTool;
-        Stack.MaxStack = bTool ? 1 : 99;
+        Stack.Category = Category;
+        Stack.bIsTool = Category == EInventoryItemCategory::Tool;
+        Stack.MaxStack = Stack.bIsTool ? 1 : 99;
         return Inventory->TryAddItem(Stack);
     };
-    TestTrue(TEXT("Add half log input"), AddGenericStack(TEXT("HalfLog"), false));
-    TestTrue(TEXT("Add wedge tool"), AddGenericStack(TEXT("Tool.Wedge"), true));
-    TestTrue(TEXT("Add chisel tool"), AddGenericStack(TEXT("Tool.Chisel"), true));
+    TestTrue(TEXT("Add half log input with authored BuildingPart category"),
+        AddGenericStack(TEXT("HalfLog"), EInventoryItemCategory::BuildingPart));
+    TestTrue(TEXT("Add wedge tool"), AddGenericStack(TEXT("Tool.Wedge"), EInventoryItemCategory::Tool));
+    TestTrue(TEXT("Add chisel tool"), AddGenericStack(TEXT("Tool.Chisel"), EInventoryItemCategory::Tool));
 
     FActorSpawnParameters SpawnParameters;
     SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
