@@ -59,7 +59,7 @@ bool AWorldDemoScenarioActor::InitializeScenario()
             (!FMath::IsFinite(DemoWeatherSeverity) || DemoWeatherSeverity < 0.0f || DemoWeatherSeverity > 1.0f)) ||
         (bRegisterConfiguredProduction &&
             (!ProductionStationId.IsValid() || ProductionStationTag.IsNone() || ProductionCapacity <= 0 ||
-             ConfiguredRecipe.RecipeId.IsNone())))
+             ProductionRecipeId.IsNone())))
     {
         ScenarioStatus = TEXT("Blocked: invalid scenario configuration.");
         bScenarioReady = false;
@@ -168,7 +168,7 @@ bool AWorldDemoScenarioActor::EnsureProduction(UWorldProductionSubsystem* Produc
     const UWorldGameDataSubsystem* GameData =
         World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     const FGameDataTransformation* DataRecipe =
-        GameData ? GameData->FindTransformation(ConfiguredRecipe.RecipeId) : nullptr;
+        GameData ? GameData->FindTransformation(ProductionRecipeId) : nullptr;
     if (!Production || !GameData || !GameData->IsApplied() || !DataRecipe ||
         DataRecipe->bPhysical || DataRecipe->Inputs.IsEmpty() || DataRecipe->Outputs.IsEmpty() ||
         DataRecipe->Where != ProductionStationTag)
