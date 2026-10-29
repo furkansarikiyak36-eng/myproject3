@@ -332,14 +332,26 @@ void ALogSnapCharacter::HandleRopeTraversalPressed()
 
     UWorld* World = GetWorld();
     UCharacterMovementComponent* Movement = GetCharacterMovement();
-    if (!World || !Movement || !FMath::IsFinite(RopeInteractionRangeCm) ||
-        RopeInteractionRangeCm <= 0.0f || !FMath::IsFinite(RopeTraversalSpeedCmPerSecond) ||
-        RopeTraversalSpeedCmPerSecond <= 0.0f || !FMath::IsFinite(RopeBaseTravelerWeightKg) ||
-        RopeBaseTravelerWeightKg <= 0.0f)
+    if (!World || !Movement || Movement->IsFalling() ||
+        !FMath::IsFinite(RopeInteractionRangeCm) || RopeInteractionRangeCm <= 0.0f ||
+        !FMath::IsFinite(RopeTraversalSpeedCmPerSecond) || RopeTraversalSpeedCmPerSecond <= 0.0f ||
+        !FMath::IsFinite(RopeBaseTravelerWeightKg) || RopeBaseTravelerWeightKg <= 0.0f)
+        return;
+
+    // Rest is movement-locked; do not let rope traversal bypass the same shared-clock gate as jump.
+    UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
+    UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+    FWorldSurvivalProfile SurvivalProfile;
+    if (Clock && Clock->IsClockInitialized() && Survival &&
+        IsValid(ShelterSensor) && ShelterSensor->SurvivalEntityId.IsValid() &&
+        Survival->GetProfile(ShelterSensor->SurvivalEntityId, SurvivalProfile) &&
+        SurvivalProfile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds())
         return;
 
     const float CarriedMassKg = IsValid(CarryLoad)
         ? FMath::Max(0.0f, CarryLoad->GetCarriedMassKg()) : 0.0f;
+    if (!FMath::IsFinite(CarriedMassKg))
+        return;
     const float TravelerWeightKg = RopeBaseTravelerWeightKg + CarriedMassKg;
     AStoneBuildingPiece* BestEndpoint = nullptr;
     float BestDistance = RopeInteractionRangeCm;
