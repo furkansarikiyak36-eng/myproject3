@@ -3301,4 +3301,199 @@ bool FHeatSourceFixedStepRollbackTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSurvivalEquipmentConditionsAndDiscoveryTest,
+    "MyProject3.Survival.EquipmentConditionsAndDiscoveryUseAuthoritativeItemsAndTime", TestFlags)
+bool FSurvivalEquipmentConditionsAndDiscoveryTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Initialize common time"), Clock->InitializeClock(8124, 1000.0));
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryActor);
+    if (!TestNotNull(TEXT("Inventory component"), Inventory))
+        return false;
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+
+    const FGuid CoatId = FGuid::NewGuid();
+    const FGuid TreatmentId = FGuid::NewGuid();
+    auto RegisterItem = [&](const FGuid& ItemId, FName DefinitionId)
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = ItemId;
+        Item.DefinitionId = DefinitionId;
+        Item.BaseDefinitionId = DefinitionId;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = InventoryOwnerId;
+        Item.Quantity = 1;
+        return Ownership->RegisterItem(Item);
+    };
+    TestTrue(TEXT("Register coat ledger item"), RegisterItem(CoatId, TEXT("Test.WarmCoat")));
+    TestTrue(TEXT("Register treatment ledger item"), RegisterItem(TreatmentId, TEXT("Test.Bandage")));
+    Inventory->ItemWeightGrams.Add(TEXT("Test.WarmCoat"), 800);
+    Inventory->ItemWeightGrams.Add(TEXT("Test.Bandage"), 50);
+
+    FInventoryStack CoatStack;
+    CoatStack.ItemId = TEXT("Test.WarmCoat");
+    CoatStack.Quantity = 1;
+    CoatStack.MaxStack = 1;
+    CoatStack.OwnedWorldItemId = CoatId;
+    FInventoryStack TreatmentStack;
+    TreatmentStack.ItemId = TEXT("Test.Bandage");
+    TreatmentStack.Quantity = 1;
+    TreatmentStack.MaxStack = 1;
+    TreatmentStack.OwnedWorldItemId = TreatmentId;
+    TestTrue(TEXT("Restore exact inventory stacks"),
+        Inventory->RestoreSnapshot(InventoryOwnerId, { CoatStack, TreatmentStack }, NAME_None));
+
+    FWorldSurvivalEquipmentDefinition CoatDefinition;
+    CoatDefinition.ItemDefinitionId = TEXT("Test.WarmCoat");
+    CoatDefinition.Slot = EWorldEquipmentSlot::Body;
+    CoatDefinition.Insulation = 0.6f;
+    CoatDefinition.WaterResistance = 0.5f;
+    CoatDefinition.GrantedCapabilityIds.Add(TEXT("Region.Cold"));
+    TestTrue(TEXT("Register coat equipment definition"),
+        Survival->RegisterEquipmentDefinition(CoatDefinition));
+
+    FWorldSurvivalConditionDefinition Injury;
+    Injury.DefinitionId = TEXT("Test.DeepCut");
+    Injury.Kind = EWorldSurvivalConditionKind::Injury;
+    Injury.HealthLossPerHour = 10.0f;
+    Injury.DurationSeconds = 86400.0;
+    Injury.TreatmentItemDefinitionId = TEXT("Test.Bandage");
+    Injury.TreatmentHealthRecovery = 20.0f;
+    TestTrue(TEXT("Register condition and treatment contract"),
+        Survival->RegisterConditionDefinition(Injury));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Health = 80.0f;
+    Profile.Stamina = 80.0f;
+    Profile.Fatigue = 10.0f;
+    Profile.CaloriesKcal = 1500.0f;
+    TestTrue(TEXT("Register survival profile"), Survival->RegisterProfile(Profile));
+
+    const FGuid EquipOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Equip item transfers ownership out of inventory"),
+        Survival->TryEquipItem(EquipOperation, Profile.EntityId, Profile.Revision,
+            CoatId, 1, InventoryOwnerId));
+    TestEqual(TEXT("Coat is absent from inventory"), Inventory->GetItemCount(TEXT("Test.WarmCoat")), 0);
+    FWorldOwnedItemRecord EquippedItem;
+    TestTrue(TEXT("Read equipped item ledger record"), Ownership->TryGetItem(CoatId, EquippedItem));
+    TestEqual(TEXT("Equipped item has a distinct owner state"), EquippedItem.OwnerKind, EWorldItemOwnerKind::Equipped);
+    TestEqual(TEXT("Equipped owner is the survival entity"), EquippedItem.OwnerId, Profile.EntityId);
+
+    FWorldSurvivalProfile EquippedProfile;
+    TestTrue(TEXT("Read equipped profile"), Survival->GetProfile(Profile.EntityId, EquippedProfile));
+    TestTrue(TEXT("Insulation derives from the equipped item"),
+        FMath::IsNearlyEqual(EquippedProfile.ClothingInsulation, 0.6f, 0.001f));
+    TestTrue(TEXT("Water resistance derives from the equipped item"),
+        FMath::IsNearlyEqual(EquippedProfile.ClothingWaterResistance, 0.5f, 0.001f));
+    TestTrue(TEXT("Equip retry is idempotent"), Survival->TryEquipItem(
+        EquipOperation, Profile.EntityId, Profile.Revision, CoatId, 1, InventoryOwnerId));
+
+    const FGuid ApplyConditionOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Apply time-bounded condition"), Survival->TryApplyCondition(
+        ApplyConditionOperation, Profile.EntityId, EquippedProfile.Revision, Injury.DefinitionId, 1.0f));
+    FWorldSurvivalProfile InjuredProfile;
+    TestTrue(TEXT("Read condition state"), Survival->GetProfile(Profile.EntityId, InjuredProfile));
+    TestEqual(TEXT("One condition was created"), InjuredProfile.Conditions.Num(), 1);
+    const FGuid ConditionId = InjuredProfile.Conditions[0].ConditionId;
+
+    TestTrue(TEXT("Advance common world time"), Clock->AdvanceSimulation(1800.0));
+    TestTrue(TEXT("Apply condition effects on common time"),
+        Survival->AdvanceSurvivalStep(1800.0, Clock->GetSimulationTimeSeconds()));
+    FWorldSurvivalProfile AfterInjuryStep;
+    TestTrue(TEXT("Read condition effects"), Survival->GetProfile(Profile.EntityId, AfterInjuryStep));
+    TestTrue(TEXT("Condition caused configured health loss"),
+        FMath::IsNearlyEqual(AfterInjuryStep.Health, 75.0f, 0.01f));
+
+    const FGuid TreatOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Treatment consumes the exact owned treatment item"),
+        Survival->TryTreatCondition(TreatOperation, Profile.EntityId, AfterInjuryStep.Revision,
+            ConditionId, TreatmentId, 1, InventoryOwnerId));
+    FWorldSurvivalProfile TreatedProfile;
+    TestTrue(TEXT("Read treated profile"), Survival->GetProfile(Profile.EntityId, TreatedProfile));
+    TestEqual(TEXT("Treated condition is removed"), TreatedProfile.Conditions.Num(), 0);
+    TestTrue(TEXT("Treatment applies configured recovery"),
+        FMath::IsNearlyEqual(TreatedProfile.Health, 95.0f, 0.01f));
+    TestEqual(TEXT("Treatment item leaves inventory"), Inventory->GetItemCount(TEXT("Test.Bandage")), 0);
+    TestTrue(TEXT("Treatment retry replays committed success"),
+        Survival->TryTreatCondition(TreatOperation, Profile.EntityId, AfterInjuryStep.Revision,
+            ConditionId, TreatmentId, 1, InventoryOwnerId));
+
+    FWorldDiscoveryDefinition FirstDiscovery;
+    FirstDiscovery.DiscoveryId = TEXT("Discovery.ShelterNotes");
+    FirstDiscovery.RequiredEquipmentDefinitionIds.Add(TEXT("Test.WarmCoat"));
+    FirstDiscovery.UnlockedDefinitionIds.Add(TEXT("Recipe.WarmShelter"));
+    TestTrue(TEXT("Register first discovery"), Survival->RegisterDiscoveryDefinition(FirstDiscovery));
+
+    FWorldDiscoveryDefinition LockedDiscovery;
+    LockedDiscovery.DiscoveryId = TEXT("Discovery.DeepCave");
+    LockedDiscovery.PrerequisiteDiscoveryIds.Add(FirstDiscovery.DiscoveryId);
+    LockedDiscovery.RequiredEquipmentDefinitionIds.Add(TEXT("Test.WarmCoat"));
+    LockedDiscovery.UnlockedDefinitionIds.Add(TEXT("Region.DeepCave"));
+    TestTrue(TEXT("Register chained discovery"), Survival->RegisterDiscoveryDefinition(LockedDiscovery));
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    TestFalse(TEXT("Missing prerequisite blocks discovery"),
+        Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId,
+            TreatedProfile.Revision, LockedDiscovery.DiscoveryId, FVector(10, 20, 30), Now));
+    const FGuid FirstDiscoveryOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Record valid discovery with equipment gate"),
+        Survival->TryRecordConfiguredDiscovery(FirstDiscoveryOperation, Profile.EntityId,
+            TreatedProfile.Revision, FirstDiscovery.DiscoveryId, FVector(10, 20, 30), Now));
+    FWorldSurvivalProfile AfterFirstDiscovery;
+    TestTrue(TEXT("Read profile after first discovery"), Survival->GetProfile(Profile.EntityId, AfterFirstDiscovery));
+    TestTrue(TEXT("Configured unlock is permanent"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Recipe.WarmShelter")));
+
+    const FGuid SecondDiscoveryOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Prerequisite now unlocks second discovery"),
+        Survival->TryRecordConfiguredDiscovery(SecondDiscoveryOperation, Profile.EntityId,
+            AfterFirstDiscovery.Revision, LockedDiscovery.DiscoveryId, FVector(40, 50, 60), Now));
+    FWorldSurvivalProfile AfterSecondDiscovery;
+    TestTrue(TEXT("Read profile after second discovery"), Survival->GetProfile(Profile.EntityId, AfterSecondDiscovery));
+    TestTrue(TEXT("Second unlock is available"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Region.DeepCave")));
+
+    const FGuid UnequipOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Unequip transfers item back into inventory"),
+        Survival->TryUnequipItem(UnequipOperation, Profile.EntityId,
+            AfterSecondDiscovery.Revision, EWorldEquipmentSlot::Body, InventoryOwnerId));
+    TestEqual(TEXT("Coat returns to inventory"), Inventory->GetItemCount(TEXT("Test.WarmCoat")), 1);
+    FWorldSurvivalProfile Unequipped;
+    TestTrue(TEXT("Read unequipped profile"), Survival->GetProfile(Profile.EntityId, Unequipped));
+    TestTrue(TEXT("Derived clothing protection clears on unequip"),
+        FMath::IsNearlyEqual(Unequipped.ClothingInsulation, 0.0f, 0.001f));
+    TestTrue(TEXT("Discovery stays unlocked after equipment changes"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Region.DeepCave")));
+
+    TArray<FWorldSurvivalProfile> Profiles;
+    TArray<FWorldDiscoveryRecord> Discoveries;
+    EWorldWeatherState Weather;
+    float Severity = 0.0f;
+    Survival->ExportSnapshot(Profiles, Discoveries, Weather, Severity);
+    TestTrue(TEXT("Restore validates equipment ownership, condition receipts and discovery unlocks"),
+        Survival->RestoreSnapshot(Profiles, Discoveries, Weather, Severity));
+    TestTrue(TEXT("Restored discovery unlock persists"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Region.DeepCave")));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
