@@ -600,6 +600,16 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 }
 
 
+bool UWorldGameDataSubsystem::IsDiscoveryGatedDefinition(FName DefinitionId) const
+{
+    if (DefinitionId.IsNone())
+        return false;
+    return Discoveries.ContainsByPredicate([DefinitionId](const FGameDataDiscovery& Discovery)
+    {
+        return Discovery.UnlockedDefinitionIds.Contains(DefinitionId);
+    });
+}
+
 const FGameDataZone* UWorldGameDataSubsystem::FindZone(FName ZoneId) const
 {
     if (ZoneId.IsNone())
