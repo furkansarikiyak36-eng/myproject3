@@ -269,10 +269,8 @@ bool UWorldAgricultureSubsystem::RegisterAnimalDefinition(const FWorldAnimalDefi
 {
     if (Definition.AnimalDefinitionId.IsNone() || Definition.FeedDefinitionId.IsNone() ||
         Definition.CaptureToolDefinitionIds.IsEmpty() ||
-        !FMath::IsFinite(Definition.ProductIntervalSeconds) || Definition.ProductIntervalSeconds <= 0.0 ||
+        !FMath::IsFinite(Definition.ProductIntervalSeconds) || Definition.ProductIntervalSeconds < 3600.0 ||
         Definition.ProductUnitsPerInterval <= 0 || Definition.ProductUnitsPerInterval > 64 ||
-        (Definition.ProductDefinitionId.IsNone() == false &&
-            (Definition.ProductIntervalSeconds < 1.0 || Definition.ProductUnitsPerInterval < 1)) ||
         Definition.SlaughterYields.IsEmpty() || AnimalDefinitions.ContainsByPredicate(
             [&Definition](const FWorldAnimalDefinition& Existing)
             { return Existing.AnimalDefinitionId == Definition.AnimalDefinitionId; }) ||
@@ -883,14 +881,12 @@ bool UWorldAgricultureSubsystem::TryAssignAnimalToPen(
 
     if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
     {
-        const FWorldAnimalState* ExistingAnimal = Animals.Find(AnimalId);
         const FWorldAnimalPenState* ExistingPen = AnimalPens.Find(PenId);
         return Existing->Action == EWorldAgricultureActionKind::AssignAnimalToPen &&
             Existing->EntityId == AnimalId && Existing->RelatedEntityId == PenId &&
             Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
             Existing->ExpectedRelatedEntityRevision == ExpectedPenRevision &&
-            ExistingAnimal && ExistingPen && ExistingAnimal->PenId == PenId &&
-            ExistingPen->AnimalIds.Contains(AnimalId);
+            ExistingPen != nullptr;
     }
 
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
