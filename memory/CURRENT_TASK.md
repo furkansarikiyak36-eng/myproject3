@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement weather-driven wet/dry conversion for world-owned Firewood using `TryUpdateItemDefinition` and heat range, then add a player O-key refuel/ignite handler to VerticalSlice_C. Afterward add a focused wet-fuel persistence/refuel test and update P3.1 status. No build.
+Add/verify `UWorldItemOwnershipSubsystem` and `UHeatSourceComponent` includes in `WorldSurvivalSubsystem.cpp` (they may already be present), then bind a free O-key refuel/ignite interaction to the nearest heat source in VerticalSlice_C using a unique owned fuel stack. Check if the current VSC header needs the handler declaration. No build.
