@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit the P4.4 code paths for source consistency: check `FGameDataItem` tool-strength parse bounds, item JSON entries, starter stack category/weight, `ChopInput` strength use, `LogCarry` work scaling, `TerrainDigTool` required inventory item + multiplier, and the new regression test. Then update status/docs (code-written, unbuilt).
+Update `PLAN_STATUS.md` P4.4 from Kısmi to Var (code-written) and adjust the summary counts, documenting strength data validation, starter tool stacks, tree damage/log cutting and digging links; keep test/build/PIE caveat. Update P4.3 summary/docs as already code-written partial, add P4.4 ROADMAP entry, and update CODEBASE tools/terrain/stations rows.
