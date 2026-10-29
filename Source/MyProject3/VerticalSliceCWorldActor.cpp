@@ -1062,6 +1062,7 @@ void AVerticalSliceCWorldActor::BuildFarmPlot()
         return;
     }
 
+    FarmPlotTiles.Reset();
     // Visible, non-blocking soil tiles keep the backend logical grid discoverable
     // without creating a large voxel field or interfering with traversal.
     for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
@@ -1077,11 +1078,55 @@ void AVerticalSliceCWorldActor::BuildFarmPlot()
             const FLinearColor SoilColour = ((X + Y) % 2 == 0)
                 ? FLinearColor(0.20f, 0.125f, 0.065f)
                 : FLinearColor(0.16f, 0.095f, 0.045f);
-            AddProp(SoilCube, Transform, SoilColour, false);
+            if (UStaticMeshComponent* Tile = AddProp(SoilCube, Transform, SoilColour, false))
+                FarmPlotTiles.Add(Tile);
         }
     }
 
-    bFarmPlotBuilt = true;
+    bFarmPlotBuilt = FarmPlotTiles.Num() == FarmPlotCellsPerAxis * FarmPlotCellsPerAxis;
+    RefreshFarmPlotVisuals();
+}
+
+void AVerticalSliceCWorldActor::RefreshFarmPlotVisuals()
+{
+    UWorld* World = GetWorld();
+    const UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!bFarmPlotBuilt || !Agriculture ||
+        FarmPlotTiles.Num() != FarmPlotCellsPerAxis * FarmPlotCellsPerAxis)
+        return;
+
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const int32 Index = Y * FarmPlotCellsPerAxis + X;
+            if (!FarmPlotTiles.IsValidIndex(Index) || !IsValid(FarmPlotTiles[Index]))
+                continue;
+
+            FWorldFieldCellState Cell;
+            const bool bExists = Agriculture->GetFieldCell(FIntVector(X, Y, 0), Cell);
+            FLinearColor Colour = ((X + Y) % 2 == 0)
+                ? FLinearColor(0.20f, 0.125f, 0.065f)
+                : FLinearColor(0.16f, 0.095f, 0.045f);
+            if (bExists)
+            {
+                if (Cell.bCleared)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.27f, 0.18f, 0.095f), 0.45f);
+                if (Cell.bTilled)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.11f, 0.065f, 0.032f), 0.65f);
+                if (Cell.Mulch > 0.0f)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.33f, 0.22f, 0.09f),
+                        FMath::Clamp(Cell.Mulch, 0.0f, 1.0f) * 0.55f);
+                if (Cell.Fertility > 0.5f)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.20f, 0.27f, 0.075f),
+                        FMath::Clamp((Cell.Fertility - 0.5f) * 0.5f, 0.0f, 0.25f));
+                if (Cell.bFenced)
+                    Colour = FMath::Lerp(Colour, FLinearColor(0.28f, 0.22f, 0.10f), 0.18f);
+            }
+            FarmPlotTiles[Index]->SetMaterial(0, Tint(Colour));
+        }
+    }
 }
 
 bool AVerticalSliceCWorldActor::BuildWorld()
@@ -2260,6 +2305,7 @@ void AVerticalSliceCWorldActor::ApplyFieldActionInput()
         return;
     }
 
+    RefreshFarmPlotVisuals();
     if (GEngine)
     {
         GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 220, 160),
@@ -2498,6 +2544,13 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
     EnsureStarterTools();
     AssignGatherableZones();
     EnsureDiscoveryMarkers();
+
+    FarmPlotVisualRefreshTimer -= DeltaSeconds;
+    if (FarmPlotVisualRefreshTimer <= 0.0f)
+    {
+        FarmPlotVisualRefreshTimer = 1.0f;
+        RefreshFarmPlotVisuals();
+    }
 
     UpdateCreek(DeltaSeconds);
     if (Helper && Helper->GetStatus() != LastHelperStatus && GEngine)
