@@ -51,10 +51,10 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
 ### Changes
 - Implemented receipt-backed inventory-owned water processing transitions and added schema v27 migration.
-- Source audit verified rest blocks jump, while finding missing survival action hooks on the building/carry components; this is the next code gap.
+- Source audit verified rest blocks jump, while finding missing survival action hooks on pickup/place actions. Added `CanRecordActivity` declaration for a pure preflight so failed placements do not consume stamina.
 - Bound player M/F5/F6/F7 interactions for drink, boil, rest and survival status; water tests now cover the complete source-level loop.
 - Added fatigue work-effectiveness API, active-rest action gate, scaling for tree chop/log cut/dig/repair, plus tests for rest/work scaling and warm-shelter drying.
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Add a safe `CanRecordActivity` preflight and connect it to central carry/pickup/material-placement paths; ensure rest blocks those interactions and only successful actions record stamina/energy. Add a focused automation assertion for the preflight contract. Then synchronize any remaining status/roadmap inaccuracies and run a source-only audit; all new code/tests remain unbuilt/unrun.
+Implement the `CanRecordActivity` body by extracting the exact gates from `RecordActivity`; then wire it to successful carry pickup and log/material placement commits. Extend the rest test with preflight assertions. Then synchronize any remaining status/roadmap inaccuracies and run a source-only audit; all new code/tests remain unbuilt/unrun.
