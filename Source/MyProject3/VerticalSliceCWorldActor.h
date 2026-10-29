@@ -153,6 +153,7 @@ private:
     void SetupPlayer();
     void EnsureStarterTools();
     void ChopInput();
+    void GatherInput();
     void FillCreekWaterInput();
     void DrinkWaterInput();
     void BoilWaterInput();
