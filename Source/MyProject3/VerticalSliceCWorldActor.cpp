@@ -12,6 +12,9 @@
 #include "LogCarryComponent.h"
 #include "InventoryCraftingComponent.h"
 #include "InventoryCraftingTypes.h"
+#include "ProductionStationActor.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldProductionSubsystem.h"
 #include "RopeLineActor.h"
 #include "ShelterSensorComponent.h"
 #include "StickPrimitivePiece.h"
@@ -1076,6 +1079,15 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& RefuelBinding = InputComponent->BindKey(
                 EKeys::O, IE_Pressed, this, &AVerticalSliceCWorldActor::RefuelFireInput);
             RefuelBinding.bConsumeInput = false;
+            FInputKeyBinding& StationStartBinding = InputComponent->BindKey(
+                EKeys::E, IE_Pressed, this, &AVerticalSliceCWorldActor::StationStartCollectInput);
+            StationStartBinding.bConsumeInput = false;
+            FInputKeyBinding& StationDepositBinding = InputComponent->BindKey(
+                EKeys::F, IE_Pressed, this, &AVerticalSliceCWorldActor::StationDepositInput);
+            StationDepositBinding.bConsumeInput = false;
+            FInputKeyBinding& StationTakeBinding = InputComponent->BindKey(
+                EKeys::R, IE_Pressed, this, &AVerticalSliceCWorldActor::StationTakeInput);
+            StationTakeBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
@@ -1171,6 +1183,264 @@ void AVerticalSliceCWorldActor::RefuelFireInput()
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
             TEXT("Carry an owned firewood or charcoal item to refuel this fire."));
+}
+
+AProductionStationActor* AVerticalSliceCWorldActor::FindNearestStation(
+    const FVector& Location, float MaxDistanceCm) const
+{
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !GameData || !GameData->IsApplied() ||
+        !FMath::IsFinite(MaxDistanceCm) || MaxDistanceCm <= 0.0f)
+        return nullptr;
+
+    AProductionStationActor* Nearest = nullptr;
+    float BestDistanceSquared = FMath::Square(MaxDistanceCm);
+    for (TActorIterator<AProductionStationActor> It(World); It; ++It)
+    {
+        AProductionStationActor* Candidate = *It;
+        if (!IsValid(Candidate) || Candidate->StationDataId.IsNone() ||
+            !GameData->GetStations().Contains(Candidate->StationDataId) ||
+            !Candidate->EnsureRegistered())
+            continue;
+        const float DistanceSquared = FVector::DistSquared(Location, Candidate->GetActorLocation());
+        if (DistanceSquared <= BestDistanceSquared)
+        {
+            BestDistanceSquared = DistanceSquared;
+            Nearest = Candidate;
+        }
+    }
+    return Nearest;
+}
+
+void AVerticalSliceCWorldActor::StationStartCollectInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !Pawn || !GameData || !GameData->IsApplied())
+        return;
+
+    AProductionStationActor* Station = FindNearestStation(Pawn->GetActorLocation(), 300.0f);
+    if (!Station)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
+                TEXT("No registered station within 300 cm. (E start/collect, F deposit, R take)"));
+        return;
+    }
+
+    const int32 CollectedJobs = Station->CollectFinishedJobs();
+    if (CollectedJobs > 0)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(120, 220, 150),
+                FString::Printf(TEXT("Collected %d finished job(s) into station stock. Press R to take an item."),
+                    CollectedJobs));
+        return;
+    }
+
+    UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
+    FWorldProductionStation State;
+    if (!Production || !Production->GetStation(Station->GetStationId(), State))
+        return;
+
+    bool bInputsReadyButFireMissing = false;
+    for (const FGameDataTransformation& Transformation : GameData->GetTransformations())
+    {
+        if (Transformation.Where != Station->StationDataId || Transformation.Inputs.IsEmpty())
+            continue;
+
+        bool bReady = true;
+        for (const FGameDataItemAmount& Input : Transformation.Inputs)
+            if (State.Stock.FindRef(Input.ItemId) < Input.Quantity)
+                bReady = false;
+        for (const FName ToolId : Transformation.Tools)
+            if (State.Stock.FindRef(ToolId) < 1)
+                bReady = false;
+        if (!bReady)
+            continue;
+
+        bInputsReadyButFireMissing = !Station->HasRequiredFire();
+        FGuid JobId;
+        if (Station->TryStartRecipe(Transformation.Id, JobId))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 210, 255),
+                    FString::Printf(TEXT("Started %s at %s."),
+                        *Transformation.Name, *Station->StationDataId.ToString()));
+            return;
+        }
+    }
+
+    if (bInputsReadyButFireMissing)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                TEXT("Station inputs are ready, but its required nearby fire/charcoal-hot fire is missing."));
+        return;
+    }
+
+    const bool bWorking = State.Jobs.ContainsByPredicate([](const FWorldProductionJob& Job)
+    {
+        return Job.State == EProductionJobState::Queued || Job.State == EProductionJobState::Running;
+    });
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+            bWorking
+                ? TEXT("Station is already working. Press E again when a job finishes.")
+                : TEXT("No recipe is ready. Press F to deposit required items/tools; R takes station stock."));
+}
+
+void AVerticalSliceCWorldActor::StationDepositInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldProductionSubsystem* Production =
+        World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !GameData || !GameData->IsApplied() || !Production)
+        return;
+
+    AProductionStationActor* Station = FindNearestStation(Pawn->GetActorLocation(), 300.0f);
+    if (!Station)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
+                TEXT("Move within 300 cm of a registered station before depositing."));
+        return;
+    }
+
+    FWorldProductionStation State;
+    if (!Production->GetStation(Station->GetStationId(), State))
+        return;
+
+    auto TryDepositDeficit = [&](FName ItemId, int32 RequiredUnits) -> bool
+    {
+        if (ItemId.IsNone() || RequiredUnits <= State.Stock.FindRef(ItemId))
+            return false;
+
+        // Aggregate station stock cannot retain a unique ledger item identity.
+        // Only generic stacks are eligible for this prototype deposit action.
+        int32 PlainAvailable = 0;
+        bool bContainsUniqueIdentity = false;
+        for (const FInventoryStack& Stack : Inventory->Items)
+        {
+            if (Stack.ItemId != ItemId)
+                continue;
+            if (Stack.OwnedWorldItemId.IsValid())
+                bContainsUniqueIdentity = true;
+            else
+                PlainAvailable += Stack.Quantity;
+        }
+        if (bContainsUniqueIdentity || PlainAvailable <= 0)
+            return false;
+
+        const int32 ToDeposit = FMath::Min(RequiredUnits - State.Stock.FindRef(ItemId), PlainAvailable);
+        if (ToDeposit <= 0 || !Station->TryDeposit(Inventory, ItemId, ToDeposit))
+            return false;
+
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(150, 205, 255),
+                FString::Printf(TEXT("Deposited %d x %s at %s."),
+                    ToDeposit, *ItemId.ToString(), *Station->StationDataId.ToString()));
+        return true;
+    };
+
+    bool bRecipeAlreadyStocked = false;
+    for (const FGameDataTransformation& Transformation : GameData->GetTransformations())
+    {
+        if (Transformation.Where != Station->StationDataId || Transformation.Inputs.IsEmpty())
+            continue;
+
+        bool bAllInputsStocked = true;
+        for (const FGameDataItemAmount& Input : Transformation.Inputs)
+        {
+            if (State.Stock.FindRef(Input.ItemId) < Input.Quantity)
+            {
+                bAllInputsStocked = false;
+                if (TryDepositDeficit(Input.ItemId, Input.Quantity))
+                    return;
+            }
+        }
+        for (const FName ToolId : Transformation.Tools)
+        {
+            if (State.Stock.FindRef(ToolId) < 1)
+            {
+                bAllInputsStocked = false;
+                if (TryDepositDeficit(ToolId, 1))
+                    return;
+            }
+        }
+        if (bAllInputsStocked)
+            bRecipeAlreadyStocked = true;
+    }
+
+    if (GEngine)
+    {
+        const FString Message = bRecipeAlreadyStocked
+            ? TEXT("Required items are already at the station. Press E to start when fire requirements are met.")
+            : TEXT("No missing recipe input/tool is available as a generic inventory stack.");
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f,
+            bRecipeAlreadyStocked ? FColor(130, 220, 150) : FColor::Orange, Message);
+    }
+}
+
+void AVerticalSliceCWorldActor::StationTakeInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    if (!World || !Pawn || !Inventory)
+        return;
+
+    AProductionStationActor* Station = FindNearestStation(Pawn->GetActorLocation(), 300.0f);
+    if (!Station)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
+                TEXT("Move within 300 cm of a registered station before taking stock."));
+        return;
+    }
+
+    UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
+    FWorldProductionStation State;
+    if (!Production || !Production->GetStation(Station->GetStationId(), State))
+        return;
+
+    TArray<FName> StockIds;
+    State.Stock.GetKeys(StockIds);
+    StockIds.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+    for (const FName ItemId : StockIds)
+    {
+        if (State.Stock.FindRef(ItemId) <= 0)
+            continue;
+        if (Station->TryTake(Inventory, ItemId, 1))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(140, 220, 150),
+                    FString::Printf(TEXT("Took 1 x %s from %s."), *ItemId.ToString(),
+                        *Station->StationDataId.ToString()));
+            return;
+        }
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                TEXT("Could not take stock. Check inventory capacity and item data."));
+        return;
+    }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
+            TEXT("Station stock is empty."));
 }
 
 void AVerticalSliceCWorldActor::FillCreekWaterInput()
