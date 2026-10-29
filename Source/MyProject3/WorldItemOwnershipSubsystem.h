@@ -159,6 +159,9 @@ public:
     bool TryConsumeItem(const FGuid& OperationId, const FGuid& ItemId,
         int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner);
 
+    /** Receipt-backed state/definition transition for world items (e.g. wet fuel)
+     *  and explicitly inventory-owned unique items (e.g. dirty→boiled water).
+     *  Owner identity remains unchanged; quantity and item identity are preserved. */
     UFUNCTION(BlueprintCallable, Category="World|Items")
     bool TryUpdateItemDefinition(const FGuid& OperationId, const FGuid& ItemId,
         int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner,
