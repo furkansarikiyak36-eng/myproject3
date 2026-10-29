@@ -52,6 +52,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (Tick drives separate time/weather and updates survival location; only LMB chop and J helper inputs are bound; `IsInCreek` currently only classifies water for log drift).
 - `Source/MyProject3/LogSnapCharacter.cpp` (WASD movement is polled in Tick; no survival action-cost or fatigue speed integration exists).
 - `Source/MyProject3/ShelterSensorComponent.h` (`SurvivalEntityId` is public and can bridge the player character to the survival profile).
+- `Source/MyProject3/LogSnapCharacter.cpp` (include block re-read before adding survival movement cost/speed coupling).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` currently records calorie burn and drains stamina but does not gate the caller's action; `AdvanceSurvivalStep` already models rain/storm wetness and faster drying near warmth/shelter; `TryBeginRest` uses shared-clock rest quality; condition definitions can be applied with receipts).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
