@@ -62,7 +62,13 @@ bool UWorldAgricultureSubsystem::FeedAnimal(
 
 bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) const
 {
-    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
+    const UWorldSurvivalSubsystem* Survival =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!Survival ||
+        static_cast<uint8>(Survival->Weather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
+        !FMath::IsFinite(Survival->WeatherSeverity) ||
+        Survival->WeatherSeverity < 0.0f || Survival->WeatherSeverity > 1.0f ||
+        !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
         !FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
         MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(HungerPerHour) ||
         HungerPerHour < 0.0f || !FMath::IsFinite(ProductHungerLimit) ||
@@ -107,10 +113,7 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
 
     const UWorldSurvivalSubsystem* Survival =
         GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
-    if (!Survival ||
-        static_cast<uint8>(Survival->Weather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
-        !FMath::IsFinite(Survival->WeatherSeverity) ||
-        Survival->WeatherSeverity < 0.0f || Survival->WeatherSeverity > 1.0f)
+    if (!Survival)
         return false;
 
     float FullSeverityMultiplier = 1.0f;
