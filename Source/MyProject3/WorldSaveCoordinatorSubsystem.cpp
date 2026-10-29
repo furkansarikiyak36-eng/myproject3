@@ -969,6 +969,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         }
         Candidate->SchemaVersion = 25;
     }
+    if (Candidate->SchemaVersion == 25)
+    {
+        // Schema v26 adds saved output IDs to survival action receipts for
+        // reusable-pot creek fills. Legacy receipt arrays have no such action,
+        // so their new output IDs remain invalid by default.
+        Candidate->SchemaVersion = 26;
+    }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 
