@@ -592,6 +592,15 @@ bool UWorldSurvivalSubsystem::UpdateLocation(const FGuid& EntityId, FVector NewL
     return true;
 }
 
+bool UWorldSurvivalSubsystem::ApplyWetnessExposure(const FGuid& EntityId, float WetnessDelta)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || !FMath::IsFinite(WetnessDelta) || WetnessDelta <= 0.0f || WetnessDelta > 1.0f)
+        return false;
+    Profile->Wetness = FMath::Clamp(Profile->Wetness + WetnessDelta, 0.0f, 1.0f);
+    return true;
+}
+
 float UWorldSurvivalSubsystem::GetActivityKcalPerHour(ESurvivalActivity Activity) const
 {
     switch (Activity)
@@ -1484,6 +1493,40 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         // Warmth dries clothing faster.
         const float DryingBoost = FMath::Max(0.0f, P.FeltTemperatureCelsius - ComfortTemperatureCelsius) * 0.01f;
         P.Wetness = FMath::Max(0.0f, P.Wetness - Hours * (0.05f + P.ShelterProtection * 0.25f + DryingBoost));
+
+        // Prolonged wet-cold exposure can cause the configured cold illness.
+        // Core temperature must fall first, so a brief splash is not enough.
+        const FName ColdIllnessId(TEXT("Illness.Cold"));
+        const FWorldSurvivalConditionDefinition* ColdIllness = FindConditionDefinition(ColdIllnessId);
+        const bool bAlreadyColdIll = P.Conditions.ContainsByPredicate(
+            [LogicalTimeSeconds, &ColdIllnessId](const FWorldSurvivalConditionState& Condition)
+            {
+                return Condition.DefinitionId == ColdIllnessId &&
+                    (Condition.EndsAtWorldTimeSeconds <= 0.0 ||
+                     Condition.EndsAtWorldTimeSeconds > LogicalTimeSeconds);
+            });
+        if (ColdIllness && P.Wetness >= 0.8f &&
+            P.FeltTemperatureCelsius < ComfortTemperatureCelsius - 8.0f &&
+            P.CoreTemperatureCelsius <= 36.0f && !bAlreadyColdIll &&
+            P.Conditions.Num() < 128)
+        {
+            FWorldSurvivalConditionState Condition;
+            Condition.ConditionId = FGuid::NewGuid();
+            Condition.DefinitionId = ColdIllness->DefinitionId;
+            Condition.Kind = ColdIllness->Kind;
+            Condition.StartedAtWorldTimeSeconds = LogicalTimeSeconds;
+            Condition.EndsAtWorldTimeSeconds = ColdIllness->DurationSeconds > 0.0
+                ? LogicalTimeSeconds + ColdIllness->DurationSeconds : 0.0;
+            Condition.Severity = FMath::Clamp(
+                (P.Wetness - 0.7f) * 2.0f +
+                (ComfortTemperatureCelsius - P.FeltTemperatureCelsius) / 30.0f,
+                0.25f, 1.0f);
+            Condition.Revision = 1;
+            if (Condition.ConditionId.IsValid() &&
+                (Condition.EndsAtWorldTimeSeconds == 0.0 ||
+                 FMath::IsFinite(Condition.EndsAtWorldTimeSeconds)))
+                P.Conditions.Add(Condition);
+        }
 
         if (P.CaloriesKcal <= 0.0f || P.Thirst >= 98.0f)
             P.Health = FMath::Max(0.0f, P.Health - Hours * 2.0f);
