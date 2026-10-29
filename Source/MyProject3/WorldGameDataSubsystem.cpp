@@ -320,6 +320,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             !FMath::IsFinite(HarvestUnitsValue) || FMath::FloorToDouble(HarvestUnitsValue) != HarvestUnitsValue ||
             Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
             !FMath::IsFinite(HoursPerStage) || HoursPerStage <= 0.0 ||
+            !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
             !FMath::IsFinite(SeedReturnValue) || FMath::FloorToDouble(SeedReturnValue) != SeedReturnValue ||
             Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
             !FMath::IsFinite(Crop.SoilExhaustionPerHarvest) ||
