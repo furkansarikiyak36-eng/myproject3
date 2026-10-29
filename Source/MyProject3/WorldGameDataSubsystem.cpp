@@ -3,6 +3,7 @@
 #include "HeatSourceComponent.h"
 #include "InventoryCraftingComponent.h"
 #include "WorldProductionSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
@@ -275,25 +276,64 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     }
 
     TArray<FGameDataCrop> NewCrops;
-    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(CropsJson, TEXT("crops")))
-        for (const TSharedPtr<FJsonValue>& Value : *Values)
+    const TArray<TSharedPtr<FJsonValue>>* CropValues = ArrayField(CropsJson, TEXT("crops"));
+    if (!CropValues || CropValues->IsEmpty())
+        return Fail(TEXT("crops.json has no crops"));
+    TSet<FName> SeenCropIds;
+    for (const TSharedPtr<FJsonValue>& Value : *CropValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataCrop Crop;
+        Crop.Id = NameField(Entry, TEXT("id"));
+        Crop.SeedItemId = NameField(Entry, TEXT("seed"));
+        Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
+        const double HarvestUnitsValue = NumberField(Entry, TEXT("units"), 1.0);
+        const double HoursPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0);
+        const double SeedReturnValue = NumberField(Entry, TEXT("seed_return_units"), 1.0);
+        Crop.HarvestUnits = static_cast<int32>(HarvestUnitsValue);
+        Crop.SecondsPerStage = HoursPerStage * 3600.0;
+        Crop.SeedReturnUnits = static_cast<int32>(SeedReturnValue);
+        Crop.SoilExhaustionPerHarvest = static_cast<float>(NumberField(Entry, TEXT("soil_exhaustion_per_harvest"), 10.0));
+        Crop.MinimumFertility = static_cast<float>(NumberField(Entry, TEXT("minimum_fertility"), 10.0));
+        Crop.MaximumPlantWeedPressure = static_cast<float>(NumberField(Entry, TEXT("maximum_plant_weed_pressure"), 0.75));
+        Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
+
+        const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months"));
+        TSet<int32> SeenPlantMonths;
+        if (Months)
         {
-            const FJson Entry = Value->AsObject();
-            FGameDataCrop Crop;
-            Crop.Id = NameField(Entry, TEXT("id"));
-            Crop.SeedItemId = NameField(Entry, TEXT("seed"));
-            Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
-            Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
-            Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
-            Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
-            if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months")))
-                for (const TSharedPtr<FJsonValue>& Month : *Months)
-                    Crop.PlantMonths.Add(static_cast<int32>(Month->AsNumber()));
-            if (Crop.Id.IsNone() || !HasItem(Crop.SeedItemId) || !HasItem(Crop.HarvestItemId) ||
-                Crop.HarvestUnits <= 0 || Crop.SecondsPerStage <= 0.0 || Crop.PlantMonths.Num() == 0)
-                return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
-            NewCrops.Add(Crop);
+            for (const TSharedPtr<FJsonValue>& Month : *Months)
+            {
+                const double MonthValue = Month->AsNumber();
+                if (!FMath::IsFinite(MonthValue) || FMath::FloorToDouble(MonthValue) != MonthValue)
+                    return Fail(FString::Printf(TEXT("Crop %s has a non-integer planting month"), *Crop.Id.ToString()));
+                const int32 MonthNumber = static_cast<int32>(MonthValue);
+                if (MonthNumber < 1 || MonthNumber > 12 || SeenPlantMonths.Contains(MonthNumber))
+                    return Fail(FString::Printf(TEXT("Crop %s has an invalid or repeated planting month"), *Crop.Id.ToString()));
+                SeenPlantMonths.Add(MonthNumber);
+                Crop.PlantMonths.Add(MonthNumber);
+            }
         }
+
+        if (Crop.Id.IsNone() || SeenCropIds.Contains(Crop.Id) ||
+            !HasItem(Crop.SeedItemId) || !HasItem(Crop.HarvestItemId) ||
+            !FMath::IsFinite(HarvestUnitsValue) || FMath::FloorToDouble(HarvestUnitsValue) != HarvestUnitsValue ||
+            Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
+            !FMath::IsFinite(HoursPerStage) || HoursPerStage <= 0.0 ||
+            !FMath::IsFinite(SeedReturnValue) || FMath::FloorToDouble(SeedReturnValue) != SeedReturnValue ||
+            Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
+            !FMath::IsFinite(Crop.SoilExhaustionPerHarvest) ||
+            Crop.SoilExhaustionPerHarvest < 0.0f || Crop.SoilExhaustionPerHarvest > 100.0f ||
+            !FMath::IsFinite(Crop.MinimumFertility) || Crop.MinimumFertility < 0.0f || Crop.MinimumFertility > 100.0f ||
+            !FMath::IsFinite(Crop.MaximumPlantWeedPressure) ||
+            Crop.MaximumPlantWeedPressure < 0.0f || Crop.MaximumPlantWeedPressure > 1.0f ||
+            Crop.FoundInZone < 0 || Crop.PlantMonths.IsEmpty())
+            return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
+
+        Crop.PlantMonths.Sort();
+        SeenCropIds.Add(Crop.Id);
+        NewCrops.Add(Crop);
+    }
 
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
@@ -376,7 +416,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
     UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
     UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
-    if (!Production || !Survival || !Clock || !Climate || !Terrain)
+    UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
+    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture)
         return Fail(TEXT("A world subsystem is missing"));
 
     // Station recipes. A tool is put into the station and comes back with the output.
@@ -449,6 +490,23 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
 
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
+
+    for (const FGameDataCrop& Crop : Crops)
+    {
+        FWorldCropDefinition Definition;
+        Definition.CropDefinitionId = Crop.Id;
+        Definition.SeedDefinitionId = Crop.SeedItemId;
+        Definition.HarvestDefinitionId = Crop.HarvestItemId;
+        Definition.HarvestUnits = Crop.HarvestUnits;
+        Definition.SecondsPerStage = Crop.SecondsPerStage;
+        Definition.PlantMonths = Crop.PlantMonths;
+        Definition.SeedReturnUnits = Crop.SeedReturnUnits;
+        Definition.SoilExhaustionPerHarvest = Crop.SoilExhaustionPerHarvest;
+        Definition.MinimumFertility = Crop.MinimumFertility;
+        Definition.MaximumPlantWeedPressure = Crop.MaximumPlantWeedPressure;
+        if (!Agriculture->RegisterCropDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Agriculture refused crop %s"), *Crop.Id.ToString()));
+    }
 
     for (const FLayer& L : Layers)
     {
