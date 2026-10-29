@@ -6,7 +6,7 @@ this GitHub repo can continue from here: Claude Code, Claude web, another accoun
 
 ## Writing code without a compiler (all assistants, from 2026-10-29)
 
-Work branch: `game/p00-adopt-group-a` (builds, 102/102 tests at `bbc57b3`). Status ceiling: `code-written`.
+Work branch: `game/p00-adopt-group-a`; baseline build/test evidence is 102/102 at `bbc57b3`. The current partial-task edits after that commit are **not compiled or tested**. Status ceiling: `code-written`.
 Most errors in unbuilt code are names that do not exist (group-a had 16). So:
 
 1. **Read the header before you use anything.** Copy field, function and enum names from the `.h` file you read
@@ -17,7 +17,7 @@ Most errors in unbuilt code are names that do not exist (group-a had 16). So:
    every new `.h` needs `#include "X.generated.h"` as its last include.
 3. Survival steps take the step's **end** time (`AdvanceSurvivalStep(Delta, EndTime)`).
 4. A new saved field: add it to the struct, to the restore validation, and a save schema migration step
-   (`WorldSaveCoordinatorSubsystem.cpp`, current schema 22).
+   (`WorldSaveCoordinatorSubsystem.cpp`, current schema 25 on `game/p00-adopt-group-a`; retain migrations from v22, v23 and v24).
 5. Keep a change small and in one place; do not refactor files you are not changing.
 6. **Write the test with the code** (in `Tests/GameWorldTests.cpp`), even though you cannot run it.
    Name: `MyProject3.World.<Area>.<What>`.
@@ -253,10 +253,9 @@ Done: measured trip time to the creek drops after the bridge.
 
 **Milestone B — "First year"**.
 
-## Phase 10 — Physical assembly (unfrozen)
+## Phase 10 — Physical assembly (FROZEN)
 
-The 8 physical parts (log family, plank, stake, stone block, thatch bundle) with full geometry,
-notches, mitre cuts, crossing diagonals; replaces simple placement everywhere (no old path left).
+Frozen by the user's current decision on 2026-10-29. Do not implement or expand this phase until explicitly reopened. The 8 advanced physical parts (log family, plank, stake, stone block, thatch bundle), notches, mitre cuts and crossing diagonals remain deferred; preserve the current carry/cut/place/snap kernel.
 
 ## Phase 11 — Story
 
@@ -288,6 +287,9 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 ## Progress log
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
+- 2026-10-29 · P6.4 · code-written · wildlife identity, capture receipt, capacity/species-gated pen, atomic meat/hide/bone outputs, pen save/migration v25, lifecycle test authored (`40e2ba3` and `3546219`) · **unbuilt**
+- 2026-10-29 · P6.1/P6.2/P6.3 (part) · code-written · field-cell actions/snapshot, planting month and crop-data wiring, fertility/weed/mulch growth, seed-return output, schema v23/v24 and automation coverage authored (`2ca2ede`, `e258f59`) · **unbuilt**
+- 2026-10-29 · P0.5 · code-written · demo scenario selects game-data transformation ID instead of separate editable recipe payload; status updated (`7ef5c47`) · **unbuilt**
 
 - 2026-10-29 · P5.1 · tested · dig layers from data, 102/102
 - 2026-10-29 · P4.1/P4.3 (part) · tested · gatherable spots, station actor with fire rules, 101/101
