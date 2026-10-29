@@ -98,6 +98,8 @@ protected:
     /** Cached base speed so fatigue/sprint modifiers can be recomputed without compounding. */
     float BaseWalkSpeed = 420.0f;
     float SurvivalActivityAccumulator = 0.0f;
+    bool bWasFalling = false;
+    float PeakFallSpeedCmPerSecond = 0.0f;
 
     float AxeSwingElapsed = 0.0f;
     float AxeSwingDuration = 0.30f;
@@ -118,4 +120,8 @@ public:
     /** Called by the active vertical-slice chopping handler on every mouse swing. */
     UFUNCTION(BlueprintCallable, Category = "Character|Axe")
     void PlayAxeSwing();
+
+    /** Applies fall consequences once for an impact speed measured by the character movement loop. */
+    UFUNCTION(BlueprintCallable, Category = "Survival")
+    void ApplyFallImpact(float ImpactSpeedCmPerSecond);
 };
