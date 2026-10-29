@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Additional `BuildPlanActor.cpp` read (around `GetFilledCount`): completeness is explicitly the count of `Slot.bFilled`, so the plan test can fill slot state without inventing per-log physics. Route activation should be asserted only after the final `MarkFilled` triggers `Complete()`.
 - Read `Tests/GameWorldTests.cpp` (SHA b1b9ad163b0f3c6d347851c96ff0a8b9f89081d4): the existing bridge-route test activates a manually spawned route-link root, so it does not verify that build-plan completion itself controls route availability. Add a plan-level test rather than duplicating the manual adapter test.
 - Read `BuildPlanActor.cpp` slot setup (2026-10-29): slots are local transforms with an optional single support-slot index; a feasible 720 cm creek span can use three supported beam segments per side, intermediate posts, cross-deck logs, and short sloped end ramps. Build completion is all-slots-filled, not one placement.
 - Read `Source/MyProject3/BuildPlanActor.cpp` setup (SHA c129a8c8bbcbb92d7b753257c84e0f0fca0bc354): the existing plan builder uses per-slot local transforms and support-slot IDs; most logs are capped around 300–440 cm. The authored creek crossing is 720 cm bank-to-bank, so a simple two-beam bridge plan would be structurally implausible and must not auto-enable route state.
