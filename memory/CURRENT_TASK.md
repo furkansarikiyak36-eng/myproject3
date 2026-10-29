@@ -118,4 +118,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `WorldObjectIdentityComponent.h` and update `WildlifeActor` to carry a stable SaveGame wildlife ID; then add the animal lifecycle fields/actions to agriculture. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Update `WildlifeActor.cpp` to construct/initialize identity, pause wandering after capture, and safely apply capture/pen state; then extend agriculture animal state and actions. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
