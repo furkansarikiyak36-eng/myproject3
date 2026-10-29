@@ -139,8 +139,7 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     const bool bSupportedDefinitionOwner = ExpectedOwner == EWorldItemOwnerKind::World ||
         ExpectedOwner == EWorldItemOwnerKind::Inventory;
     if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
-        !bSupportedDefinitionOwner || NewDefinitionId.IsNone() ||
-        !FMath::IsFinite(ProcessingStartedAtWorldTimeSeconds) || ProcessingStartedAtWorldTimeSeconds < -1.0)
+        !bSupportedDefinitionOwner || NewDefinitionId.IsNone())
     {
         return false;
     }
@@ -175,7 +174,6 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
         Item->BaseDefinitionId = Item->DefinitionId;
 
     Item->DefinitionId = NewDefinitionId;
-    Item->ProcessingStartedAtWorldTimeSeconds = ProcessingStartedAtWorldTimeSeconds;
     ++Item->Revision;
 
     FWorldItemTransferReceipt Receipt;
@@ -428,8 +426,7 @@ bool UWorldItemOwnershipSubsystem::RestoreSnapshot(
             !FMath::IsFinite(Item.CreatedAtWorldTimeSeconds) ||
             Item.CreatedAtWorldTimeSeconds < -1.0 ||
             !FMath::IsFinite(Item.SpoilageAgeSeconds) || Item.SpoilageAgeSeconds < 0.0 ||
-            !FMath::IsFinite(Item.SpoilageAgeUpdatedAtSeconds) || Item.SpoilageAgeUpdatedAtSeconds < -1.0 ||
-            !FMath::IsFinite(Item.ProcessingStartedAtWorldTimeSeconds) || Item.ProcessingStartedAtWorldTimeSeconds < -1.0)
+            !FMath::IsFinite(Item.SpoilageAgeUpdatedAtSeconds) || Item.SpoilageAgeUpdatedAtSeconds < -1.0)
         {
             return false;
         }
