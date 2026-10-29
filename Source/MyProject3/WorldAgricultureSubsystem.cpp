@@ -698,15 +698,24 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
     const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot)
 {
     if (CropSnapshot.Num() > MaxCrops || AnimalSnapshot.Num() > MaxAnimals ||
-        MaxCrops <= 0 || MaxAnimals <= 0) return false;
+        MaxCrops <= 0 || MaxAnimals <= 0 ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256) return false;
     TMap<FGuid, FWorldCropState> NewCrops;
     TMap<FGuid, FWorldAnimalState> NewAnimals;
     for (const FWorldCropState& C : CropSnapshot)
     {
         if (!C.CropId.IsValid() || C.CropDefinitionId.IsNone() || C.Revision <= 0 ||
+            static_cast<uint8>(C.Stage) > static_cast<uint8>(ECropGrowthStage::Harvested) ||
             !FMath::IsFinite(C.Moisture) || C.Moisture < 0.0f || C.Moisture > 1.0f ||
             !FMath::IsFinite(C.GrowthProgressSeconds) || C.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(C.SecondsPerStage) || C.SecondsPerStage <= 0.0 ||
+            C.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+            (C.PlantOperationId.IsValid() &&
+                (!C.SeedItemId.IsValid() || !C.SeedInventoryOwnerId.IsValid() || C.SeedItemExpectedRevision <= 0)) ||
+            (C.HarvestOperationId.IsValid() &&
+                (C.Stage != ECropGrowthStage::Harvested || C.HarvestExpectedRevision <= 0 ||
+                 C.HarvestDefinitionId.IsNone() || C.HarvestUnits <= 0 || C.HarvestUnits > 64 ||
+                 C.HarvestOutputItemIds.Num() != C.HarvestUnits)) ||
             NewCrops.Contains(C.CropId)) return false;
         NewCrops.Add(C.CropId, C);
     }
@@ -715,7 +724,10 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
         if (!A.AnimalId.IsValid() || A.AnimalDefinitionId.IsNone() || A.Revision <= 0 ||
             !FMath::IsFinite(A.Hunger) || A.Hunger < 0.0f || A.Hunger > 100.0f ||
             !FMath::IsFinite(A.Health) || A.Health < 0.0f || A.Health > 100.0f ||
-            A.ProductUnits < 0 || !FMath::IsFinite(A.ProductProgressSeconds) || A.ProductProgressSeconds < 0.0 || NewAnimals.Contains(A.AnimalId)) return false;
+            A.ProductUnits < 0 || !FMath::IsFinite(A.ProductProgressSeconds) ||
+            A.ProductProgressSeconds < 0.0 || A.ProductProgressSeconds >= 3600.0 ||
+            A.Location.ContainsNaN() || A.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+            NewAnimals.Contains(A.AnimalId)) return false;
         NewAnimals.Add(A.AnimalId, A);
     }
     Crops = MoveTemp(NewCrops);
