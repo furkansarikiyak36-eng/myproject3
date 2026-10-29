@@ -525,6 +525,9 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
                     return false;
             }
         }
+        // The save's identity is the stable key used to resolve this actor;
+        // never let a component payload replace that key with a different GUID.
+        Identity->InstanceId = State.IdentityId;
         Identity->DefinitionId = State.DefinitionId;
         Identity->LifecycleState = State.LifecycleState;
         Identity->StateRevision = State.StateRevision;
