@@ -2030,6 +2030,42 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
                     bNight ? EWorldWeatherState::Snow : EWorldWeatherState::Wind,
                     bNight ? 0.5f : 0.35f);
             }
+
+            // Give the player a discrete, low-noise signal when exposure changes
+            // between dry/damp/wet/soaked bands. The profile remains authoritative;
+            // this is feedback only and never changes the simulation state.
+            FWorldSurvivalProfile WetnessProfile;
+            if (Survival->GetProfile(PlayerSurvivalId, WetnessProfile))
+            {
+                const int32 WetnessBand = WetnessProfile.Wetness >= 0.75f ? 3
+                    : WetnessProfile.Wetness >= 0.45f ? 2
+                    : WetnessProfile.Wetness >= 0.15f ? 1 : 0;
+                if (LastReportedWetnessBand == INDEX_NONE)
+                {
+                    LastReportedWetnessBand = WetnessBand;
+                }
+                else if (WetnessBand != LastReportedWetnessBand)
+                {
+                    if (GEngine)
+                    {
+                        const bool bGettingWetter = WetnessBand > LastReportedWetnessBand;
+                        const TCHAR* Message = bGettingWetter
+                            ? (WetnessBand >= 3
+                                ? TEXT("You are soaked. Find shelter or a heat source to dry off.")
+                                : WetnessBand == 2
+                                    ? TEXT("You are getting wet. Shelter and warmth will help.")
+                                    : TEXT("Your clothes are damp. Avoid prolonged cold exposure."))
+                            : (WetnessBand == 0
+                                ? TEXT("You are dry again.")
+                                : WetnessBand == 1
+                                    ? TEXT("You are drying, but still damp.")
+                                    : TEXT("You are less wet; stay warm to keep drying."));
+                        GEngine->AddOnScreenDebugMessage(
+                            9206, 3.5f, bGettingWetter ? FColor::Orange : FColor(130, 220, 190), Message);
+                    }
+                    LastReportedWetnessBand = WetnessBand;
+                }
+            }
         }
     }
 
