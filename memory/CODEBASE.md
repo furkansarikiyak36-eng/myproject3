@@ -71,6 +71,14 @@ Plan = `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`, tasks = `ROADMAP.md`.
 
 ## Findings (newest first)
 
+- 2026-10-29 · Quality of `group-a-code-closure`: careful backend in the house style (operation ids,
+  revisions, idempotent receipts, rollback, save schema up to v20), 17 new core tests authored (48 → 65).
+  But: written without a compiler (16 errors, fields used that do not exist); tests never ran;
+  almost no player wiring (only the dig tool on N; no HUD, no input for eat/equip/farm/refuel);
+  survival header has 28 receipt mentions, `WorldSurvivalSubsystem.cpp` +1.36k lines (heavy for a solo dev);
+  farming is still Plant/Harvest/Feed/Collect (not the 15-step chain); no calendar.
+  Verdict: usable as the backend layer after its build is fixed and its tests pass; not a finished feature.
+  Our commits after `321e55a` are only memory/docs/tools, so merging it is easy.
 - 2026-10-29 · Built `group-a-code-closure` (@`8ebb0d8`) locally with UBT in a scratch worktree:
   1) UHT fails: `WorldSurvivalSubsystem.h:311-320` BlueprintReadWrite on private members (10 errors).
   2) With only those lines patched (scratch only), C++ compile fails with 6 errors:
