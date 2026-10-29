@@ -1799,6 +1799,8 @@ bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Par
     {
         FWorldOwnedItemRecord Item;
         TestTrue(TEXT("Each output remains ledger-backed"), Ownership->TryGetItem(OutputId, Item));
+        TestEqual(TEXT("Harvest output records creation time on the shared world clock"),
+            Item.CreatedAtWorldTimeSeconds, Clock->GetSimulationTimeSeconds());
         TestTrue(TEXT("Each output is owned by the player inventory"),
             Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
             Item.OwnerId == Inventory->GetInventoryOwnerId());
@@ -2195,6 +2197,30 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
         if (Animal.BoneUnits > 0)
             TestTrue(TEXT("Bone output is a known item"), Data->GetItems().Contains(Animal.BoneDefinitionId));
     }
+    const FGameDataTransformation* GrainSeedSaving =
+        Data->GetTransformations().FindByPredicate(
+            [](const FGameDataTransformation& T) { return T.Id == TEXT("separate_grain_seed"); });
+    const FGameDataTransformation* LegumeSeedSaving =
+        Data->GetTransformations().FindByPredicate(
+            [](const FGameDataTransformation& T) { return T.Id == TEXT("separate_legume_seed"); });
+    TestNotNull(TEXT("Seed separation has a data-driven grain recipe"), GrainSeedSaving);
+    TestNotNull(TEXT("Seed separation has a data-driven legume recipe"), LegumeSeedSaving);
+    if (GrainSeedSaving)
+    {
+        TestTrue(TEXT("Grain seed separation takes time at a station"),
+            GrainSeedSaving->Where == TEXT("threshing_floor") && GrainSeedSaving->DurationSeconds == 1800.0);
+        TestTrue(TEXT("Grain seed separation requires a reusable winnowing basket"),
+            GrainSeedSaving->Tools.Contains(TEXT("Tool.WinnowingBasket")));
+    }
+    if (LegumeSeedSaving)
+    {
+        TestTrue(TEXT("Legume seed separation yields a seed from stored dry crop"),
+            LegumeSeedSaving->Inputs.ContainsByPredicate(
+                [](const FGameDataItemAmount& A) { return A.ItemId == TEXT("Legume.Dried"); }) &&
+            LegumeSeedSaving->Outputs.ContainsByPredicate(
+                [](const FGameDataItemAmount& A) { return A.ItemId == TEXT("Seed.Legume"); }));
+    }
+
     const FWorldAnimalCaptureDefinition* Bird = Data->GetAnimalCaptureDefinitions().FindByPredicate(
         [](const FWorldAnimalCaptureDefinition& Animal)
         { return Animal.AnimalDefinitionId == TEXT("Animal.Bird"); });

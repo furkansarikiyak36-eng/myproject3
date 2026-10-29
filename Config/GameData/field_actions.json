@@ -1,5 +1,5 @@
 {
-  "_about": "Player field-action costs and effort. Inputs are consumed; tools are required but reusable. Amount is the field state delta passed to the agriculture state machine.",
+  "_about": "Only actions that mutate the persistent field-cell state live here (clear, till, fertilize, water, weed, mulch, fence). Sowing/harvest use the transactional agriculture API; drying, threshing, winnowing, grinding and seed separation are production transformations; storage uses WorldStorageSubsystem. Keep those domains separate so the seven field-state enum values cannot be misrouted.",
   "field_actions": [
     {
       "id": "clear",

@@ -1,5 +1,5 @@
 {
-  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. kind E = item recipe, F = physical part (frozen until P10). where: hand, a station id, world, log_system, terrain.",
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. kind E = item recipe, F = physical part (frozen until P10). where: hand, a station id, world, log_system, terrain. Seed-saving extensions (plan workflow step 15) run at the threshing floor with authored tool/time costs.",
   "transformations": [
     {
       "n": 1,
@@ -1382,6 +1382,52 @@
       ],
       "tools": [],
       "duration_s": 432000
+    },
+    {
+      "n": 39,
+      "id": "separate_grain_seed",
+      "name": "Temiz tahıldan tohum ayır",
+      "kind": "E",
+      "where": "threshing_floor",
+      "inputs": [
+        {
+          "item": "Grain.Clean",
+          "qty": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Seed.Grain",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "duration_s": 1800
+    },
+    {
+      "n": 39,
+      "id": "separate_legume_seed",
+      "name": "Kuru baklagilden tohum ayır",
+      "kind": "E",
+      "where": "threshing_floor",
+      "inputs": [
+        {
+          "item": "Legume.Dried",
+          "qty": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Seed.Legume",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "duration_s": 1800
     }
   ]
 }
