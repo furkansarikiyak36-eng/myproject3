@@ -1080,13 +1080,13 @@ void AVerticalSliceCWorldActor::SetupPlayer()
                 EKeys::O, IE_Pressed, this, &AVerticalSliceCWorldActor::RefuelFireInput);
             RefuelBinding.bConsumeInput = false;
             FInputKeyBinding& StationStartBinding = InputComponent->BindKey(
-                EKeys::E, IE_Pressed, this, &AVerticalSliceCWorldActor::StationStartCollectInput);
+                EKeys::F2, IE_Pressed, this, &AVerticalSliceCWorldActor::StationStartCollectInput);
             StationStartBinding.bConsumeInput = false;
             FInputKeyBinding& StationDepositBinding = InputComponent->BindKey(
-                EKeys::F, IE_Pressed, this, &AVerticalSliceCWorldActor::StationDepositInput);
+                EKeys::F3, IE_Pressed, this, &AVerticalSliceCWorldActor::StationDepositInput);
             StationDepositBinding.bConsumeInput = false;
             FInputKeyBinding& StationTakeBinding = InputComponent->BindKey(
-                EKeys::R, IE_Pressed, this, &AVerticalSliceCWorldActor::StationTakeInput);
+                EKeys::F4, IE_Pressed, this, &AVerticalSliceCWorldActor::StationTakeInput);
             StationTakeBinding.bConsumeInput = false;
             bInputBound = true;
         }
@@ -1229,7 +1229,7 @@ void AVerticalSliceCWorldActor::StationStartCollectInput()
     {
         if (GEngine)
             GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
-                TEXT("No registered station within 300 cm. (E start/collect, F deposit, R take)"));
+                TEXT("No registered station within 300 cm. (F2 start/collect, F3 deposit, F4 take)"));
         return;
     }
 
@@ -1292,7 +1292,7 @@ void AVerticalSliceCWorldActor::StationStartCollectInput()
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
             bWorking
                 ? TEXT("Station is already working. Press E again when a job finishes.")
-                : TEXT("No recipe is ready. Press F to deposit required items/tools; R takes station stock."));
+                : TEXT("No recipe is ready. Press F3 to deposit required items/tools; F4 takes station stock."));
 }
 
 void AVerticalSliceCWorldActor::StationDepositInput()
@@ -1386,7 +1386,7 @@ void AVerticalSliceCWorldActor::StationDepositInput()
     if (GEngine)
     {
         const FString Message = bRecipeAlreadyStocked
-            ? TEXT("Required items are already at the station. Press E to start when fire requirements are met.")
+            ? TEXT("Required items are already at the station. Press F2 to start when fire requirements are met.")
             : TEXT("No missing recipe input/tool is available as a generic inventory stack.");
         GEngine->AddOnScreenDebugMessage(-1, 2.5f,
             bRecipeAlreadyStocked ? FColor(130, 220, 150) : FColor::Orange, Message);
