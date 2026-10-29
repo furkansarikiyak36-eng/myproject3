@@ -375,7 +375,8 @@ bool UWorldSurvivalSubsystem::UpdateProtection(
 
 bool UWorldSurvivalSubsystem::SetWeather(EWorldWeatherState NewWeather, float Severity)
 {
-    if (!InRange(Severity, 0.0f, 1.0f)) return false;
+    if (static_cast<uint8>(NewWeather) > static_cast<uint8>(EWorldWeatherState::Heatwave) ||
+        !InRange(Severity, 0.0f, 1.0f)) return false;
     Weather = NewWeather;
     WeatherSeverity = Severity;
     return true;
@@ -408,8 +409,9 @@ bool UWorldSurvivalSubsystem::RecordActivity(
     const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg)
 {
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
-    if (!Profile || !InRange(DurationSeconds, 0.0f, 3600.0f) || DurationSeconds == 0.0f ||
-        !InRange(CarriedMassKg, 0.0f, 1000.0f) || Profile->Revision == MAX_int64)
+    if (!Profile || static_cast<uint8>(Activity) > static_cast<uint8>(ESurvivalActivity::Carry) ||
+        !InRange(DurationSeconds, 0.0f, 3600.0f) || DurationSeconds == 0.0f ||
+        !InRange(CarriedMassKg, 0.0f, 1000.0f) || Profile->Revision >= MAX_int64 - 1)
     {
         return false;
     }
@@ -520,8 +522,28 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
         !FMath::IsFinite(ColdDamagePerHour) || ColdDamagePerHour < 0.0f ||
         !FMath::IsFinite(MaxCaloriesKcal) || MaxCaloriesKcal <= 0.0f ||
         !FMath::IsFinite(BasalKcalPerHour) || BasalKcalPerHour < 0.0f ||
-        !FMath::IsFinite(AmbientTemperatureCelsius))
+        !FMath::IsFinite(AmbientTemperatureCelsius) ||
+        !FMath::IsFinite(RestFatigueRecoveryMultiplier) ||
+        RestFatigueRecoveryMultiplier < 0.0f || RestFatigueRecoveryMultiplier > 12.0f ||
+        !FMath::IsFinite(RestStaminaRecoveryPerHour) ||
+        RestStaminaRecoveryPerHour < 0.0f || RestStaminaRecoveryPerHour > 200.0f ||
+        MaxActionReceiptsPerProfile <= 0 || MaxActionReceiptsPerProfile > 4096 ||
+        MaxConsumableDefinitions <= 0 || MaxConsumableDefinitions > 4096 ||
+        ConsumableDefinitions.Num() > MaxConsumableDefinitions)
         return false;
+    TSet<FName> SeenDefinitions;
+    for (const FWorldSurvivalConsumableDefinition& Definition : ConsumableDefinitions)
+    {
+        if (Definition.DefinitionId.IsNone() || SeenDefinitions.Contains(Definition.DefinitionId) ||
+            !InRange(Definition.CaloriesKcal, 0.0f, 10000.0f) ||
+            !InRange(Definition.ThirstRelief, 0.0f, 100.0f) ||
+            (Definition.CaloriesKcal <= 0.0f && Definition.ThirstRelief <= 0.0f) ||
+            !FMath::IsFinite(Definition.FreshnessDurationSeconds) ||
+            Definition.FreshnessDurationSeconds < 0.0 ||
+            !InRange(Definition.SpoiledEnergyFraction, 0.0f, 1.0f))
+            return false;
+        SeenDefinitions.Add(Definition.DefinitionId);
+    }
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
         if (Pair.Value.Revision == MAX_int64) return false;
     return true;
@@ -539,11 +561,18 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
     }
 
     const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
+    const double PreviousLogicalTimeSeconds = LogicalTimeSeconds - DeltaSeconds;
+    if (!FMath::IsFinite(PreviousLogicalTimeSeconds) || PreviousLogicalTimeSeconds < 0.0)
+        return false;
     for (TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
     {
         FWorldSurvivalProfile& P = Pair.Value;
+        const double RestOverlapSeconds = FMath::Max(0.0,
+            FMath::Min(LogicalTimeSeconds, P.RestUntilTimeSeconds) - PreviousLogicalTimeSeconds);
+        const float RestHours = static_cast<float>(RestOverlapSeconds / 3600.0);
         P.Thirst = FMath::Clamp(P.Thirst + ThirstPerHour * Hours, 0.0f, 100.0f);
-        P.Fatigue = FMath::Clamp(P.Fatigue + FatiguePerHour * Hours, 0.0f, 100.0f);
+        P.Fatigue = FMath::Clamp(P.Fatigue + FatiguePerHour * Hours -
+            FatiguePerHour * RestFatigueRecoveryMultiplier * RestHours, 0.0f, 100.0f);
 
         // Exposure: one felt temperature drives core temperature and shivering.
         P.FeltTemperatureCelsius = ComputeFeltTemperature(P);
@@ -577,7 +606,11 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
 
         if (P.CaloriesKcal <= 0.0f || P.Thirst >= 98.0f)
             P.Health = FMath::Max(0.0f, P.Health - Hours * 2.0f);
-        P.Stamina = FMath::Clamp(P.Stamina + (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours, 0.0f, 100.0f);
+        P.Stamina = FMath::Clamp(P.Stamina +
+            (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours +
+            RestStaminaRecoveryPerHour * RestHours, 0.0f, 100.0f);
+        if (P.Revision >= MAX_int64 - 1)
+            return false;
         ++P.Revision;
     }
     return true;
@@ -636,6 +669,16 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     {
         if (Proposed.Contains(P.EntityId) || !IsValidProfile(P)) return false;
         Proposed.Add(P.EntityId, P);
+    }
+    TSet<FGuid> SeenActionOperationIds;
+    for (const FWorldSurvivalProfile& P : ProfileSnapshot)
+    {
+        for (const FWorldSurvivalActionReceipt& Receipt : P.ActionReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || SeenActionOperationIds.Contains(Receipt.OperationId))
+                return false;
+            SeenActionOperationIds.Add(Receipt.OperationId);
+        }
     }
     TSet<FName> SeenDiscoveries;
     for (const FWorldDiscoveryRecord& D : DiscoverySnapshot)
