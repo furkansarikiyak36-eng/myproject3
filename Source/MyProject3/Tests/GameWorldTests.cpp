@@ -999,6 +999,16 @@ bool FPlasterAndCharcoalDataContractsTest::RunTest(const FString& Parameters)
         [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Charcoal") && Amount.Quantity == 3; }));
     TestTrue(TEXT("Ash output exists"), Charcoal->Outputs.ContainsByPredicate(
         [](const FGameDataItemAmount& Amount) { return Amount.ItemId == TEXT("Ash") && Amount.Quantity == 1; }));
+
+    TestEqual(TEXT("Nine authored natural-event definitions"), Data->GetWorldEvents().Num(), 9);
+    const FGameDataWorldEvent* Flood = Data->GetWorldEvents().FindByPredicate(
+        [](const FGameDataWorldEvent& Event) { return Event.Id == TEXT("Event.Flood"); });
+    if (TestNotNull(TEXT("Flood event contract"), Flood))
+    {
+        TestEqual(TEXT("Flood effect is explicit"), Flood->Effect, FName(TEXT("flooded_routes")));
+        TestTrue(TEXT("Flood has a warning before the effect"), Flood->WarningSeconds > 0.0);
+        TestTrue(TEXT("Flood has a positive duration"), Flood->DurationSeconds > 0.0);
+    }
     return true;
 }
 
