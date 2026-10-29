@@ -1021,7 +1021,8 @@ bool UInventoryCraftingComponent::CanAdvanceItemAging(double DeltaSeconds) const
    if (!Def || Def->EquipmentSlotId != Stack.EquippedSlotId) return false;
    EquippedSlots.Add(Stack.EquippedSlotId);
   }
-  if (Stack.OwnedWorldItemId.IsValid() || Stack.bSpoiled) continue;
+  if (Stack.OwnedWorldItemId.IsValid() || Stack.bSpoiled ||
+      !Stack.EquippedSlotId.IsNone()) continue;
   const FInventoryItemDefinition* Def = FindItemDefinition(Stack.ItemId);
   if (!Def || Def->ShelfLifeSeconds <= 0.0) continue;
   const double NextAge = Stack.AgeSeconds + DeltaSeconds;
