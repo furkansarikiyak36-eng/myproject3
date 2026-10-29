@@ -26,14 +26,7 @@ public:
     bool HasRaidTarget() const { return bHasRaidTarget; }
 
     UFUNCTION(BlueprintPure, Category="Raid|Movement")
-    bool HasReachedRaidTarget() const
-    {
-        return bHasRaidTarget && !RaidTargetLocation.ContainsNaN() &&
-            !GetActorLocation().ContainsNaN() &&
-            FMath::IsFinite(TargetAcceptanceRadiusCm) && TargetAcceptanceRadiusCm > 0.0f &&
-            FVector::DistSquared(GetActorLocation(), RaidTargetLocation) <=
-                FMath::Square(TargetAcceptanceRadiusCm);
-    }
+    bool HasReachedRaidTarget() const;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Raid|Movement", meta=(ClampMin="1.0"))
     float MoveSpeedCmPerSecond = 260.0f;
