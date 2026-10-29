@@ -8,8 +8,15 @@ bool UWorldOperationLedgerSubsystem::CanBeginOperation(const FGuid& OperationId)
 
 bool UWorldOperationLedgerSubsystem::TryBeginOperation(const FGuid& OperationId)
 {
-    if (!CanBeginOperation(OperationId))
+    if (!OperationId.IsValid() || Entries.Contains(OperationId))
         return false;
+    if (MaxEntries <= 0 || Entries.Num() >= MaxEntries)
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("World operation ledger is full (%d/%d); refusing operation %s rather than evicting an unreceipted idempotency result."),
+            Entries.Num(), MaxEntries, *OperationId.ToString());
+        return false;
+    }
 
     FWorldOperationLedgerEntry Entry;
     Entry.OperationId = OperationId;
@@ -90,6 +97,15 @@ bool UWorldOperationLedgerSubsystem::ForgetCompletedOperationWithExternalReceipt
     // The caller is responsible for proving that a separately persisted,
     // domain-owned idempotency watermark/receipt already represents this result.
     return Entries.Remove(OperationId) == 1;
+}
+
+int32 UWorldOperationLedgerSubsystem::GetCompletedEntryCount() const
+{
+    int32 Count = 0;
+    for (const TPair<FGuid, FWorldOperationLedgerEntry>& Pair : Entries)
+        if (Pair.Value.State == EWorldOperationLedgerEntryState::Completed)
+            ++Count;
+    return Count;
 }
 
 bool UWorldOperationLedgerSubsystem::HasPendingOperations() const
