@@ -61,6 +61,10 @@ struct FWorldOwnedItemRecord
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
     double SpoilageAgeUpdatedAtSeconds = -1.0;
 
+    /** Shared logical time at which an in-place processing state began; -1 means idle. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Items")
+    double ProcessingStartedAtWorldTimeSeconds = -1.0;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Items")
     int64 Revision = 1;
 };
@@ -165,7 +169,8 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Items")
     bool TryUpdateItemDefinition(const FGuid& OperationId, const FGuid& ItemId,
         int64 ExpectedRevision, EWorldItemOwnerKind ExpectedOwner,
-        FName NewDefinitionId, FWorldOwnedItemRecord& OutRecord);
+        FName NewDefinitionId, FWorldOwnedItemRecord& OutRecord,
+        double ProcessingStartedAtWorldTimeSeconds = -1.0);
 
     UFUNCTION(BlueprintPure, Category="World|Items")
     bool TryGetItem(const FGuid& ItemId, FWorldOwnedItemRecord& OutRecord) const;
