@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `CODEBASE.md` current branch map for default player inventory, data backfill, survival water-fill and exposure APIs, movement fatigue, fall impact, and hostile bite. Then audit these new headers/receipt validators for source mismatches before starting P3.1 wet-fuel fire interaction. Keep all status `code-written`; no compile/run has occurred.
+Update the current `CODEBASE.md` Survival needs and Wildlife rows with the newly committed fall/bite trigger implementations, add the default player inventory and game-data backfill fact, and keep all additions explicitly unbuilt/unrun. Then verify no save-schema or receipt action enum limit was missed by the newly added FillWater action.
