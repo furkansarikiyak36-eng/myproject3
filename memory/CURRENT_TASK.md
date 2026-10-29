@@ -51,7 +51,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/VerticalSliceCWorldActor.h` (scene has `IsInCreek`, `PlayerSurvivalId`, `SetupPlayer`, `ChopInput`, `HelperOrderInput`, and its own day/night timer).
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (Tick drives separate time/weather and updates survival location; only LMB chop and J helper inputs are bound; `IsInCreek` currently only classifies water for log drift).
 - `Source/MyProject3/LogSnapCharacter.cpp` (WASD movement is polled in Tick; no survival action-cost or fatigue speed integration exists).
-- `Source/MyProject3/ShelterSensorComponent.h` (read to confirm `SurvivalEntityId` is public and can bridge player character to the profile).
+- `Source/MyProject3/ShelterSensorComponent.h` (`SurvivalEntityId` is public and can bridge the player character to the survival profile).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` currently records calorie burn and drains stamina but does not gate the caller's action; `AdvanceSurvivalStep` already models rain/storm wetness and faster drying near warmth/shelter; `TryBeginRest` uses shared-clock rest quality; condition definitions can be applied with receipts).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
@@ -131,4 +131,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `ShelterSensorComponent.h` to confirm player survival ID bridge; then wire P2.2 movement speed/run gate in `LogSnapCharacter.cpp` and gate chop actions in `VerticalSliceCWorldActor.cpp`. Next implement creek wetness exposure and long wet-cold illness using the existing condition data, then build a container-gated dirty-water fill action with the existing item ownership/inventory APIs.
+Implement P2.2 movement fatigue/sprint gate by adding minimal state to `LogSnapCharacter.h` and modifying its current Tick in `LogSnapCharacter.cpp`; `ShelterSensor->SurvivalEntityId` is the player-profile bridge. Then add the matching activity gates to `WorldSurvivalSubsystem::RecordActivity` and enforce chop cost before tree damage in `VerticalSliceCWorldActor::ChopInput`.
