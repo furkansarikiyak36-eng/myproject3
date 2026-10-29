@@ -72,7 +72,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldAgricultureSubsystem.cpp` (edited: validates unique months and calendar-gates planting).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (edited: registers data-defined crop definitions with planting months and zone IDs).
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (added persisted field cells/actions and snapshot overloads).
-- `Source/MyProject3/WorldAgricultureSubsystem.cpp` (implemented idempotent field actions, prepped-field planting, calendar gate, moisture/weed/mulch/fertility effects on crop growth, per-harvest fertility drain, and field snapshot export/validation).
+- `Source/MyProject3/WorldAgricultureSubsystem.cpp` (implemented idempotent field actions, prepared planting, calendar gates, growth modifiers, soil exhaustion, and snapshot overloads; fixed harvest revision preflight so it cannot fail after output items commit).
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
 - `Source/MyProject3/InventoryCraftingComponent.cpp` (recipe registration/crafting and item ownership implementations inspected by symbol).
