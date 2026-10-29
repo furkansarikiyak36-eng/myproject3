@@ -69,6 +69,16 @@ struct FGameDataStation
 };
 
 USTRUCT(BlueprintType)
+struct FGameDataDiscovery
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") FName DiscoveryId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> PrerequisiteDiscoveryIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> RequiredEquipmentDefinitionIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discoveries") TArray<FName> UnlockedDefinitionIds;
+};
+
+USTRUCT(BlueprintType)
 struct FGameDataZone
 {
     GENERATED_BODY()
@@ -175,6 +185,7 @@ public:
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
     const TArray<FGameDataAnimal>& GetAnimals() const { return Animals; }
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
+    const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
     const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
     const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
@@ -192,6 +203,7 @@ private:
     TArray<FGameDataCrop> Crops;
     TArray<FGameDataAnimal> Animals;
     TArray<FGameDataZone> Zones;
+    TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataRouteNode> RouteNodes;
     TArray<FGameDataRouteEdge> RouteEdges;
     FWorldCalendarConfig Calendar;
