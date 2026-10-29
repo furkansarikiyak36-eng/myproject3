@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit P4.4 implementations for compile/interface mismatches and test that starter tools are idempotent and actually available after data application. Then update `PLAN_STATUS.md` P4.4 and P4.3 (with unbuilt status), add P4.4 roadmap entry, update codebase map, and keep scene station actors/meshes deferred.
+Audit whether `EnsureStarterTools()` redundantly calls `ApplyToInventory` every Tick while the player's inventory is full; verify `InventoryCraftingComponent::BeginPlay` and `TryAddItem` capacity semantics. Then add a targeted test for initial tool grant/strength or revise its helper to avoid repeated data recipe work. Finally update P4.4/P4.3 status and docs truthfully.
