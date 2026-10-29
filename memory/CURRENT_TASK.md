@@ -92,6 +92,9 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
+- P0.5 is changed to use data transformation IDs; agriculture now has crop-data registration, calendar gates, field-cell actions/simulation, field save schema v23, and crop seed-return outputs. None of these recent changes have been built or run in Unreal.
+- Seed-return adds serialized fields (`FWorldCropState.SeedDefinitionId`, `SeedReturnUnits`) after schema v23, which requires schema v24 and an explicit v23 migration before this batch is safe to load.
+- Field snapshot state is wired through save coordinator; the old two-array agriculture snapshot overload remains for source/API compatibility while coordinator uses the three-array overload.
 - `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`, so P0.5 should be resolved by making the game-data loader authoritative and not silently registering a parallel demo recipe.
 - `WorldGameDataSubsystem.cpp` already converts `transformations.json` to production and hand recipes. Scenario actor no longer authors a second production recipe. `PLAN_STATUS.md` now reflects this source correction; compile/PIE remain unverified.
 - `InventoryCraftingComponent.cpp` confirms unique physical items are consumed through the ownership ledger and non-consuming tools remain in inventory. Existing survival methods already implement owned-item consumption, conditions/treatment, activity stamina cost, wetness, rest quality, and temperature exposure; remaining gaps include environment/player triggers and UI/world wiring, not those bases.
@@ -101,7 +104,9 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 
 ### Changes
 - Replaced stale checkpoint for the current request before gameplay source reads.
-- After reading `CODEBASE.md`, recorded its stale branch scope and the current roadmap's newer test-count reference.
+- Recorded current codebase map limitations and newer roadmap test-count reference.
+- P0.5 source-of-truth change committed; status ledger corrected.
+- P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Fetch the current branch versions of the exact headers identified in `CODE_INDEX.md` for P0.5/P2.1–P2.5; update the checkpoint after every header read before opening the next.
+Bump `WorldSimulationSaveGame` schema 23→24 and add a v23→v24 migration for the saved crop seed fields. Then add seed-return regression tests and update restore invariants. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
