@@ -701,12 +701,20 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         NewDiscoveries.Add(Discovery);
     }
 
+    TSet<FName> SeenZoneDiscoveryIds;
     for (const FGameDataZone& Zone : NewZones)
     {
+        if (!SeenDiscoveryIds.Contains(Zone.DiscoveryId) ||
+            SeenZoneDiscoveryIds.Contains(Zone.DiscoveryId))
+            return Fail(FString::Printf(TEXT("Zone %s has an unknown or reused discovery ID %s"),
+                *Zone.Id.ToString(), *Zone.DiscoveryId.ToString()));
+        SeenZoneDiscoveryIds.Add(Zone.DiscoveryId);
+
         for (const FName RequiredDiscoveryId : Zone.RequiredDiscoveryIds)
         {
-            if (!SeenDiscoveryIds.Contains(RequiredDiscoveryId))
-                return Fail(FString::Printf(TEXT("Zone %s requires an unknown discovery %s"),
+            if (!SeenDiscoveryIds.Contains(RequiredDiscoveryId) ||
+                RequiredDiscoveryId == Zone.DiscoveryId)
+                return Fail(FString::Printf(TEXT("Zone %s requires an unknown/invalid discovery %s"),
                     *Zone.Id.ToString(), *RequiredDiscoveryId.ToString()));
         }
     }
@@ -865,6 +873,48 @@ bool UWorldGameDataSubsystem::CanEnterZone(
         }
     }
 
+    return true;
+}
+
+bool UWorldGameDataSubsystem::TryRecordZoneEntry(
+    const FGuid& OperationId, const FGuid& PlayerEntityId, FName ZoneId,
+    FVector EntryLocation, FString& OutReason)
+{
+    OutReason.Reset();
+    if (!OperationId.IsValid() || !PlayerEntityId.IsValid() ||
+        ZoneId.IsNone() || EntryLocation.ContainsNaN())
+    {
+        OutReason = TEXT("Zone entry needs a valid operation, player and finite entry location.");
+        return false;
+    }
+
+    if (!CanEnterZone(PlayerEntityId, ZoneId, OutReason))
+        return false;
+
+    const FGameDataZone* Zone = Zones.FindByPredicate([ZoneId](const FGameDataZone& Candidate)
+    {
+        return Candidate.Id == ZoneId;
+    });
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    FWorldSurvivalProfile Profile;
+    if (!Zone || Zone->DiscoveryId.IsNone() || !Clock || !Clock->IsClockInitialized() ||
+        !Survival || !Survival->GetProfile(PlayerEntityId, Profile))
+    {
+        OutReason = TEXT("Zone entry could not resolve its discovery, initialized clock or player profile.");
+        return false;
+    }
+
+    if (!Survival->TryRecordConfiguredDiscovery(OperationId, PlayerEntityId,
+        Profile.Revision, Zone->DiscoveryId, EntryLocation, Clock->GetSimulationTimeSeconds()))
+    {
+        OutReason = FString::Printf(TEXT("Zone %s could not be discovered: verify the prerequisite chain and operation identity."),
+            *ZoneId.ToString());
+        return false;
+    }
     return true;
 }
 
