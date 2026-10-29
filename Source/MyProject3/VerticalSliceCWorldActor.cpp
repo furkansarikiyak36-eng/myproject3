@@ -1055,7 +1055,15 @@ void AVerticalSliceCWorldActor::EnsureStarterTools()
     APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
     UInventoryCraftingComponent* Inventory =
         Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
-    if (!World || !GameData || !GameData->IsApplied() || !Pawn || !Inventory ||
+    if (!World || !GameData || !GameData->IsApplied() || !Pawn || !Inventory)
+        return;
+
+    // The loader backfills inventories that existed before ApplyToWorld, and
+    // inventory BeginPlay applies data when it starts after the loader. Only
+    // retry this fallback if the required weights are still absent; do not
+    // rebuild/compare every hand recipe on every Tick while the bag is full.
+    if ((!Inventory->ItemWeightGrams.Contains(TEXT("Tool.Axe")) ||
+         !Inventory->ItemWeightGrams.Contains(TEXT("Tool.DiggingStick"))) &&
         !GameData->ApplyToInventory(Inventory))
         return;
 
