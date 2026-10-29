@@ -16,7 +16,7 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 
 - Keeps log length fraction and cross-section profile as independent canonical dimensions.
 - Keeps cut eligibility dependent on explicit source state, action rules, configured output mesh variants and split offsets.
-- Adds bounded, SaveGame-backed operation receipts for incremental cut progress. Replaying the same operation/action/work returns the previous result; reusing the operation ID with different work is rejected; receipt-capacity exhaustion fails closed before progress is changed.
+- Adds bounded, SaveGame-backed operation receipts for incremental cut progress. Replaying the same operation/action/work returns the previous result; reusing the operation ID with different work is rejected; receipt-capacity exhaustion fails closed before progress is changed. The one-shot compatibility wrapper also replays a completed multi-step receipt without attempting to apply a new full-work step.
 - Existing split receipts continue to bind physical split output IDs to the ownership ledger.
 
 **Remaining acceptance:** UE build, exact mesh/offset/collision checks for each authored family, fault-injection on second-actor materialization, and preview-versus-commit checks in the engine.
@@ -36,7 +36,7 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 - A bounded excavation transaction snapshots logical terrain, voxel density/receipts and the item ledger; it rolls them back together if physical dig, logical commit or resource registration fails. Rollback failure faults the coordinator rather than silently continuing.
 - Successful yields have unique item IDs under the canonical ownership ledger and a terrain receipt containing the voxel identity/revisions, removed volume, yield rule and output IDs.
 - Generic ledger-only world resources can be ingested into recipe-addressable station stock. The source item transitions from World to Transformed once; stock capacity and already reserved recipe outputs are preflighted; retries return the same stock key. Physical log actors use their domain-specific intake instead.
-- Save schema v17 adds terrain resource receipts; schema v18 adds generic production intake receipts.
+- Save schema v17 adds terrain resource receipts; schema v18 adds generic production intake receipts; schema v19 versions the additional durable survival, heat-fuel, log-cut and raid-pulse receipt data.
 
 **Remaining acceptance:** verify the bounded dig and resource yield in UE, verify collision/seams and physical item presentation, and execute the save → dig → save → load → retry path.
 
@@ -116,6 +116,7 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 
 ## Not claimed by this pass
 
+- A source-contract pass fixed the log cut wrapper replay edge case and removed duplicate includes; a draft-PR review/build is still required.
 - No Unreal Header Tool or Unreal Build Tool compile was run.
 - No Unreal automation test, editor session, PIE run or fault-injection run was performed.
 - No reference group is declared end-to-end complete solely from source-layer changes.
