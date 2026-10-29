@@ -5,6 +5,7 @@
 #include "WorldSurvivalSubsystem.generated.h"
 
 class UHeatSourceComponent;
+class UInventoryCraftingComponent;
 
 UENUM(BlueprintType)
 enum class EWorldWeatherState : uint8 { Clear, Rain, Wind, Snow, Storm, Heatwave };
@@ -123,6 +124,8 @@ struct FWorldSurvivalActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName DiscoveryId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") EWorldEquipmentSlot EquipmentSlot = EWorldEquipmentSlot::Body;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double ConditionEndTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FVector RequestedLocation = FVector::ZeroVector;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedDiscoveryTimeSeconds = 0.0;
 };
 
 USTRUCT(BlueprintType)
@@ -268,7 +271,8 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetHeatAt(const FVector& Location) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") bool CanAdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool AdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds);
-    UFUNCTION(BlueprintCallable, Category="World|Exploration") bool RecordDiscovery(FName DiscoveryId, FVector Location, double LogicalTimeSeconds);
+    /** Legacy import/dev helper. Player interactions must use TryRecordConfiguredDiscovery. */
+    bool RecordDiscovery(FName DiscoveryId, FVector Location, double LogicalTimeSeconds);
     UFUNCTION(BlueprintPure, Category="World|Survival") bool GetProfile(const FGuid& EntityId, FWorldSurvivalProfile& OutProfile) const;
     UFUNCTION(BlueprintPure, Category="World|Exploration") TArray<FWorldDiscoveryRecord> GetDiscoveries() const { return Discoveries; }
     void ExportSnapshot(TArray<FWorldSurvivalProfile>& OutProfiles, TArray<FWorldDiscoveryRecord>& OutDiscoveries, EWorldWeatherState& OutWeather, float& OutSeverity) const;
