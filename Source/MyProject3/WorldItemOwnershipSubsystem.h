@@ -13,7 +13,9 @@ enum class EWorldItemOwnerKind : uint8
     Storage,
     InTransit,
     Consumed,
-    Transformed
+    Transformed,
+    /** Item is equipped by a survival entity and is no longer in inventory. */
+    Equipped
 };
 
 USTRUCT(BlueprintType)
