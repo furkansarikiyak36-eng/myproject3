@@ -17,6 +17,8 @@ One kernel decides where any piece goes and commits it all or nothing. Plan: `Do
 
 ## Rules
 
+The cross-system carry/placement contract is in [`carry.md`](carry.md). Read it before changing carry ownership, placement transactions, support, or physical-piece state.
+
 - The kernel files never name a material (no `ALogBuildPiece`, stone, stick, rope). The test `Placement.KernelNamesNoMaterial` enforces it. Material rules go in providers; numbers go in profile params.
 - Joints use feature ids (`End.A`, `End.B`, `Station.NN`, authored ids), never array indexes.
 - Log stations: one per complete 75 cm module of the real length, centre at 37.5 + 75·i from End.A; the side a joint uses is solved from the aim (`radialStepDeg`).
