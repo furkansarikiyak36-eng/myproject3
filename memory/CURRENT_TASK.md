@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `tool_strength: 1.5` to Tool.Axe and `tool_strength: 1.0` to Tool.DiggingStick in `items.json`; then wire these values into VerticalSlice_C tree damage, LogCarry cutting work, and TerrainDigToolComponent excavation.
+Add the explicit item strengths to `Tool.Axe` and `Tool.DiggingStick`; then implement the inventory-backed strength links in player tree chopping, log cutting work, and N-dig action. Update checkpoint after each edit.
