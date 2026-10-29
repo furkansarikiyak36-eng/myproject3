@@ -1,4 +1,6 @@
 #include "WorldProductionSubsystem.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -671,6 +673,77 @@ bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
 }
 
 bool UWorldProductionSubsystem::TryEnqueueJob(
+    FGuid OperationId,
+    FGuid StationId,
+    FName RecipeId,
+    int64 ExpectedStationRevision,
+    FGuid& OutJobId)
+{
+    // The legacy/system path is deliberately unable to queue knowledge-gated work.
+    if (!IsRecipeAvailableForPlayer(RecipeId, FGuid()))
+        return false;
+    return TryEnqueueJobInternal(OperationId, StationId, RecipeId, ExpectedStationRevision, OutJobId);
+}
+
+bool UWorldProductionSubsystem::TryEnqueueJobForPlayer(
+    FGuid OperationId,
+    FGuid StationId,
+    FName RecipeId,
+    int64 ExpectedStationRevision,
+    FGuid PlayerEntityId,
+    FGuid& OutJobId)
+{
+    if (!PlayerEntityId.IsValid() || !IsRecipeAvailableForPlayer(RecipeId, PlayerEntityId))
+    {
+        OutJobId.Invalidate();
+        return false;
+    }
+    return TryEnqueueJobInternal(OperationId, StationId, RecipeId, ExpectedStationRevision, OutJobId);
+}
+
+bool UWorldProductionSubsystem::IsRecipeAvailableForPlayer(
+    FName RecipeId, const FGuid& PlayerEntityId) const
+{
+    const int32 RecipeIndex = FindRecipe(RecipeId);
+    if (!Recipes.IsValidIndex(RecipeIndex))
+        return false;
+
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!GameData || !GameData->IsLoaded())
+    {
+        // Keep hand-authored/system-only production test worlds usable, but do
+        // not authorize a player-bound request while progression data is absent.
+        return !PlayerEntityId.IsValid();
+    }
+
+    const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
+    auto IsAvailable = [GameData, World, &PlayerEntityId](FName DefinitionId)
+    {
+        if (!GameData->IsDefinitionUnlockRequired(DefinitionId))
+            return true;
+        if (!PlayerEntityId.IsValid())
+            return false;
+        const UWorldSurvivalSubsystem* Survival =
+            World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        FWorldSurvivalProfile Profile;
+        return Survival && Survival->GetProfile(PlayerEntityId, Profile) &&
+            Survival->IsDefinitionUnlocked(PlayerEntityId, DefinitionId);
+    };
+
+    if (!IsAvailable(Recipe.RecipeId))
+        return false;
+    for (const FProductionIngredient& Input : Recipe.Inputs)
+        if (!IsAvailable(Input.ItemId))
+            return false;
+    for (const FProductionIngredient& Output : Recipe.Outputs)
+        if (!IsAvailable(Output.ItemId))
+            return false;
+    return true;
+}
+
+bool UWorldProductionSubsystem::TryEnqueueJobInternal(
     FGuid OperationId,
     FGuid StationId,
     FName RecipeId,
