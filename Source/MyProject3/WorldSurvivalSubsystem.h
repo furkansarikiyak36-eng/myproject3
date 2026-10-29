@@ -76,6 +76,25 @@ public:
     /** Health lost per hour per degree of core temperature below the hypothermia threshold. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival") float ColdDamagePerHour = 4.0f;
 
+    // Authored weather temperature deltas in degrees Celsius at severity 1.0.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float RainCoolingCelsius = 4.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float WindCoolingCelsius = 2.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float SnowCoolingCelsius = 14.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float StormCoolingCelsius = 10.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float HeatwaveWarmingCelsius = 18.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float WindChillWindCelsius = 8.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float WindChillStormCelsius = 10.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="60")) float WindChillSnowCelsius = 4.0f;
+
+    // Rates are expressed per in-game hour, not per rendered frame.
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="1")) float RainWetnessPerHour = 0.2f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="1")) float StormWetnessPerHour = 0.2f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="1")) float BaseDryingPerHour = 0.05f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="1")) float ShelterDryingBonusPerHour = 0.25f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="1")) float WarmthDryingPerDegree = 0.01f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="0", ClampMax="10")) float HeatThirstPerDegreeHour = 0.2f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Climate", meta=(ClampMin="-20", ClampMax="60")) float HeatThirstThresholdCelsius = 32.0f;
+
     // Felt temperature inputs, degrees Celsius.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float AmbientTemperatureCelsius = 8.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Temperature") float ClothingWarmthCelsius = 15.0f;
