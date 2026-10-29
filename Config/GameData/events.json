@@ -10,9 +10,11 @@
       "warning_h": 0.5,
       "duration_h": 8,
       "min_severity": 0.65,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "Clothing.HideTunic",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0.65,
+      "trigger_max": 1
     },
     {
       "id": "Event.HeavyRain",
@@ -23,9 +25,11 @@
       "warning_h": 0.25,
       "duration_h": 6,
       "min_severity": 0.7,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "ThatchBundle",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0.7,
+      "trigger_max": 1
     },
     {
       "id": "Event.Flood",
@@ -35,10 +39,12 @@
       "effect": "flooded_routes",
       "warning_h": 1,
       "duration_h": 12,
-      "min_severity": 0.8,
-      "max_severity": 1.0,
+      "min_severity": 0.65,
+      "max_severity": 1,
       "counter_item": "Stone",
-      "counter_qty": 3
+      "counter_qty": 3,
+      "trigger_min": 0.8,
+      "trigger_max": 1
     },
     {
       "id": "Event.Avalanche",
@@ -49,9 +55,11 @@
       "warning_h": 0.25,
       "duration_h": 1,
       "min_severity": 0.8,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "Rope",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0.8,
+      "trigger_max": 1
     },
     {
       "id": "Event.Hail",
@@ -62,9 +70,11 @@
       "warning_h": 0.1,
       "duration_h": 1,
       "min_severity": 0.75,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "ThatchBundle",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0.75,
+      "trigger_max": 1
     },
     {
       "id": "Event.Drought",
@@ -74,10 +84,12 @@
       "effect": "crop_moisture_loss",
       "warning_h": 24,
       "duration_h": 120,
-      "min_severity": 0.0,
-      "max_severity": 0.15,
+      "min_severity": 0.7,
+      "max_severity": 1,
       "counter_item": "Water.Boiled",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0,
+      "trigger_max": 0.15
     },
     {
       "id": "Event.ForestFire",
@@ -88,9 +100,11 @@
       "warning_h": 0.5,
       "duration_h": 8,
       "min_severity": 0.8,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "Water.Boiled",
-      "counter_qty": 3
+      "counter_qty": 3,
+      "trigger_min": 0.8,
+      "trigger_max": 1
     },
     {
       "id": "Event.ToxicRain",
@@ -101,9 +115,11 @@
       "warning_h": 0.5,
       "duration_h": 4,
       "min_severity": 0.9,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "Clothing.HideTunic",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0.9,
+      "trigger_max": 1
     },
     {
       "id": "Event.Epidemic",
@@ -114,9 +130,11 @@
       "warning_h": 24,
       "duration_h": 168,
       "min_severity": 0.6,
-      "max_severity": 1.0,
+      "max_severity": 1,
       "counter_item": "Water.Boiled",
-      "counter_qty": 1
+      "counter_qty": 1,
+      "trigger_min": 0.6,
+      "trigger_max": 1
     }
   ]
 }
