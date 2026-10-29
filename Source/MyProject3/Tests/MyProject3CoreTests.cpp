@@ -3990,9 +3990,12 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
         FName(TEXT("Water.Boiling")));
     TestEqual(TEXT("Intermediate item remains inventory-owned"), BoilingWater.OwnerId, InventoryOwnerId);
     TestEqual(TEXT("Boiling preserves the unique water identity"), BoilingWater.ItemId, WaterItemId);
-    TestEqual(TEXT("Inventory stack follows the intermediate state"),
-        Inventory->Items[Inventory->Items.IndexOfByPredicate([&WaterItemId](const FInventoryStack& Stack)
-            { return Stack.OwnedWorldItemId == WaterItemId; })].ItemId, FName(TEXT("Water.Boiling")));
+    const int32 BoilingStackIndex = Inventory->Items.IndexOfByPredicate(
+        [&WaterItemId](const FInventoryStack& Stack) { return Stack.OwnedWorldItemId == WaterItemId; });
+    TestTrue(TEXT("Water has an inventory stack while boiling"), BoilingStackIndex != INDEX_NONE);
+    if (Inventory->Items.IsValidIndex(BoilingStackIndex))
+        TestEqual(TEXT("Inventory stack follows the intermediate state"),
+            Inventory->Items[BoilingStackIndex].ItemId, FName(TEXT("Water.Boiling")));
 
     FWorldSurvivalProfile AfterBoilStart;
     TestTrue(TEXT("Read profile after boiling begins"), Survival->GetProfile(Profile.EntityId, AfterBoilStart));
