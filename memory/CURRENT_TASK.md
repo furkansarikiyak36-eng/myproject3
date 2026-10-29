@@ -47,6 +47,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - After every repository step, update Findings/Changes and Next step here.
 
 ### Read
+- `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `memory/ROADMAP.md` (current task dependencies, phase descriptions and progress log read for next P2 batch).
 - `memory/CURRENT_TASK.md` (checkpoint only).
 - `memory/CODEBASE.md` (map; older portions describe `feature/simple-intent`, so verify the current branch status file before trusting those rows).
@@ -122,4 +123,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `memory/CODE_INDEX.md` for the exact player interaction/action and survival types; implement P2.1 creek water/container, P2.2 fatigue action gates, and P2.3 wet-cold condition triggers using signatures from current headers. Then continue P3/P4 and P7/P8/P9.2. P10 remains frozen. Batch build stays deferred.
+Open the current headers `LogSnapCharacter.h` and `WorldSurvivalSubsystem.h`, then only their mapped cpp functions for movement/location, exposure, consumable use, rest and conditions. Resolve P2.1–P2.5 by adding explicit world/environment triggers without inventing input APIs; update the checkpoint after each file.
