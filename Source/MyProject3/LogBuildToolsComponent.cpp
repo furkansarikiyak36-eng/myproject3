@@ -600,6 +600,8 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
     }
     FString Note;
     const FTransform PreCutTransform = Log->GetActorTransform();
+    const ELogLengthFraction PreCutLength = Log->GetLengthFraction();
+    const ELogCrossSectionProfile PreCutProfile = Log->GetCrossSectionProfile();
     const bool bPreCutCustomLengthScale = Log->bHasCustomLengthScale;
     ALogBuildPiece* Remainder = nullptr;
     if (Shape.Length() > Needed * 1.1f)
@@ -620,14 +622,30 @@ bool ULogBuildToolsComponent::TryFillPlanSlot(ABuildPlanActor* Plan, int32 SlotI
     {
         // If the cut succeeded but placement did not, restore the source geometry
         // and retire the staged offcut; the plan must not consume a partial cut.
-        if (IsValid(Remainder))
-            Remainder->Destroy();
+        bool bSourceRestored = false;
         if (IsValid(Log) && !Log->IsActorBeingDestroyed())
         {
-            Log->SetActorTransform(PreCutTransform, false, nullptr, ETeleportType::TeleportPhysics);
-            Log->bHasCustomLengthScale = bPreCutCustomLengthScale;
+            bSourceRestored = bPreCutCustomLengthScale
+                ? false
+                : Log->TrySetAuthoredGeometryVariant(
+                    PreCutLength, PreCutProfile, PreCutTransform, FGuid::NewGuid());
+            if (!bSourceRestored)
+            {
+                if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                    GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                {
+                    Coordinator->MarkSimulationFaulted(TEXT(
+                        "Failed to restore the original authored log geometry after a rejected plan placement."));
+                }
+                UE_LOG(LogTemp, Error,
+                    TEXT("Plan placement failed and the source log's original authored geometry could not be restored."));
+            }
         }
-        SetStatus(TEXT("The log could not be placed; the cut was rolled back."));
+        if (IsValid(Remainder))
+            Remainder->Destroy();
+        SetStatus(bSourceRestored
+            ? TEXT("The log could not be placed; the cut was rolled back.")
+            : TEXT("Placement failed and geometry rollback could not be guaranteed; simulation stopped."));
         return true;
     }
     const FString Name = ABuildPlanActor::GetPlanName(Plan->Kind);
