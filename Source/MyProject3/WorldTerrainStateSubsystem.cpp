@@ -27,7 +27,14 @@ bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
 
     if (const FWorldTerrainOperationReceipt* Receipt = Receipts.Find(OperationId))
     {
-        if (Receipt->Cell != Cell || Receipt->RequestedDepthLayer != DepthLayer ||
+        // A resource-yield operation is a different command contract from a
+        // plain logical cell edit. Do not replay it through a weaker API that
+        // would hide its output-item identities from the caller.
+        if (!Receipt->YieldOutputDefinitionId.IsNone() ||
+            !Receipt->YieldSourceMaterialId.IsNone() ||
+            Receipt->VoxelChunkActorIdentityId.IsValid() ||
+            Receipt->YieldOutputUnits != 0 || !Receipt->YieldOutputItemIds.IsEmpty() ||
+            Receipt->Cell != Cell || Receipt->RequestedDepthLayer != DepthLayer ||
             Receipt->RequestedEdit != Edit || Receipt->RequestedMaterialId != MaterialId ||
             Receipt->ExpectedRevision != ExpectedRevision)
         {
@@ -114,7 +121,11 @@ bool UWorldTerrainStateSubsystem::TryApplyVoxelExcavation(
     // result before comparing against the now-advanced physical revision.
     if (const FWorldTerrainOperationReceipt* ExistingReceipt = Receipts.Find(OperationId))
     {
-        if (ExistingReceipt->Cell != LogicalCell ||
+        if (!ExistingReceipt->YieldOutputDefinitionId.IsNone() ||
+            !ExistingReceipt->YieldSourceMaterialId.IsNone() ||
+            ExistingReceipt->VoxelChunkActorIdentityId.IsValid() ||
+            ExistingReceipt->YieldOutputUnits != 0 || !ExistingReceipt->YieldOutputItemIds.IsEmpty() ||
+            ExistingReceipt->Cell != LogicalCell ||
             ExistingReceipt->RequestedDepthLayer != DepthLayer ||
             ExistingReceipt->RequestedEdit != ETerrainCellEdit::Excavate ||
             ExistingReceipt->RequestedMaterialId != MaterialId ||
@@ -239,12 +250,18 @@ bool UWorldTerrainStateSubsystem::TryExcavateForResource(
                 MatchedRule->UnitsPerCubicMetre, 0.0001f))
             return false;
 
-        FWorldTerrainCellState RetryState;
-        if (!TryApplyVoxelExcavation(OperationId, VoxelChunk, LocalCenter, RadiusCm,
-            ToolStrength, ExpectedDensityRevision, LogicalCell, DepthLayer,
-            ExpectedCellRevision, SourceMaterialId, RetryState))
+        FVoxelTerrainDigReceipt PhysicalReceipt;
+        if (!VoxelChunk->TryGetDigReceipt(OperationId, PhysicalReceipt) ||
+            !PhysicalReceipt.LocalCenter.Equals(LocalCenter, 0.01f) ||
+            !FMath::IsNearlyEqual(PhysicalReceipt.RadiusCm, RadiusCm, 0.01f) ||
+            !FMath::IsNearlyEqual(PhysicalReceipt.ToolStrength, ToolStrength, 0.01f) ||
+            PhysicalReceipt.ExpectedRevision != ExpectedDensityRevision ||
+            PhysicalReceipt.ResultingRevision != Existing->ResultingDensityRevision ||
+            !FMath::IsNearlyEqual(PhysicalReceipt.RemovedVolumeCubicMetres,
+                Existing->RemovedVolumeCubicMetres, 0.001f))
             return false;
 
+        FWorldTerrainCellState RetryState = Existing->ResultState;
         UWorldItemOwnershipSubsystem* Ownership =
             GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
         if (!Ownership || Existing->YieldOutputUnits < 0 ||
