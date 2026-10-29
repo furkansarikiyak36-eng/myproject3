@@ -2746,12 +2746,13 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TestTrue(TEXT("Re-add the alternate support for removal promotion"),
         Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId(),
             TEXT("AutoTop"), TEXT("SupportRight")));
+    const FGuid SupportAId = SupportA->GetStructuralNodeId();
     FStructuralNodeRecord SupportANode;
-    TestTrue(TEXT("Read root support before batch collapse"), Graph->GetNode(SupportA->GetStructuralNodeId(), SupportANode));
+    TestTrue(TEXT("Read root support before batch collapse"), Graph->GetNode(SupportAId, SupportANode));
     TestTrue(TEXT("Collapse consumes a standalone foundation without removing its supported bridge"),
-        Graph->TryCollapseConnectedStructure(SupportA->GetStructuralNodeId(), SupportANode.Revision));
+        Graph->TryCollapseConnectedStructure(SupportAId, SupportANode.Revision));
     TestFalse(TEXT("Collapsed foundation leaves the structural graph"),
-        Graph->GetNode(SupportA->GetStructuralNodeId(), SupportANode));
+        Graph->GetNode(SupportAId, SupportANode));
     FStructuralNodeRecord BridgeAfterCollapse;
     TestTrue(TEXT("Bridge survives collapse through its alternate support"),
         Graph->GetNode(Bridge->GetStructuralNodeId(), BridgeAfterCollapse));
@@ -2762,7 +2763,7 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     FWorldOwnedItemRecord ConsumedFoundation;
     UWorldItemOwnershipSubsystem* Ownership = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
     TestTrue(TEXT("Foundation identity remains in the ownership ledger"),
-        Ownership && Ownership->TryGetItem(SupportA->GetStructuralNodeId(), ConsumedFoundation));
+        Ownership && Ownership->TryGetItem(SupportAId, ConsumedFoundation));
     TestTrue(TEXT("Collapsed foundation is no longer world-owned"),
         ConsumedFoundation.OwnerKind == EWorldItemOwnerKind::Consumed);
     return true;
