@@ -3,6 +3,7 @@
 
 #include "ConstructionHelpers.h"
 #include "HarvestableTreeActor.h"
+#include "GatherableResourceActor.h"
 #include "HeatSourceComponent.h"
 #include "HelperCompanionActor.h"
 #include "LogAttachmentComponents.h"
@@ -875,6 +876,53 @@ void AVerticalSliceCWorldActor::BuildLife()
         Stick->FinishSpawning(FTransform(Rotation, Location, FVector(0.06f, 0.06f, Random.FRandRange(1.0f, 1.5f))));
         Stick->Mesh->SetMaterial(0, Tint(FLinearColor(0.26f, 0.18f, 0.1f)));
     }
+
+    // Gatherable nodes are placed in the biome that explains the resource:
+    // berries in the clearing, reeds beside the creek, flint on the rocky bank,
+    // clay/sand along the exposed lower bank. These are real inventory resources,
+    // not decorative props; G gathers the nearest node.
+    struct FGatherNode
+    {
+        FName ItemId;
+        FVector2D XY;
+        const TCHAR* Shape;
+        FVector Scale;
+        FLinearColor Colour;
+        int32 Units;
+        int32 PerGather;
+        double RefillSeconds;
+        FName ToolId;
+        bool bLedger;
+    };
+    const FGatherNode Nodes[] =
+    {
+        { TEXT("Berries"), FVector2D(-900, 650), TEXT("Sphere"), FVector(0.55f,0.55f,0.65f), FLinearColor(0.42f,0.06f,0.12f), 5, 2, 21600.0, NAME_None, true },
+        { TEXT("Berries"), FVector2D(-1150, 820), TEXT("Sphere"), FVector(0.45f,0.45f,0.55f), FLinearColor(0.42f,0.06f,0.12f), 5, 2, 21600.0, NAME_None, true },
+        { TEXT("Reed"), FVector2D(1150, -950), TEXT("Cylinder"), FVector(0.12f,0.12f,0.85f), FLinearColor(0.28f,0.36f,0.12f), 8, 2, 43200.0, NAME_None, false },
+        { TEXT("Reed"), FVector2D(1350, -1050), TEXT("Cylinder"), FVector(0.10f,0.10f,0.75f), FLinearColor(0.28f,0.36f,0.12f), 8, 2, 43200.0, NAME_None, false },
+        { TEXT("Flint"), FVector2D(1750, 950), TEXT("Sphere"), FVector(0.32f,0.28f,0.22f), FLinearColor(0.22f,0.23f,0.25f), 3, 1, 0.0, NAME_None, false },
+        { TEXT("Clay"), FVector2D(-1750, -650), TEXT("Sphere"), FVector(0.65f,0.5f,0.18f), FLinearColor(0.43f,0.24f,0.13f), 5, 1, 86400.0, NAME_None, false },
+        { TEXT("Sand"), FVector2D(2050, -750), TEXT("Sphere"), FVector(0.7f,0.55f,0.12f), FLinearColor(0.57f,0.49f,0.32f), 5, 1, 86400.0, NAME_None, false },
+        { TEXT("Resin"), FVector2D(1450, 1200), TEXT("Sphere"), FVector(0.18f,0.18f,0.18f), FLinearColor(0.48f,0.27f,0.06f), 3, 1, 0.0, TEXT("Tool.Scraper"), false }
+    };
+    for (const FGatherNode& Node : Nodes)
+    {
+        const FVector Location(Node.XY.X, Node.XY.Y, GetGroundHeight(Node.XY.X, Node.XY.Y) + 22.0f);
+        AGatherableResourceActor* Resource = World->SpawnActor<AGatherableResourceActor>(
+            AGatherableResourceActor::StaticClass(), Location, FRotator::ZeroRotator);
+        if (!Resource)
+            continue;
+        Resource->ItemDefinitionId = Node.ItemId;
+        Resource->MaxUnits = Node.Units;
+        Resource->UnitsPerGather = Node.PerGather;
+        Resource->RefillSecondsPerUnit = Node.RefillSeconds;
+        Resource->RequiredToolId = Node.ToolId;
+        Resource->bGiveLedgerItems = Node.bLedger;
+        Resource->Mesh->SetStaticMesh(LoadEngineShape(Node.Shape));
+        Resource->Mesh->SetRelativeScale3D(Node.Scale);
+        Resource->Mesh->SetMaterial(0, Tint(Node.Colour));
+        Resource->Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+    }
 }
 
 // ---------------------------------------------------------------- creek
@@ -1209,6 +1257,9 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& StationTakeBinding = InputComponent->BindKey(
                 EKeys::F4, IE_Pressed, this, &AVerticalSliceCWorldActor::StationTakeInput);
             StationTakeBinding.bConsumeInput = false;
+            FInputKeyBinding& GatherBinding = InputComponent->BindKey(
+                EKeys::G, IE_Pressed, this, &AVerticalSliceCWorldActor::GatherInput);
+            GatherBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
@@ -1894,6 +1945,56 @@ void AVerticalSliceCWorldActor::ShowSurvivalStatusInput()
         bResting ? TEXT("yes") : TEXT("no"), *Conditions);
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(9205, 6.0f, FColor::Cyan, Status);
+}
+
+void AVerticalSliceCWorldActor::GatherInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    if (!World || !Pawn || !Inventory)
+        return;
+
+    AGatherableResourceActor* Nearest = nullptr;
+    float BestDistanceSquared = FMath::Square(250.0f);
+    for (TActorIterator<AGatherableResourceActor> It(World); It; ++It)
+    {
+        AGatherableResourceActor* Candidate = *It;
+        if (!IsValid(Candidate))
+            continue;
+        const float DistanceSquared = FVector::DistSquared(Pawn->GetActorLocation(), Candidate->GetActorLocation());
+        if (DistanceSquared < BestDistanceSquared)
+        {
+            BestDistanceSquared = DistanceSquared;
+            Nearest = Candidate;
+        }
+    }
+    if (!Nearest)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.8f, FColor::Silver,
+                TEXT("No gatherable resource within 250 cm. (G: gather)"));
+        return;
+    }
+
+    int32 Gathered = 0;
+    if (Nearest->TryGather(Inventory, Gathered))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(140, 220, 150),
+                FString::Printf(TEXT("Gathered %d x %s. Remaining: %d."),
+                    Gathered, *Nearest->ItemDefinitionId.ToString(), Nearest->GetAvailableUnits()));
+        return;
+    }
+    const FString Reason = Nearest->GetAvailableUnits() <= 0
+        ? TEXT("This resource is depleted.")
+        : (!Nearest->RequiredToolId.IsNone() && Inventory->GetItemCount(Nearest->RequiredToolId) <= 0
+            ? FString::Printf(TEXT("Requires tool: %s."), *Nearest->RequiredToolId.ToString())
+            : TEXT("Inventory is full or gathering failed."));
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, Reason);
 }
 
 void AVerticalSliceCWorldActor::ChopInput()
