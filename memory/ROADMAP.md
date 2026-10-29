@@ -177,7 +177,7 @@ dryness, wind). First three events only: snowstorm, heavy rain, flood (water lev
 low cells). Chained events come in P8. Tests: signal always precedes effect; flood only after
 melt + rain; state saved mid-event.
 
-**P1.4 · Player sees it** — `todo`, deferred to the end by user decision (2026-10-29): new "Valley" scene built last · Needs: P1.3. Also: VerticalSlice_C must drive the world through the coordinator (today it keeps its own hours and sets weather itself, so clock, climate and needs do not advance in the main level).
+**P1.4 · Player sees it** — `todo`, deferred to the end by user decision (2026-10-29): new "Valley" scene built last · Needs: P1.3. The shared coordinator already advances from the `AWorldDemoBootstrapActor` base Tick; VerticalSlice_C reads initialized climate weather/severity for survival. Its local `Hours` still drives the sun visual separately. Remaining: date/season HUD, visible event signals and a consistent visual-to-logical time presentation. Recent integration source is unbuilt/unrun.
 HUD shows date and season; signals are visible in the world (sky/clouds, falling pressure line
 on HUD, animals hiding later). No placement rules in HUD. Done when: `played` (user checks a
 fast-forwarded year in PIE).
