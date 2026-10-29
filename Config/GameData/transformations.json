@@ -1,0 +1,1387 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. kind E = item recipe, F = physical part (frozen until P10). where: hand, a station id, world, log_system, terrain.",
+  "transformations": [
+    {
+      "n": 1,
+      "id": "knap_flake",
+      "name": "Çakmaktaşı → kesici yonga",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Flint",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "FlintFlake",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "HammerStone"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 2,
+      "id": "make_axe",
+      "name": "Yonga + sap + ip → taş balta",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "FlintFlake",
+          "qty": 1
+        },
+        {
+          "item": "Handle",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Axe",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 2,
+      "id": "make_chisel",
+      "name": "Yonga + sap + reçine → keski",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "FlintFlake",
+          "qty": 1
+        },
+        {
+          "item": "Handle",
+          "qty": 1
+        },
+        {
+          "item": "Resin",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Chisel",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 2,
+      "id": "make_scraper",
+      "name": "Yonga + reçine → kazıyıcı",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "FlintFlake",
+          "qty": 1
+        },
+        {
+          "item": "Resin",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Scraper",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 3,
+      "id": "cut_stone_block",
+      "name": "Taş → yontulmuş taş blok",
+      "kind": "F",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Stone",
+          "qty": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "StoneBlock",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Chisel"
+      ],
+      "duration_s": 0,
+      "note": "physical part; geometry frozen until P10"
+    },
+    {
+      "n": 4,
+      "id": "crush_stone",
+      "name": "Taş → kırma taş",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Stone",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "CrushedStone",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "HammerStone"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 5,
+      "id": "fell_tree",
+      "name": "Ağaç → kütük",
+      "kind": "F",
+      "where": "world",
+      "inputs": [],
+      "outputs": [
+        {
+          "item": "Log",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "duration_s": 0,
+      "note": "HarvestableTreeActor"
+    },
+    {
+      "n": 6,
+      "id": "cut_length",
+      "name": "Kütük → kısa kütük",
+      "kind": "F",
+      "where": "log_system",
+      "inputs": [
+        {
+          "item": "Log",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "ShortLog",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "duration_s": 0,
+      "note": "LogBuildPiece cut actions"
+    },
+    {
+      "n": 7,
+      "id": "split_log",
+      "name": "Kütük → yarım → çeyrek",
+      "kind": "F",
+      "where": "log_system",
+      "inputs": [
+        {
+          "item": "Log",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "HalfLog",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.Axe",
+        "Tool.Wedge"
+      ],
+      "duration_s": 0,
+      "note": "LogBuildPiece SplitHalf/Quarter"
+    },
+    {
+      "n": 8,
+      "id": "hew_log",
+      "name": "Kütük → yontulmuş / oluklu",
+      "kind": "F",
+      "where": "log_system",
+      "inputs": [
+        {
+          "item": "Log",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "HewnLog",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Chisel"
+      ],
+      "duration_s": 0,
+      "note": "LogBuildPiece Hewn/Gutter"
+    },
+    {
+      "n": 9,
+      "id": "make_plank",
+      "name": "Yarım kütük → tahta",
+      "kind": "F",
+      "where": "workbench_log",
+      "inputs": [
+        {
+          "item": "HalfLog",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Plank",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.Wedge",
+        "Tool.Chisel"
+      ],
+      "duration_s": 3600,
+      "note": "physical part; geometry frozen until P10"
+    },
+    {
+      "n": 10,
+      "id": "make_stick",
+      "name": "Dal → çubuk",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Branch",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Stick",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "FlintFlake"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 10,
+      "id": "make_stake",
+      "name": "Dal → kazık",
+      "kind": "F",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Branch",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Stake",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "FlintFlake"
+      ],
+      "duration_s": 0,
+      "note": "sharpening exists in LogCarryComponent"
+    },
+    {
+      "n": 10,
+      "id": "make_handle",
+      "name": "Dal → sap",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Branch",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Handle",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "FlintFlake"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 11,
+      "id": "bark_to_fibre",
+      "name": "Ağaç kabuğu → lif",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Bark",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Fibre",
+          "qty": 3
+        }
+      ],
+      "tools": [
+        "Tool.Scraper"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 12,
+      "id": "split_firewood",
+      "name": "Odun → yakacak",
+      "kind": "E",
+      "where": "workbench_log",
+      "inputs": [
+        {
+          "item": "ShortLog",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Firewood",
+          "qty": 6
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "duration_s": 1800
+    },
+    {
+      "n": 13,
+      "id": "twist_rope",
+      "name": "Lif → ip",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Fibre",
+          "qty": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 14,
+      "id": "scrape_hide",
+      "name": "Ham deri → kazınmış deri",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Hide.Raw",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Hide.Scraped",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Scraper"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 14,
+      "id": "cure_hide",
+      "name": "Kazınmış deri → işlenmiş deri",
+      "kind": "E",
+      "where": "hide_frame",
+      "inputs": [
+        {
+          "item": "Hide.Scraped",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Leather",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 86400
+    },
+    {
+      "n": 15,
+      "id": "sew_tunic",
+      "name": "Deri + iğne + ip → gömlek",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Leather",
+          "qty": 2
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Clothing.HideTunic",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Needle"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 15,
+      "id": "sew_boots",
+      "name": "Deri + iğne + ip → çizme",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Leather",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Clothing.HideBoots",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Needle"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 15,
+      "id": "sew_bag",
+      "name": "Deri + iğne + ip → çanta",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Leather",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Bag.Hide",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Needle"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 16,
+      "id": "grind_needle",
+      "name": "Kemik → iğne",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "Bone",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Needle",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 16,
+      "id": "grind_point",
+      "name": "Kemik → uç",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "Bone",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "BonePoint",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 16,
+      "id": "grind_hook",
+      "name": "Kemik → olta iğnesi",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "Bone",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "FishHook",
+          "qty": 3
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 17,
+      "id": "bind_thatch",
+      "name": "Saz → çatı demeti",
+      "kind": "F",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Reed",
+          "qty": 6
+        }
+      ],
+      "outputs": [
+        {
+          "item": "ThatchBundle",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0,
+      "note": "physical part; geometry frozen until P10"
+    },
+    {
+      "n": 18,
+      "id": "weave_basket",
+      "name": "Saz → sepet",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Reed",
+          "qty": 4
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Basket",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 18,
+      "id": "knot_net",
+      "name": "İp → ağ",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Rope",
+          "qty": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Net",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 18,
+      "id": "weave_mat",
+      "name": "Ot → hasır",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Grass",
+          "qty": 6
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Mat",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 19,
+      "id": "dig_layers",
+      "name": "Kazı → toprak / kil / kum",
+      "kind": "E",
+      "where": "terrain",
+      "inputs": [],
+      "outputs": [
+        {
+          "item": "Soil",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.DiggingStick"
+      ],
+      "duration_s": 0,
+      "note": "WorldTerrainStateSubsystem yield rules from layers.json"
+    },
+    {
+      "n": 20,
+      "id": "mix_plaster",
+      "name": "Kil + kum + su → sıva",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Clay",
+          "qty": 2
+        },
+        {
+          "item": "Sand",
+          "qty": 1
+        },
+        {
+          "item": "Water.Dirty",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Plaster",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 21,
+      "id": "shape_pot",
+      "name": "Kil → çiğ kap",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Clay",
+          "qty": 3
+        },
+        {
+          "item": "Sand",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Pot.Raw",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 21,
+      "id": "fire_pot",
+      "name": "Çiğ kap → pişmiş kap",
+      "kind": "E",
+      "where": "pit_kiln",
+      "inputs": [
+        {
+          "item": "Pot.Raw",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Pot.Fired",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 14400
+    },
+    {
+      "n": 22,
+      "id": "compact_earth",
+      "name": "Toprak → sıkıştırılmış zemin, set",
+      "kind": "E",
+      "where": "terrain",
+      "inputs": [
+        {
+          "item": "Soil",
+          "qty": 2
+        }
+      ],
+      "outputs": [],
+      "tools": [],
+      "duration_s": 0,
+      "note": "terrain fill operation"
+    },
+    {
+      "n": 23,
+      "id": "tap_resin",
+      "name": "Ağaca çentik → reçine",
+      "kind": "E",
+      "where": "world",
+      "inputs": [],
+      "outputs": [
+        {
+          "item": "Resin",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "FlintFlake"
+      ],
+      "duration_s": 86400,
+      "note": "gatherable on a pine, refills over time"
+    },
+    {
+      "n": 24,
+      "id": "cook_pitch",
+      "name": "Reçine + kömür tozu → zift",
+      "kind": "E",
+      "where": "campfire",
+      "inputs": [
+        {
+          "item": "Resin",
+          "qty": 2
+        },
+        {
+          "item": "Charcoal",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Pitch",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 25,
+      "id": "burn_charcoal",
+      "name": "Odun → kömür",
+      "kind": "E",
+      "where": "charcoal_pit",
+      "inputs": [
+        {
+          "item": "Firewood",
+          "qty": 6
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Charcoal",
+          "qty": 3
+        },
+        {
+          "item": "Ash",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 28800
+    },
+    {
+      "n": 26,
+      "id": "grind_ochre",
+      "name": "Aşı toprağı → boya",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "OchreEarth",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "OchrePigment",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 27,
+      "id": "fletch_arrow",
+      "name": "Tüy + çubuk + uç + reçine → ok",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Stick",
+          "qty": 1
+        },
+        {
+          "item": "BonePoint",
+          "qty": 1
+        },
+        {
+          "item": "Feather",
+          "qty": 2
+        },
+        {
+          "item": "Resin",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Arrow",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 28,
+      "id": "carve_ornament",
+      "name": "Diş → süs",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "Tooth",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Ornament",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 28,
+      "id": "shell_scraper",
+      "name": "Kabuk → kazıyıcı",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "Shell",
+          "qty": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Scraper",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 29,
+      "id": "cook_meat",
+      "name": "Çiğ et → pişmiş et",
+      "kind": "E",
+      "where": "campfire",
+      "inputs": [
+        {
+          "item": "Meat.Raw",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Meat.Cooked",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 1800
+    },
+    {
+      "n": 29,
+      "id": "smoke_meat",
+      "name": "Çiğ et → tütsülenmiş et",
+      "kind": "E",
+      "where": "smoke_rack",
+      "inputs": [
+        {
+          "item": "Meat.Raw",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Meat.Smoked",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 43200
+    },
+    {
+      "n": 29,
+      "id": "cook_fish",
+      "name": "Çiğ balık → pişmiş balık",
+      "kind": "E",
+      "where": "campfire",
+      "inputs": [
+        {
+          "item": "Fish.Raw",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Fish.Cooked",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 900
+    },
+    {
+      "n": 29,
+      "id": "smoke_fish",
+      "name": "Çiğ balık → tütsülenmiş balık",
+      "kind": "E",
+      "where": "smoke_rack",
+      "inputs": [
+        {
+          "item": "Fish.Raw",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Fish.Smoked",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 28800
+    },
+    {
+      "n": 30,
+      "id": "boil_water",
+      "name": "Su → kaynamış su",
+      "kind": "E",
+      "where": "campfire",
+      "inputs": [
+        {
+          "item": "Water.Dirty",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Water.Boiled",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Pot.Fired"
+      ],
+      "duration_s": 1188
+    },
+    {
+      "n": 30,
+      "id": "make_filter",
+      "name": "Kum + kömür → süzgeç",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Sand",
+          "qty": 2
+        },
+        {
+          "item": "Charcoal",
+          "qty": 1
+        },
+        {
+          "item": "Basket",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Filter",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 30,
+      "id": "filter_water",
+      "name": "Kirli su + süzgeç → temiz su",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Water.Dirty",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Water.Boiled",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Filter"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 31,
+      "id": "harden_digging_stick",
+      "name": "Dal → kazma çubuğu",
+      "kind": "E",
+      "where": "campfire",
+      "inputs": [
+        {
+          "item": "Branch",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.DiggingStick",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 900
+    },
+    {
+      "n": 32,
+      "id": "make_hoe",
+      "name": "Boynuz + sap + ip → çapa",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Antler",
+          "qty": 1
+        },
+        {
+          "item": "Handle",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Hoe",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 33,
+      "id": "make_sickle",
+      "name": "Ahşap + yonga + reçine → orak",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Handle",
+          "qty": 1
+        },
+        {
+          "item": "FlintFlake",
+          "qty": 2
+        },
+        {
+          "item": "Resin",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Sickle",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 33,
+      "id": "make_flail",
+      "name": "Dal + ip → döven sopası",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Branch",
+          "qty": 2
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.Flail",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 33,
+      "id": "make_winnowing_basket",
+      "name": "Saz → savurma sepeti",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Reed",
+          "qty": 6
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Tool.WinnowingBasket",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 0
+    },
+    {
+      "n": 34,
+      "id": "dry_grain",
+      "name": "Ürün → kurutulmuş ürün",
+      "kind": "E",
+      "where": "drying_rack",
+      "inputs": [
+        {
+          "item": "Grain.Harvest",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Grain.Dried",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 86400
+    },
+    {
+      "n": 34,
+      "id": "dry_legume",
+      "name": "Baklagil → kuru baklagil",
+      "kind": "E",
+      "where": "drying_rack",
+      "inputs": [
+        {
+          "item": "Legume.Harvest",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Legume.Dried",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 86400
+    },
+    {
+      "n": 35,
+      "id": "thresh_grain",
+      "name": "Ürün → tane + sap",
+      "kind": "E",
+      "where": "threshing_floor",
+      "inputs": [
+        {
+          "item": "Grain.Dried",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Grain.Kernels",
+          "qty": 1
+        },
+        {
+          "item": "Straw",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Flail"
+      ],
+      "duration_s": 3600
+    },
+    {
+      "n": 36,
+      "id": "winnow_grain",
+      "name": "Tane → temiz tane",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Grain.Kernels",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Grain.Clean",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "duration_s": 0
+    },
+    {
+      "n": 37,
+      "id": "grind_flour",
+      "name": "Tane → un",
+      "kind": "E",
+      "where": "grinding_stone",
+      "inputs": [
+        {
+          "item": "Grain.Clean",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Flour",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "duration_s": 3600
+    },
+    {
+      "n": 38,
+      "id": "make_compost",
+      "name": "Kül + ot + artık → kompost",
+      "kind": "E",
+      "where": "compost_heap",
+      "inputs": [
+        {
+          "item": "Ash",
+          "qty": 1
+        },
+        {
+          "item": "Grass",
+          "qty": 2
+        },
+        {
+          "item": "FoodScrap",
+          "qty": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Compost",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "duration_s": 432000
+    }
+  ]
+}

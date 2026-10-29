@@ -1,0 +1,47 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. Depth layer 0 = surface. Terrain allows layers 0-3 (MaxEditableDepthLayers = 4).",
+  "layers": [
+    {
+      "material": "Soil",
+      "item": "Soil",
+      "min_layer": 0,
+      "max_layer": 1,
+      "units_per_m3": 4
+    },
+    {
+      "material": "Clay",
+      "item": "Clay",
+      "min_layer": 1,
+      "max_layer": 3,
+      "units_per_m3": 4
+    },
+    {
+      "material": "Sand",
+      "item": "Sand",
+      "min_layer": 0,
+      "max_layer": 2,
+      "units_per_m3": 4
+    },
+    {
+      "material": "Stone",
+      "item": "Stone",
+      "min_layer": 2,
+      "max_layer": 3,
+      "units_per_m3": 2
+    },
+    {
+      "material": "Flint",
+      "item": "Flint",
+      "min_layer": 2,
+      "max_layer": 3,
+      "units_per_m3": 3
+    },
+    {
+      "material": "Ochre",
+      "item": "OchreEarth",
+      "min_layer": 1,
+      "max_layer": 3,
+      "units_per_m3": 3
+    }
+  ]
+}

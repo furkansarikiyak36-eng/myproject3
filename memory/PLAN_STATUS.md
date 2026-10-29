@@ -14,9 +14,9 @@ Update this file whenever a task changes state.
 
 | Status | Count | Tasks |
 |---|---:|---|
-| Var | 5 | P1.1, P1.2, P2.4, P2.6, P5.3 |
-| Kısmi | 25 | P2.1, P2.2, P2.4, P2.5, P3.1, P3.2, P4.1–P4.4, P5.1, P6.2–P6.4, P7.1–P7.4, P8.2, P8.3, P9.2, P10, and save (all phases) |
-| Yok | 15 | P0.2–P0.5, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
+| Var | 8 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.3 |
+| Kısmi | 25 | (P4.2 done, P0.5 now partial) P2.1, P2.2, P2.4, P2.5, P3.1, P3.2, P4.1–P4.4, P5.1, P6.2–P6.4, P7.1–P7.4, P8.2, P8.3, P9.2, P10, and save (all phases) |
+| Yok | 12 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
 
@@ -25,9 +25,9 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | Task | Status | Exists | Missing |
 |---|---|---|---|
 | P0.2 freeze note | Yok | — | note in Placement/CLAUDE.md, carry.md |
-| P0.3 data files | Yok | only `Config/Placement/PlacementProfiles.json` [S]; [A] definitions are editor arrays (UPROPERTY), not files | all game data JSON |
-| P0.4 data loader | Yok | — | loader + validation |
-| P0.5 recipes from data | Yok | recipe hard-coded in `WorldDemoScenarioActor.cpp` [S] | data-driven recipes |
+| P0.3 data files | Var | `Config/GameData/`: materials, items (88), transformations (59 rows = the 38 plan steps), stations (10), conditions, crops (3 placeholders), calendar, climate, layers | user review of the lists; events.json comes with P1.3 |
+| P0.4 data loader | Var | `UWorldGameDataSubsystem`: loads + checks every reference, keeps good data on a bad load, applies to production, survival, climate, calendar, terrain; inventories and fires pick up hand recipes / fuels at BeginPlay; the bootstrap loads it; 3 tests | VerticalSlice_C does not use the bootstrap yet (P1.4) |
+| P0.5 recipes from data | Kısmi | all game recipes come from data | the old demo recipe in `WorldDemoScenarioActor.cpp` is still in C++ |
 | P1.1 calendar | Var | `WorldCalendar` + clock `GetCalendarDate`: year, month, day, hour, season from saved time; 5 days/month, start March 5 08:00; 3 tests | config from data file (P0.3), HUD (P1.4) |
 | P1.2 climate by month | Var | `UWorldClimateSubsystem`: 12-month table, daily weather from clock seed, 05:00/15:00 temperature curve, snow depth, ground wetness, pushes weather + air temperature to survival; in the coordinator step + rollback; save schema v21; 3 tests | VerticalSlice_C does not run the coordinator yet (own hours, own weather) -> P1.4 |
 | P1.3 event director | Yok | only raids have a warning phase [S] | natural events with signals: snowstorm, heavy rain, flood |
@@ -43,9 +43,9 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P3.3 clay plaster | Yok | — | plaster item, wall state, closes gaps |
 | P3.4 charcoal pit | Yok | generic production station [S] | the station and recipe |
 | P4.1 gatherables | Kısmi | trees, logs, branches/sticks, stones [S] | flint, fibre, bone/antler, hide, reed, clay, resin, ochre, shell/tooth/feather |
-| P4.2 item transformations | Kısmi | crafting + production frameworks, log cuts [S]; generic item intake into stations [A] | the 30 kind-E recipes |
+| P4.2 item transformations | Var | every E transformation is data: hand ones become inventory crafting recipes, station ones production recipes (station tools go in and come back) | hand-crafted items are plain stacks, not ledger items (eating needs ledger items) |
 | P4.3 stations | Kısmi | production station records and jobs [S] | the 6 station actors |
-| P4.4 tool requirements | Kısmi | `MissingTool` result code, axe needed for log cuts [S]; dig tool strength setting [A] | tool items deciding what can be done |
+| P4.4 tool requirements | Kısmi | hand recipes need their tools (not used up; CanCraft now checks them, it ignored them before); station recipes need the tool in the station | the log axe and the dig tool strength are not tied to tool items yet |
 | P5.1 layers → items | Kısmi | yield rules material + depth layer → item, units per m³ [A]; voxel prototype [S] | our layers: soil, clay, sand, stone, flint, ochre |
 | P5.2 cellar, trench, collapse | Yok | dig refused near grounded structures [A] | collapse of unsupported rooms; cellar/trench/cistern/embankment |
 | P5.3 dig limits + save | Var [A] | bounded dig, soil classes, tool strength, receipts, density save | chunk seams, neighbour chunks (later) |

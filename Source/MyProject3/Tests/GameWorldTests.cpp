@@ -13,6 +13,12 @@
 #include "WorldStorageSubsystem.h"
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldProductionSubsystem.h"
+#include "WorldTerrainStateSubsystem.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -641,6 +647,123 @@ bool FShelterKeepsFireHeatTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Inside = open + shelter warmth + kept fire heat"),
         InsideFelt - OpenFelt, Survival->ShelterWarmthCelsius + Survival->ShelterHeatRetention * FireHeat, 0.01f);
     TestTrue(TEXT("Fire indoors beats shelter alone"), InsideFelt - Survival->AmbientTemperatureCelsius > ShelterOnly + FireHeat);
+    return true;
+}
+
+// P0.3/P0.4: the primitive-era data loads, every reference resolves, all 38 plan steps are there.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGameDataLoadsTest,
+    "MyProject3.World.GameData.LoadsAndCoversThePlan", Flags)
+bool FGameDataLoadsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldGameDataSubsystem* Data = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data))
+        return false;
+    TestTrue(FString::Printf(TEXT("Loads (%s)"), *Data->GetLastError()), Data->LoadDefault());
+    TSet<int32> PlanSteps;
+    int32 HandRecipes = 0, StationRecipes = 0, PhysicalParts = 0;
+    for (const FGameDataTransformation& T : Data->GetTransformations())
+    {
+        PlanSteps.Add(T.PlanNumber);
+        HandRecipes += T.Where == TEXT("hand") && !T.bPhysical ? 1 : 0;
+        StationRecipes += Data->GetStations().Contains(T.Where) ? 1 : 0;
+        PhysicalParts += T.bPhysical ? 1 : 0;
+    }
+    TestEqual(TEXT("All 38 plan transformations"), PlanSteps.Num(), 38);
+    TestTrue(TEXT("Hand recipes"), HandRecipes >= 25);
+    TestTrue(TEXT("Station recipes"), StationRecipes >= 20);
+    TestTrue(TEXT("Physical parts are marked"), PhysicalParts >= 8);
+    TestEqual(TEXT("Stations"), Data->GetStations().Num(), 10);
+    TestEqual(TEXT("Three crops"), Data->GetCrops().Num(), 3);
+    TestTrue(TEXT("Every material group has items"), Data->GetItems().Num() >= 80);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGameDataRejectsBrokenTest,
+    "MyProject3.World.GameData.BrokenReferenceIsRefused", Flags)
+bool FGameDataRejectsBrokenTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldGameDataSubsystem* Data = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data))
+        return false;
+    TestTrue(TEXT("Good data first"), Data->LoadDefault());
+    const int32 GoodCount = Data->GetTransformations().Num();
+
+    const FString Source = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("GameData"));
+    const FString Broken = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Automation"), TEXT("BrokenGameData"));
+    IFileManager::Get().DeleteDirectory(*Broken, false, true);
+    IFileManager::Get().MakeDirectory(*Broken, true);
+    TArray<FString> Files;
+    IFileManager::Get().FindFiles(Files, *FPaths::Combine(Source, TEXT("*.json")), true, false);
+    for (const FString& File : Files)
+        IFileManager::Get().Copy(*FPaths::Combine(Broken, File), *FPaths::Combine(Source, File));
+    FString Text;
+    TestTrue(TEXT("Read recipes"), FFileHelper::LoadFileToString(Text, *FPaths::Combine(Broken, TEXT("transformations.json"))));
+    Text = Text.Replace(TEXT("\"item\": \"Flint\""), TEXT("\"item\": \"Unobtainium\""));
+    TestTrue(TEXT("Write broken recipes"), FFileHelper::SaveStringToFile(Text, *FPaths::Combine(Broken, TEXT("transformations.json"))));
+
+    TestFalse(TEXT("Unknown item refused"), Data->LoadFromDirectory(Broken));
+    TestTrue(TEXT("The error names it"), Data->GetLastError().Contains(TEXT("Unobtainium")));
+    TestTrue(TEXT("Good data kept"), Data->IsLoaded() && Data->GetTransformations().Num() == GoodCount);
+    IFileManager::Get().DeleteDirectory(*Broken, false, true);
+    return true;
+}
+
+// P0.4 + P4.2/P4.4: applied data feeds production, survival, climate, terrain and hand crafting;
+// a tool is needed but not used up.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGameDataAppliesTest,
+    "MyProject3.World.GameData.FeedsSystemsAndToolsAreKept", Flags)
+bool FGameDataAppliesTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    UWorldTerrainStateSubsystem* Terrain = World ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production) ||
+        !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+    TestTrue(TEXT("Load"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
+    TestFalse(TEXT("Apply only once"), Data->ApplyToWorld());
+
+    TArray<FWorldProductionStation> Stations;
+    TArray<FWorldProductionRecipe> Recipes;
+    Production->ExportSnapshot(Stations, Recipes);
+    const FWorldProductionRecipe* Kiln = Recipes.FindByPredicate([](const FWorldProductionRecipe& R) { return R.RecipeId == TEXT("fire_pot"); });
+    if (TestNotNull(TEXT("Pottery is a kiln recipe"), Kiln))
+        TestEqual(TEXT("Needs the pit kiln"), Kiln->RequiredStationTag, FName(TEXT("pit_kiln")));
+    const FWorldProductionRecipe* Plank = Recipes.FindByPredicate([](const FWorldProductionRecipe& R) { return R.RecipeId == TEXT("make_plank"); });
+    if (TestNotNull(TEXT("Plank recipe"), Plank))
+        TestTrue(TEXT("Station tools come back"), Plank->Outputs.ContainsByPredicate([](const FProductionIngredient& I) { return I.ItemId == TEXT("Tool.Wedge"); }));
+    TestEqual(TEXT("Six terrain layers"), Terrain->ResourceYieldRules.Num(), 6);
+    TestEqual(TEXT("Twelve months"), Climate->Months.Num(), 12);
+
+    // A new inventory picks up the hand recipes by itself.
+    AActor* Owner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    FInventoryStack Flint;
+    Flint.ItemId = TEXT("Flint");
+    Flint.Quantity = 2;
+    TestTrue(TEXT("Flint in hand"), Inventory->TryAddItem(Flint));
+    TArray<FInventoryStack> Missing;
+    TestFalse(TEXT("No hammer stone, no knapping"), Inventory->CanCraft(TEXT("knap_flake"), Missing));
+    TestTrue(TEXT("The hammer stone is what is missing"), Missing.ContainsByPredicate([](const FInventoryStack& S) { return S.ItemId == TEXT("HammerStone"); }));
+    FInventoryStack Hammer;
+    Hammer.ItemId = TEXT("HammerStone");
+    Hammer.Quantity = 1;
+    Hammer.MaxStack = 1;
+    Hammer.bIsTool = true;
+    Hammer.Category = EInventoryItemCategory::Tool;
+    TestTrue(TEXT("Hammer stone in hand"), Inventory->TryAddItem(Hammer));
+    TestTrue(TEXT("Knap"), Inventory->TryCraft(TEXT("knap_flake")));
+    TestEqual(TEXT("Two flakes"), Inventory->GetItemCount(TEXT("FlintFlake")), 2);
+    TestEqual(TEXT("One flint used"), Inventory->GetItemCount(TEXT("Flint")), 1);
+    TestEqual(TEXT("Hammer stone kept"), Inventory->GetItemCount(TEXT("HammerStone")), 1);
     return true;
 }
 

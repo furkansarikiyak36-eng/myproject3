@@ -2,6 +2,7 @@
 
 #include "Engine/World.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldGameDataSubsystem.h"
 
 AWorldDemoBootstrapActor::AWorldDemoBootstrapActor()
 {
@@ -81,6 +82,10 @@ bool AWorldDemoBootstrapActor::StartSimulation()
     // the clock or raid schedule if another explicit bootstrap already ran.
     if (!Coordinator->IsWorldSimulationReady())
     {
+        // Game data first: calendar, climate, recipes and survival definitions.
+        UWorldGameDataSubsystem* GameData = GetWorld()->GetSubsystem<UWorldGameDataSubsystem>();
+        if (GameData && !GameData->IsApplied() && (!GameData->LoadDefault() || !GameData->ApplyToWorld()))
+            UE_LOG(LogTemp, Error, TEXT("World demo bootstrap: game data failed: %s"), *GameData->GetLastError());
         if (!Coordinator->InitializeWorldSimulation(
             RandomSeed, InitialTimeSeconds, FirstRaidDelaySeconds))
         {

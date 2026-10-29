@@ -102,7 +102,7 @@ Add a short "frozen until phase 10" note at the top of `Source/MyProject3/Placem
 and `memory/modules/carry.md`, listing the open items moved there (mitre cuts, NotchCradle sockets,
 crossing wall diagonals, deck path). Done when: committed.
 
-**P0.3 · Game data files** — `todo` · Needs: —
+**P0.3 · Game data files** — `tested` (needs user review of the lists) · Needs: —
 Create `Config/GameData/` with JSON files, content copied from the design doc:
 `materials.json` (§4.1), `items.json` (items produced by §4.3), `transformations.json` (38 rows:
 id, inputs, tool/station, outputs, kind E/F, duration, fuel), `stations.json` (8),
@@ -111,7 +111,7 @@ precipitation, possible events), `events.json` (§7.1: signal, effect, counters)
 Done when: files exist, valid JSON, each row has a stable id. Status ceiling for web: `code-written`
 is fine here (no build needed); mark `done` after the user reviews the lists.
 
-**P0.4 · Data loader** — `todo` · Needs: P0.3
+**P0.4 · Data loader** — `tested` (99/99) · Needs: P0.3
 New `UGameDataSubsystem` (GameInstance subsystem) that loads `Config/GameData/*.json`, validates
 ids/references (every input/output item exists, every station exists) and exposes lookups.
 Tests: loads all files; a broken reference fails validation. Done when: `tested`.
@@ -256,6 +256,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P0.3/P0.4/P4.2 · tested · Config/GameData + UWorldGameDataSubsystem, CanCraft checks tools, 99/99
 - 2026-10-29 · P3.2 (part) · tested · shelter keeps fire heat, sensor counts only placed pieces, 96/96
 - 2026-10-29 · P3.1 (part) · tested · fuel heat multiplier, wet wood / charcoal, IsBurningHot, 95/95
 - 2026-10-29 · P2.4 · tested · spoilage by storage + temperature, schema v22, 94/94

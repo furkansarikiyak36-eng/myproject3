@@ -1,0 +1,113 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
+  "months": [
+    {
+      "month": 1,
+      "min_c": -14,
+      "max_c": -4,
+      "wet": 0.45,
+      "storm": 0.3,
+      "wind": 0.3,
+      "heatwave": 0.0
+    },
+    {
+      "month": 2,
+      "min_c": -12,
+      "max_c": -2,
+      "wet": 0.4,
+      "storm": 0.25,
+      "wind": 0.3,
+      "heatwave": 0.0
+    },
+    {
+      "month": 3,
+      "min_c": -5,
+      "max_c": 5,
+      "wet": 0.45,
+      "storm": 0.1,
+      "wind": 0.25,
+      "heatwave": 0.0
+    },
+    {
+      "month": 4,
+      "min_c": 0,
+      "max_c": 11,
+      "wet": 0.55,
+      "storm": 0.1,
+      "wind": 0.2,
+      "heatwave": 0.0
+    },
+    {
+      "month": 5,
+      "min_c": 5,
+      "max_c": 17,
+      "wet": 0.4,
+      "storm": 0.15,
+      "wind": 0.15,
+      "heatwave": 0.0
+    },
+    {
+      "month": 6,
+      "min_c": 9,
+      "max_c": 22,
+      "wet": 0.3,
+      "storm": 0.25,
+      "wind": 0.15,
+      "heatwave": 0.05
+    },
+    {
+      "month": 7,
+      "min_c": 12,
+      "max_c": 27,
+      "wet": 0.15,
+      "storm": 0.2,
+      "wind": 0.1,
+      "heatwave": 0.25
+    },
+    {
+      "month": 8,
+      "min_c": 11,
+      "max_c": 26,
+      "wet": 0.15,
+      "storm": 0.3,
+      "wind": 0.15,
+      "heatwave": 0.2
+    },
+    {
+      "month": 9,
+      "min_c": 6,
+      "max_c": 18,
+      "wet": 0.3,
+      "storm": 0.1,
+      "wind": 0.2,
+      "heatwave": 0.0
+    },
+    {
+      "month": 10,
+      "min_c": 1,
+      "max_c": 11,
+      "wet": 0.5,
+      "storm": 0.2,
+      "wind": 0.35,
+      "heatwave": 0.0
+    },
+    {
+      "month": 11,
+      "min_c": -4,
+      "max_c": 4,
+      "wet": 0.45,
+      "storm": 0.15,
+      "wind": 0.3,
+      "heatwave": 0.0
+    },
+    {
+      "month": 12,
+      "min_c": -10,
+      "max_c": -1,
+      "wet": 0.45,
+      "storm": 0.25,
+      "wind": 0.3,
+      "heatwave": 0.0
+    }
+  ]
+}

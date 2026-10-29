@@ -1,0 +1,8 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
+  "seconds_per_day": 86400,
+  "days_per_month": 5,
+  "start_month": 3,
+  "start_day_of_month": 5,
+  "start_hour": 8.0
+}

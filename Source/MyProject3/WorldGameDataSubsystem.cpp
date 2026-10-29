@@ -1,0 +1,535 @@
+#include "WorldGameDataSubsystem.h"
+
+#include "HeatSourceComponent.h"
+#include "InventoryCraftingComponent.h"
+#include "WorldProductionSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "WorldTerrainStateSubsystem.h"
+#include "Dom/JsonObject.h"
+#include "Engine/World.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+
+namespace
+{
+    using FJson = TSharedPtr<FJsonObject>;
+
+    bool ReadJson(const FString& Directory, const TCHAR* FileName, FJson& Out, FString& Error)
+    {
+        FString Text;
+        const FString Path = FPaths::Combine(Directory, FileName);
+        if (!FFileHelper::LoadFileToString(Text, *Path))
+        {
+            Error = FString::Printf(TEXT("Cannot read %s"), *Path);
+            return false;
+        }
+        const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
+        if (!FJsonSerializer::Deserialize(Reader, Out) || !Out.IsValid())
+        {
+            Error = FString::Printf(TEXT("Bad JSON in %s"), FileName);
+            return false;
+        }
+        return true;
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* ArrayField(const FJson& Object, const TCHAR* Name)
+    {
+        const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+        return Object.IsValid() && Object->TryGetArrayField(Name, Values) ? Values : nullptr;
+    }
+
+    FName NameField(const FJson& Object, const TCHAR* Name)
+    {
+        FString Value;
+        return Object.IsValid() && Object->TryGetStringField(Name, Value) && !Value.IsEmpty() ? FName(*Value) : NAME_None;
+    }
+
+    double NumberField(const FJson& Object, const TCHAR* Name, double Default = 0.0)
+    {
+        double Value = Default;
+        return Object.IsValid() && Object->TryGetNumberField(Name, Value) ? Value : Default;
+    }
+
+    bool BoolField(const FJson& Object, const TCHAR* Name)
+    {
+        bool Value = false;
+        return Object.IsValid() && Object->TryGetBoolField(Name, Value) && Value;
+    }
+
+    TArray<FGameDataItemAmount> Amounts(const FJson& Object, const TCHAR* Name)
+    {
+        TArray<FGameDataItemAmount> Result;
+        if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(Object, Name))
+            for (const TSharedPtr<FJsonValue>& Value : *Values)
+            {
+                const FJson Entry = Value->AsObject();
+                FGameDataItemAmount Amount;
+                Amount.ItemId = NameField(Entry, TEXT("item"));
+                Amount.Quantity = static_cast<int32>(NumberField(Entry, TEXT("qty"), 1.0));
+                Result.Add(Amount);
+            }
+        return Result;
+    }
+
+    bool IsSpecialPlace(FName Where)
+    {
+        return Where == TEXT("hand") || Where == TEXT("world") || Where == TEXT("log_system") || Where == TEXT("terrain");
+    }
+
+    bool ToSlot(FName Slot, EWorldEquipmentSlot& Out)
+    {
+        static const TMap<FName, EWorldEquipmentSlot> Slots = {
+            { TEXT("Head"), EWorldEquipmentSlot::Head }, { TEXT("Body"), EWorldEquipmentSlot::Body },
+            { TEXT("Hands"), EWorldEquipmentSlot::Hands }, { TEXT("Legs"), EWorldEquipmentSlot::Legs },
+            { TEXT("Feet"), EWorldEquipmentSlot::Feet } };
+        const EWorldEquipmentSlot* Found = Slots.Find(Slot);
+        if (Found)
+            Out = *Found;
+        return Found != nullptr;
+    }
+
+    bool ToConditionKind(FName Kind, EWorldSurvivalConditionKind& Out)
+    {
+        if (Kind == TEXT("Injury")) { Out = EWorldSurvivalConditionKind::Injury; return true; }
+        if (Kind == TEXT("Illness")) { Out = EWorldSurvivalConditionKind::Illness; return true; }
+        if (Kind == TEXT("Poisoning")) { Out = EWorldSurvivalConditionKind::Poisoning; return true; }
+        return false;
+    }
+
+    EInventoryItemCategory ToCategory(FName Category)
+    {
+        if (Category == TEXT("Tool")) return EInventoryItemCategory::Tool;
+        if (Category == TEXT("Weapon")) return EInventoryItemCategory::Weapon;
+        if (Category == TEXT("BuildingPart")) return EInventoryItemCategory::BuildingPart;
+        if (Category == TEXT("Consumable")) return EInventoryItemCategory::Consumable;
+        if (Category == TEXT("Protection")) return EInventoryItemCategory::Protection;
+        return EInventoryItemCategory::Resource;
+    }
+}
+
+bool UWorldGameDataSubsystem::Fail(const FString& Message)
+{
+    LastError = Message;
+    UE_LOG(LogTemp, Warning, TEXT("Game data: %s"), *Message);
+    return false;
+}
+
+bool UWorldGameDataSubsystem::LoadDefault()
+{
+    return LoadFromDirectory(FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("GameData")));
+}
+
+bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
+{
+    FString Error;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, CalendarJson, ClimateJson, LayersJson;
+    if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
+        !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
+        !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
+        !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
+        !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
+        !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
+        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
+        return Fail(Error);
+
+    // Parse into locals; the subsystem changes only when everything is valid.
+    TMap<FName, FGameDataItem> NewItems;
+    TArray<FConsumable> NewConsumables;
+    TArray<FFuel> NewFuels;
+    TArray<FEquipment> NewEquipment;
+    const TArray<TSharedPtr<FJsonValue>>* ItemValues = ArrayField(ItemsJson, TEXT("items"));
+    if (!ItemValues)
+        return Fail(TEXT("items.json has no items"));
+    for (const TSharedPtr<FJsonValue>& Value : *ItemValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataItem Item;
+        Item.Id = NameField(Entry, TEXT("id"));
+        Item.Group = NameField(Entry, TEXT("group"));
+        Entry->TryGetStringField(TEXT("name"), Item.Name);
+        Item.WeightGrams = static_cast<int32>(NumberField(Entry, TEXT("weight_g")));
+        Item.Category = NameField(Entry, TEXT("category"));
+        Item.bPhysical = BoolField(Entry, TEXT("physical"));
+        if (Item.Id.IsNone() || NewItems.Contains(Item.Id) || Item.WeightGrams <= 0)
+            return Fail(FString::Printf(TEXT("Bad or duplicate item %s"), *Item.Id.ToString()));
+        const TSharedPtr<FJsonObject>* Sub = nullptr;
+        if (Entry->TryGetObjectField(TEXT("consumable"), Sub))
+        {
+            FConsumable C;
+            C.ItemId = Item.Id;
+            C.Kcal = NumberField(*Sub, TEXT("kcal"));
+            C.Thirst = NumberField(*Sub, TEXT("thirst"));
+            C.FreshnessSeconds = NumberField(*Sub, TEXT("freshness_h")) * 3600.0;
+            C.SpoiledFraction = NumberField(*Sub, TEXT("spoiled_fraction"));
+            C.Condition = NameField(*Sub, TEXT("condition"));
+            C.SpoiledCondition = NameField(*Sub, TEXT("spoiled_condition"));
+            C.Severity = NumberField(*Sub, TEXT("severity"), 0.5);
+            NewConsumables.Add(C);
+            Item.bConsumable = true;
+        }
+        if (Entry->TryGetObjectField(TEXT("fuel"), Sub))
+        {
+            NewFuels.Add({ Item.Id, static_cast<float>(NumberField(*Sub, TEXT("burn_s"))), static_cast<float>(NumberField(*Sub, TEXT("heat"), 1.0)) });
+            Item.bFuel = true;
+        }
+        if (Entry->TryGetObjectField(TEXT("equipment"), Sub))
+        {
+            NewEquipment.Add({ Item.Id, NameField(*Sub, TEXT("slot")),
+                static_cast<float>(NumberField(*Sub, TEXT("insulation"))), static_cast<float>(NumberField(*Sub, TEXT("water_resistance"))) });
+            Item.bEquipment = true;
+        }
+        NewItems.Add(Item.Id, Item);
+    }
+
+    TMap<FName, FGameDataStation> NewStations;
+    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(StationsJson, TEXT("stations")))
+        for (const TSharedPtr<FJsonValue>& Value : *Values)
+        {
+            const FJson Entry = Value->AsObject();
+            FGameDataStation Station;
+            Station.Id = NameField(Entry, TEXT("id"));
+            Entry->TryGetStringField(TEXT("name"), Station.Name);
+            Station.Capacity = static_cast<int32>(NumberField(Entry, TEXT("capacity"), 16.0));
+            Station.bNeedsFire = BoolField(Entry, TEXT("needs_fire"));
+            Station.bNeedsHotFire = BoolField(Entry, TEXT("needs_hot_fire"));
+            Station.SpoilageRate = NumberField(Entry, TEXT("spoilage_rate"), 1.0);
+            if (Station.Id.IsNone() || NewStations.Contains(Station.Id) || IsSpecialPlace(Station.Id) ||
+                Station.Capacity <= 0 || Station.SpoilageRate < 0.0f || Station.SpoilageRate > 4.0f)
+                return Fail(FString::Printf(TEXT("Bad or duplicate station %s"), *Station.Id.ToString()));
+            NewStations.Add(Station.Id, Station);
+        }
+
+    auto HasItem = [&NewItems](FName Id) { return NewItems.Contains(Id); };
+
+    TArray<FGameDataTransformation> NewTransformations;
+    TSet<FName> TransformationIds;
+    const TArray<TSharedPtr<FJsonValue>>* TransformationValues = ArrayField(TransformationsJson, TEXT("transformations"));
+    if (!TransformationValues)
+        return Fail(TEXT("transformations.json has no transformations"));
+    for (const TSharedPtr<FJsonValue>& Value : *TransformationValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataTransformation T;
+        T.PlanNumber = static_cast<int32>(NumberField(Entry, TEXT("n")));
+        T.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), T.Name);
+        T.bPhysical = NameField(Entry, TEXT("kind")) == TEXT("F");
+        T.Where = NameField(Entry, TEXT("where"));
+        T.Inputs = Amounts(Entry, TEXT("inputs"));
+        T.Outputs = Amounts(Entry, TEXT("outputs"));
+        if (const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, TEXT("tools")))
+            for (const TSharedPtr<FJsonValue>& Tool : *Tools)
+                T.Tools.Add(FName(*Tool->AsString()));
+        T.DurationSeconds = NumberField(Entry, TEXT("duration_s"));
+        if (T.Id.IsNone() || TransformationIds.Contains(T.Id) || T.PlanNumber < 1 || T.DurationSeconds < 0.0 ||
+            (!IsSpecialPlace(T.Where) && !NewStations.Contains(T.Where)))
+            return Fail(FString::Printf(TEXT("Bad transformation %s (where %s)"), *T.Id.ToString(), *T.Where.ToString()));
+        for (const FGameDataItemAmount& Amount : T.Inputs)
+            if (!HasItem(Amount.ItemId) || Amount.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Transformation %s uses unknown input %s"), *T.Id.ToString(), *Amount.ItemId.ToString()));
+        for (const FGameDataItemAmount& Amount : T.Outputs)
+            if (!HasItem(Amount.ItemId) || Amount.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Transformation %s makes unknown output %s"), *T.Id.ToString(), *Amount.ItemId.ToString()));
+        for (const FName Tool : T.Tools)
+            if (!HasItem(Tool))
+                return Fail(FString::Printf(TEXT("Transformation %s needs unknown tool %s"), *T.Id.ToString(), *Tool.ToString()));
+        TransformationIds.Add(T.Id);
+        NewTransformations.Add(T);
+    }
+
+    TArray<FCondition> NewConditions;
+    TSet<FName> ConditionIds;
+    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(ConditionsJson, TEXT("conditions")))
+        for (const TSharedPtr<FJsonValue>& Value : *Values)
+        {
+            const FJson Entry = Value->AsObject();
+            FCondition C;
+            C.Id = NameField(Entry, TEXT("id"));
+            C.Kind = NameField(Entry, TEXT("kind"));
+            C.HealthLossPerHour = NumberField(Entry, TEXT("health_loss_h"));
+            C.FatiguePerHour = NumberField(Entry, TEXT("fatigue_h"));
+            C.StaminaLossPerHour = NumberField(Entry, TEXT("stamina_loss_h"));
+            C.DurationSeconds = NumberField(Entry, TEXT("duration_h")) * 3600.0;
+            C.Treatment = NameField(Entry, TEXT("treatment"));
+            C.TreatmentRecovery = NumberField(Entry, TEXT("treatment_recovery"));
+            EWorldSurvivalConditionKind Kind;
+            if (C.Id.IsNone() || ConditionIds.Contains(C.Id) || !ToConditionKind(C.Kind, Kind) ||
+                (!C.Treatment.IsNone() && !HasItem(C.Treatment)))
+                return Fail(FString::Printf(TEXT("Bad condition %s"), *C.Id.ToString()));
+            ConditionIds.Add(C.Id);
+            NewConditions.Add(C);
+        }
+    for (const FConsumable& C : NewConsumables)
+        if ((!C.Condition.IsNone() && !ConditionIds.Contains(C.Condition)) ||
+            (!C.SpoiledCondition.IsNone() && !ConditionIds.Contains(C.SpoiledCondition)))
+            return Fail(FString::Printf(TEXT("Consumable %s names an unknown condition"), *C.ItemId.ToString()));
+    for (const FEquipment& E : NewEquipment)
+    {
+        EWorldEquipmentSlot Slot;
+        if (!ToSlot(E.Slot, Slot))
+            return Fail(FString::Printf(TEXT("Equipment %s has an unknown slot"), *E.ItemId.ToString()));
+    }
+
+    TArray<FGameDataCrop> NewCrops;
+    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(CropsJson, TEXT("crops")))
+        for (const TSharedPtr<FJsonValue>& Value : *Values)
+        {
+            const FJson Entry = Value->AsObject();
+            FGameDataCrop Crop;
+            Crop.Id = NameField(Entry, TEXT("id"));
+            Crop.SeedItemId = NameField(Entry, TEXT("seed"));
+            Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
+            Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
+            Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
+            Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
+            if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months")))
+                for (const TSharedPtr<FJsonValue>& Month : *Months)
+                    Crop.PlantMonths.Add(static_cast<int32>(Month->AsNumber()));
+            if (Crop.Id.IsNone() || !HasItem(Crop.SeedItemId) || !HasItem(Crop.HarvestItemId) ||
+                Crop.HarvestUnits <= 0 || Crop.SecondsPerStage <= 0.0 || Crop.PlantMonths.Num() == 0)
+                return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
+            NewCrops.Add(Crop);
+        }
+
+    FWorldCalendarConfig NewCalendar;
+    NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
+    NewCalendar.DaysPerMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("days_per_month"), NewCalendar.DaysPerMonth));
+    NewCalendar.StartMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("start_month"), NewCalendar.StartMonth));
+    NewCalendar.StartDayOfMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("start_day_of_month"), NewCalendar.StartDayOfMonth));
+    NewCalendar.StartHourOfDay = NumberField(CalendarJson, TEXT("start_hour"), NewCalendar.StartHourOfDay);
+    if (!WorldCalendar::IsValidConfig(NewCalendar))
+        return Fail(TEXT("calendar.json is not a valid calendar"));
+
+    TArray<FWorldMonthClimate> NewMonths;
+    NewMonths.SetNum(12);
+    TSet<int32> SeenMonths;
+    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(ClimateJson, TEXT("months")))
+        for (const TSharedPtr<FJsonValue>& Value : *Values)
+        {
+            const FJson Entry = Value->AsObject();
+            const int32 Month = static_cast<int32>(NumberField(Entry, TEXT("month")));
+            if (Month < 1 || Month > 12 || SeenMonths.Contains(Month))
+                return Fail(TEXT("climate.json has a bad or repeated month"));
+            FWorldMonthClimate& M = NewMonths[Month - 1];
+            M.MinTemperatureCelsius = NumberField(Entry, TEXT("min_c"));
+            M.MaxTemperatureCelsius = NumberField(Entry, TEXT("max_c"));
+            M.PrecipitationChance = NumberField(Entry, TEXT("wet"));
+            M.StormChance = NumberField(Entry, TEXT("storm"));
+            M.WindChance = NumberField(Entry, TEXT("wind"));
+            M.HeatwaveChance = NumberField(Entry, TEXT("heatwave"));
+            if (M.MinTemperatureCelsius > M.MaxTemperatureCelsius)
+                return Fail(TEXT("climate.json has min above max"));
+            SeenMonths.Add(Month);
+        }
+    if (SeenMonths.Num() != 12)
+        return Fail(TEXT("climate.json needs all 12 months"));
+
+    TArray<FLayer> NewLayers;
+    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(LayersJson, TEXT("layers")))
+        for (const TSharedPtr<FJsonValue>& Value : *Values)
+        {
+            const FJson Entry = Value->AsObject();
+            FLayer L;
+            L.Material = NameField(Entry, TEXT("material"));
+            L.ItemId = NameField(Entry, TEXT("item"));
+            L.MinLayer = static_cast<int32>(NumberField(Entry, TEXT("min_layer")));
+            L.MaxLayer = static_cast<int32>(NumberField(Entry, TEXT("max_layer")));
+            L.UnitsPerCubicMetre = NumberField(Entry, TEXT("units_per_m3"), 1.0);
+            if (L.Material.IsNone() || !HasItem(L.ItemId) || L.MinLayer < 0 || L.MaxLayer < L.MinLayer || L.UnitsPerCubicMetre <= 0.0f)
+                return Fail(FString::Printf(TEXT("Bad layer %s"), *L.Material.ToString()));
+            NewLayers.Add(L);
+        }
+
+    Items = MoveTemp(NewItems);
+    Stations = MoveTemp(NewStations);
+    Transformations = MoveTemp(NewTransformations);
+    Conditions = MoveTemp(NewConditions);
+    Consumables = MoveTemp(NewConsumables);
+    Fuels = MoveTemp(NewFuels);
+    Equipment = MoveTemp(NewEquipment);
+    Crops = MoveTemp(NewCrops);
+    Calendar = NewCalendar;
+    ClimateMonths = MoveTemp(NewMonths);
+    Layers = MoveTemp(NewLayers);
+    LastError.Reset();
+    bLoaded = true;
+    bApplied = false;
+    return true;
+}
+
+const FGameDataTransformation* UWorldGameDataSubsystem::FindTransformation(FName Id) const
+{
+    return Transformations.FindByPredicate([Id](const FGameDataTransformation& T) { return T.Id == Id; });
+}
+
+bool UWorldGameDataSubsystem::ApplyToWorld()
+{
+    UWorld* World = GetWorld();
+    if (!bLoaded || bApplied || !World)
+        return false;
+    UWorldProductionSubsystem* Production = World->GetSubsystem<UWorldProductionSubsystem>();
+    UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+    UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
+    UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>();
+    UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
+    if (!Production || !Survival || !Clock || !Climate || !Terrain)
+        return Fail(TEXT("A world subsystem is missing"));
+
+    // Station recipes. A tool is put into the station and comes back with the output.
+    for (const FGameDataTransformation& T : Transformations)
+    {
+        if (IsSpecialPlace(T.Where) || T.Inputs.Num() == 0)
+            continue;
+        FWorldProductionRecipe Recipe;
+        Recipe.RecipeId = T.Id;
+        Recipe.RequiredStationTag = T.Where;
+        Recipe.DurationSeconds = FMath::Max(1.0, T.DurationSeconds);
+        auto Ingredient = [](FName ItemId, int32 Quantity)
+        {
+            FProductionIngredient Result;
+            Result.ItemId = ItemId;
+            Result.Quantity = Quantity;
+            return Result;
+        };
+        for (const FGameDataItemAmount& Amount : T.Inputs)
+            Recipe.Inputs.Add(Ingredient(Amount.ItemId, Amount.Quantity));
+        for (const FGameDataItemAmount& Amount : T.Outputs)
+            Recipe.Outputs.Add(Ingredient(Amount.ItemId, Amount.Quantity));
+        for (const FName Tool : T.Tools)
+        {
+            Recipe.Inputs.Add(Ingredient(Tool, 1));
+            Recipe.Outputs.Add(Ingredient(Tool, 1));
+        }
+        if (!Production->RegisterRecipe(Recipe))
+            return Fail(FString::Printf(TEXT("Production refused recipe %s"), *T.Id.ToString()));
+    }
+
+    for (const FCondition& C : Conditions)
+    {
+        FWorldSurvivalConditionDefinition Definition;
+        Definition.DefinitionId = C.Id;
+        ToConditionKind(C.Kind, Definition.Kind);
+        Definition.HealthLossPerHour = C.HealthLossPerHour;
+        Definition.FatiguePerHour = C.FatiguePerHour;
+        Definition.StaminaLossPerHour = C.StaminaLossPerHour;
+        Definition.DurationSeconds = C.DurationSeconds;
+        Definition.TreatmentItemDefinitionId = C.Treatment;
+        Definition.TreatmentHealthRecovery = C.TreatmentRecovery;
+        if (!Survival->RegisterConditionDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Survival refused condition %s"), *C.Id.ToString()));
+    }
+    for (const FConsumable& C : Consumables)
+    {
+        FWorldSurvivalConsumableDefinition Definition;
+        Definition.DefinitionId = C.ItemId;
+        Definition.CaloriesKcal = C.Kcal;
+        Definition.ThirstRelief = C.Thirst;
+        Definition.FreshnessDurationSeconds = C.FreshnessSeconds;
+        Definition.SpoiledEnergyFraction = C.SpoiledFraction;
+        Definition.ConditionOnConsumeId = C.Condition;
+        Definition.ConditionWhenSpoiledId = C.SpoiledCondition;
+        Definition.ConditionSeverity = C.Severity;
+        if (!Survival->RegisterConsumableDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Survival refused consumable %s"), *C.ItemId.ToString()));
+    }
+    for (const FEquipment& E : Equipment)
+    {
+        FWorldSurvivalEquipmentDefinition Definition;
+        Definition.ItemDefinitionId = E.ItemId;
+        ToSlot(E.Slot, Definition.Slot);
+        Definition.Insulation = E.Insulation;
+        Definition.WaterResistance = E.WaterResistance;
+        if (!Survival->RegisterEquipmentDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Survival refused equipment %s"), *E.ItemId.ToString()));
+    }
+
+    Clock->CalendarConfig = Calendar;
+    Climate->Months = ClimateMonths;
+
+    for (const FLayer& L : Layers)
+    {
+        FWorldTerrainResourceYieldRule Rule;
+        Rule.SourceMaterialId = L.Material;
+        Rule.OutputDefinitionId = L.ItemId;
+        Rule.MinimumDepthLayer = L.MinLayer;
+        Rule.MaximumDepthLayer = L.MaxLayer;
+        Rule.UnitsPerCubicMetre = L.UnitsPerCubicMetre;
+        Terrain->ResourceYieldRules.Add(Rule);
+    }
+
+    bApplied = true;
+    return true;
+}
+
+bool UWorldGameDataSubsystem::ApplyToInventory(UInventoryCraftingComponent* Inventory) const
+{
+    if (!bLoaded || !IsValid(Inventory))
+        return false;
+    for (const TPair<FName, FGameDataItem>& Pair : Items)
+        if (!Inventory->ItemWeightGrams.Contains(Pair.Key))
+            Inventory->ItemWeightGrams.Add(Pair.Key, Pair.Value.WeightGrams);
+    bool bAll = true;
+    for (const FGameDataTransformation& T : Transformations)
+    {
+        // Hand-made item recipes only; physical parts wait for P10.
+        if (T.Where != TEXT("hand") || T.bPhysical || T.Outputs.Num() == 0)
+            continue;
+        FCraftingRecipe Recipe;
+        Recipe.RecipeId = T.Id;
+        for (const FGameDataItemAmount& Amount : T.Inputs)
+        {
+            FRecipeIngredient Ingredient;
+            Ingredient.ItemId = Amount.ItemId;
+            Ingredient.Quantity = Amount.Quantity;
+            Ingredient.bConsume = true;
+            Recipe.Ingredients.Add(Ingredient);
+        }
+        for (const FName Tool : T.Tools)
+        {
+            FRecipeIngredient Ingredient;
+            Ingredient.ItemId = Tool;
+            Ingredient.Quantity = 1;
+            Ingredient.bConsume = false; // A tool is needed, not used up (P4.4).
+            Recipe.Ingredients.Add(Ingredient);
+        }
+        auto MakeStack = [this](const FGameDataItemAmount& Amount)
+        {
+            FInventoryStack Stack;
+            Stack.ItemId = Amount.ItemId;
+            Stack.Quantity = Amount.Quantity;
+            const FGameDataItem* Item = Items.Find(Amount.ItemId);
+            Stack.Category = Item ? ToCategory(Item->Category) : EInventoryItemCategory::Resource;
+            Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
+            Stack.MaxStack = Stack.bIsTool ? 1 : 99;
+            return Stack;
+        };
+        Recipe.Output = MakeStack(T.Outputs[0]);
+        for (int32 Index = 1; Index < T.Outputs.Num(); ++Index)
+            Recipe.Byproducts.Add(MakeStack(T.Outputs[Index]));
+        bAll = Inventory->RegisterRecipe(Recipe) && bAll;
+    }
+    return bAll;
+}
+
+bool UWorldGameDataSubsystem::ApplyToHeatSource(UHeatSourceComponent* HeatSource) const
+{
+    if (!bLoaded || !IsValid(HeatSource))
+        return false;
+    bool bAll = true;
+    for (const FFuel& Fuel : Fuels)
+    {
+        if (HeatSource->FuelDefinitions.ContainsByPredicate([&Fuel](const FHeatFuelDefinition& Existing)
+            { return Existing.ItemDefinitionId == Fuel.ItemId; }))
+            continue;
+        FHeatFuelDefinition Definition;
+        Definition.ItemDefinitionId = Fuel.ItemId;
+        Definition.BurnSecondsPerItem = Fuel.BurnSeconds;
+        Definition.HeatOutputMultiplier = Fuel.Heat;
+        bAll = HeatSource->RegisterFuelDefinition(Definition) && bAll;
+    }
+    return bAll;
+}

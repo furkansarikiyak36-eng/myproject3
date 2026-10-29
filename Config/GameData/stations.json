@@ -1,0 +1,60 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
+  "stations": [
+    {
+      "id": "workbench_log",
+      "name": "Çalışma kütüğü",
+      "capacity": 64
+    },
+    {
+      "id": "hide_frame",
+      "name": "Germe çerçevesi",
+      "capacity": 8
+    },
+    {
+      "id": "pit_kiln",
+      "name": "Çukur fırın",
+      "capacity": 16,
+      "needs_hot_fire": true
+    },
+    {
+      "id": "charcoal_pit",
+      "name": "Kömür çukuru",
+      "capacity": 32
+    },
+    {
+      "id": "smoke_rack",
+      "name": "Tütsü rafı",
+      "capacity": 16,
+      "needs_fire": true,
+      "spoilage_rate": 0.2
+    },
+    {
+      "id": "grinding_stone",
+      "name": "Bileği / öğütme taşı",
+      "capacity": 16
+    },
+    {
+      "id": "drying_rack",
+      "name": "Kurutma rafı",
+      "capacity": 32,
+      "spoilage_rate": 0.5
+    },
+    {
+      "id": "threshing_floor",
+      "name": "Harman yeri",
+      "capacity": 64
+    },
+    {
+      "id": "campfire",
+      "name": "Ateş (pişirme)",
+      "capacity": 8,
+      "needs_fire": true
+    },
+    {
+      "id": "compost_heap",
+      "name": "Kompost yığını",
+      "capacity": 64
+    }
+  ]
+}

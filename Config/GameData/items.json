@@ -1,0 +1,719 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
+  "items": [
+    {
+      "id": "Stone",
+      "group": "stone",
+      "name": "Taş",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Flint",
+      "group": "stone",
+      "name": "Çakmaktaşı",
+      "weight_g": 500,
+      "category": "Resource"
+    },
+    {
+      "id": "HammerStone",
+      "group": "stone",
+      "name": "Çekiç taşı",
+      "weight_g": 800,
+      "category": "Tool"
+    },
+    {
+      "id": "FlintFlake",
+      "group": "stone",
+      "name": "Kesici yonga",
+      "weight_g": 50,
+      "category": "Tool"
+    },
+    {
+      "id": "CrushedStone",
+      "group": "stone",
+      "name": "Kırma taş",
+      "weight_g": 1000,
+      "category": "Resource"
+    },
+    {
+      "id": "StoneBlock",
+      "group": "stone",
+      "name": "Yontulmuş taş blok",
+      "weight_g": 15000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "Tool.Axe",
+      "group": "stone",
+      "name": "Taş balta",
+      "weight_g": 1200,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Chisel",
+      "group": "stone",
+      "name": "Keski",
+      "weight_g": 300,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Scraper",
+      "group": "stone",
+      "name": "Kazıyıcı",
+      "weight_g": 150,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Wedge",
+      "group": "wood",
+      "name": "Kama",
+      "weight_g": 400,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.DiggingStick",
+      "group": "wood",
+      "name": "Kazma çubuğu",
+      "weight_g": 600,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Hoe",
+      "group": "bone",
+      "name": "Boynuz çapa",
+      "weight_g": 900,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Sickle",
+      "group": "stone",
+      "name": "Çakmaktaşı orak",
+      "weight_g": 400,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Needle",
+      "group": "bone",
+      "name": "Kemik iğne",
+      "weight_g": 10,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Flail",
+      "group": "wood",
+      "name": "Döven sopası",
+      "weight_g": 800,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.WinnowingBasket",
+      "group": "reed",
+      "name": "Savurma sepeti",
+      "weight_g": 400,
+      "category": "Tool"
+    },
+    {
+      "id": "Tool.Filter",
+      "group": "clay",
+      "name": "Kum-kömür süzgeç",
+      "weight_g": 1500,
+      "category": "Tool"
+    },
+    {
+      "id": "Log",
+      "group": "wood",
+      "name": "Kütük",
+      "weight_g": 40000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "ShortLog",
+      "group": "wood",
+      "name": "Kısa kütük",
+      "weight_g": 20000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "HalfLog",
+      "group": "wood",
+      "name": "Yarım kütük",
+      "weight_g": 20000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "QuarterLog",
+      "group": "wood",
+      "name": "Çeyrek kütük",
+      "weight_g": 10000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "HewnLog",
+      "group": "wood",
+      "name": "Yontulmuş kütük",
+      "weight_g": 30000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "Plank",
+      "group": "wood",
+      "name": "Tahta",
+      "weight_g": 6000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "Branch",
+      "group": "wood",
+      "name": "Dal",
+      "weight_g": 700,
+      "category": "Resource"
+    },
+    {
+      "id": "Stick",
+      "group": "wood",
+      "name": "Çubuk",
+      "weight_g": 300,
+      "category": "Resource"
+    },
+    {
+      "id": "Stake",
+      "group": "wood",
+      "name": "Kazık",
+      "weight_g": 1500,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "Handle",
+      "group": "wood",
+      "name": "Sap",
+      "weight_g": 300,
+      "category": "Resource"
+    },
+    {
+      "id": "Bark",
+      "group": "wood",
+      "name": "Ağaç kabuğu",
+      "weight_g": 400,
+      "category": "Resource"
+    },
+    {
+      "id": "Firewood",
+      "group": "wood",
+      "name": "Yakacak odun",
+      "weight_g": 1500,
+      "category": "Resource",
+      "fuel": {
+        "burn_s": 1800,
+        "heat": 1.0
+      }
+    },
+    {
+      "id": "Firewood.Wet",
+      "group": "wood",
+      "name": "Islak odun",
+      "weight_g": 1800,
+      "category": "Resource",
+      "fuel": {
+        "burn_s": 900,
+        "heat": 0.6
+      }
+    },
+    {
+      "id": "Fibre",
+      "group": "fibre",
+      "name": "Lif",
+      "weight_g": 50,
+      "category": "Resource"
+    },
+    {
+      "id": "Rope",
+      "group": "fibre",
+      "name": "İp",
+      "weight_g": 200,
+      "category": "Resource"
+    },
+    {
+      "id": "Hide.Raw",
+      "group": "fibre",
+      "name": "Ham deri",
+      "weight_g": 3000,
+      "category": "Resource"
+    },
+    {
+      "id": "Hide.Scraped",
+      "group": "fibre",
+      "name": "Kazınmış deri",
+      "weight_g": 2500,
+      "category": "Resource"
+    },
+    {
+      "id": "Leather",
+      "group": "fibre",
+      "name": "İşlenmiş deri",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Clothing.HideTunic",
+      "group": "fibre",
+      "name": "Deri gömlek",
+      "weight_g": 2500,
+      "category": "Protection",
+      "equipment": {
+        "slot": "Body",
+        "insulation": 0.4,
+        "water_resistance": 0.3
+      }
+    },
+    {
+      "id": "Clothing.HideBoots",
+      "group": "fibre",
+      "name": "Deri çizme",
+      "weight_g": 1200,
+      "category": "Protection",
+      "equipment": {
+        "slot": "Feet",
+        "insulation": 0.15,
+        "water_resistance": 0.4
+      }
+    },
+    {
+      "id": "Bag.Hide",
+      "group": "fibre",
+      "name": "Deri çanta",
+      "weight_g": 800,
+      "category": "Tool"
+    },
+    {
+      "id": "Bone",
+      "group": "bone",
+      "name": "Kemik",
+      "weight_g": 300,
+      "category": "Resource"
+    },
+    {
+      "id": "Antler",
+      "group": "bone",
+      "name": "Boynuz",
+      "weight_g": 800,
+      "category": "Resource"
+    },
+    {
+      "id": "BonePoint",
+      "group": "bone",
+      "name": "Kemik uç",
+      "weight_g": 30,
+      "category": "Resource"
+    },
+    {
+      "id": "FishHook",
+      "group": "bone",
+      "name": "Olta iğnesi",
+      "weight_g": 5,
+      "category": "Tool"
+    },
+    {
+      "id": "Reed",
+      "group": "reed",
+      "name": "Saz",
+      "weight_g": 200,
+      "category": "Resource"
+    },
+    {
+      "id": "Grass",
+      "group": "reed",
+      "name": "Ot",
+      "weight_g": 100,
+      "category": "Resource"
+    },
+    {
+      "id": "ThatchBundle",
+      "group": "reed",
+      "name": "Çatı demeti",
+      "weight_g": 2000,
+      "category": "BuildingPart",
+      "physical": true
+    },
+    {
+      "id": "Basket",
+      "group": "reed",
+      "name": "Sepet",
+      "weight_g": 500,
+      "category": "Tool"
+    },
+    {
+      "id": "Net",
+      "group": "reed",
+      "name": "Ağ",
+      "weight_g": 900,
+      "category": "Tool"
+    },
+    {
+      "id": "Mat",
+      "group": "reed",
+      "name": "Hasır",
+      "weight_g": 800,
+      "category": "Resource"
+    },
+    {
+      "id": "Soil",
+      "group": "clay",
+      "name": "Toprak",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Clay",
+      "group": "clay",
+      "name": "Kil",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Sand",
+      "group": "clay",
+      "name": "Kum",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Plaster",
+      "group": "clay",
+      "name": "Sıva",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Pot.Raw",
+      "group": "clay",
+      "name": "Çiğ kil kap",
+      "weight_g": 2500,
+      "category": "Resource"
+    },
+    {
+      "id": "Pot.Fired",
+      "group": "clay",
+      "name": "Pişmiş kil kap",
+      "weight_g": 2000,
+      "category": "Tool"
+    },
+    {
+      "id": "Resin",
+      "group": "resin",
+      "name": "Reçine",
+      "weight_g": 100,
+      "category": "Resource"
+    },
+    {
+      "id": "Pitch",
+      "group": "resin",
+      "name": "Zift",
+      "weight_g": 150,
+      "category": "Resource"
+    },
+    {
+      "id": "Charcoal",
+      "group": "charcoal",
+      "name": "Kömür",
+      "weight_g": 400,
+      "category": "Resource",
+      "fuel": {
+        "burn_s": 2400,
+        "heat": 1.5
+      }
+    },
+    {
+      "id": "Ash",
+      "group": "charcoal",
+      "name": "Kül",
+      "weight_g": 100,
+      "category": "Resource"
+    },
+    {
+      "id": "OchreEarth",
+      "group": "charcoal",
+      "name": "Aşı toprağı",
+      "weight_g": 500,
+      "category": "Resource"
+    },
+    {
+      "id": "OchrePigment",
+      "group": "charcoal",
+      "name": "Aşı boyası",
+      "weight_g": 100,
+      "category": "Resource"
+    },
+    {
+      "id": "Feather",
+      "group": "shell",
+      "name": "Tüy",
+      "weight_g": 2,
+      "category": "Resource"
+    },
+    {
+      "id": "Tooth",
+      "group": "shell",
+      "name": "Diş",
+      "weight_g": 10,
+      "category": "Resource"
+    },
+    {
+      "id": "Shell",
+      "group": "shell",
+      "name": "Kabuk",
+      "weight_g": 30,
+      "category": "Resource"
+    },
+    {
+      "id": "Arrow",
+      "group": "shell",
+      "name": "Ok",
+      "weight_g": 40,
+      "category": "Weapon"
+    },
+    {
+      "id": "Ornament",
+      "group": "shell",
+      "name": "Süs",
+      "weight_g": 20,
+      "category": "Resource"
+    },
+    {
+      "id": "Water.Dirty",
+      "group": "food",
+      "name": "Kirli su",
+      "weight_g": 1000,
+      "category": "Consumable",
+      "consumable": {
+        "thirst": 40,
+        "condition": "Illness.DirtyWater",
+        "severity": 0.5
+      }
+    },
+    {
+      "id": "Water.Boiled",
+      "group": "food",
+      "name": "Kaynamış su",
+      "weight_g": 1000,
+      "category": "Consumable",
+      "consumable": {
+        "thirst": 40
+      }
+    },
+    {
+      "id": "Meat.Raw",
+      "group": "food",
+      "name": "Çiğ et",
+      "weight_g": 800,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 300,
+        "freshness_h": 24,
+        "spoiled_fraction": 0.2,
+        "condition": "Illness.RawMeat",
+        "severity": 0.3,
+        "spoiled_condition": "Poisoning.SpoiledFood"
+      }
+    },
+    {
+      "id": "Meat.Cooked",
+      "group": "food",
+      "name": "Pişmiş et",
+      "weight_g": 600,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 700,
+        "freshness_h": 48,
+        "spoiled_fraction": 0.3,
+        "spoiled_condition": "Poisoning.SpoiledFood"
+      }
+    },
+    {
+      "id": "Meat.Smoked",
+      "group": "food",
+      "name": "Tütsülenmiş et",
+      "weight_g": 400,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 650,
+        "freshness_h": 720,
+        "spoiled_fraction": 0.5
+      }
+    },
+    {
+      "id": "Fish.Raw",
+      "group": "food",
+      "name": "Çiğ balık",
+      "weight_g": 500,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 200,
+        "freshness_h": 12,
+        "spoiled_fraction": 0.2,
+        "condition": "Illness.RawMeat",
+        "severity": 0.3,
+        "spoiled_condition": "Poisoning.SpoiledFood"
+      }
+    },
+    {
+      "id": "Fish.Cooked",
+      "group": "food",
+      "name": "Pişmiş balık",
+      "weight_g": 400,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 450,
+        "freshness_h": 24,
+        "spoiled_fraction": 0.3,
+        "spoiled_condition": "Poisoning.SpoiledFood"
+      }
+    },
+    {
+      "id": "Fish.Smoked",
+      "group": "food",
+      "name": "Tütsülenmiş balık",
+      "weight_g": 250,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 420,
+        "freshness_h": 480,
+        "spoiled_fraction": 0.5
+      }
+    },
+    {
+      "id": "Berries",
+      "group": "food",
+      "name": "Yemiş",
+      "weight_g": 200,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 120,
+        "thirst": 5,
+        "freshness_h": 72,
+        "spoiled_fraction": 0.0
+      }
+    },
+    {
+      "id": "FoodScrap",
+      "group": "food",
+      "name": "Yemek artığı",
+      "weight_g": 200,
+      "category": "Resource"
+    },
+    {
+      "id": "Seed.Grain",
+      "group": "food",
+      "name": "Tahıl tohumu",
+      "weight_g": 50,
+      "category": "Resource"
+    },
+    {
+      "id": "Seed.Root",
+      "group": "food",
+      "name": "Kök bitki fidesi",
+      "weight_g": 100,
+      "category": "Resource"
+    },
+    {
+      "id": "Seed.Legume",
+      "group": "food",
+      "name": "Baklagil tohumu",
+      "weight_g": 50,
+      "category": "Resource"
+    },
+    {
+      "id": "Grain.Harvest",
+      "group": "food",
+      "name": "Biçilmiş tahıl",
+      "weight_g": 2000,
+      "category": "Resource"
+    },
+    {
+      "id": "Grain.Dried",
+      "group": "food",
+      "name": "Kurutulmuş tahıl",
+      "weight_g": 1500,
+      "category": "Resource"
+    },
+    {
+      "id": "Grain.Kernels",
+      "group": "food",
+      "name": "Tane (kavuzlu)",
+      "weight_g": 1000,
+      "category": "Resource"
+    },
+    {
+      "id": "Grain.Clean",
+      "group": "food",
+      "name": "Temiz tane",
+      "weight_g": 900,
+      "category": "Resource"
+    },
+    {
+      "id": "Straw",
+      "group": "reed",
+      "name": "Saman",
+      "weight_g": 500,
+      "category": "Resource"
+    },
+    {
+      "id": "Flour",
+      "group": "food",
+      "name": "Un",
+      "weight_g": 800,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 1200,
+        "freshness_h": 2160,
+        "spoiled_fraction": 0.5
+      }
+    },
+    {
+      "id": "Root.Harvest",
+      "group": "food",
+      "name": "Kök bitki",
+      "weight_g": 1000,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 500,
+        "freshness_h": 720,
+        "spoiled_fraction": 0.4
+      }
+    },
+    {
+      "id": "Legume.Harvest",
+      "group": "food",
+      "name": "Baklagil",
+      "weight_g": 800,
+      "category": "Resource"
+    },
+    {
+      "id": "Legume.Dried",
+      "group": "food",
+      "name": "Kuru baklagil",
+      "weight_g": 600,
+      "category": "Consumable",
+      "consumable": {
+        "kcal": 900,
+        "freshness_h": 4320,
+        "spoiled_fraction": 0.5
+      }
+    },
+    {
+      "id": "Compost",
+      "group": "clay",
+      "name": "Kompost",
+      "weight_g": 3000,
+      "category": "Resource"
+    }
+  ]
+}

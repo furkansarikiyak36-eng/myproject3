@@ -1,0 +1,55 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
+  "conditions": [
+    {
+      "id": "Illness.DirtyWater",
+      "kind": "Illness",
+      "health_loss_h": 1.0,
+      "fatigue_h": 2.0,
+      "stamina_loss_h": 2.0,
+      "duration_h": 48,
+      "treatment": "Water.Boiled",
+      "treatment_recovery": 5
+    },
+    {
+      "id": "Illness.RawMeat",
+      "kind": "Illness",
+      "health_loss_h": 0.5,
+      "fatigue_h": 1.0,
+      "stamina_loss_h": 1.0,
+      "duration_h": 24
+    },
+    {
+      "id": "Illness.Cold",
+      "kind": "Illness",
+      "health_loss_h": 0.5,
+      "fatigue_h": 2.0,
+      "stamina_loss_h": 3.0,
+      "duration_h": 72
+    },
+    {
+      "id": "Poisoning.SpoiledFood",
+      "kind": "Poisoning",
+      "health_loss_h": 3.0,
+      "fatigue_h": 2.0,
+      "stamina_loss_h": 4.0,
+      "duration_h": 24
+    },
+    {
+      "id": "Injury.Fall",
+      "kind": "Injury",
+      "health_loss_h": 0.0,
+      "fatigue_h": 1.0,
+      "stamina_loss_h": 5.0,
+      "duration_h": 96
+    },
+    {
+      "id": "Injury.AnimalBite",
+      "kind": "Injury",
+      "health_loss_h": 1.0,
+      "fatigue_h": 1.0,
+      "stamina_loss_h": 3.0,
+      "duration_h": 72
+    }
+  ]
+}

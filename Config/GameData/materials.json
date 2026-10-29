@@ -1,0 +1,55 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique.",
+  "groups": [
+    {
+      "id": "stone",
+      "name": "Taş, çakmaktaşı",
+      "use": "Kesme, yontma, kazıma"
+    },
+    {
+      "id": "wood",
+      "name": "Dal, kütük, ağaç kabuğu",
+      "use": "Yapı, sap, yakıt"
+    },
+    {
+      "id": "bone",
+      "name": "Kemik, boynuz",
+      "use": "Delme, av araçları, küçük parçalar"
+    },
+    {
+      "id": "fibre",
+      "name": "Lif, ip, deri",
+      "use": "Bağlama, giysi, taşıma"
+    },
+    {
+      "id": "reed",
+      "name": "Ot, saz, kamış",
+      "use": "Sepet, ağ, basit örtüler"
+    },
+    {
+      "id": "clay",
+      "name": "Kil, toprak, kum",
+      "use": "Kap, sıva, zemin ve yapı"
+    },
+    {
+      "id": "resin",
+      "name": "Reçine, bitki zamkı",
+      "use": "Birleştirme ve sızdırmazlık"
+    },
+    {
+      "id": "charcoal",
+      "name": "Kömür, aşı boyası",
+      "use": "Ateş sonrası üretim ve renklendirme"
+    },
+    {
+      "id": "shell",
+      "name": "Kabuk, diş, tüy",
+      "use": "Süsleme ve özel araçlar"
+    },
+    {
+      "id": "food",
+      "name": "Yiyecek ve su",
+      "use": "İhtiyaçlar (malzeme listesi dışı)"
+    }
+  ]
+}

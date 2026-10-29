@@ -1,0 +1,45 @@
+{
+  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. Crop choice is a placeholder until the user answers Q2.",
+  "crops": [
+    {
+      "id": "Crop.Grain",
+      "name": "Tahıl (yabani buğday)",
+      "seed": "Seed.Grain",
+      "harvest": "Grain.Harvest",
+      "units": 4,
+      "hours_per_stage": 120,
+      "plant_months": [
+        4,
+        5
+      ],
+      "found_in_zone": 1
+    },
+    {
+      "id": "Crop.Root",
+      "name": "Kök bitki",
+      "seed": "Seed.Root",
+      "harvest": "Root.Harvest",
+      "units": 3,
+      "hours_per_stage": 96,
+      "plant_months": [
+        4,
+        5,
+        6
+      ],
+      "found_in_zone": 2
+    },
+    {
+      "id": "Crop.Legume",
+      "name": "Baklagil",
+      "seed": "Seed.Legume",
+      "harvest": "Legume.Harvest",
+      "units": 3,
+      "hours_per_stage": 96,
+      "plant_months": [
+        5,
+        6
+      ],
+      "found_in_zone": 3
+    }
+  ]
+}

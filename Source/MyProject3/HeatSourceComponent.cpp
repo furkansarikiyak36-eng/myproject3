@@ -1,4 +1,5 @@
 #include "HeatSourceComponent.h"
+#include "WorldGameDataSubsystem.h"
 
 #include "WorldSurvivalSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -22,6 +23,12 @@ void UHeatSourceComponent::BeginPlay()
         GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr)
     {
         Survival->RegisterHeatSource(this);
+    }
+    // Once the game data is applied to the world, every fire knows the fuels.
+    if (const UWorldGameDataSubsystem* GameData = GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr)
+    {
+        if (GameData->IsApplied())
+            GameData->ApplyToHeatSource(this);
     }
 }
 

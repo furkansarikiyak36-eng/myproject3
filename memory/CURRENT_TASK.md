@@ -31,7 +31,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 2. [x] P1.2 monthly climate, snow depth, ground wetness (91/91)
 3. [x] P2.1/P2.5 consume conditions (92), P2.2 rest quality (93), P2.4 spoilage by storage+temperature (94)
 4. [x] P3.1 fuel heat 95/95; P3.2 shelter keeps fire heat + placed pieces only 96/96
-5. [ ] P4.1-P4.4 gatherables, recipes, stations, tool requirements (needs data files P0.3/P0.4 first)
+5. [~] P0.3/P0.4 data + P4.2 recipes + P4.4 hand tools done (99/99); P4.1 gatherables, P4.3 station actors next
 6. [ ] P5.1 layer data
 7. [ ] P6.2-P6.4 field steps, seeds, animal chain
 8. [ ] P7.1-P7.4 player route cost, zones, reward placement, infrastructure
@@ -55,4 +55,4 @@ User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; ski
 - Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
 
 ### Next step
-Step 5: P0.3 + P0.4 data files, then P4. Create Config/GameData/*.json (materials, items, transformations 38, stations 8, crops 3 placeholders, calendar, climate months, events) from the plan doc sections 4, 6, 7. Then UGameDataSubsystem (GameInstance subsystem) loading + validating them; feed production recipes, survival consumables, heat fuels, climate months, calendar config from data. Tests: loads all files; broken reference fails.
+Step 5b: P4.1 AGatherableResourceActor (gives N ledger items of a data item id into an inventory, needs a tool, refills over days on the clock, saved); P4.3 AProductionStationActor (registers a station by data id on BeginPlay, needs a lit / hot fire nearby when the data says so). Tests in GameWorldTests.cpp.

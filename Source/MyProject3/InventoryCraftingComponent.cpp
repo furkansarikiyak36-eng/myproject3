@@ -1,4 +1,5 @@
 #include "InventoryCraftingComponent.h"
+#include "WorldGameDataSubsystem.h"
 
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -22,6 +23,12 @@ void UInventoryCraftingComponent::BeginPlay()
 {
  Super::BeginPlay();
  if (!InventoryOwnerId.IsValid()) InventoryOwnerId = FGuid::NewGuid();
+ // Once the game data is applied to the world, every inventory knows the hand recipes.
+ if (const UWorldGameDataSubsystem* GameData = GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr)
+ {
+  if (GameData->IsApplied())
+   GameData->ApplyToInventory(this);
+ }
 }
 
 int32 UInventoryCraftingComponent::GetItemCount(FName ItemId) const
@@ -787,8 +794,9 @@ bool UInventoryCraftingComponent::CanCraft(FName RecipeId, TArray<FInventoryStac
  const int32 Index = FindRecipeIndex(RecipeId);
  if (!Recipes.IsValidIndex(Index) || !Recipes[Index].bEnabled) return false;
  const FCraftingRecipe& Recipe = Recipes[Index];
+ // Everything must be in hand; a tool (bConsume = false) is needed but not used up.
  TMap<FName,int32> Required;
- for (const FRecipeIngredient& I : Recipe.Ingredients) if (I.bConsume) Required.FindOrAdd(I.ItemId) += I.Quantity;
+ for (const FRecipeIngredient& I : Recipe.Ingredients) Required.FindOrAdd(I.ItemId) += I.Quantity;
  for (const TPair<FName,int32>& P : Required)
  {
   const int32 Missing = P.Value - GetItemCount(P.Key);
