@@ -571,9 +571,15 @@ bool UWorldSurvivalSubsystem::TryFillWaterFromCreek(
         bFoundReusablePot = true;
         break;
     }
-    if (!bFoundReusablePot || !Inventory->CanAddItems({
-        FInventoryStack{ FName(TEXT("Water.Dirty")), 1, 1, false, EInventoryItemCategory::Consumable, FGuid() }
-    }))
+    FInventoryStack WaterCapacityProbe;
+    WaterCapacityProbe.ItemId = FName(TEXT("Water.Dirty"));
+    WaterCapacityProbe.Quantity = 1;
+    WaterCapacityProbe.MaxStack = 1;
+    WaterCapacityProbe.bIsTool = false;
+    WaterCapacityProbe.Category = EInventoryItemCategory::Consumable;
+    TArray<FInventoryStack> WaterCapacityProbeItems;
+    WaterCapacityProbeItems.Add(WaterCapacityProbe);
+    if (!bFoundReusablePot || !Inventory->CanAddItems(WaterCapacityProbeItems))
         return false;
 
     const double Now = Clock->GetSimulationTimeSeconds();
