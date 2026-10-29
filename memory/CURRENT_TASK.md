@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Ensure every dynamic heat-source owner has stable identity before `TryAddFuelItem` is used, preferably in `UHeatSourceComponent::BeginPlay` with a registered identity component. Then implement world-fire fuel drying/wetting and the player O refuel/ignite interaction; do not build.
+Implement weather-driven wet/dry conversion for world-owned Firewood using `TryUpdateItemDefinition` and heat range, then add a player O-key refuel/ignite handler to VerticalSlice_C. Afterward add a focused wet-fuel persistence/refuel test and update P3.1 status. No build.
