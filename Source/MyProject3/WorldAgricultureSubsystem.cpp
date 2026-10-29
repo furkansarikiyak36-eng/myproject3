@@ -669,13 +669,14 @@ bool UWorldAgricultureSubsystem::TryCaptureAnimal(
 
     if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
     {
+        const FWorldAnimalState* ExistingAnimal = Animals.Find(AnimalId);
         return Existing->Action == EWorldAgricultureActionKind::CaptureAnimal &&
-            Existing->EntityId == AnimalId &&
+            Existing->EntityId == AnimalId && ExistingAnimal &&
             Existing->InputItemId == CaptureToolItemId &&
             Existing->ExpectedInventoryOwnerId == ExpectedInventoryOwnerId &&
             Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
             Existing->ExpectedItemRevision == ExpectedToolItemRevision &&
-            Existing->RequestedInputDefinitionId == Tool.DefinitionId;
+            Existing->RequestedInputDefinitionId == ExistingAnimal->CaptureToolDefinitionId;
     }
 
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
