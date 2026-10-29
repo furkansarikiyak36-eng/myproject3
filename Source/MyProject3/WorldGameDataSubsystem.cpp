@@ -645,7 +645,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
     UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
     UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
-    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture)
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
+    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture || !Routes)
         return Fail(TEXT("A world subsystem is missing"));
 
     // Station recipes. A tool is put into the station and comes back with the output.
@@ -718,6 +719,35 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
 
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
+
+    for (const FGameDataRouteNode& Node : RouteNodes)
+    {
+        FLogisticsRouteNode RouteNode;
+        RouteNode.NodeId = Node.NodeId;
+        RouteNode.Location = Node.Location;
+        RouteNode.bEnabled = Node.bEnabled;
+        if (!Routes->UpsertNode(RouteNode))
+            return Fail(FString::Printf(TEXT("Route graph refused node %s"), *Node.NodeId.ToString()));
+    }
+    for (const FGameDataRouteEdge& Edge : RouteEdges)
+    {
+        FLogisticsRouteEdge RouteEdge;
+        RouteEdge.FromNode = Edge.FromNode;
+        RouteEdge.ToNode = Edge.ToNode;
+        RouteEdge.Cost = Edge.Cost;
+        RouteEdge.SlopeRatio = Edge.SlopeRatio;
+        RouteEdge.SurfaceCostMultiplier = Edge.SurfaceCostMultiplier;
+        RouteEdge.WeatherSensitivity = Edge.WeatherSensitivity;
+        RouteEdge.LoadSensitivity = Edge.LoadSensitivity;
+        RouteEdge.MissingInfrastructurePenalty = Edge.MissingInfrastructurePenalty;
+        RouteEdge.bHasBuiltInfrastructure = Edge.bHasBuiltInfrastructure;
+        RouteEdge.bRequiresInfrastructure = Edge.bRequiresInfrastructure;
+        RouteEdge.InfrastructureId = Edge.InfrastructureId;
+        RouteEdge.bEnabled = Edge.bEnabled;
+        if (!Routes->UpsertEdge(RouteEdge))
+            return Fail(FString::Printf(TEXT("Route graph refused edge %s -> %s"),
+                *Edge.FromNode.ToString(), *Edge.ToNode.ToString()));
+    }
 
     for (const FGameDataAnimal& Animal : Animals)
     {
