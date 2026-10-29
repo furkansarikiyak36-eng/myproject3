@@ -1,7 +1,8 @@
 # Plan status: what exists, what is partial, what is missing
 
-Checked 2026-10-29 against `feature/simple-intent` (ours, builds, 68 tests) and
-`group-a-code-closure` (ChatGPT). Both are now merged on `game/p00-adopt-group-a`: builds, 85/85 tests (2026-10-29). Task ids from `ROADMAP.md`.
+Checked 2026-10-29 against `feature/simple-intent` (ours, historical build/test record) and
+`group-a-code-closure` (ChatGPT). These baseline changes are merged on `game/p00-adopt-group-a`.
+The current work branch `game/p06-farming-seed-cycle` has additional source-only P6 changes that have not been compiled or tested in Unreal. Task ids are from `ROADMAP.md`.
 Update this file whenever a task changes state.
 
 - **Var / exists**: code covers the task's behaviour (backend). Still not played in PIE.
@@ -15,18 +16,18 @@ Update this file whenever a task changes state.
 | Status | Count | Tasks |
 |---|---:|---|
 | Var | 9 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3 |
-| Kısmi | 22 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
-| Yok | 12 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P6.1, P8.1, P9.1, P9.3, P11, P12 |
+| Kısmi | 23 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.1, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
+| Yok | 11 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P8.1, P9.1, P9.3, P11, P12 |
 
-Player input/HUD: missing for every system except carrying/cutting/building logs [S] and the dig tool on N [A].
+Player input/HUD: missing for most systems except carrying/cutting/building logs [S] and the dig tool on N [A]. The new P6 source contracts below are not wired to player input/HUD or proven in PIE.
 
 ## Per task
 
 | Task | Status | Exists | Missing |
 |---|---|---|---|
 | P0.2 freeze note | Yok | — | note in Placement/CLAUDE.md, carry.md |
-| P0.3 data files | Var | `Config/GameData/`: materials, items (88), transformations (59 rows = the 38 plan steps), stations (10), conditions, crops (3 placeholders), calendar, climate, layers | user review of the lists; events.json comes with P1.3 |
-| P0.4 data loader | Var | `UWorldGameDataSubsystem`: loads + checks every reference, keeps good data on a bad load, applies to production, survival, climate, calendar, terrain; inventories and fires pick up hand recipes / fuels at BeginPlay; the bootstrap loads it; 3 tests | VerticalSlice_C does not use the bootstrap yet (P1.4) |
+| P0.3 data files | Var | `Config/GameData/`: materials, items (90), transformations (59 rows = the 38 plan steps), stations (10), conditions, crops (3 tunable definitions), animals (3 tunable definitions), calendar, climate, layers | user review of tuning/lists; events.json comes with P1.3 |
+| P0.4 data loader | Var | `UWorldGameDataSubsystem`: loads + checks references; applies production, survival, climate, calendar, terrain, 3 crop definitions and 3 animal definitions; inventories and fires pick up hand recipes / fuels at BeginPlay; bootstrap loads it | source-level checks exist; current P6 branch additions have not been built/run; VerticalSlice_C does not use the bootstrap yet (P1.4) |
 | P0.5 recipes from data | Kısmi | all game recipes come from data | the old demo recipe in `WorldDemoScenarioActor.cpp` is still in C++ |
 | P1.1 calendar | Var | `WorldCalendar` + clock `GetCalendarDate`: year, month, day, hour, season from saved time; 5 days/month, start March 5 08:00; 3 tests | config from data file (P0.3), HUD (P1.4) |
 | P1.2 climate by month | Var | `UWorldClimateSubsystem`: 12-month table, daily weather from clock seed, 05:00/15:00 temperature curve, snow depth, ground wetness, pushes weather + air temperature to survival; in the coordinator step + rollback; save schema v21; 3 tests | VerticalSlice_C does not run the coordinator yet (own hours, own weather) -> P1.4 |
@@ -49,10 +50,10 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P5.1 layers → items | Var | yield rules [A] filled from layers.json (soil, clay, sand, stone, flint, ochre; layers 0-3); clay digs out only in its layer (test) | which material a voxel cell holds is still chosen by the caller (no per-location geology map) |
 | P5.2 cellar, trench, collapse | Yok | dig refused near grounded structures [A] | collapse of unsupported rooms; cellar/trench/cistern/embankment |
 | P5.3 dig limits + save | Var [A] | bounded dig, soil classes, tool strength, receipts, density save | chunk seams, neighbour chunks (later) |
-| P6.1 field cell state | Yok | crop moisture only [S] | cleared, tilled, fertility, weeds, mulch |
-| P6.2 15 field steps | Kısmi | planting with a seed item, harvesting into items [A] (2 of 15) | clearing, tilling, fertilising, watering, weeding, mulch, fence, drying, threshing, winnowing, grinding, storing, seed saving |
-| P6.3 seeds, exhaustion, 3 crops | Kısmi | crop definitions seed → harvest [A] | seed saving, soil exhaustion, the 3 crops |
-| P6.4 animal chain | Kısmi | animal hunger/health/products [S]; feeding and collecting with items [A]; stick traps [S] | catching live animals, pen, slaughter outputs |
+| P6.1 field cell state | Kısmi | `FWorldFieldCellState`: cleared, tilled, fertility, weed pressure, mulch coverage, moisture, live crop link, last-crop/repeat counter, revision and field-operation receipts; stored by agriculture and persisted in save schema v23 [code-written] | player inputs/tool gating and field visuals, fence cells, rainfall/moisture integration, yearly simulation and Unreal verification |
+| P6.2 15 field steps | Kısmi | Clear/Till/Fertilize/Weed/Mulch/Water logical actions; planting requires prepared cell + permitted month + owned seed; harvest creates item outputs and records retry receipts [code-written] | full 15-step chain: fence, drying, threshing, winnowing, grinding, storing, physical tools, player input/HUD and Unreal verification |
+| P6.3 seeds, exhaustion, 3 crops | Kısmi | Grain/Root/Legume definitions are registered from crops.json with validated plant months; harvest returns configured seed items; soil fertility decreases with a stronger repeated-crop penalty [code-written] | crop/season tuning is provisional, soil recovery/beneficial rotation and a full-year balance run remain; no Unreal verification |
+| P6.4 animal chain | Kısmi | data-driven Rabbit/Bird/Goat definitions; unique-item or count-stack capture; 4-stake + 1-rope logical pen, gate/assignment, owned-item feeding, products only from captured penned animals in a closed pen, data-driven slaughter yields; pen/capture state persisted in schema v24 [code-written] | integrate with WildlifeActor/stick-trap/player interactions, physical pen/animal visuals, pickup/UI and input; feeding currently requires a unique owned feed item; Unreal verification and whole-year simulation remain |
 | P7.1 load, slope, surface | Kısmi | carry mass slows the player [S]; route cost with slope/surface/weather/load/infrastructure for cargo [A] | the same cost for the player's own walking |
 | P7.2 zones | Kısmi | VerticalSlice_C: creek, far ford, old rope bridge, cliff terrace, lookout [S] | zones 0–4 with their resources |
 | P7.3 rewards | Kısmi | discovery definitions with prerequisites, required equipment, unlocks [A] | discoveries placed in the world; recipes/seeds gated by them |
@@ -66,4 +67,4 @@ Player input/HUD: missing for every system except carrying/cutting/building logs
 | P10 physical assembly | Kısmi | log family: cuts, split, hew, plank, snap kernel [S]; stone pieces with anchors [S]; stake by sharpening [S]; incremental cut progress [A] | thatch bundle, cut stone block making, notches/sockets, mitre cuts, crossing diagonals |
 | P11 story | Yok | — | — |
 | P12 polish and demo | Yok | — | — |
-| Save (all phases) | Kısmi | saves every subsystem [S]; schema v20, voxel, component snapshots [A] | full actor transforms after physics, each new system |
+| Save (all phases) | Kısmi | existing save manifest plus farm field cells (schema v23) and logical animal pens/capture/slaughter state (schema v24); v22→v23 and v23→v24 migrations are source-written | batch Unreal serialization/build/test and all phase systems must be verified; legacy data is not inferred where absent |
