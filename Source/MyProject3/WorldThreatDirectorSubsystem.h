@@ -92,6 +92,39 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Tuning", meta=(ClampMin="1"))
     int32 MaxHistoryEntries = 64;
 
+    /** Baseline pressure keeps raids possible even in a dark, empty settlement. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.0", ClampMax="4.0"))
+    float BaseRaidPressure = 1.0f;
+
+    /** Stored total item units at which the storage-size contribution reaches its cap. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="1.0", ClampMax="4096.0"))
+    float StorageUnitsForFullPressure = 64.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.0", ClampMax="2.0"))
+    float StoragePressureWeight = 0.5f;
+
+    /** Smell units are food units adjusted by whether food is stored, exposed, or carried. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="1.0", ClampMax="1024.0"))
+    float FoodUnitsForFullSmell = 20.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.0", ClampMax="3.0"))
+    float FoodSmellPressureWeight = 1.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.0", ClampMax="3.0"))
+    float LightPressureWeight = 0.65f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.0", ClampMax="3.0"))
+    float SmokePressureWeight = 0.85f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.1", ClampMax="20.0"))
+    float MaxObservedLightSignature = 4.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.1", ClampMax="20.0"))
+    float MaxObservedSmokeSignature = 4.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.1", ClampMax="10.0"))
+    float MaxRaidPressure = 4.0f;
+
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool InitializeDirector(double FirstRaidDelaySeconds = 900.0);
 
@@ -147,6 +180,9 @@ private:
     bool bInitialized = false;
 
     UWorldSimulationClockSubsystem* GetClock() const;
+    bool CalculateRaidPressureAndTarget(int32 Seed, FVector& OutTargetLocation, float& OutPressure) const;
+    float ComputeRaidPressureFromSignals(float StoredUnits, float FoodSmellUnits,
+        float LightSignature, float SmokeSignature) const;
     bool IsTerminal(EThreatRaidState State) const;
     double MakeNextInterval(int64 Serial) const;
     void FinishCurrentRaid(EThreatRaidState FinalState, double Now);
