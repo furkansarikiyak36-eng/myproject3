@@ -152,6 +152,10 @@ private:
     void EnsureStarterTools();
     void ChopInput();
     void FillCreekWaterInput();
+    void DrinkWaterInput();
+    void BoilWaterInput();
+    void RestInput();
+    void ShowSurvivalStatusInput();
     void RefuelFireInput();
     void StationStartCollectInput();
     void StationDepositInput();
