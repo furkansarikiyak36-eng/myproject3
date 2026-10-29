@@ -122,4 +122,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update the roadmap progress log for the newly authored P0.5/P6.1/P6.4 code, correct schema references to v25 and mark P10 frozen as the current user decision says. Then read `memory/CODE_INDEX.md` for player interaction/action and survival entry points and implement P2.1 creek interaction/water container, P2.2 fatigue action gates and P2.3 wet-cold illness triggers using exact current signatures. Keep every edit in the checkpoint; no build until the batch.
+Read `memory/CODE_INDEX.md` for the exact player interaction/action and survival types; implement P2.1 creek water/container, P2.2 fatigue action gates, and P2.3 wet-cold condition triggers using signatures from current headers. Then continue P3/P4 and P7/P8/P9.2. P10 remains frozen. Batch build stays deferred.
