@@ -152,4 +152,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Fix any source-contract issue in the water fill transaction, and then review the survival receipt ownership validator to ensure a filled water item can be moved/consumed later while the original fill retry still resolves to the same ID. Update the task status and codebase map for the new player inventory/backfill/water path without claiming it has been built.
+Water fill now has an exact unique-slot preflight, missing-vessel/limited-capacity/success/retry test coverage, and the player inventory is a default character component with game-data backfill. Continue P2.5 by wiring fall damage and hostile-animal attack to configured `Injury.Fall` and `Injury.AnimalBite` conditions using saved receipt APIs, then add focused automation coverage. Do not build.
