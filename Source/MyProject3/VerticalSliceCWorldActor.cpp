@@ -1861,17 +1861,6 @@ void AVerticalSliceCWorldActor::ChopInput()
     }
 
     UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
-    if (Survival && PlayerSurvivalId.IsValid())
-    {
-        if (!Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
-        {
-            if (GEngine)
-                GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
-                    TEXT("Too exhausted or resting. Wait for rest to end or recover stamina."));
-            return;
-        }
-        AxeStrength *= Survival->GetWorkEffectiveness(PlayerSurvivalId);
-    }
 
     FVector Location;
     FRotator Rotation;
@@ -1887,12 +1876,25 @@ void AVerticalSliceCWorldActor::ChopInput()
         Log && Carry && !Carry->IsCarryingLog() && !Carry->IsHoldingMaterialPiece())
     {
         UWorldStructuralGraphSubsystem* Graph = GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>();
-        if (Log->IsPlaced() && Graph && Graph->RepairDamage(Log->GetStructuralNodeId(), 25.0f))
+        if (Log->IsPlaced() && Graph)
         {
-            if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
-                Character->PlayAxeSwing();
-            Carry->SetPlacementStatus(TEXT("Repaired a part of the damage."));
-            return;
+            if (Survival && PlayerSurvivalId.IsValid() &&
+                !Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+            {
+                if (GEngine)
+                    GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
+                        TEXT("Too exhausted or resting. Wait for rest to end or recover stamina."));
+                return;
+            }
+            const float RepairEffectiveness = Survival && PlayerSurvivalId.IsValid()
+                ? Survival->GetWorkEffectiveness(PlayerSurvivalId) : 1.0f;
+            if (Graph->RepairDamage(Log->GetStructuralNodeId(), 25.0f * RepairEffectiveness))
+            {
+                if (ALogSnapCharacter* Character = Cast<ALogSnapCharacter>(Controller->GetPawn()))
+                    Character->PlayAxeSwing();
+                Carry->SetPlacementStatus(TEXT("Repaired a part of the damage."));
+                return;
+            }
         }
         Carry->ProcessAimedPiece();
         return;
@@ -1924,6 +1926,18 @@ void AVerticalSliceCWorldActor::ChopInput()
                     ChopSwingCount, Hit.GetActor() ? *Hit.GetActor()->GetName() : TEXT("world")));
         }
         return;
+    }
+
+    if (Survival && PlayerSurvivalId.IsValid())
+    {
+        if (!Survival->RecordActivity(PlayerSurvivalId, ESurvivalActivity::Chop, 0.75f, 0.0f))
+        {
+            if (GEngine)
+                GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange,
+                    TEXT("Too exhausted or resting. Wait for rest to end or recover stamina."));
+            return;
+        }
+        AxeStrength *= Survival->GetWorkEffectiveness(PlayerSurvivalId);
     }
 
     const bool bAccepted = Tree->ApplyChopDamage(AxeStrength, Rotation.Vector());
