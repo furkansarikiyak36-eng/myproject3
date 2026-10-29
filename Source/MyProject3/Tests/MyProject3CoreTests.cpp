@@ -4010,8 +4010,14 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
         [&WaterItemId](const FInventoryStack& Stack) { return Stack.OwnedWorldItemId == WaterItemId; });
     TestTrue(TEXT("Water has an inventory stack while boiling"), BoilingStackIndex != INDEX_NONE);
     if (Inventory->Items.IsValidIndex(BoilingStackIndex))
+    {
         TestEqual(TEXT("Inventory stack follows the intermediate state"),
             Inventory->Items[BoilingStackIndex].ItemId, FName(TEXT("Water.Boiling")));
+        TestEqual(TEXT("Boiling item is a non-consumable resource while processing"),
+            Inventory->Items[BoilingStackIndex].Category, EInventoryItemCategory::Resource);
+        TestFalse(TEXT("Boiling item is not marked as a tool"),
+            Inventory->Items[BoilingStackIndex].bIsTool);
+    }
 
     FWorldSurvivalProfile AfterBoilStart;
     TestTrue(TEXT("Read profile after boiling begins"), Survival->GetProfile(Profile.EntityId, AfterBoilStart));
@@ -4044,6 +4050,16 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Boiled water identity is unchanged"), BoiledWater.ItemId, WaterItemId);
     TestEqual(TEXT("Boiled water still belongs to inventory"), BoiledWater.OwnerKind,
         EWorldItemOwnerKind::Inventory);
+    const int32 BoiledStackIndex = Inventory->Items.IndexOfByPredicate(
+        [&WaterItemId](const FInventoryStack& Stack) { return Stack.OwnedWorldItemId == WaterItemId; });
+    TestTrue(TEXT("Boiled water remains in its unique inventory slot"), BoiledStackIndex != INDEX_NONE);
+    if (Inventory->Items.IsValidIndex(BoiledStackIndex))
+    {
+        TestEqual(TEXT("Final stack definition follows the ledger"), Inventory->Items[BoiledStackIndex].ItemId,
+            FName(TEXT("Water.Boiled")));
+        TestEqual(TEXT("Final water stack is consumable"), Inventory->Items[BoiledStackIndex].Category,
+            EInventoryItemCategory::Consumable);
+    }
     TestEqual(TEXT("Reusable pot remains present"), Inventory->GetItemCount(TEXT("Pot.Fired")), 1);
 
     FWorldSurvivalProfile AfterBoilFinish;
