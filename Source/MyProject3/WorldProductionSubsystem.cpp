@@ -1,4 +1,9 @@
 #include "WorldProductionSubsystem.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/Pawn.h"
 #include "ProductionStationActor.h"
 
 #include "Engine/World.h"
@@ -730,6 +735,25 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
     }
 
     const FWorldProductionRecipe& Recipe = Recipes[RecipeIndex];
+
+    // Station recipes listed as discovery unlocks are authoritative gates too;
+    // direct subsystem callers may not bypass the player-facing F2 interaction.
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (GameData && GameData->IsApplied() && GameData->IsDiscoveryGatedDefinition(RecipeId))
+    {
+        APlayerController* Controller = World->GetFirstPlayerController();
+        APawn* PlayerPawn = Controller ? Controller->GetPawn() : nullptr;
+        const UShelterSensorComponent* Shelter =
+            PlayerPawn ? PlayerPawn->FindComponentByClass<UShelterSensorComponent>() : nullptr;
+        const UWorldSurvivalSubsystem* Survival =
+            World->GetSubsystem<UWorldSurvivalSubsystem>();
+        if (!Shelter || !Shelter->SurvivalEntityId.IsValid() || !Survival ||
+            !Survival->IsDefinitionUnlocked(Shelter->SurvivalEntityId, RecipeId))
+            return false;
+    }
+
     if (!Recipe.RequiredStationTag.IsNone() &&
         Recipe.RequiredStationTag != Station->StationTag)
     {
