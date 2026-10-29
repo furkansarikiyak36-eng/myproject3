@@ -112,6 +112,7 @@ private:
     FLogProcessingMeshSet Family;
     bool bBuilt = false;
     bool bInputBound = false;
+    bool bStarterToolsGranted = false;
     int32 ChopSwingCount = 0;
     int32 SuccessfulChopCount = 0;
     FGuid PlayerSurvivalId;
@@ -148,6 +149,7 @@ private:
     bool CommitStacked(ALogBuildPiece* Log, ALogBuildPiece* Lower, const FVector& AimPoint, float CarryYaw);
 
     void SetupPlayer();
+    void EnsureStarterTools();
     void ChopInput();
     void FillCreekWaterInput();
     void RefuelFireInput();
