@@ -40,6 +40,8 @@
 #include "ShelterSensorComponent.h"
 #include "GameFramework/Pawn.h"
 #include "Engine/Engine.h"
+#include "Engine/StaticMesh.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
 #include "GameFramework/PlayerController.h"
@@ -2024,6 +2026,60 @@ bool FEventChainsAndCountersTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Prepared"), Storm->bCountered);
         TestEqual(TEXT("Half as severe"), Storm->Severity, SignalSeverity * 0.5f, 0.001f);
     }
+    return true;
+}
+
+// P3.1: rain wets firewood in the open, not firewood stacked under a built roof.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFirewoodUnderRoofStaysDryTest,
+    "MyProject3.World.Fire.FirewoodUnderRoofStaysDry", Flags)
+bool FFirewoodUnderRoofStaysDryTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(12, 0.0));
+
+    // A placed stone slab 3 m above the woodpile acts as the roof.
+    const FTransform RoofTransform(FRotator::ZeroRotator, FVector(0.0, 0.0, 300.0), FVector(8.0, 8.0, 0.3));
+    AStoneBuildingPiece* Roof = World->SpawnActorDeferred<AStoneBuildingPiece>(AStoneBuildingPiece::StaticClass(), RoofTransform);
+    if (!TestNotNull(TEXT("Roof"), Roof))
+        return false;
+    Roof->bStartsPlaced = true;
+    Roof->FinishSpawning(RoofTransform);
+    // A stone piece has no default mesh; tests give it the engine cube (as the placement tests do).
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("Cube"), Cube))
+        return false;
+    Roof->Mesh->SetStaticMesh(Cube);
+    float RoofCover = 0.0f, WallCover = 0.0f;
+    UShelterSensorComponent::MeasureAt(World, FVector(0.0, 0.0, 30.0), nullptr, RoofCover, WallCover);
+    TestTrue(TEXT("The slab covers the woodpile"), RoofCover >= 0.6f);
+
+    auto AddWood = [&](const FVector& Location) -> FGuid
+    {
+        FWorldOwnedItemRecord Wood;
+        Wood.ItemId = FGuid::NewGuid();
+        Wood.DefinitionId = TEXT("Firewood");
+        Wood.OwnerKind = EWorldItemOwnerKind::World;
+        Wood.WorldLocation = Location;
+        TestTrue(TEXT("Register firewood"), Ownership->RegisterItem(Wood));
+        return Wood.ItemId;
+    };
+    const FGuid Sheltered = AddWood(FVector::ZeroVector);
+    const FGuid Open = AddWood(FVector(5000.0, 0.0, 0.0));
+
+    Survival->SetWeather(EWorldWeatherState::Rain, 0.9f);
+    TestTrue(TEXT("Clock minute"), Clock->AdvanceSimulation(60.0));
+    TestTrue(TEXT("Rainy minute"), Survival->AdvanceSurvivalStep(60.0, 60.0));
+    FWorldOwnedItemRecord After;
+    TestTrue(TEXT("Read sheltered wood"), Ownership->TryGetItem(Sheltered, After));
+    TestEqual(TEXT("Wood under the roof stays dry"), After.DefinitionId, FName(TEXT("Firewood")));
+    TestTrue(TEXT("Read open wood"), Ownership->TryGetItem(Open, After));
+    TestEqual(TEXT("Wood in the open gets wet"), After.DefinitionId, FName(TEXT("Firewood.Wet")));
     return true;
 }
 

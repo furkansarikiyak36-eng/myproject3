@@ -1,4 +1,5 @@
 #include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
 #include "WorldGameDataSubsystem.h"
 
 #include "HeatSourceComponent.h"
@@ -1964,7 +1965,11 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
             if (bRainOrStorm && WeatherSeverity >= 0.2f &&
                 Item.DefinitionId == FName(TEXT("Firewood")))
             {
-                DesiredDefinition = FName(TEXT("Firewood.Wet"));
+                // Wood stacked under a built roof stays dry (P3.1).
+                float Roof = 0.0f, Walls = 0.0f;
+                UShelterSensorComponent::MeasureAt(GetWorld(), Item.WorldLocation + FVector(0.0, 0.0, 30.0), nullptr, Roof, Walls);
+                if (Roof < 0.6f)
+                    DesiredDefinition = FName(TEXT("Firewood.Wet"));
             }
             else if (!bRainOrStorm && Item.DefinitionId == FName(TEXT("Firewood.Wet")))
             {
