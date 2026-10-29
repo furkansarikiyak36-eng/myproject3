@@ -54,6 +54,21 @@ void ARaidPlaceholderPawn::SetRaidTargetLocation(FVector InTargetLocation)
     bHasRaidTarget = true;
 }
 
+bool ARaidPlaceholderPawn::HasReachedRaidTarget() const
+{
+    if (!bHasRaidTarget || RaidTargetLocation.ContainsNaN() ||
+        GetActorLocation().ContainsNaN() ||
+        !FMath::IsFinite(TargetAcceptanceRadiusCm) || TargetAcceptanceRadiusCm <= 0.0f)
+        return false;
+
+    float HalfHeight = 0.0f;
+    if (const UCapsuleComponent* Capsule = Cast<UCapsuleComponent>(GetRootComponent()))
+        HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+    const FVector TargetActorLocation = RaidTargetLocation + FVector(0.0f, 0.0f, HalfHeight);
+    return FVector::DistSquared(GetActorLocation(), TargetActorLocation) <=
+        FMath::Square(TargetAcceptanceRadiusCm);
+}
+
 bool ARaidPlaceholderPawn::RebuildNavigationPath()
 {
     UWorld* World = GetWorld();
@@ -104,17 +119,28 @@ void ARaidPlaceholderPawn::Tick(float DeltaSeconds)
     if (CachedPathPoints.Num() < 2)
         return; // No navmesh/path means no unsafe straight-line teleport fallback.
 
+    float AgentHalfHeight = 0.0f;
+    if (const UCapsuleComponent* Capsule = Cast<UCapsuleComponent>(GetRootComponent()))
+        AgentHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+
     const float AcceptanceSquared = FMath::Square(TargetAcceptanceRadiusCm);
     const FVector CurrentLocation = GetActorLocation();
+    auto GetActorWaypoint = [AgentHalfHeight](const FVector& NavPoint)
+    {
+        // NavMesh points lie at the floor; the pawn actor origin is the capsule
+        // center, so move the center above the floor instead of sweeping it into it.
+        return NavPoint + FVector(0.0f, 0.0f, AgentHalfHeight);
+    };
     while (CurrentPathPointIndex < CachedPathPoints.Num() &&
-        FVector::DistSquared(CurrentLocation, CachedPathPoints[CurrentPathPointIndex]) <= AcceptanceSquared)
+        FVector::DistSquared(CurrentLocation,
+            GetActorWaypoint(CachedPathPoints[CurrentPathPointIndex])) <= AcceptanceSquared)
     {
         ++CurrentPathPointIndex;
     }
     if (CurrentPathPointIndex >= CachedPathPoints.Num())
         return;
 
-    const FVector NextPoint = CachedPathPoints[CurrentPathPointIndex];
+    const FVector NextPoint = GetActorWaypoint(CachedPathPoints[CurrentPathPointIndex]);
     const FVector Offset = NextPoint - CurrentLocation;
     const float Distance = Offset.Size();
     if (!FMath::IsFinite(Distance) || Distance <= KINDA_SMALL_NUMBER)
