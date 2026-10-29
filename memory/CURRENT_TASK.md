@@ -151,4 +151,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `FCreekWaterFillWithReusablePotTest` to exercise full-inventory rejection and recovery, then perform a source-level audit of fill rollback and action receipt validation. After tests are aligned, record P2.1/2.2/2.3 progress and proceed to fall/animal-attack injury triggers.
+Audit the full water-fill transaction/restore contract: output item is an inventory-owned `Water.Dirty` record, pot ownership/revision unchanged, rollback on add failure, one result ID in receipt; ensure the save coordinator schema v26 path and status table are current. Then connect P2 fall/animal-bite injuries using the configured conditions.
