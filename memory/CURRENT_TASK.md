@@ -12,41 +12,29 @@
 
 ## Task
 
-Status: `in-progress`
-Goal: Close the user-selected blind-coding tasks for P1.1–P1.4, P2.1–P2.6, P3.1–P3.4, P4.1–P4.4, P5.1–P5.3, P6.1–P6.4, P7.1–P7.4 and P9.1–P9.3 on `game/p00-adopt-group-a`. P8 is a dependency only where event simulation is needed; P10 remains frozen.
+Status: `open`
+Goal: Close phases 1-9 in order (each phase: every task Var in PLAN_STATUS, builds, all tests pass; PIE comes with the scene).
+Asked by the user: "9 faz da bitirerek ilerleme zamanı geldi sırayla kapatalım fazları" (2026-10-30)
+Started: 2026-10-30 · Branch: `game/p00-adopt-group-a` (single working branch)
 
-Started: 2026-10-29
-Branch base inspected: `ea00757dec03300f8214a3c31fb90b3f5efb6122`
-Baseline: latest source changes are documented as unbuilt/unrun. Prior build/test count must not be attributed to unbuilt changes.
+### Plan
+0. [ ] Merge `work/phase-3-4-closure` into p00. Its event director (752 lines, real effects: fire spread, flood
+       route closures, raids, repair) replaces p00's (318 lines). Keep p00-only work: WorldHudDataSubsystem (adapt to
+       the phase-3-4 director API), geology, action costs, charcoal pause, build fixes. One save schema line.
+       Then build + all tests.
+1. [ ] Phase 0 leftovers (P0.2 freeze note, P0.5 old demo recipe).
+2. [ ] Phase 1 ... 9: per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
+Side lines p06/p07 hold a second farming API: do not merge; port only data files (zones, routes, discoveries,
+animals) if phase 6/7 needs them.
 
-## Planned work
-1. Reconcile current APIs with the gap ledger and use existing domain owners instead of adding duplicate systems.
-2. Close the highest-leverage shared contracts first: data-driven calendar/events and HUD signals; transaction/ownership and common action costs; fuel/shelter/plaster/production; tool durability/resource geology/stability; field/crop/animal lifecycle; player movement/zone/discovery/infrastructure; time budget/helper station reservations/year simulation.
-3. Add or update data files and focused automation test sources for each changed subsystem.
-4. Update task statuses conservatively to `code-written` until local Unreal build/test/PIE evidence exists.
-5. Batch compile/test remains deferred to the user's UE 5.8 environment.
+### Read
+- p00 vs phase-3-4: both from `ea00757`; p00 +12 (events v1, HUD, geology, costs, charcoal), phase-3-4 +179.
 
-## Findings
-- Shared clock/calendar/climate have source-level P1.1/P1.2 integration: game data loads `calendar.json`/`climate.json`, solar presentation reads the shared clock.
-- P1.3/P1.4 source code is committed: nine `events.json` definitions, deterministic event lifecycle/chains, coordinator transactional advance and deferred signal publishing, schema v28 snapshot/migration, read-only HUD data contract and Canvas readout.
-- `EffectId` is a future domain-adapter contract, not yet a world-effect implementation; those mutations remain P8.1.
-- All P1 integration/test source is code-written only. No Unreal build, automation test, PIE or save/load roundtrip was run in this session.
-- P5.1 now has a deterministic region/depth/cell/seed geology resolver, and the N-key dig adapter requests the material from this resolver rather than passing its deprecated MaterialId field. The cell remembers the first resolved material.
-- P2.2 now gates direct `DismantlePiece` calls with shared activity cost unless an enclosing multi-piece action supplies its aggregate cost; sled towing charges Carry activity by shared-clock elapsed time and releases if the puller rests/exhausts. Focused test source was authored.
-- Existing systems include item ownership/operation ledger, production, storage, terrain/voxel, agriculture/wildlife, survival, structural graph, logistics/cargo, raid director, helper and save coordinator.
-- Current gap ledger overstates whole-task completion if source presence is read as gameplay acceptance; treat runtime integration as a separate gate.
+### Findings
+- Two independent event directors. phase-3-4: AdvanceEventStep/InitializeEventDirector; p00: AdvanceToTime/InitializeDirector.
 
-## Changes in this checkpoint
-- Added `WorldEventDirectorSubsystem.h/.cpp` and `events.json` (nine definitions; storm→flood/toxic rain, drought→wildfire, flood→epidemic chains).
-- Wired definitions into `WorldGameDataSubsystem`, coordinator fixed-step preflight/advance/rollback, and post-commit transition dispatch.
-- Added `WorldHudDataSubsystem`, HUD date/season/weather/event readout, shared-clock sun time, save schema v28 and v27 migration.
-- Authored `MyProject3.World.Events.DeterministicLifecycleChainAndSnapshot` for warning/active/end/chaining/snapshot/HUD coverage.
-- Three code commits are on `game/p00-adopt-group-a`; the P1 source changes are unbuilt/unrun.
+### Changes
+- —
 
-## Recent code changes
-- P5.1 commits `e48c3c4` and `ffcb364`: region/depth/cell-seed material resolver, `layers.json` region weights, world-clock seeded player dig path, geology resolution automation source.
-- P2.2 commits `609f445` and `28755f3`: direct dismantle calls enforce shared costs (multi-piece door/window calls avoid duplicate charges); sled tow has bounded shared-time carry cost; `MyProject3.World.Needs.SledTowChargesSharedClockActivity` authored.
-- These changes and their tests remain unbuilt/unrun.
-
-## Next step
-Continue backend blind coding for P2–P7 and P9 in bounded commits; inspect remaining shared-action gates, then production/station/tool and crop/animal chains. Keep P10 frozen. Do not claim UE compile, Automation, PIE or save/load success.
+### Next step
+Step 0: git merge origin/work/phase-3-4-closure; resolve conflicts.
