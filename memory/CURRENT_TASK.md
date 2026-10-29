@@ -118,4 +118,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Extend `WorldAgricultureSubsystem.h` with animal lifecycle/pen definitions, capture/pen/slaughter receipts/APIs, and snapshots before implementing the matching cpp logic. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Extend `WorldAgricultureSubsystem.h` with animal lifecycle states, capture definitions, animal pen records, receipt fields, capture/move/slaughter APIs, and snapshot overloads; then implement source logic. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
