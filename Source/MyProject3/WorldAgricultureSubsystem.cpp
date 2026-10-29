@@ -597,6 +597,163 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::TryCaptureWildlife(
+    const FGuid& OperationId, const FGuid& SourceWildlifeIdentityId, AWildlifeActor* Wildlife,
+    const FWorldAnimalCaptureDefinition& Definition, FGuid& OutAnimalId)
+{
+    OutAnimalId.Invalidate();
+    if (!OperationId.IsValid() || !SourceWildlifeIdentityId.IsValid() ||
+        Definition.AnimalDefinitionId.IsNone() ||
+        Definition.MeatUnits < 0 || Definition.MeatUnits > 64 ||
+        Definition.HideUnits < 0 || Definition.HideUnits > 64 ||
+        Definition.BoneUnits < 0 || Definition.BoneUnits > 64 ||
+        Definition.MeatUnits + Definition.HideUnits + Definition.BoneUnits <= 0 ||
+        Definition.MeatUnits + Definition.HideUnits + Definition.BoneUnits > 64 ||
+        (Definition.MeatUnits > 0 && Definition.MeatDefinitionId.IsNone()) ||
+        (Definition.HideUnits > 0 && Definition.HideDefinitionId.IsNone()) ||
+        (Definition.BoneUnits > 0 && Definition.BoneDefinitionId.IsNone()))
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != EWorldAgricultureActionKind::CaptureAnimal ||
+            Existing->SourceWildlifeIdentityId != SourceWildlifeIdentityId ||
+            Existing->DefinitionId != Definition.AnimalDefinitionId ||
+            !Animals.Contains(Existing->EntityId))
+            return false;
+        const FWorldAnimalState& ExistingAnimal = Animals.FindChecked(Existing->EntityId);
+        if (ExistingAnimal.FeedDefinitionId != Definition.FeedDefinitionId ||
+            ExistingAnimal.ProductDefinitionId != Definition.ProductDefinitionId ||
+            ExistingAnimal.MeatDefinitionId != Definition.MeatDefinitionId ||
+            ExistingAnimal.MeatUnits != Definition.MeatUnits ||
+            ExistingAnimal.HideDefinitionId != Definition.HideDefinitionId ||
+            ExistingAnimal.HideUnits != Definition.HideUnits ||
+            ExistingAnimal.BoneDefinitionId != Definition.BoneDefinitionId ||
+            ExistingAnimal.BoneUnits != Definition.BoneUnits)
+            return false;
+        OutAnimalId = ExistingAnimal.AnimalId;
+        return true;
+    }
+
+    if (!IsValid(Wildlife) || !IsValid(Wildlife->Identity) || !IsValid(Wildlife->Health) ||
+        Wildlife->Identity->GetInstanceId() != SourceWildlifeIdentityId ||
+        Wildlife->Kind != EWildlifeKind::SmallAnimal || Wildlife->Health->IsDead() ||
+        Wildlife->bCapturedForAnimalManagement || MaxAnimals <= 0 ||
+        Animals.Num() >= MaxAnimals || MaxOperationReceiptsPerEntity <= 0 ||
+        MaxOperationReceiptsPerEntity > 256)
+        return false;
+
+    for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
+    {
+        if (Pair.Value.SourceWildlifeIdentityId == SourceWildlifeIdentityId)
+            return false; // One live wildlife actor can become only one logical animal.
+    }
+
+    FWorldAnimalState Animal;
+    Animal.AnimalId = FGuid::NewGuid();
+    if (!Animal.AnimalId.IsValid() || Animals.Contains(Animal.AnimalId))
+        return false;
+    Animal.AnimalDefinitionId = Definition.AnimalDefinitionId;
+    Animal.LifecycleState = EWorldAnimalLifecycleState::Captured;
+    Animal.SourceWildlifeIdentityId = SourceWildlifeIdentityId;
+    Animal.Location = Wildlife->GetActorLocation();
+    Animal.Health = 100.0f;
+    Animal.Hunger = 0.0f;
+    Animal.FeedDefinitionId = Definition.FeedDefinitionId;
+    Animal.ProductDefinitionId = Definition.ProductDefinitionId;
+    Animal.ProductUnits = 0;
+    Animal.MeatDefinitionId = Definition.MeatDefinitionId;
+    Animal.MeatUnits = Definition.MeatUnits;
+    Animal.HideDefinitionId = Definition.HideDefinitionId;
+    Animal.HideUnits = Definition.HideUnits;
+    Animal.BoneDefinitionId = Definition.BoneDefinitionId;
+    Animal.BoneUnits = Definition.BoneUnits;
+    Animal.Revision = 1;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::CaptureAnimal;
+    Receipt.EntityId = Animal.AnimalId;
+    Receipt.SourceWildlifeIdentityId = SourceWildlifeIdentityId;
+    Receipt.ExpectedEntityRevision = 0;
+    Receipt.ResultingEntityRevision = Animal.Revision;
+    Receipt.DefinitionId = Definition.AnimalDefinitionId;
+    Animal.ActionReceipts.Add(Receipt);
+
+    if (!Wildlife->ApplyAnimalManagementState(Animal.AnimalId, FGuid(), Animal.Location))
+        return false;
+
+    Animals.Add(Animal.AnimalId, Animal);
+    OutAnimalId = Animal.AnimalId;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryMoveAnimalToPen(
+    const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+    const FGuid& PenId, int64 ExpectedPenRevision)
+{
+    if (!OperationId.IsValid() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0 ||
+        !PenId.IsValid() || ExpectedPenRevision <= 0)
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldAgricultureActionKind::MoveAnimalToPen &&
+            Existing->EntityId == AnimalId && Existing->PenId == PenId &&
+            Existing->ExpectedEntityRevision == ExpectedAnimalRevision &&
+            Existing->ExpectedPenRevision == ExpectedPenRevision;
+    }
+
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    FWorldAnimalPenState* Pen = AnimalPens.Find(PenId);
+    if (!Animal || !Pen || Animal->LifecycleState != EWorldAnimalLifecycleState::Captured ||
+        Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
+        Pen->Revision != ExpectedPenRevision || Pen->Revision >= MAX_int64 - 1 ||
+        Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
+        Pen->AnimalIds.Num() >= Pen->Capacity || Pen->AnimalIds.Contains(AnimalId))
+        return false;
+
+    if (!Pen->AllowedAnimalDefinitionIds.IsEmpty() &&
+        !Pen->AllowedAnimalDefinitionIds.Contains(Animal->AnimalDefinitionId))
+        return false;
+
+    AWildlifeActor* Wildlife = nullptr;
+    if (Animal->SourceWildlifeIdentityId.IsValid())
+    {
+        Wildlife = FindWildlifeActor(Animal->SourceWildlifeIdentityId);
+        if (!IsValid(Wildlife) || !Wildlife->bCapturedForAnimalManagement ||
+            Wildlife->CapturedAnimalId != AnimalId)
+            return false;
+    }
+
+    if (IsValid(Wildlife) &&
+        !Wildlife->ApplyAnimalManagementState(AnimalId, PenId, Pen->Location))
+        return false;
+
+    const int64 PreviousAnimalRevision = Animal->Revision;
+    const int64 PreviousPenRevision = Pen->Revision;
+    Animal->LifecycleState = EWorldAnimalLifecycleState::Penned;
+    Animal->PenId = PenId;
+    Animal->Location = Pen->Location;
+    ++Animal->Revision;
+    Pen->AnimalIds.Add(AnimalId);
+    ++Pen->Revision;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::MoveAnimalToPen;
+    Receipt.EntityId = AnimalId;
+    Receipt.SourceWildlifeIdentityId = Animal->SourceWildlifeIdentityId;
+    Receipt.PenId = PenId;
+    Receipt.ExpectedEntityRevision = PreviousAnimalRevision;
+    Receipt.ResultingEntityRevision = Animal->Revision;
+    Receipt.ExpectedPenRevision = PreviousPenRevision;
+    Receipt.ResultingPenRevision = Pen->Revision;
+    Receipt.DefinitionId = Animal->AnimalDefinitionId;
+    Animal->ActionReceipts.Add(Receipt);
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::TryFeedAnimal(
     const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
     const FGuid& FeedItemId, int64 ExpectedFeedItemRevision,
