@@ -124,6 +124,25 @@ bool UWorldAgricultureSubsystem::FeedAnimal(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::TryCollectAnimalProduct(
+    const FGuid& AnimalId, int64 ExpectedRevision, int32 Quantity,
+    FName& OutProductDefinitionId, int32& OutCollectedQuantity)
+{
+    OutProductDefinitionId = NAME_None;
+    OutCollectedQuantity = 0;
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    if (!Animal || Animal->Revision != ExpectedRevision || Animal->Revision == MAX_int64 ||
+        Quantity <= 0 || Quantity > Animal->ProductUnits || Animal->ProductDefinitionId.IsNone() ||
+        Animal->Health <= 0.0f)
+        return false;
+
+    Animal->ProductUnits -= Quantity;
+    ++Animal->Revision;
+    OutProductDefinitionId = Animal->ProductDefinitionId;
+    OutCollectedQuantity = Quantity;
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) const
 {
     const UWorldSurvivalSubsystem* Survival =
