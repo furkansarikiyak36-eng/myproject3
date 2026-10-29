@@ -28,6 +28,8 @@
 #include "WorldClimateSubsystem.h"
 #include "PhysicalHealthComponent.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
+#include "WorldCalendar.h"
 #include "WorldItemOwnershipSubsystem.h"
 
 #include "Components/DirectionalLightComponent.h"
@@ -1938,11 +1940,32 @@ void AVerticalSliceCWorldActor::ShowSurvivalStatusInput()
     }
     const bool bResting = Clock && Clock->IsClockInitialized() &&
         Profile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds();
+    FString DateStatus = TEXT("date unavailable");
+    FWorldCalendarDate Date;
+    if (Clock && Clock->GetCalendarDate(Date))
+    {
+        const TCHAR* SeasonName = TEXT("Winter");
+        switch (Date.Season)
+        {
+        case EWorldSeason::Spring: SeasonName = TEXT("Spring"); break;
+        case EWorldSeason::Summer: SeasonName = TEXT("Summer"); break;
+        case EWorldSeason::Autumn: SeasonName = TEXT("Autumn"); break;
+        default: SeasonName = TEXT("Winter"); break;
+        }
+        DateStatus = FString::Printf(TEXT("Y%d M%02d D%02d %s %02d:%02d"),
+            Date.Year, Date.Month, Date.DayOfMonth, SeasonName,
+            FMath::FloorToInt(Date.HourOfDay),
+            FMath::FloorToInt((Date.HourOfDay - FMath::FloorToFloat(Date.HourOfDay)) * 60.0f));
+    }
+    UWorldEventDirectorSubsystem* Events = World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+    FString EventStatus = Events ? Events->GetEventStatusText() : FString();
+    if (EventStatus.IsEmpty())
+        EventStatus = TEXT("none");
     const FString Status = FString::Printf(
-        TEXT("SURVIVAL | Body HP %.0f/%.0f | Survival HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s"),
+        TEXT("SURVIVAL | Body HP %.0f/%.0f | Survival HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s | %s | Events: %s"),
         PhysicalHp, PhysicalMaxHp, Profile.Health, Profile.Thirst, Profile.Stamina, Profile.Fatigue,
         Profile.Wetness * 100.0f, Profile.CoreTemperatureCelsius,
-        bResting ? TEXT("yes") : TEXT("no"), *Conditions);
+        bResting ? TEXT("yes") : TEXT("no"), *Conditions, *DateStatus, *EventStatus);
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(9205, 6.0f, FColor::Cyan, Status);
 }
