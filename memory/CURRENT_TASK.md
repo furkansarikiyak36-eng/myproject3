@@ -22,7 +22,7 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 0. [x] Refresh this checkpoint before reviewing gameplay source.
 1. [x] Re-check exact current Phase 2 APIs and current status ledger.
 2. [x] Implement timed ledger-owned water boiling, schema v27 migration, and player-facing M/F5/F6/F7 controls already present on this branch; add low-noise wetness-band feedback.
-3. [x] Audit rest/fatigue hooks, existing water transaction tests and climate-driven wetness/drying paths; confirmed remaining work is validation/tuning plus a few action-cost edge cases.
+3. [x] Audit rest/fatigue hooks, existing water transaction tests and climate-driven wetness/drying paths; closed door-bar/unlock and sled-tow-start cost gates, with ongoing tow cost and direct dismantle calls still open.
 4. [x] Update `PLAN_STATUS.md`, `ROADMAP.md`, `CODEBASE.md`, and this checkpoint.
 5. [x] Mark new code as `code-written / unbuilt-unrun`; batch validation comes later.
 
@@ -52,6 +52,7 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 ### Changes
 - Confirmed receipt-backed inventory-owned water processing transitions and schema v27 migration; checked timed completion against the shared logical clock.
 - Added transition-only dry/damp/wet/soaked feedback in `AVerticalSliceCWorldActor::Tick`; it reports exposure changes but does not alter survival state.
+- `LogBuildToolsComponent::LockInput` preflights/charges Build after successful bar removal or unlocking; `TowInput` preflights/charges Carry when towing starts, but release remains free.
 - Source audit verified rest blocks jump and that log-cut/dig already use survival activity hooks. Added `CanRecordActivity` as the shared pure preflight; `RecordActivity` now uses that same preflight.
 - `LogCarryComponent` now gates and charges stamina/energy for regular log/material pickup and central log/material placement commit paths. Preflight coverage was added to the existing rest test; test remains unrun.
 - Other `LogBuildToolsComponent` direct placement/action paths were not exhaustively converted; keep P2.2 partial.
@@ -60,4 +61,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Next: close the remaining P2.2 interaction-cost edge cases in `LogBuildToolsComponent` (bar/lock and sled tow), then re-audit status counts and run one batch compile/automation pass when user permits. Current changes remain unbuilt/unrun; no PIE validation.
+Next: inspect remaining P2.2 direct `DismantlePiece` call path and sustained sled movement cost, then reconcile the status summary counts. Batch compile/automation and PIE remain deferred; all new changes are unbuilt/unrun.
