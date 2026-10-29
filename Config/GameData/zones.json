@@ -88,7 +88,7 @@
       "seasonal_months": [],
       "required_capabilities": [],
       "required_discovery_ids": [
-        "Discovery.HighForestResin"
+        "Discovery.Zone2.HighForest"
       ]
     },
     {
@@ -117,7 +117,7 @@
         "Capability.ColdProtection"
       ],
       "required_discovery_ids": [
-        "Discovery.HighForestResin"
+        "Discovery.Zone2.HighForest"
       ]
     }
   ]
