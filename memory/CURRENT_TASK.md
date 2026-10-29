@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Append a P4.3 code-written progress line to `ROADMAP.md` and update `CODEBASE.md` production station row; then inspect exact axe/dig tool execution methods for P4.4 strength links. Keep the P4.3 status partial because the scene still has no station actors and no build/tests have run.
+Start P4.4 tool strength. Read `LogBuildToolsComponent` actual tree chopping call, `TerrainDigToolComponent` excavation action, `WorldGameDataSubsystem` item schema/parser, `items.json` axe/digging-stick rows, then choose a backward-compatible data-backed strength model. Do not modify the frozen P10 snap kernel and don't build.
