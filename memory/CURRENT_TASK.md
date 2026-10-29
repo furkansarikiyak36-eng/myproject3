@@ -80,7 +80,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (parses and bounds seed-return units).
 - `Config/GameData/crops.json` (all three placeholder crops declare `seed_return_units: 1`).
 - `Source/MyProject3/WorldAgricultureSubsystem.h` (crop definition has configurable seed return and crop state persists its fixed count).
-- `Source/MyProject3/WorldGameDataSubsystem.cpp` (passes `FGameDataCrop.SeedReturnUnits` into crop definition registration).
+- `Source/MyProject3/WorldGameDataSubsystem.cpp` (passes configured seed return into crop definitions).
+- `Source/MyProject3/WorldAgricultureSubsystem.cpp` lines 350–442 (current planting, harvest, and feed code re-read before implementing seed output).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
