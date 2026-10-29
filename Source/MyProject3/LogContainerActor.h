@@ -84,7 +84,10 @@ private:
     float TimeToCollect = 0.0f;
     TWeakObjectPtr<APawn> TowedBy;
     float PullerBaseSpeed = 0.0f;
+    /** Last shared logical time charged while towing; not a second clock. */
+    double LastTowCostWorldTimeSeconds = -1.0;
 
+    void UpdateTowWorkCost();
     FTransform GetSlotTransform(int32 Index, const AActor* Piece) const;
     void ApplyTowSpeed() const;
     void CollectNearbyLogs();

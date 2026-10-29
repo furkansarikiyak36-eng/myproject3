@@ -860,7 +860,7 @@ bool ULogBuildToolsComponent::SharpenLog(ALogBuildPiece* Log)
     return true;
 }
 
-bool ULogBuildToolsComponent::DismantlePiece(ALogBuildPiece* Piece)
+bool ULogBuildToolsComponent::DismantlePiece(ALogBuildPiece* Piece, bool bChargeSurvivalCost)
 {
     UWorldStructuralGraphSubsystem* Graph = GetWorld() ? GetWorld()->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
     if (!Piece || !Graph || !Piece->IsPlaced())
@@ -891,6 +891,13 @@ bool ULogBuildToolsComponent::DismantlePiece(ALogBuildPiece* Piece)
             }
         }
     }
+    if (bChargeSurvivalCost &&
+        !CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to dismantle this piece."));
+        return false;
+    }
+
     TArray<AActor*> Attached;
     Piece->GetAttachedActors(Attached);
 
@@ -931,6 +938,11 @@ bool ULogBuildToolsComponent::DismantlePiece(ALogBuildPiece* Piece)
     {
         if (Identity->GetLifecycleState() == EWorldObjectLifecycleState::Placed)
             Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
+    }
+    if (bChargeSurvivalCost &&
+        !RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after direct dismantle committed."));
     }
     SetStatus(TEXT("Removed from the structure; the rest stands on its other supports."));
     return true;
@@ -997,7 +1009,7 @@ bool ULogBuildToolsComponent::CutGate(ALogBuildPiece* Post, const FVector& AimPo
         return false;
     }
     for (ALogBuildPiece* Candidate : Removed)
-        DismantlePiece(Candidate);
+        DismantlePiece(Candidate, false);
     const FVector Centre = PostShape.Centre + WallDirection * (0.5f * (Min + Max));
     OutOpening = GetWorld()->SpawnActor<AConstructionOpeningActor>(
         FVector(Centre.X, Centre.Y, Bottom + 0.5f * Height), WallDirection.Rotation());
@@ -1132,7 +1144,7 @@ bool ULogBuildToolsComponent::CutOpening(ALogBuildPiece* WallLog, const FVector&
         {
             TrimLogToRange(Entry.Log, ToLog(OverlapTo), ToLog(B));
         }
-        else if (!DismantlePiece(Entry.Log))
+        else if (!DismantlePiece(Entry.Log, false))
         {
             continue;
         }
@@ -1428,7 +1440,7 @@ void ULogBuildToolsComponent::DismantleInput()
         SetStatus(TEXT("Too exhausted or resting to dismantle this piece."));
         return;
     }
-    if (DismantlePiece(Piece) &&
+    if (DismantlePiece(Piece, false) &&
         !RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 2.0f, 0.0f))
         UE_LOG(LogTemp, Error, TEXT("Survival activity changed after dismantling committed."));
 }
