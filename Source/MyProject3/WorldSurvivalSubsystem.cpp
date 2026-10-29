@@ -582,6 +582,548 @@ bool UWorldSurvivalSubsystem::RecordActivity(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::RegisterConditionDefinition(
+    const FWorldSurvivalConditionDefinition& Definition)
+{
+    if (Definition.DefinitionId.IsNone() ||
+        static_cast<uint8>(Definition.Kind) > static_cast<uint8>(EWorldSurvivalConditionKind::Poisoning) ||
+        !InRange(Definition.HealthLossPerHour, 0.0f, 100.0f) ||
+        !InRange(Definition.FatiguePerHour, 0.0f, 100.0f) ||
+        !InRange(Definition.StaminaLossPerHour, 0.0f, 100.0f) ||
+        !FMath::IsFinite(Definition.DurationSeconds) ||
+        Definition.DurationSeconds < 0.0 || Definition.DurationSeconds > 604800.0 ||
+        !InRange(Definition.TreatmentHealthRecovery, 0.0f, 100.0f) ||
+        MaxConditionDefinitions <= 0 || MaxConditionDefinitions > 1024 ||
+        ConditionDefinitions.Num() >= MaxConditionDefinitions ||
+        FindConditionDefinition(Definition.DefinitionId))
+        return false;
+    ConditionDefinitions.Add(Definition);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryApplyCondition(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    FName ConditionDefinitionId, float Severity)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        ConditionDefinitionId.IsNone() || !InRange(Severity, 0.001f, 1.0f))
+        return false;
+
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldSurvivalActionKind::ApplyCondition &&
+            Existing->EntityId == EntityId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->ConditionDefinitionId == ConditionDefinitionId &&
+            FMath::IsNearlyEqual(Existing->ConditionSeverity, Severity, 0.0001f);
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    const FWorldSurvivalConditionDefinition* Definition =
+        FindConditionDefinition(ConditionDefinitionId);
+    if (!Profile || !Clock || !Clock->IsClockInitialized() || !Definition ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        Profile->Conditions.Num() >= 128 || Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile)
+        return false;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    const double EndsAt = Definition->DurationSeconds > 0.0 ? Now + Definition->DurationSeconds : 0.0;
+    if (!FMath::IsFinite(Now) || Now < 0.0 ||
+        (Definition->DurationSeconds > 0.0 && (!FMath::IsFinite(EndsAt) || EndsAt <= Now)))
+        return false;
+
+    FWorldSurvivalConditionState Condition;
+    Condition.ConditionId = FGuid::NewGuid();
+    Condition.DefinitionId = Definition->DefinitionId;
+    Condition.Kind = Definition->Kind;
+    Condition.StartedAtWorldTimeSeconds = Now;
+    Condition.EndsAtWorldTimeSeconds = EndsAt;
+    Condition.Severity = Severity;
+    Condition.Revision = 1;
+    if (!Condition.ConditionId.IsValid())
+        return false;
+
+    ++Profile->Revision;
+    Profile->Conditions.Add(Condition);
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::ApplyCondition;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.RelatedConditionId = Condition.ConditionId;
+    Receipt.ConditionDefinitionId = Definition->DefinitionId;
+    Receipt.ConditionEndTimeSeconds = EndsAt;
+    Receipt.ConditionSeverity = Severity;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryTreatCondition(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    const FGuid& ConditionId, const FGuid& TreatmentItemId, int64 ExpectedItemRevision,
+    const FGuid& ExpectedInventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !ConditionId.IsValid() || !TreatmentItemId.IsValid() || ExpectedItemRevision <= 0 ||
+        !ExpectedInventoryOwnerId.IsValid())
+        return false;
+
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        return Existing->Action == EWorldSurvivalActionKind::TreatCondition &&
+            Existing->EntityId == EntityId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->RelatedConditionId == ConditionId &&
+            Existing->ItemId == TreatmentItemId &&
+            Existing->ExpectedItemRevision == ExpectedItemRevision &&
+            Existing->ExpectedItemOwnerId == ExpectedInventoryOwnerId;
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Profile || !Ownership || !Clock || !Clock->IsClockInitialized() ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile)
+        return false;
+
+    const int32 ConditionIndex = Profile->Conditions.IndexOfByPredicate(
+        [&ConditionId](const FWorldSurvivalConditionState& Condition)
+        { return Condition.ConditionId == ConditionId; });
+    if (!Profile->Conditions.IsValidIndex(ConditionIndex))
+        return false;
+    const FWorldSurvivalConditionState Condition = Profile->Conditions[ConditionIndex];
+    const FWorldSurvivalConditionDefinition* Definition =
+        FindConditionDefinition(Condition.DefinitionId);
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (!Definition || Definition->TreatmentItemDefinitionId.IsNone() ||
+        !FMath::IsFinite(Now) || Now < 0.0 ||
+        (Condition.EndsAtWorldTimeSeconds > 0.0 && Now >= Condition.EndsAtWorldTimeSeconds))
+        return false;
+
+    FWorldOwnedItemRecord TreatmentItem;
+    if (!Ownership->TryGetItem(TreatmentItemId, TreatmentItem) ||
+        TreatmentItem.Revision != ExpectedItemRevision || TreatmentItem.Revision >= MAX_int64 - 1 ||
+        TreatmentItem.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        TreatmentItem.OwnerId != ExpectedInventoryOwnerId || TreatmentItem.Quantity != 1 ||
+        TreatmentItem.DefinitionId != Definition->TreatmentItemDefinitionId)
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory))
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid PreviousInventoryOwnerId;
+    TArray<FInventoryStack> PreviousInventory;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+    if (PreviousInventoryOwnerId != ExpectedInventoryOwnerId ||
+        !PreviousInventory.ContainsByPredicate([&TreatmentItemId](const FInventoryStack& Stack)
+        { return Stack.OwnedWorldItemId == TreatmentItemId && Stack.Quantity == 1 && !Stack.ItemId.IsNone(); }))
+        return false;
+
+    TArray<FWorldOwnedItemRecord> PreviousItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransferReceipts;
+    TArray<FWorldItemSplitReceipt> PreviousSplitReceipts;
+    Ownership->ExportSnapshot(PreviousItems, PreviousTransferReceipts, PreviousSplitReceipts);
+    auto Rollback = [&]() -> bool
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            PreviousItems, PreviousTransferReceipts, PreviousSplitReceipts);
+        if (!bInventoryRestored || !bOwnershipRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Condition-treatment rollback failed for item %s."),
+                *TreatmentItemId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Treatment rollback failed; stop simulation and recover/reset the world."));
+            return false;
+        }
+        return true;
+    };
+
+    FInventoryStack RemovedStack;
+    if (!Inventory->TryRemoveOwnedItemReference(TreatmentItemId, RemovedStack))
+        return false;
+    if (!Ownership->TryConsumeItem(OperationId, TreatmentItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::Inventory))
+    {
+        Rollback();
+        return false;
+    }
+
+    Profile->Conditions.RemoveAt(ConditionIndex);
+    Profile->Health = FMath::Clamp(Profile->Health + Definition->TreatmentHealthRecovery, 0.0f, 100.0f);
+    ++Profile->Revision;
+    FWorldOwnedItemRecord ConsumedTreatment;
+    if (!Ownership->TryGetItem(TreatmentItemId, ConsumedTreatment) ||
+        ConsumedTreatment.OwnerKind != EWorldItemOwnerKind::Consumed)
+    {
+        // Roll back domain state too; a receipt must never claim a treatment
+        // when the canonical item ledger did not commit its consumed state.
+        Profile->Conditions.Insert(Condition, ConditionIndex);
+        Profile->Health = FMath::Clamp(Profile->Health - Definition->TreatmentHealthRecovery, 0.0f, 100.0f);
+        --Profile->Revision;
+        Rollback();
+        return false;
+    }
+
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::TreatCondition;
+    Receipt.ItemId = TreatmentItemId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = ExpectedItemRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.ResultingItemRevision = ConsumedTreatment.Revision;
+    Receipt.ItemDefinitionId = TreatmentItem.DefinitionId;
+    Receipt.RelatedConditionId = ConditionId;
+    Receipt.ConditionDefinitionId = Condition.DefinitionId;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::RegisterEquipmentDefinition(
+    const FWorldSurvivalEquipmentDefinition& Definition)
+{
+    if (Definition.ItemDefinitionId.IsNone() ||
+        static_cast<uint8>(Definition.Slot) > static_cast<uint8>(EWorldEquipmentSlot::Feet) ||
+        !InRange(Definition.Insulation, 0.0f, 1.0f) ||
+        !InRange(Definition.WaterResistance, 0.0f, 1.0f) ||
+        MaxEquipmentDefinitions <= 0 || MaxEquipmentDefinitions > 1024 ||
+        EquipmentDefinitions.Num() >= MaxEquipmentDefinitions ||
+        FindEquipmentDefinition(Definition.ItemDefinitionId))
+        return false;
+    TSet<FName> SeenCapabilities;
+    for (const FName Capability : Definition.GrantedCapabilityIds)
+    {
+        if (Capability.IsNone() || SeenCapabilities.Contains(Capability))
+            return false;
+        SeenCapabilities.Add(Capability);
+    }
+    EquipmentDefinitions.Add(Definition);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryEquipItem(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    const FGuid& ItemId, int64 ExpectedItemRevision, const FGuid& ExpectedInventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !ItemId.IsValid() || ExpectedItemRevision <= 0 || !ExpectedInventoryOwnerId.IsValid())
+        return false;
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+        return Existing->Action == EWorldSurvivalActionKind::EquipItem &&
+            Existing->EntityId == EntityId && Existing->ItemId == ItemId &&
+            Existing->ExpectedItemOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->ExpectedItemRevision == ExpectedItemRevision;
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!Profile || !Ownership || Profile->Revision != ExpectedProfileRevision ||
+        Profile->Revision >= MAX_int64 - 1 || Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
+        Profile->EquippedItems.Num() >= MaxEquippedItemsPerProfile)
+        return false;
+
+    FWorldOwnedItemRecord Item;
+    const FWorldSurvivalEquipmentDefinition* Definition = nullptr;
+    if (!Ownership->TryGetItem(ItemId, Item) || Item.Revision != ExpectedItemRevision ||
+        Item.Revision >= MAX_int64 - 1 || Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Item.OwnerId != ExpectedInventoryOwnerId || Item.Quantity != 1 ||
+        !Item.MeshVariantSetId.IsNone())
+        return false;
+    Definition = FindEquipmentDefinition(Item.DefinitionId);
+    if (!Definition || Profile->EquippedItems.ContainsByPredicate(
+        [&Definition](const FWorldEquippedItemState& Equipped) { return Equipped.Slot == Definition->Slot; }) ||
+        Profile->EquippedItems.ContainsByPredicate(
+        [&ItemId](const FWorldEquippedItemState& Equipped) { return Equipped.ItemId == ItemId; }))
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory))
+        return false;
+    FGuid OwnerActorId;
+    FGuid PreviousInventoryOwnerId;
+    TArray<FInventoryStack> PreviousInventory;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+    if (PreviousInventoryOwnerId != ExpectedInventoryOwnerId ||
+        !PreviousInventory.ContainsByPredicate([&ItemId](const FInventoryStack& Stack)
+        { return Stack.OwnedWorldItemId == ItemId && Stack.Quantity == 1 && !Stack.ItemId.IsNone(); }))
+        return false;
+
+    TArray<FWorldOwnedItemRecord> PreviousItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransferReceipts;
+    TArray<FWorldItemSplitReceipt> PreviousSplitReceipts;
+    Ownership->ExportSnapshot(PreviousItems, PreviousTransferReceipts, PreviousSplitReceipts);
+
+    FInventoryStack RemovedStack;
+    if (!Inventory->TryRemoveOwnedItemReference(ItemId, RemovedStack))
+        return false;
+    FWorldOwnedItemRecord EquippedItem;
+    if (!Ownership->TryTransferItem(OperationId, ItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Equipped,
+        EntityId, Item.WorldLocation, EquippedItem))
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        if (!bInventoryRestored)
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(TEXT("Equipment inventory rollback failed."));
+        return false;
+    }
+
+    FWorldEquippedItemState Equipped;
+    Equipped.ItemId = ItemId;
+    Equipped.ItemDefinitionId = Item.DefinitionId;
+    Equipped.Slot = Definition->Slot;
+    Equipped.ItemRevision = EquippedItem.Revision;
+    Profile->EquippedItems.Add(Equipped);
+    RecomputeEquipmentProtection(*Profile);
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::EquipItem;
+    Receipt.ItemId = ItemId;
+    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = ExpectedItemRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.ResultingItemRevision = EquippedItem.Revision;
+    Receipt.ItemDefinitionId = Item.DefinitionId;
+    Receipt.EquipmentSlot = Definition->Slot;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryUnequipItem(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    EWorldEquipmentSlot Slot, const FGuid& ExpectedInventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        static_cast<uint8>(Slot) > static_cast<uint8>(EWorldEquipmentSlot::Feet) ||
+        !ExpectedInventoryOwnerId.IsValid())
+        return false;
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+        return Existing->Action == EWorldSurvivalActionKind::UnequipItem &&
+            Existing->EntityId == EntityId && Existing->EquipmentSlot == Slot &&
+            Existing->ExpectedInventoryOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision;
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!Profile || !Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile)
+        return false;
+
+    const int32 EquippedIndex = Profile->EquippedItems.IndexOfByPredicate([Slot](const FWorldEquippedItemState& Equipped)
+        { return Equipped.Slot == Slot; });
+    if (!Profile->EquippedItems.IsValidIndex(EquippedIndex))
+        return false;
+    const FWorldEquippedItemState Equipped = Profile->EquippedItems[EquippedIndex];
+
+    FWorldOwnedItemRecord Item;
+    if (!Ownership->TryGetItem(Equipped.ItemId, Item) ||
+        Item.OwnerKind != EWorldItemOwnerKind::Equipped || Item.OwnerId != EntityId ||
+        Item.Revision != Equipped.ItemRevision || Item.Revision >= MAX_int64 - 1 ||
+        Item.DefinitionId != Equipped.ItemDefinitionId || Item.Quantity != 1)
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid PreviousInventoryOwnerId;
+    TArray<FInventoryStack> PreviousInventory;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+    if (PreviousInventoryOwnerId != ExpectedInventoryOwnerId)
+        return false;
+    TArray<FWorldOwnedItemRecord> PreviousItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousItems, PreviousTransfers, PreviousSplits);
+
+    FWorldOwnedItemRecord InventoryItem;
+    if (!Ownership->TryTransferItem(OperationId, Item.ItemId, Item.Revision,
+        EWorldItemOwnerKind::Equipped, EWorldItemOwnerKind::Inventory,
+        ExpectedInventoryOwnerId, Item.WorldLocation, InventoryItem))
+        return false;
+
+    FInventoryStack Stack;
+    Stack.ItemId = InventoryItem.DefinitionId;
+    Stack.Quantity = 1;
+    Stack.MaxStack = 1;
+    Stack.OwnedWorldItemId = InventoryItem.ItemId;
+    if (!Inventory->TryAddItem(Stack))
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            PreviousItems, PreviousTransfers, PreviousSplits);
+        if (!bInventoryRestored || !bOwnershipRestored)
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(TEXT("Equipment unequip rollback failed."));
+        return false;
+    }
+
+    Profile->EquippedItems.RemoveAt(EquippedIndex);
+    RecomputeEquipmentProtection(*Profile);
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::UnequipItem;
+    Receipt.ItemId = Item.ItemId;
+    Receipt.ExpectedInventoryOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = Item.Revision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.ResultingItemRevision = InventoryItem.Revision;
+    Receipt.ItemDefinitionId = Item.DefinitionId;
+    Receipt.EquipmentSlot = Slot;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::RegisterDiscoveryDefinition(
+    const FWorldDiscoveryDefinition& Definition)
+{
+    if (Definition.DiscoveryId.IsNone() || MaxDiscoveryDefinitions <= 0 ||
+        MaxDiscoveryDefinitions > 4096 || DiscoveryDefinitions.Num() >= MaxDiscoveryDefinitions ||
+        MaxDiscoveryRecords <= 0 || MaxDiscoveryRecords > 16384 ||
+        FindDiscoveryDefinition(Definition.DiscoveryId) ||
+        Definition.PrerequisiteDiscoveryIds.Contains(Definition.DiscoveryId))
+        return false;
+
+    TSet<FName> SeenPrerequisites;
+    for (const FName Required : Definition.PrerequisiteDiscoveryIds)
+    {
+        if (Required.IsNone() || SeenPrerequisites.Contains(Required) ||
+            !FindDiscoveryDefinition(Required))
+            return false;
+        SeenPrerequisites.Add(Required);
+    }
+    TSet<FName> SeenEquipment;
+    for (const FName Required : Definition.RequiredEquipmentDefinitionIds)
+    {
+        if (Required.IsNone() || SeenEquipment.Contains(Required) ||
+            !FindEquipmentDefinition(Required))
+            return false;
+        SeenEquipment.Add(Required);
+    }
+    TSet<FName> SeenUnlocks;
+    for (const FName Unlock : Definition.UnlockedDefinitionIds)
+    {
+        if (Unlock.IsNone() || SeenUnlocks.Contains(Unlock))
+            return false;
+        SeenUnlocks.Add(Unlock);
+    }
+    DiscoveryDefinitions.Add(Definition);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    FName DiscoveryId, FVector Location, double LogicalTimeSeconds)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        DiscoveryId.IsNone() || Location.ContainsNaN() || !FMath::IsFinite(LogicalTimeSeconds) ||
+        LogicalTimeSeconds < 0.0)
+        return false;
+
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+        return Existing->Action == EWorldSurvivalActionKind::RecordDiscovery &&
+            Existing->EntityId == EntityId && Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->DiscoveryId == DiscoveryId &&
+            Existing->RequestedLocation.Equals(Location, 0.001f) &&
+            FMath::IsNearlyEqual(Existing->RequestedDiscoveryTimeSeconds, LogicalTimeSeconds, 0.001);
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    const FWorldDiscoveryDefinition* Definition = FindDiscoveryDefinition(DiscoveryId);
+    if (!Profile || !Definition || Profile->Revision != ExpectedProfileRevision ||
+        Profile->Revision >= MAX_int64 - 1 || Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
+        MaxDiscoveryRecords <= 0 || Discoveries.Num() >= MaxDiscoveryRecords)
+        return false;
+
+    for (const FName RequiredDiscovery : Definition->PrerequisiteDiscoveryIds)
+    {
+        if (!Discoveries.ContainsByPredicate([RequiredDiscovery](const FWorldDiscoveryRecord& Record)
+            { return Record.DiscoveryId == RequiredDiscovery; }))
+            return false;
+    }
+    for (const FName RequiredEquipment : Definition->RequiredEquipmentDefinitionIds)
+    {
+        if (!Profile->EquippedItems.ContainsByPredicate([RequiredEquipment](const FWorldEquippedItemState& Equipped)
+            { return Equipped.ItemDefinitionId == RequiredEquipment; }))
+            return false;
+    }
+
+    FWorldDiscoveryRecord* ExistingRecord = Discoveries.FindByPredicate([DiscoveryId](const FWorldDiscoveryRecord& Record)
+        { return Record.DiscoveryId == DiscoveryId; });
+    if (ExistingRecord)
+    {
+        // A single-player discovery is globally permanent. Reconciliation may
+        // add the authored unlock set when migrating a legacy bare discovery.
+        for (const FName Unlock : Definition->UnlockedDefinitionIds)
+            if (!ExistingRecord->UnlockedDefinitionIds.Contains(Unlock))
+                ExistingRecord->UnlockedDefinitionIds.Add(Unlock);
+    }
+    else
+    {
+        FWorldDiscoveryRecord& Record = Discoveries.AddDefaulted_GetRef();
+        Record.DiscoveryId = DiscoveryId;
+        Record.Location = Location;
+        Record.DiscoveredAtTime = LogicalTimeSeconds;
+        Record.EntityId = EntityId;
+        Record.OperationId = OperationId;
+        Record.UnlockedDefinitionIds = Definition->UnlockedDefinitionIds;
+    }
+
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::RecordDiscovery;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.DiscoveryId = DiscoveryId;
+    Receipt.RequestedLocation = Location;
+    Receipt.RequestedDiscoveryTimeSeconds = LogicalTimeSeconds;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::IsDefinitionUnlocked(const FGuid& EntityId, FName DefinitionId) const
+{
+    if (!EntityId.IsValid() || DefinitionId.IsNone())
+        return false;
+    return Discoveries.ContainsByPredicate([EntityId, DefinitionId](const FWorldDiscoveryRecord& Record)
+    {
+        return (Record.EntityId.IsValid() ? Record.EntityId == EntityId : true) &&
+            Record.UnlockedDefinitionIds.Contains(DefinitionId);
+    });
+}
+
 bool UWorldSurvivalSubsystem::ConsumeFood(const FGuid& EntityId, float Kcal, float ThirstRelief)
 {
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
