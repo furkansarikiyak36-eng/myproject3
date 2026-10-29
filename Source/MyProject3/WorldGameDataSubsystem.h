@@ -32,6 +32,8 @@ struct FGameDataItem
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") bool bConsumable = false;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") bool bFuel = false;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") bool bEquipment = false;
+    /** Relative work strength used by player-facing axe/dig tool actions; zero for non-tools. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData", meta=(ClampMin="0.0", ClampMax="10.0")) float ToolStrength = 0.0f;
 };
 
 /** One transformation of the plan (Config/GameData/transformations.json). */
@@ -110,6 +112,8 @@ public:
     UFUNCTION(BlueprintPure, Category="GameData") FString GetLastError() const { return LastError; }
 
     const TMap<FName, FGameDataItem>& GetItems() const { return Items; }
+    /** Returns the authored strength for a loaded item categorized as Tool. */
+    bool GetToolStrength(FName ItemId, float& OutStrength) const;
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
