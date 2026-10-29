@@ -205,13 +205,48 @@ ALogBuildPiece* SpawnLogCopy(ALogBuildPiece* Source, const FTransform& Transform
         nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
     if (!Copy)
         return nullptr;
-    Copy->BaseDefinitionId = Source->BaseDefinitionId;
-    Copy->bHasCustomLengthScale = Source->bHasCustomLengthScale;
-    Copy->ProcessingMeshSets = Source->ProcessingMeshSets;
-    Copy->SelectedProcessingMeshSetId = Source->SelectedProcessingMeshSetId;
-    Copy->LongitudinalAxis = Source->LongitudinalAxis;
-    Copy->SetPieceStaticMesh(SourceMesh->GetStaticMesh());
+    auto CopyGeometryConfiguration = [Source, Copy, SourceMesh]()
+    {
+        Copy->BaseDefinitionId = Source->BaseDefinitionId;
+        Copy->bHasCustomLengthScale = Source->bHasCustomLengthScale;
+        Copy->PieceType = Source->PieceType;
+        Copy->LengthFraction = Source->LengthFraction;
+        Copy->CrossSectionProfile = Source->CrossSectionProfile;
+        Copy->bUseCanonicalGeometryDimensions = Source->bUseCanonicalGeometryDimensions;
+        Copy->ProcessingMeshSets = Source->ProcessingMeshSets;
+        Copy->SelectedProcessingMeshSetId = Source->SelectedProcessingMeshSetId;
+        Copy->BaseLogVariantMesh = Source->BaseLogVariantMesh;
+        Copy->BaseLogVariantLengthFraction = Source->BaseLogVariantLengthFraction;
+        Copy->GeometryVariantMeshes = Source->GeometryVariantMeshes;
+        Copy->LengthCutVariants = Source->LengthCutVariants;
+        Copy->SplitHalfVariantMesh = Source->SplitHalfVariantMesh;
+        Copy->SplitHalfPieceCenterOffsetLocal = Source->SplitHalfPieceCenterOffsetLocal;
+        Copy->SplitHalfChildRotationOffsetLocal = Source->SplitHalfChildRotationOffsetLocal;
+        Copy->QuarterVariantMesh = Source->QuarterVariantMesh;
+        Copy->QuarterPieceCenterOffsetLocal = Source->QuarterPieceCenterOffsetLocal;
+        Copy->QuarterChildRotationOffsetLocal = Source->QuarterChildRotationOffsetLocal;
+        Copy->HewnVariantMesh = Source->HewnVariantMesh;
+        Copy->GutterVariantMesh = Source->GutterVariantMesh;
+        Copy->TroughVariantMesh = Source->TroughVariantMesh;
+        Copy->KalasVariantMesh = Source->KalasVariantMesh;
+        Copy->PlankVariantMesh = Source->PlankVariantMesh;
+        Copy->LongitudinalAxis = Source->LongitudinalAxis;
+        Copy->bAutoGenerateEndSnapPoints = Source->bAutoGenerateEndSnapPoints;
+        Copy->DefaultEndSnapTag = Source->DefaultEndSnapTag;
+        Copy->bAutoGenerateSideSnapPoints = Source->bAutoGenerateSideSnapPoints;
+        Copy->SideSnapSpacing = Source->SideSnapSpacing;
+        Copy->SideSnapTag = Source->SideSnapTag;
+        Copy->bCanBeCarried = Source->bCanBeCarried;
+        Copy->SnapPoints = Source->SnapPoints;
+        Copy->SetPieceStaticMesh(SourceMesh->GetStaticMesh());
+    };
+    CopyGeometryConfiguration();
     Copy->FinishSpawning(Transform);
+    if (!IsValid(Copy))
+        return nullptr;
+    // Construction scripts may restore defaults, so the spawned offcut must
+    // retain the exact source mesh-family/recipe configuration afterward too.
+    CopyGeometryConfiguration();
     Copy->SetActorScale3D(Transform.GetScale3D());
     if (UMaterialInterface* Material = SourceMesh->GetMaterial(0))
         Copy->GetLogMesh()->SetMaterial(0, Material);
@@ -221,27 +256,22 @@ ALogBuildPiece* SpawnLogCopy(ALogBuildPiece* Source, const FTransform& Transform
 bool TrimLogToRange(ALogBuildPiece* Log, float FromAlong, float ToAlong)
 {
     FLogGeometry Geometry;
-    if (!GetLogGeometry(Log, Geometry))
+    if (!GetLogGeometry(Log, Geometry) || !FMath::IsFinite(FromAlong) ||
+        !FMath::IsFinite(ToAlong) || Geometry.Length() <= KINDA_SMALL_NUMBER)
         return false;
+
     const float From = FMath::Clamp(FMath::Min(FromAlong, ToAlong), -Geometry.HalfLength, Geometry.HalfLength);
     const float To = FMath::Clamp(FMath::Max(FromAlong, ToAlong), -Geometry.HalfLength, Geometry.HalfLength);
     const float NewLength = To - From;
-    if (NewLength < 5.0f)
+    if (!FMath::IsFinite(NewLength) || NewLength < 5.0f)
         return false;
 
-    const FVector NewCentre = Geometry.Centre + Geometry.Axis * (0.5f * (From + To));
-    const FVector AxisLocal = AxisVector(Log->LongitudinalAxis).GetAbs();
-    const float Factor = NewLength / Geometry.Length();
-    FVector Scale = Log->GetActorScale3D();
-    Scale = Scale * (FVector::OneVector - AxisLocal) + Scale * AxisLocal * Factor;
-    if (!FMath::IsNearlyEqual(Factor, 1.0f, 0.001f))
-        Log->bHasCustomLengthScale = true;
-    const FQuat Rotation = Log->GetActorQuat();
-    const FVector Origin = Log->GetLogMesh()->GetStaticMesh()->GetBounds().Origin;
-    Log->SetActorScale3D(Scale);
-    Log->SetActorLocation(NewCentre - Rotation.RotateVector(Origin * Scale), false, nullptr,
-        ETeleportType::TeleportPhysics);
-    return true;
+    // A static-mesh scale change is not a geometric cut: it stretches the bark,
+    // end grain and collision together, while leaving no truthful length recipe.
+    // Exact processing actions use authored output meshes through LogBuildPiece;
+    // arbitrary build/opening cuts must wait for a real mesh-slicing pipeline.
+    return FMath::IsNearlyEqual(From, -Geometry.HalfLength, 0.5f) &&
+        FMath::IsNearlyEqual(To, Geometry.HalfLength, 0.5f);
 }
 
 ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVector& DropLocation)
