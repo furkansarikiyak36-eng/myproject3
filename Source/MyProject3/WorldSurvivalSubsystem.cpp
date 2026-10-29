@@ -1154,8 +1154,13 @@ bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
 
     for (const FName RequiredDiscovery : Definition->PrerequisiteDiscoveryIds)
     {
-        if (!Discoveries.ContainsByPredicate([RequiredDiscovery](const FWorldDiscoveryRecord& Record)
-            { return Record.DiscoveryId == RequiredDiscovery; }))
+        const bool bPrerequisiteRecordedForEntity = Discoveries.ContainsByPredicate(
+            [RequiredDiscovery, EntityId](const FWorldDiscoveryRecord& Record)
+            {
+                return Record.DiscoveryId == RequiredDiscovery &&
+                    (!Record.EntityId.IsValid() || Record.EntityId == EntityId);
+            });
+        if (!bPrerequisiteRecordedForEntity)
             return false;
     }
     for (const FName RequiredEquipment : Definition->RequiredEquipmentDefinitionIds)
@@ -1165,14 +1170,20 @@ bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
             return false;
     }
 
-    FWorldDiscoveryRecord* ExistingRecord = Discoveries.FindByPredicate([DiscoveryId](const FWorldDiscoveryRecord& Record)
-        { return Record.DiscoveryId == DiscoveryId; });
+    // Player-owned discoveries are independent. A legacy record with no entity
+    // identity remains world-global and continues to satisfy any player's gate.
+    FWorldDiscoveryRecord* ExistingRecord = Discoveries.FindByPredicate(
+        [DiscoveryId, EntityId](const FWorldDiscoveryRecord& Record)
+        {
+            return Record.DiscoveryId == DiscoveryId &&
+                (!Record.EntityId.IsValid() || Record.EntityId == EntityId);
+        });
     if (!ExistingRecord && Discoveries.Num() >= MaxDiscoveryRecords)
         return false;
     if (ExistingRecord)
     {
-        // A single-player discovery is globally permanent. Reconciliation may
-        // add the authored unlock set when migrating a legacy bare discovery.
+        // Legacy/global records may lack the configured unlock payload; reconcile
+        // those in place without cloning a global discovery into a player record.
         for (const FName Unlock : Definition->UnlockedDefinitionIds)
             if (!ExistingRecord->UnlockedDefinitionIds.Contains(Unlock))
                 ExistingRecord->UnlockedDefinitionIds.Add(Unlock);
@@ -1636,10 +1647,12 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
             bNeedsOwnershipValidation = true;
     }
 
-    TSet<FName> SeenDiscoveries;
+    TSet<FString> SeenDiscoveries;
     for (const FWorldDiscoveryRecord& D : DiscoverySnapshot)
     {
-        if (D.DiscoveryId.IsNone() || SeenDiscoveries.Contains(D.DiscoveryId) ||
+        const FString DiscoveryKey = D.DiscoveryId.ToString() + TEXT("|") +
+            (D.EntityId.IsValid() ? D.EntityId.ToString() : TEXT("GLOBAL"));
+        if (D.DiscoveryId.IsNone() || SeenDiscoveries.Contains(DiscoveryKey) ||
             D.Location.ContainsNaN() || !FMath::IsFinite(D.DiscoveredAtTime) ||
             D.DiscoveredAtTime < 0.0 ||
             (D.EntityId.IsValid() != D.OperationId.IsValid()))
@@ -1660,12 +1673,16 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
                 return false;
             for (const FName Prerequisite : Definition->PrerequisiteDiscoveryIds)
             {
-                if (!DiscoverySnapshot.ContainsByPredicate([Prerequisite](const FWorldDiscoveryRecord& Candidate)
-                    { return Candidate.DiscoveryId == Prerequisite; }))
+                if (!DiscoverySnapshot.ContainsByPredicate([Prerequisite, &D](const FWorldDiscoveryRecord& Candidate)
+                    {
+                        return Candidate.DiscoveryId == Prerequisite &&
+                            (!Candidate.EntityId.IsValid() ||
+                                (D.EntityId.IsValid() && Candidate.EntityId == D.EntityId));
+                    }))
                     return false;
             }
         }
-        SeenDiscoveries.Add(D.DiscoveryId);
+        SeenDiscoveries.Add(DiscoveryKey);
     }
 
     // Validate saved equipment ownership and all item-bound action receipts
