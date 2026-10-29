@@ -884,8 +884,8 @@ bool UWorldAgricultureSubsystem::TryFeedAnimal(
     FWorldOwnedItemRecord FeedItem;
     if (!Animal || !Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
         Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
-        Animal->LifecycleState == EWorldAnimalLifecycleState::Wild ||
-        Animal->LifecycleState == EWorldAnimalLifecycleState::Slaughtered ||
+        (Animal->LifecycleState != EWorldAnimalLifecycleState::Managed &&
+         Animal->LifecycleState != EWorldAnimalLifecycleState::Penned) ||
         Animal->Health <= 0.0f || Animal->FeedDefinitionId.IsNone() ||
         Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
         !Ownership->TryGetItem(FeedItemId, FeedItem) ||
@@ -1128,6 +1128,8 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
     for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
     {
         const FWorldAnimalState& Animal = Pair.Value;
+        if (Animal.LifecycleState == EWorldAnimalLifecycleState::Slaughtered)
+            continue; // Slaughtered records remain as history and no longer simulate.
         if (Animal.Revision >= MAX_int64 - 1 ||
             !FMath::IsFinite(Animal.ProductProgressSeconds) ||
             Animal.ProductProgressSeconds < 0.0 || Animal.ProductProgressSeconds >= 3600.0 ||
@@ -1196,6 +1198,8 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
     for (TPair<FGuid, FWorldAnimalState>& Pair : Animals)
     {
         FWorldAnimalState& Animal = Pair.Value;
+        if (Animal.LifecycleState == EWorldAnimalLifecycleState::Slaughtered)
+            continue; // Keep the slaughtered state and revision immutable.
         Animal.Hunger = FMath::Clamp(Animal.Hunger + HungerPerHour *
             static_cast<float>(DeltaSeconds / 3600.0), 0.0f, 100.0f);
         if (Animal.Hunger >= 80.0f)
