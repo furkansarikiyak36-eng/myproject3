@@ -1494,6 +1494,25 @@ void UWorldSurvivalSubsystem::ExportSnapshot(
     OutSeverity = WeatherSeverity;
 }
 
+bool UWorldSurvivalSubsystem::HasEquippedCapability(
+    const FGuid& EntityId, FName CapabilityId) const
+{
+    if (!EntityId.IsValid() || CapabilityId.IsNone())
+        return false;
+    const FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile)
+        return false;
+    for (const FWorldEquippedItemState& Equipped : Profile->EquippedItems)
+    {
+        const FWorldSurvivalEquipmentDefinition* Definition =
+            FindEquipmentDefinition(Equipped.ItemDefinitionId);
+        if (Definition && Definition->Slot == Equipped.Slot &&
+            Definition->GrantedCapabilityIds.Contains(CapabilityId))
+            return true;
+    }
+    return false;
+}
+
 bool UWorldSurvivalSubsystem::RestoreSnapshot(
     const TArray<FWorldSurvivalProfile>& ProfileSnapshot,
     const TArray<FWorldDiscoveryRecord>& DiscoverySnapshot,
