@@ -290,13 +290,22 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         const double HarvestUnitsValue = NumberField(Entry, TEXT("units"), 1.0);
         const double HoursPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0);
         const double SeedReturnValue = NumberField(Entry, TEXT("seed_return_units"), 1.0);
+        const double FoundInZoneValue = NumberField(Entry, TEXT("found_in_zone"), 0.0);
+        if (!FMath::IsFinite(HarvestUnitsValue) || FMath::FloorToDouble(HarvestUnitsValue) != HarvestUnitsValue ||
+            HarvestUnitsValue < 1.0 || HarvestUnitsValue > 64.0 ||
+            !FMath::IsFinite(HoursPerStage) || HoursPerStage <= 0.0 ||
+            !FMath::IsFinite(SeedReturnValue) || FMath::FloorToDouble(SeedReturnValue) != SeedReturnValue ||
+            SeedReturnValue < 0.0 || SeedReturnValue > 64.0 ||
+            !FMath::IsFinite(FoundInZoneValue) || FMath::FloorToDouble(FoundInZoneValue) != FoundInZoneValue ||
+            FoundInZoneValue < 0.0 || FoundInZoneValue > static_cast<double>(MAX_int32))
+            return Fail(FString::Printf(TEXT("Crop %s has invalid numeric fields"), *Crop.Id.ToString()));
         Crop.HarvestUnits = static_cast<int32>(HarvestUnitsValue);
         Crop.SecondsPerStage = HoursPerStage * 3600.0;
         Crop.SeedReturnUnits = static_cast<int32>(SeedReturnValue);
         Crop.SoilExhaustionPerHarvest = static_cast<float>(NumberField(Entry, TEXT("soil_exhaustion_per_harvest"), 10.0));
         Crop.MinimumFertility = static_cast<float>(NumberField(Entry, TEXT("minimum_fertility"), 10.0));
         Crop.MaximumPlantWeedPressure = static_cast<float>(NumberField(Entry, TEXT("maximum_plant_weed_pressure"), 0.75));
-        Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
+        Crop.FoundInZone = static_cast<int32>(FoundInZoneValue);
 
         const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months"));
         TSet<int32> SeenPlantMonths;
