@@ -545,10 +545,18 @@ bool ULogBuildToolsComponent::TryPlaceDeck(AActor* Support, const FVector& AimPo
     FString Note;
     if (Shape.Length() > Fit * 1.15f)
     {
-        if (CutOffRemainder(Board, Fit, GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f))
+        if (!CutOffRemainder(Board, Fit,
+            GetOwner()->GetActorLocation() + GetOwner()->GetActorForwardVector() * 80.0f))
         {
-            Note = FString::Printf(TEXT(" Cut to %.0f cm."), Fit);
-            ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs, Transform, Second, Span, Reason);
+            SetStatus(TEXT("Placement rejected: the required deck length has no exact authored cut geometry."));
+            return true;
+        }
+        Note = FString::Printf(TEXT(" Cut to %.0f cm."), Fit);
+        if (!ComputeDeckPlacement(Board, Support, AimPoint, ViewDirection, bStairs,
+            Transform, Second, Span, Reason))
+        {
+            SetStatus(Reason);
+            return true;
         }
     }
     if (!Carry->CommitHeldLogAt(Transform, Support, Second))
