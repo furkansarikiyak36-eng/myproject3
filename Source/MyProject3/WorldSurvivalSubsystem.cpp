@@ -1268,7 +1268,16 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
         RestStaminaRecoveryPerHour < 0.0f || RestStaminaRecoveryPerHour > 200.0f ||
         MaxActionReceiptsPerProfile <= 0 || MaxActionReceiptsPerProfile > 4096 ||
         MaxConsumableDefinitions <= 0 || MaxConsumableDefinitions > 4096 ||
-        ConsumableDefinitions.Num() > MaxConsumableDefinitions)
+        ConsumableDefinitions.Num() > MaxConsumableDefinitions ||
+        MaxConditionDefinitions <= 0 || MaxConditionDefinitions > 1024 ||
+        ConditionDefinitions.Num() > MaxConditionDefinitions ||
+        MaxEquipmentDefinitions <= 0 || MaxEquipmentDefinitions > 1024 ||
+        EquipmentDefinitions.Num() > MaxEquipmentDefinitions ||
+        MaxEquippedItemsPerProfile <= 0 || MaxEquippedItemsPerProfile > 5 ||
+        MaxDiscoveryDefinitions <= 0 || MaxDiscoveryDefinitions > 4096 ||
+        DiscoveryDefinitions.Num() > MaxDiscoveryDefinitions ||
+        MaxDiscoveryRecords <= 0 || MaxDiscoveryRecords > 16384 ||
+        MaxDiscoveryReceiptsPerProfile <= 0 || MaxDiscoveryReceiptsPerProfile > 8192)
         return false;
     TSet<FName> SeenDefinitions;
     for (const FWorldSurvivalConsumableDefinition& Definition : ConsumableDefinitions)
@@ -1283,9 +1292,59 @@ bool UWorldSurvivalSubsystem::CanAdvanceSurvivalStep(
             return false;
         SeenDefinitions.Add(Definition.DefinitionId);
     }
+
+    TSet<FName> SeenConditionDefinitions;
+    for (const FWorldSurvivalConditionDefinition& Definition : ConditionDefinitions)
+    {
+        if (Definition.DefinitionId.IsNone() || SeenConditionDefinitions.Contains(Definition.DefinitionId) ||
+            static_cast<uint8>(Definition.Kind) > static_cast<uint8>(EWorldSurvivalConditionKind::Poisoning) ||
+            !InRange(Definition.HealthLossPerHour, 0.0f, 100.0f) ||
+            !InRange(Definition.FatiguePerHour, 0.0f, 100.0f) ||
+            !InRange(Definition.StaminaLossPerHour, 0.0f, 100.0f) ||
+            !FMath::IsFinite(Definition.DurationSeconds) ||
+            Definition.DurationSeconds < 0.0 || Definition.DurationSeconds > 604800.0 ||
+            !InRange(Definition.TreatmentHealthRecovery, 0.0f, 100.0f))
+            return false;
+        SeenConditionDefinitions.Add(Definition.DefinitionId);
+    }
+
+    TSet<FName> SeenEquipmentDefinitions;
+    for (const FWorldSurvivalEquipmentDefinition& Definition : EquipmentDefinitions)
+    {
+        if (Definition.ItemDefinitionId.IsNone() || SeenEquipmentDefinitions.Contains(Definition.ItemDefinitionId) ||
+            static_cast<uint8>(Definition.Slot) > static_cast<uint8>(EWorldEquipmentSlot::Feet) ||
+            !InRange(Definition.Insulation, 0.0f, 1.0f) ||
+            !InRange(Definition.WaterResistance, 0.0f, 1.0f))
+            return false;
+        SeenEquipmentDefinitions.Add(Definition.ItemDefinitionId);
+    }
+
+    TSet<FName> SeenDiscoveryDefinitions;
+    for (const FWorldDiscoveryDefinition& Definition : DiscoveryDefinitions)
+    {
+        if (Definition.DiscoveryId.IsNone() || SeenDiscoveryDefinitions.Contains(Definition.DiscoveryId))
+            return false;
+        TSet<FName> SeenPrerequisites;
+        for (const FName Required : Definition.PrerequisiteDiscoveryIds)
+        {
+            if (Required.IsNone() || Required == Definition.DiscoveryId ||
+                SeenPrerequisites.Contains(Required))
+                return false;
+            SeenPrerequisites.Add(Required);
+        }
+        TSet<FName> SeenUnlocks;
+        for (const FName Unlock : Definition.UnlockedDefinitionIds)
+        {
+            if (Unlock.IsNone() || SeenUnlocks.Contains(Unlock))
+                return false;
+            SeenUnlocks.Add(Unlock);
+        }
+        SeenDiscoveryDefinitions.Add(Definition.DiscoveryId);
+    }
+
     if (LogicalTimeSeconds < DeltaSeconds) return false;
     for (const TPair<FGuid, FWorldSurvivalProfile>& Pair : Profiles)
-        if (Pair.Value.Revision >= MAX_int64 - 1) return false;
+        if (Pair.Value.Revision >= MAX_int64 - 1 || !IsValidProfile(Pair.Value)) return false;
     return true;
 }
 
@@ -1339,7 +1398,9 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         P.Hunger = 100.0f * (1.0f - P.CaloriesKcal / MaxCaloriesKcal);
 
         if (Weather == EWorldWeatherState::Rain || Weather == EWorldWeatherState::Storm)
-            P.Wetness = FMath::Clamp(P.Wetness + WeatherSeverity * (1.0f - P.ShelterProtection) * Hours * 0.2f, 0.0f, 1.0f);
+            P.Wetness = FMath::Clamp(P.Wetness + WeatherSeverity *
+                (1.0f - P.ShelterProtection) * (1.0f - P.ClothingWaterResistance) *
+                Hours * 0.2f, 0.0f, 1.0f);
         // Warmth dries clothing faster.
         const float DryingBoost = FMath::Max(0.0f, P.FeltTemperatureCelsius - ComfortTemperatureCelsius) * 0.01f;
         P.Wetness = FMath::Max(0.0f, P.Wetness - Hours * (0.05f + P.ShelterProtection * 0.25f + DryingBoost));
@@ -1349,6 +1410,34 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         P.Stamina = FMath::Clamp(P.Stamina +
             (P.Fatigue < 50.0f ? 2.0f : -2.0f) * Hours +
             RestStaminaRecoveryPerHour * RestHours, 0.0f, 100.0f);
+
+        for (int32 ConditionIndex = P.Conditions.Num() - 1; ConditionIndex >= 0; --ConditionIndex)
+        {
+            const FWorldSurvivalConditionState& Condition = P.Conditions[ConditionIndex];
+            const FWorldSurvivalConditionDefinition* Definition =
+                FindConditionDefinition(Condition.DefinitionId);
+            // CanAdvanceSurvivalStep validated the profile and every registered
+            // definition before any heat/fuel/profile state changes.
+            const double ActiveEnd = Condition.EndsAtWorldTimeSeconds > 0.0
+                ? FMath::Min(LogicalTimeSeconds, Condition.EndsAtWorldTimeSeconds)
+                : LogicalTimeSeconds;
+            const double ActiveStart = FMath::Max(PreviousLogicalTimeSeconds, Condition.StartedAtWorldTimeSeconds);
+            const double ActiveSeconds = FMath::Max(0.0, ActiveEnd - ActiveStart);
+            const float ConditionHours = static_cast<float>(ActiveSeconds / 3600.0);
+            if (Definition && ConditionHours > 0.0f)
+            {
+                const float Severity = Condition.Severity;
+                P.Health = FMath::Max(0.0f,
+                    P.Health - Definition->HealthLossPerHour * Severity * ConditionHours);
+                P.Fatigue = FMath::Clamp(
+                    P.Fatigue + Definition->FatiguePerHour * Severity * ConditionHours, 0.0f, 100.0f);
+                P.Stamina = FMath::Clamp(
+                    P.Stamina - Definition->StaminaLossPerHour * Severity * ConditionHours, 0.0f, 100.0f);
+            }
+            if (Condition.EndsAtWorldTimeSeconds > 0.0 &&
+                Condition.EndsAtWorldTimeSeconds <= LogicalTimeSeconds)
+                P.Conditions.RemoveAt(ConditionIndex);
+        }
         ++P.Revision;
     }
     return true;
