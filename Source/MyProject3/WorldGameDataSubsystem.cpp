@@ -103,6 +103,18 @@ namespace
         return false;
     }
 
+    bool ToFieldActionKind(FName ActionName, EWorldFieldActionKind& Out)
+    {
+        if (ActionName == TEXT("Clear")) { Out = EWorldFieldActionKind::Clear; return true; }
+        if (ActionName == TEXT("Till")) { Out = EWorldFieldActionKind::Till; return true; }
+        if (ActionName == TEXT("Fertilize")) { Out = EWorldFieldActionKind::Fertilize; return true; }
+        if (ActionName == TEXT("Water")) { Out = EWorldFieldActionKind::Water; return true; }
+        if (ActionName == TEXT("Weed")) { Out = EWorldFieldActionKind::Weed; return true; }
+        if (ActionName == TEXT("Mulch")) { Out = EWorldFieldActionKind::Mulch; return true; }
+        if (ActionName == TEXT("Fence")) { Out = EWorldFieldActionKind::Fence; return true; }
+        return false;
+    }
+
     EInventoryItemCategory ToCategory(FName Category)
     {
         if (Category == TEXT("Tool")) return EInventoryItemCategory::Tool;
@@ -129,12 +141,13 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, FieldActionsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("field_actions.json"), FieldActionsJson, Error) ||
         !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
         !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
         !ReadJson(Directory, TEXT("events.json"), EventsJson, Error) ||
@@ -287,6 +300,75 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         EWorldEquipmentSlot Slot;
         if (!ToSlot(E.Slot, Slot))
             return Fail(FString::Printf(TEXT("Equipment %s has an unknown slot"), *E.ItemId.ToString()));
+    }
+
+    TArray<FGameDataFieldAction> NewFieldActions;
+    const TArray<TSharedPtr<FJsonValue>>* FieldActionValues =
+        ArrayField(FieldActionsJson, TEXT("field_actions"));
+    if (!FieldActionValues || FieldActionValues->Num() != 7)
+        return Fail(TEXT("field_actions.json must define all seven field actions"));
+
+    TSet<FName> FieldActionIds;
+    TSet<uint8> FieldActionKinds;
+    for (const TSharedPtr<FJsonValue>& Value : *FieldActionValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataFieldAction Action;
+        Action.Id = NameField(Entry, TEXT("id"));
+        const FName ActionName = NameField(Entry, TEXT("action"));
+        if (!ToFieldActionKind(ActionName, Action.Action))
+            return Fail(FString::Printf(TEXT("Field action %s has unknown action type %s"),
+                *Action.Id.ToString(), *ActionName.ToString()));
+        Action.Inputs = Amounts(Entry, TEXT("inputs"));
+        Action.Amount = static_cast<float>(NumberField(Entry, TEXT("amount"), 0.0));
+        Action.LaborSeconds = NumberField(Entry, TEXT("labor_seconds"), 0.0);
+
+        if (!ArrayField(Entry, TEXT("inputs")) || !ArrayField(Entry, TEXT("tools")))
+            return Fail(FString::Printf(TEXT("Field action %s requires inputs and tools arrays"),
+                *Action.Id.ToString()));
+        const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, TEXT("tools"));
+        TSet<FName> SeenTools;
+        for (const TSharedPtr<FJsonValue>& ToolValue : *Tools)
+        {
+            if (!ToolValue.IsValid() || ToolValue->Type != EJson::String)
+                return Fail(FString::Printf(TEXT("Field action %s has malformed tool IDs"),
+                    *Action.Id.ToString()));
+            const FName ToolId(*ToolValue->AsString());
+            const FGameDataItem* ToolDefinition = NewItems.Find(ToolId);
+            if (!ToolDefinition || ToolDefinition->Category != TEXT("Tool") ||
+                SeenTools.Contains(ToolId))
+                return Fail(FString::Printf(TEXT("Field action %s has unknown/duplicate tool %s"),
+                    *Action.Id.ToString(), *ToolId.ToString()));
+            SeenTools.Add(ToolId);
+            Action.RequiredTools.Add(ToolId);
+        }
+
+        TSet<FName> SeenInputs;
+        for (const FGameDataItemAmount& Input : Action.Inputs)
+        {
+            if (Input.ItemId.IsNone() || Input.Quantity <= 0 || Input.Quantity > 64 ||
+                !NewItems.Contains(Input.ItemId) || SeenInputs.Contains(Input.ItemId))
+                return Fail(FString::Printf(TEXT("Field action %s has invalid input %s"),
+                    *Action.Id.ToString(), *Input.ItemId.ToString()));
+            SeenInputs.Add(Input.ItemId);
+        }
+
+        const bool bNeedsAmount = Action.Action == EWorldFieldActionKind::Fertilize ||
+            Action.Action == EWorldFieldActionKind::Water ||
+            Action.Action == EWorldFieldActionKind::Weed ||
+            Action.Action == EWorldFieldActionKind::Mulch;
+        if (Action.Id.IsNone() || FieldActionIds.Contains(Action.Id) ||
+            FieldActionKinds.Contains(static_cast<uint8>(Action.Action)) ||
+            !FMath::IsFinite(Action.Amount) || Action.Amount < 0.0f || Action.Amount > 1.0f ||
+            (bNeedsAmount && Action.Amount <= 0.0f) ||
+            (!bNeedsAmount && Action.Amount != 0.0f) ||
+            !FMath::IsFinite(Action.LaborSeconds) || Action.LaborSeconds < 1.0 ||
+            Action.LaborSeconds > 7200.0)
+            return Fail(FString::Printf(TEXT("Bad/duplicate field action %s"), *Action.Id.ToString()));
+
+        FieldActionIds.Add(Action.Id);
+        FieldActionKinds.Add(static_cast<uint8>(Action.Action));
+        NewFieldActions.Add(Action);
     }
 
     TArray<FGameDataZone> NewZones;
@@ -587,6 +669,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
+    FieldActions = MoveTemp(NewFieldActions);
     Zones = MoveTemp(NewZones);
     Discoveries = MoveTemp(TopologicalDiscoveries);
     WorldEvents = MoveTemp(NewWorldEvents);
@@ -761,6 +844,26 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
     Climate->Months = ClimateMonths;
 
     // The crop list is data, not a placeholder registration hidden in a demo actor.
+    for (const FGameDataFieldAction& Action : FieldActions)
+    {
+        FWorldFieldActionDefinition Definition;
+        Definition.Id = Action.Id;
+        Definition.Action = Action.Action;
+        Definition.Amount = Action.Amount;
+        Definition.LaborSeconds = Action.LaborSeconds;
+        for (const FGameDataItemAmount& Input : Action.Inputs)
+        {
+            FWorldFieldActionCost Cost;
+            Cost.ItemId = Input.ItemId;
+            Cost.Quantity = Input.Quantity;
+            Definition.Inputs.Add(Cost);
+        }
+        Definition.RequiredTools = Action.RequiredTools;
+        if (!Agriculture->RegisterFieldActionDefinition(Definition))
+            return Fail(FString::Printf(TEXT("Agriculture refused field action %s"),
+                *Action.Id.ToString()));
+    }
+
     for (const FGameDataCrop& C : Crops)
     {
         FWorldCropDefinition Definition;
