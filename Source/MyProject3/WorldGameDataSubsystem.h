@@ -4,6 +4,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldCalendar.h"
 #include "WorldClimateSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
 #include "WorldGameDataSubsystem.generated.h"
 
 class UInventoryCraftingComponent;
@@ -117,6 +118,7 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
+    const TArray<FWorldNaturalEventDefinition>& GetNaturalEvents() const { return NaturalEvents; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
@@ -130,6 +132,7 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
+    TArray<FWorldNaturalEventDefinition> NaturalEvents;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 

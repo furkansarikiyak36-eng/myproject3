@@ -11,6 +11,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
+#include "WorldEventDirectorSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -48,12 +49,19 @@ UWorldCargoTransportSubsystem* UWorldSimulationCoordinatorSubsystem::GetCargo() 
     return World ? World->GetSubsystem<UWorldCargoTransportSubsystem>() : nullptr;
 }
 
+UWorldEventDirectorSubsystem* UWorldSimulationCoordinatorSubsystem::GetEventDirector() const
+{
+    UWorld* World = GetWorld();
+    return World ? World->GetSubsystem<UWorldEventDirectorSubsystem>() : nullptr;
+}
+
 bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
     int32 RandomSeed, double InitialTimeSeconds, double FirstRaidDelaySeconds)
 {
     UWorldSimulationClockSubsystem* Clock = GetClock();
     UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
-    if (!Clock || !Threat || Clock->IsClockInitialized() || Threat->IsDirectorInitialized() ||
+    UWorldEventDirectorSubsystem* Events = GetEventDirector();
+    if (!Clock || !Threat || !Events || Clock->IsClockInitialized() || Threat->IsDirectorInitialized() || Events->IsDirectorInitialized() ||
         !FMath::IsFinite(InitialTimeSeconds) || InitialTimeSeconds < 0.0 ||
         !FMath::IsFinite(FirstRaidDelaySeconds) || FirstRaidDelaySeconds < 0.0 ||
         !FMath::IsFinite(InitialTimeSeconds + FirstRaidDelaySeconds) ||
@@ -83,10 +91,8 @@ bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
     // The climate rolls today's weather from the clock's seed and date.
     UWorld* World = GetWorld();
     UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
-    if (!Climate || !Climate->InitializeClimate())
-    {
-        return false;
-    }
+    if (!Climate || !Climate->InitializeClimate()) return false;
+    if (!Events->InitializeDirector(RandomSeed, InitialTimeSeconds)) return false;
 
     CompletedCoordinatorSteps = 0;
     return true;
@@ -100,7 +106,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorldSurvivalSubsystem* Survival = GetSurvival();
     UWorldProductionSubsystem* Production = GetProduction();
     UWorldCargoTransportSubsystem* Cargo = GetCargo();
-    if (bSimulationFaulted || !Clock || !Threat || !Agriculture || !Survival || !Production || !Cargo ||
+    UWorldEventDirectorSubsystem* Events = GetEventDirector();
+    if (bSimulationFaulted || !Clock || !Threat || !Agriculture || !Survival || !Production || !Cargo || !Events ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized() ||
         !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
         CompletedCoordinatorSteps == MAX_int64 || !Clock->CanAdvanceSimulation(DeltaSeconds))
@@ -114,6 +121,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorldClimateSubsystem* Climate = GetWorld() ? GetWorld()->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
     const bool bClimate = Climate && Climate->IsClimateInitialized();
     if ((bClimate && !Climate->CanAdvanceClimateStep(DeltaSeconds, TargetTime)) ||
+        !Events->CanAdvanceToTime(TargetTime) ||
         !Agriculture->CanAdvanceAgricultureStep(DeltaSeconds) ||
         !Survival->CanAdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->CanAdvanceProductionStep(DeltaSeconds) ||
@@ -137,6 +145,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     const FWorldSimulationClockSnapshot BeforeClock = Clock->ExportSnapshot();
     const FWorldClimateSnapshot BeforeClimate = bClimate ? Climate->ExportSnapshot() : FWorldClimateSnapshot();
     const FWorldThreatDirectorSnapshot BeforeThreat = Threat->ExportSnapshot();
+    const FWorldEventDirectorSnapshot BeforeEvents = Events->ExportSnapshot();
     TArray<FWorldCropState> BeforeCrops;
     TArray<FWorldAnimalState> BeforeAnimals;
     Agriculture->ExportSnapshot(BeforeCrops, BeforeAnimals);
@@ -185,6 +194,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         bRollbackSucceeded = Survival->RestoreHeatSourceRuntimeState(BeforeHeatSources) && bRollbackSucceeded;
         bRollbackSucceeded = Agriculture->RestoreSnapshot(BeforeCrops, BeforeAnimals) && bRollbackSucceeded;
         bRollbackSucceeded = Threat->RestoreSnapshot(BeforeThreat) && bRollbackSucceeded;
+        bRollbackSucceeded = Events->RestoreSnapshot(BeforeEvents) && bRollbackSucceeded;
         bRollbackSucceeded = Clock->RestoreSnapshot(BeforeClock) && bRollbackSucceeded;
         if (!bRollbackSucceeded)
         {
@@ -208,12 +218,14 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         !Production->AdvanceProductionStep(DeltaSeconds) ||
         !Cargo->AdvanceCargoStep(DeltaSeconds) ||
         !Threat->AdvanceDirectorAtTime(TargetTime, TargetTick) ||
+        !Events->AdvanceToTime(TargetTime) ||
         !Clock->AdvanceSimulation(DeltaSeconds))
     {
         RollbackStep();
         return false;
     }
 
+    Events->PublishPendingTransitions();
     ++CompletedCoordinatorSteps;
     return true;
 }
@@ -234,6 +246,7 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
 {
     const UWorldSimulationClockSubsystem* Clock = GetClock();
     const UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
+    const UWorldEventDirectorSubsystem* Events = GetEventDirector();
     const UWorldAgricultureSubsystem* Agriculture = GetAgriculture();
     const UWorldSurvivalSubsystem* Survival = GetSurvival();
     const UWorldProductionSubsystem* Production = GetProduction();
@@ -245,7 +258,7 @@ bool UWorldSimulationCoordinatorSubsystem::IsWorldSimulationReady() const
         World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
     const UWorldOperationLedgerSubsystem* OperationLedger =
         World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
-    return !bSimulationFaulted && Clock && Threat && Agriculture && Survival &&
+    return !bSimulationFaulted && Clock && Threat && Events && Agriculture && Survival &&
         Production && Cargo && Ownership && Storage && OperationLedger &&
-        Clock->IsClockInitialized() && Threat->IsDirectorInitialized();
+        Clock->IsClockInitialized() && Threat->IsDirectorInitialized() && Events->IsDirectorInitialized();
 }

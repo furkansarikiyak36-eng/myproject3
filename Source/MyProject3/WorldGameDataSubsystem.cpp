@@ -129,7 +129,7 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, CalendarJson, ClimateJson, LayersJson, EventsJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
@@ -137,7 +137,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
-        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
+        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error) ||
+        !ReadJson(Directory, TEXT("events.json"), EventsJson, Error))
         return Fail(Error);
 
     // Parse into locals; the subsystem changes only when everything is valid.
@@ -311,6 +312,72 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             NewCrops.Add(Crop);
         }
 
+    TArray<FWorldNaturalEventDefinition> NewNaturalEvents;
+    const TArray<TSharedPtr<FJsonValue>>* EventValues = ArrayField(EventsJson, TEXT("events"));
+    if (!EventValues || EventValues->IsEmpty())
+        return Fail(TEXT("events.json has no events"));
+    TSet<FName> EventIds;
+    for (const TSharedPtr<FJsonValue>& Value : *EventValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FWorldNaturalEventDefinition D;
+        D.DefinitionId = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), D.DisplayName);
+        D.EffectId = NameField(Entry, TEXT("effect"));
+        D.TriggerAfterEventId = NameField(Entry, TEXT("trigger_after"));
+        D.WarningDurationSeconds = NumberField(Entry, TEXT("warning_s"));
+        D.ActiveDurationSeconds = NumberField(Entry, TEXT("duration_s"));
+        D.CooldownSeconds = NumberField(Entry, TEXT("cooldown_s"));
+        D.MinimumIntervalSeconds = NumberField(Entry, TEXT("min_interval_s"));
+        D.MaximumIntervalSeconds = NumberField(Entry, TEXT("max_interval_s"));
+        D.TriggerChance = NumberField(Entry, TEXT("chance"));
+        if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("months")))
+            for (const TSharedPtr<FJsonValue>& Month : *Months)
+                D.AllowedMonths.Add(static_cast<int32>(Month->AsNumber()));
+        if (D.DefinitionId.IsNone() || EventIds.Contains(D.DefinitionId) || D.DisplayName.IsEmpty() ||
+            D.EffectId.IsNone() || !FMath::IsFinite(D.WarningDurationSeconds) || D.WarningDurationSeconds < 0.1 ||
+            !FMath::IsFinite(D.ActiveDurationSeconds) || D.ActiveDurationSeconds < 0.1 ||
+            !FMath::IsFinite(D.CooldownSeconds) || D.CooldownSeconds < 0.0 ||
+            !FMath::IsFinite(D.MinimumIntervalSeconds) || D.MinimumIntervalSeconds < 1.0 ||
+            !FMath::IsFinite(D.MaximumIntervalSeconds) || D.MaximumIntervalSeconds < D.MinimumIntervalSeconds ||
+            !FMath::IsFinite(D.TriggerChance) || D.TriggerChance < 0.0f || D.TriggerChance > 1.0f ||
+            D.AllowedMonths.Num() > 12)
+            return Fail(FString::Printf(TEXT("Bad or duplicate natural event %s"), *D.DefinitionId.ToString()));
+        TSet<int32> EventMonths;
+        for (const int32 Month : D.AllowedMonths)
+        {
+            if (Month < 1 || Month > 12 || EventMonths.Contains(Month))
+                return Fail(FString::Printf(TEXT("Invalid/repeated month in event %s"), *D.DefinitionId.ToString()));
+            EventMonths.Add(Month);
+        }
+        EventIds.Add(D.DefinitionId);
+        NewNaturalEvents.Add(D);
+    }
+    TMap<FName, FName> EventPredecessors;
+    for (const FWorldNaturalEventDefinition& D : NewNaturalEvents)
+    {
+        if (!D.TriggerAfterEventId.IsNone())
+        {
+            if (!EventIds.Contains(D.TriggerAfterEventId))
+                return Fail(FString::Printf(TEXT("Event %s references unknown predecessor %s"),
+                    *D.DefinitionId.ToString(), *D.TriggerAfterEventId.ToString()));
+            EventPredecessors.Add(D.DefinitionId, D.TriggerAfterEventId);
+        }
+    }
+    for (const FWorldNaturalEventDefinition& D : NewNaturalEvents)
+    {
+        TSet<FName> SeenChain;
+        FName Cursor = D.DefinitionId;
+        while (!Cursor.IsNone())
+        {
+            if (SeenChain.Contains(Cursor))
+                return Fail(FString::Printf(TEXT("Natural event chain contains a cycle at %s"), *Cursor.ToString()));
+            SeenChain.Add(Cursor);
+            const FName* Next = EventPredecessors.Find(Cursor);
+            Cursor = Next ? *Next : NAME_None;
+        }
+    }
+
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
     NewCalendar.DaysPerMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("days_per_month"), NewCalendar.DaysPerMonth));
@@ -368,6 +435,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
+    NaturalEvents = MoveTemp(NewNaturalEvents);
     Calendar = NewCalendar;
     ClimateMonths = MoveTemp(NewMonths);
     Layers = MoveTemp(NewLayers);
@@ -407,7 +475,8 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
     UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>();
     UWorldTerrainStateSubsystem* Terrain = World->GetSubsystem<UWorldTerrainStateSubsystem>();
     UWorldAgricultureSubsystem* Agriculture = World->GetSubsystem<UWorldAgricultureSubsystem>();
-    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture)
+    UWorldEventDirectorSubsystem* EventDirector = World->GetSubsystem<UWorldEventDirectorSubsystem>();
+    if (!Production || !Survival || !Clock || !Climate || !Terrain || !Agriculture || !EventDirector)
         return Fail(TEXT("A world subsystem is missing"));
 
     // Station recipes. A tool is put into the station and comes back with the output.
@@ -480,6 +549,9 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
 
     Clock->CalendarConfig = Calendar;
     Climate->Months = ClimateMonths;
+    for (const FWorldNaturalEventDefinition& D : NaturalEvents)
+        if (!EventDirector->RegisterEventDefinition(D))
+            return Fail(FString::Printf(TEXT("Event director refused definition %s"), *D.DefinitionId.ToString()));
 
     // The crop list is data, not a placeholder registration hidden in a demo actor.
     for (const FGameDataCrop& C : Crops)

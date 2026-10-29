@@ -60,7 +60,7 @@ bool UWorldEventDirectorSubsystem::RegisterEventDefinition(const FWorldNaturalEv
 
 bool UWorldEventDirectorSubsystem::ValidateDefinitions() const
 {
-    if (Definitions.IsEmpty() || Definitions.Num() > MaxDefinitions) return false;
+    if (Definitions.Num() > MaxDefinitions) return false;
     TSet<FName> Ids;
     TMap<FName, FName> Previous;
     for (const FWorldNaturalEventDefinition& D : Definitions)
