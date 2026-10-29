@@ -287,6 +287,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 ## Progress log
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
+- 2026-10-29 · P2.1–P2.5 · code-written · canonical player inventory + game-data weight/recipe backfill; `Pot.Fired`→unique `Water.Dirty` transaction with schema v26, exact capacity preflight and idempotent receipt; I=creek fill/O=fire refuel; fatigue/sprint/chop gates; creek wetness→`Illness.Cold`; hard-fall `Injury.Fall`; hostile bite `Injury.AnimalBite` with 3s cooldown; tests authored for fill capacity/retry, wet-cold, fall and bite (`46a6da3`, `3ed10e7`, `d3962be`, `e8e98c9`, `fe27cd0`, `ca0d23c`, `81f1c7f`, `408992c`) · **unbuilt/unrun**
 - 2026-10-29 · P2.1/P2.2/P2.3/P2.5 (partial) · code-written · `TryFillWaterFromCreek` with Pot.Fired, dirty-water output/receipt, v26 save migration, fatigue walk/sprint/action gates, creek wetness and wet-cold illness; tests authored (`605ee55`, `f1c41a0`, scene wiring `fd706f7`) · **unbuilt/unrun**
 - 2026-10-29 · P6.4 · code-written · wildlife identity, capture receipt, capacity/species-gated pen, atomic meat/hide/bone outputs, pen save/migration v25, lifecycle test authored (`40e2ba3` and `3546219`) · **unbuilt**
 - 2026-10-29 · P6.1/P6.2/P6.3 (part) · code-written · field-cell actions/snapshot, planting month and crop-data wiring, fertility/weed/mulch growth, seed-return output, schema v23/v24 and automation coverage authored (`2ca2ede`, `e258f59`) · **unbuilt**
