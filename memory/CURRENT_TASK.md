@@ -57,4 +57,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Add a safe action gate/cost hook to the central log placement/carry commit path(s) so rest blocks construction interactions and successful strenuous placements consume authored activity stamina; add a focused source-level automation test if the component API can be exercised. Then synchronize any remaining status/roadmap inaccuracies and run a source-only audit; all new code/tests remain unbuilt/unrun.
+Add a safe `CanRecordActivity` preflight and connect it to central carry/pickup/material-placement paths; ensure rest blocks those interactions and only successful actions record stamina/energy. Add a focused automation assertion for the preflight contract. Then synchronize any remaining status/roadmap inaccuracies and run a source-only audit; all new code/tests remain unbuilt/unrun.
