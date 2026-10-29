@@ -5,6 +5,7 @@
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldAgricultureSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldClimateSubsystem.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldCargoTransportSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -79,6 +80,14 @@ bool UWorldSimulationCoordinatorSubsystem::InitializeWorldSimulation(
         return false; // Defensive only; the same conditions were preflighted above.
     }
 
+    // The climate rolls today's weather from the clock's seed and date.
+    UWorld* World = GetWorld();
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!Climate || !Climate->InitializeClimate())
+    {
+        return false;
+    }
+
     CompletedCoordinatorSteps = 0;
     return true;
 }
@@ -101,7 +110,11 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
 
     const double TargetTime = Clock->GetSimulationTimeSeconds() + DeltaSeconds;
     const int64 TargetTick = Clock->GetTickIndex() + 1;
-    if (!Agriculture->CanAdvanceAgricultureStep(DeltaSeconds) ||
+    // Climate takes part only once it has been started (old worlds and tests run without it).
+    UWorldClimateSubsystem* Climate = GetWorld() ? GetWorld()->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    const bool bClimate = Climate && Climate->IsClimateInitialized();
+    if ((bClimate && !Climate->CanAdvanceClimateStep(DeltaSeconds, TargetTime)) ||
+        !Agriculture->CanAdvanceAgricultureStep(DeltaSeconds) ||
         !Survival->CanAdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->CanAdvanceProductionStep(DeltaSeconds) ||
         !Cargo->CanAdvanceCargoStep(DeltaSeconds) ||
@@ -122,6 +135,7 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     if (!Ownership || !Storage || !OperationLedger) return false;
 
     const FWorldSimulationClockSnapshot BeforeClock = Clock->ExportSnapshot();
+    const FWorldClimateSnapshot BeforeClimate = bClimate ? Climate->ExportSnapshot() : FWorldClimateSnapshot();
     const FWorldThreatDirectorSnapshot BeforeThreat = Threat->ExportSnapshot();
     TArray<FWorldCropState> BeforeCrops;
     TArray<FWorldAnimalState> BeforeAnimals;
@@ -161,6 +175,8 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         bRollbackSucceeded = Storage->RestoreSnapshot(BeforeStorages, BeforeReservations) && bRollbackSucceeded;
         bRollbackSucceeded = Cargo->RestoreSnapshot(BeforeCargo) && bRollbackSucceeded;
         bRollbackSucceeded = Production->RestoreSnapshot(BeforeStations, BeforeRecipes) && bRollbackSucceeded;
+        if (bClimate)
+            bRollbackSucceeded = Climate->RestoreSnapshot(BeforeClimate) && bRollbackSucceeded;
         bRollbackSucceeded = Survival->RestoreSnapshot(BeforeProfiles, BeforeDiscoveries,
             BeforeWeather, BeforeWeatherSeverity) && bRollbackSucceeded;
         // Fuel burn and rain-extinguish mutate actor components outside the
@@ -185,7 +201,9 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
 
     // Every participant completed preflight above. If a commit still rejects,
     // restore all participating logical state instead of leaving a mixed tick.
-    if (!Agriculture->AdvanceAgricultureStep(DeltaSeconds) ||
+    // Climate first: survival, fire and crops of this step see the step's weather.
+    if ((bClimate && !Climate->AdvanceClimateStep(DeltaSeconds, TargetTime)) ||
+        !Agriculture->AdvanceAgricultureStep(DeltaSeconds) ||
         !Survival->AdvanceSurvivalStep(DeltaSeconds, TargetTime) ||
         !Production->AdvanceProductionStep(DeltaSeconds) ||
         !Cargo->AdvanceCargoStep(DeltaSeconds) ||

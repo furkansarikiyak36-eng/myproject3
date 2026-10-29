@@ -5,6 +5,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "WorldCalendar.h"
+#include "WorldClimateSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -149,6 +152,136 @@ bool FCalendarClockSaveTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Same month"), After.Month, Before.Month);
     TestEqual(TEXT("Same day"), After.DayOfMonth, Before.DayOfMonth);
     TestEqual(TEXT("20 days after the end of March is in July"), Before.Month, 7);
+    return true;
+}
+
+// P1.2: each month only rolls weather that fits it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FClimateMonthWeatherTest,
+    "MyProject3.World.Climate.MonthsRollFittingWeather", Flags)
+bool FClimateMonthWeatherTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldClimateSubsystem* Climate = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Climate"), Climate))
+        return false;
+
+    int32 JanuaryHeat = 0, JulySnow = 0, JanuarySnowOrStorm = 0, JulyDry = 0;
+    for (int32 Seed = 1; Seed <= 20; ++Seed)
+        for (int64 DayIndex = 0; DayIndex < 30; ++DayIndex)
+        {
+            EWorldWeatherState Weather;
+            float Severity = -1.0f;
+            TestTrue(TEXT("Roll January"), Climate->RollWeatherForDay(Seed, DayIndex, 1, Weather, Severity));
+            JanuaryHeat += Weather == EWorldWeatherState::Heatwave ? 1 : 0;
+            JanuarySnowOrStorm += (Weather == EWorldWeatherState::Snow || Weather == EWorldWeatherState::Storm) ? 1 : 0;
+            TestTrue(TEXT("Severity in range"), Severity >= 0.0f && Severity <= 1.0f);
+            TestTrue(TEXT("Roll July"), Climate->RollWeatherForDay(Seed, DayIndex, 7, Weather, Severity));
+            JulySnow += Weather == EWorldWeatherState::Snow ? 1 : 0;
+            JulyDry += (Weather == EWorldWeatherState::Clear || Weather == EWorldWeatherState::Wind ||
+                Weather == EWorldWeatherState::Heatwave) ? 1 : 0;
+        }
+    TestEqual(TEXT("January never has a heatwave"), JanuaryHeat, 0);
+    TestEqual(TEXT("July never snows"), JulySnow, 0);
+    TestTrue(TEXT("January often snows"), JanuarySnowOrStorm > 150);
+    TestTrue(TEXT("July is mostly dry"), JulyDry > 450);
+
+    EWorldWeatherState A, B;
+    float SA, SB;
+    Climate->RollWeatherForDay(42, 10, 4, A, SA);
+    Climate->RollWeatherForDay(42, 10, 4, B, SB);
+    TestTrue(TEXT("Same seed and day give the same weather"), A == B && SA == SB);
+
+    TestEqual(TEXT("Coldest at 05:00"), Climate->GetBaseTemperature(1, 5.0f), Climate->Months[0].MinTemperatureCelsius, 0.01f);
+    TestEqual(TEXT("Warmest at 15:00"), Climate->GetBaseTemperature(7, 15.0f), Climate->Months[6].MaxTemperatureCelsius, 0.01f);
+    return true;
+}
+
+// P1.2: snow builds up in winter and melts in spring; melt wets the ground; save keeps it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FClimateSnowSeasonTest,
+    "MyProject3.World.Climate.SnowBuildsInWinterAndMeltsInSpring", Flags)
+bool FClimateSnowSeasonTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldSimulationClockSubsystem* Clock = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = TestWorld.World ? TestWorld.World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+
+    // January 1 of year 2 at 00:00: 16 hours + 45 days after the start.
+    const double NewYear = 16.0 * 3600.0 + 45.0 * Day;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(5, NewYear));
+    TestTrue(TEXT("Climate starts"), Climate->InitializeClimate());
+    TestEqual(TEXT("Winter starts with old snow"), Climate->GetSnowDepthCm(), 40.0f);
+
+    double Time = NewYear;
+    float MinSnowInWinter = Climate->GetSnowDepthCm();
+    float MaxWetness = 0.0f;
+    auto RunHours = [&](int32 Hours)
+    {
+        for (int32 Hour = 0; Hour < Hours; ++Hour)
+        {
+            Time += 3600.0;
+            if (!Climate->AdvanceClimateStep(3600.0, Time))
+                return false;
+            MaxWetness = FMath::Max(MaxWetness, Climate->GetGroundWetness());
+        }
+        return true;
+    };
+    // January and February: below freezing all day, so snow never melts.
+    for (int32 Hour = 0; Hour < 10 * 24; ++Hour)
+    {
+        Time += 3600.0;
+        TestTrue(TEXT("Winter hour"), Climate->AdvanceClimateStep(3600.0, Time));
+        TestTrue(TEXT("Winter snow never shrinks"), Climate->GetSnowDepthCm() >= MinSnowInWinter - 0.001f);
+        MinSnowInWinter = Climate->GetSnowDepthCm();
+    }
+    TestTrue(TEXT("Snow piled up over winter"), Climate->GetSnowDepthCm() > 40.0f);
+    TestTrue(TEXT("Winter air is below freezing at night"), Climate->GetBaseTemperature(2, 5.0f) < 0.0f);
+
+    // Save the climate at the end of February.
+    const FWorldClimateSnapshot Saved = Climate->ExportSnapshot();
+
+    // March to May.
+    TestTrue(TEXT("Spring"), RunHours(15 * 24));
+    TestEqual(TEXT("Snow is gone by June"), Climate->GetSnowDepthCm(), 0.0f);
+    TestTrue(TEXT("Melt and rain wet the ground"), MaxWetness > 0.3f);
+
+    TestTrue(TEXT("Load the February save"), Climate->RestoreSnapshot(Saved));
+    TestEqual(TEXT("Snow restored"), Climate->GetSnowDepthCm(), Saved.SnowDepthCm);
+    TestTrue(TEXT("Weather restored"), Climate->GetWeather() == Saved.Weather);
+    FWorldClimateSnapshot Bad = Saved;
+    Bad.GroundWetness = 2.0f;
+    TestFalse(TEXT("Broken save refused"), Climate->RestoreSnapshot(Bad));
+    return true;
+}
+
+// P1.2: the fixed-step coordinator starts the climate and hands its weather to survival.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FClimateCoordinatorTest,
+    "MyProject3.World.Climate.CoordinatorDrivesSurvivalWeather", Flags)
+bool FClimateCoordinatorTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationCoordinatorSubsystem* Coordinator = World ? World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Coordinator"), Coordinator) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Survival"), Survival) || !TestNotNull(TEXT("Clock"), Clock))
+        return false;
+
+    TestTrue(TEXT("Start simulation"), Coordinator->InitializeWorldSimulation(11, 0.0, 1.0e7));
+    TestTrue(TEXT("Climate started with the world"), Climate->IsClimateInitialized());
+    for (int32 Hour = 0; Hour < 30; ++Hour)
+    {
+        TestTrue(TEXT("Fixed hour"), Coordinator->AdvanceFixedStep(3600.0));
+        TestTrue(TEXT("Survival sees the climate weather"), Survival->Weather == Climate->GetWeather());
+        TestEqual(TEXT("Survival air temperature is the climate's"), Survival->AmbientTemperatureCelsius, Climate->GetTemperatureCelsius());
+    }
+    FWorldCalendarDate Date;
+    TestTrue(TEXT("Date"), Clock->GetCalendarDate(Date));
+    TestEqual(TEXT("30 hours after 08:00 on March 5 is April 1, 14:00"), Date.Month, 4);
+    TestEqual(TEXT("Hour"), Date.HourOfDay, 14.0f, 0.01f);
     return true;
 }
 

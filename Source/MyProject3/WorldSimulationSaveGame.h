@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldClimateSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
@@ -159,9 +160,11 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 20;
+    static constexpr int32 CurrentSchemaVersion = 21;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
+    /** Schema v21: weather of the day, snow depth, ground wetness. */
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldClimateSnapshot Climate;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldOwnedItemRecord> Items;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") TArray<FWorldItemTransferReceipt> ItemTransferReceipts;

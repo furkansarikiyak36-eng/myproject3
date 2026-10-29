@@ -5,6 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "WorldSimulationSaveGame.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldClimateSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -596,6 +597,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
 
     OutSave->SchemaVersion = UWorldSimulationSaveGame::CurrentSchemaVersion;
     OutSave->Clock = Clock->ExportSnapshot();
+    if (const UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>())
+        OutSave->Climate = Climate->ExportSnapshot();
     OutSave->Threat = Threat->ExportSnapshot();
     Items->ExportSnapshot(OutSave->Items, OutSave->ItemTransferReceipts, OutSave->ItemSplitReceipts);
     OperationLedger->ExportSnapshot(OutSave->OperationLedgerEntries);
@@ -702,6 +705,10 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     // Restore order is deliberate: logical time/seed first, then world state,
     // ownership, simulation domains, and cargo references last.
     if (!Clock->RestoreSnapshot(Snapshot->Clock)) return false;
+    if (UWorldClimateSubsystem* Climate = World->GetSubsystem<UWorldClimateSubsystem>())
+    {
+        if (!Climate->RestoreSnapshot(Snapshot->Climate)) return false;
+    }
     if (!Items->RestoreSnapshot(ValidatedPhysicalItems, Snapshot->ItemTransferReceipts, Snapshot->ItemSplitReceipts)) return false;
     if (!OperationLedger->RestoreSnapshot(Snapshot->OperationLedgerEntries)) return false;
     if (!ApplyPhysicalActorSnapshots(World, Snapshot->PhysicalActors))
@@ -909,6 +916,13 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // false, so loading preserves the level's current component state rather
         // than fabricating history that those saves never recorded.
         Candidate->SchemaVersion = 20;
+    }
+    if (Candidate->SchemaVersion == 20)
+    {
+        // Schema v21 adds the climate (weather of the day, snow, wetness). Old saves
+        // load with the climate not started; the world restarts it from the clock.
+        Candidate->Climate = FWorldClimateSnapshot();
+        Candidate->SchemaVersion = 21;
     }
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;

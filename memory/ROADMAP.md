@@ -132,7 +132,7 @@ Derive year, month (1–12), day of month, season from the clock. Days per month
 `calendar.json` (default 5, see open question Q1). Start date: end of March, year 1.
 Tests: day rollover, month rollover, year rollover, save/load keeps the date.
 
-**P1.2 · Climate by month** — `todo` · Needs: P1.1
+**P1.2 · Climate by month** — `tested` (91/91; month table is a UPROPERTY until P0.4) · Needs: P1.1
 Each day pick temperature and weather from the month's ranges in `calendar.json`
 (deterministic seed saved with the world). Call the existing `SetWeather`. Snow depth and
 ground wetness as world values that grow/melt. Tests: January never Heatwave; snow melts in March.
@@ -144,7 +144,7 @@ dryness, wind). First three events only: snowstorm, heavy rain, flood (water lev
 low cells). Chained events come in P8. Tests: signal always precedes effect; flood only after
 melt + rain; state saved mid-event.
 
-**P1.4 · Player sees it** — `todo` · Needs: P1.3
+**P1.4 · Player sees it** — `todo` · Needs: P1.3. Also: VerticalSlice_C must drive the world through the coordinator (today it keeps its own hours and sets weather itself, so clock, climate and needs do not advance in the main level).
 HUD shows date and season; signals are visible in the world (sky/clouds, falling pressure line
 on HUD, animals hiding later). No placement rules in HUD. Done when: `played` (user checks a
 fast-forwarded year in PIE).
@@ -256,6 +256,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-29 · P1.2 · tested · UWorldClimateSubsystem, coordinator + save v21, 91/91
 - 2026-10-29 · P1.1 · tested · WorldCalendar + clock date, GameWorldTests.cpp, 88/88
 - 2026-10-29 · P0.0 · tested · group-a adopted on game/p00-adopt-group-a, build fixed (16 errors), 85/85 tests, 250ce13
 - 2026-10-29 · design + roadmap written · — · commit after 85569c6
