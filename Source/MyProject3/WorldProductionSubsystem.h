@@ -23,6 +23,8 @@ struct FWorldProductionRecipe
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") TArray<FProductionIngredient> Outputs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production", meta=(ClampMin="0.01")) double DurationSeconds = 10.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") FName RequiredStationTag = NAME_None;
+    /** Optional discovery content token; NAME_None means this recipe is always unlocked. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") FName RequiredUnlockId = NAME_None;
 };
 
 UENUM(BlueprintType)
