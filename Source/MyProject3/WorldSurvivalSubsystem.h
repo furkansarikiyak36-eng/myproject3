@@ -116,7 +116,8 @@ enum class EWorldSurvivalActionKind : uint8
     EquipItem,
     UnequipItem,
     RecordDiscovery,
-    FillWaterFromCreek
+    FillWaterFromCreek,
+    BoilWater
 };
 
 /** Persistent idempotency receipt stored with the affected survival profile. */
@@ -130,12 +131,16 @@ struct FWorldSurvivalActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ItemId;
     /** Output item created by a data-backed action such as filling a vessel from a creek. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ResultingItemId;
+    /** Secondary input identity for actions requiring a reusable vessel, e.g. boiling water. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid RelatedItemId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedRelatedItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid ExpectedItemOwnerId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedProfileRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ExpectedItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ResultingProfileRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") int64 ResultingItemRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName ItemDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName ResultingItemDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") float CaloriesKcal = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") float ThirstRelief = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedStartTimeSeconds = 0.0;
@@ -263,6 +268,12 @@ public:
     bool TryFillWaterFromCreek(const FGuid& OperationId, const FGuid& EntityId,
         int64 ExpectedProfileRevision, const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
         const FGuid& ExpectedInventoryOwnerId, const FVector& CreekLocation, FGuid& OutWaterItemId);
+    /** Converts one ledger-owned dirty-water item into boiled water at a lit fire; vessel stays reusable. */
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Water")
+    bool TryBoilWaterAtFire(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, const FGuid& WaterItemId, int64 ExpectedWaterItemRevision,
+        const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
+        const FGuid& ExpectedInventoryOwnerId);
     /** Begins a bounded rest interval on the common world clock; it does not create a second clock. */
     UFUNCTION(BlueprintCallable, Category="World|Survival")
     bool TryBeginRest(const FGuid& OperationId, const FGuid& EntityId,
