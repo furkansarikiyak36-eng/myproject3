@@ -24,6 +24,8 @@
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
+#include "ShelterSensorComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -1123,6 +1125,18 @@ bool ULogCarryComponent::ProcessAimedPiece()
         if (GEngine)
             GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange, Message);
         return false;
+    }
+
+    // Fatigue affects sustained tool work as well as locomotion. Keep the
+    // multiplier centralized in the survival model so axe and digging actions
+    // respond to the same profile value.
+    if (const UShelterSensorComponent* Sensor = GetOwner()
+        ? GetOwner()->FindComponentByClass<UShelterSensorComponent>() : nullptr)
+    {
+        const UWorldSurvivalSubsystem* Survival = GetWorld()
+            ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        if (Survival && Sensor->SurvivalEntityId.IsValid())
+            AxeStrength *= Survival->GetWorkEffectiveness(Sensor->SurvivalEntityId);
     }
 
     // First press marks the cut where the player looks; the next presses cut it.
