@@ -607,18 +607,25 @@ float UWorldSurvivalSubsystem::GetActivityKcalPerHour(ESurvivalActivity Activity
 }
 
 bool UWorldSurvivalSubsystem::RecordActivity(
-    const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds, float CarriedMassKg)
+    const FGuid& EntityId, ESurvivalActivity Activity, float DurationSeconds,
+    float CarriedMassKg, float WorkMultiplier)
 {
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
     if (!Profile || static_cast<uint8>(Activity) > static_cast<uint8>(ESurvivalActivity::Carry) ||
         !InRange(DurationSeconds, 0.0f, 3600.0f) || DurationSeconds == 0.0f ||
-        !InRange(CarriedMassKg, 0.0f, 1000.0f) || Profile->Revision >= MAX_int64 - 1)
+        !InRange(CarriedMassKg, 0.0f, 1000.0f) ||
+        !InRange(WorkMultiplier, 0.1f, 5.0f) ||
+        !FMath::IsFinite(CarryKcalPerKgHour) || CarryKcalPerKgHour < 0.0f || CarryKcalPerKgHour > 100.0f ||
+        Profile->Revision >= MAX_int64 - 1)
     {
         return false;
     }
-    const float Hours = DurationSeconds / 3600.0f;
-    const float Kcal = (GetActivityKcalPerHour(Activity) + CarriedMassKg * CarryKcalPerKgHour) * Hours;
+    const float EffectiveHours = (DurationSeconds / 3600.0f) * WorkMultiplier;
+    const float Kcal = (GetActivityKcalPerHour(Activity) + CarriedMassKg * CarryKcalPerKgHour) * EffectiveHours;
+    if (!FMath::IsFinite(Kcal) || Kcal < 0.0f)
+        return false;
     Profile->PendingActivityKcal = FMath::Min(100000.0f, Profile->PendingActivityKcal + Kcal);
+    // Work multiplier models slope/snow/wet-weather effort without moving the world clock faster.
     // Hard work drains stamina now; rest recovers it during simulation steps.
     float StaminaPerHour = 30.0f;
     switch (Activity)
@@ -630,7 +637,9 @@ bool UWorldSurvivalSubsystem::RecordActivity(
     case ESurvivalActivity::Carry: StaminaPerHour = 120.0f; break;
     default: break;
     }
-    const float StaminaCost = (StaminaPerHour + CarriedMassKg * 6.0f) * Hours;
+    const float StaminaCost = (StaminaPerHour + CarriedMassKg * 6.0f) * EffectiveHours;
+    if (!FMath::IsFinite(StaminaCost) || StaminaCost < 0.0f)
+        return false;
     Profile->Stamina = FMath::Clamp(Profile->Stamina - StaminaCost, 0.0f, 100.0f);
     ++Profile->Revision;
     return true;
