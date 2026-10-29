@@ -1318,6 +1318,7 @@ void ULogCarryComponent::ClearHeldStateForSnapshotRestore()
     bMaterialGroundPreview = false;
     DraggedPiece.Reset();
     bIsDraggingLog = false;
+    RestoreHeldLifts();
     HeldLifts.Reset();
 }
 
