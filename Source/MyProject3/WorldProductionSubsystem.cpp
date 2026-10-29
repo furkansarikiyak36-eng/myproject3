@@ -294,6 +294,11 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
             if (Materialization.OperationId == OperationId)
                 return false;
         }
+        for (const FWorldProductionItemIntakeReceipt& Intake : Pair.Value.ItemIntakeReceipts)
+        {
+            if (Intake.OperationId == OperationId || Intake.SourceItemId == ItemId)
+                return false;
+        }
         for (const FWorldProductionPhysicalIntakeReceipt& Receipt :
             Pair.Value.PhysicalIntakeReceipts)
         {
@@ -477,6 +482,8 @@ bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
     for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
     {
         for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Pair.Value.PhysicalIntakeReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionItemIntakeReceipt& Receipt : Pair.Value.ItemIntakeReceipts)
             if (Receipt.OperationId == OperationId) return false;
         for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
             if (Receipt.OperationId == OperationId) return false;
@@ -686,6 +693,8 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
             if (Intake.OperationId == OperationId)
                 return false;
         }
+        for (const FWorldProductionItemIntakeReceipt& Intake : Pair.Value.ItemIntakeReceipts)
+            if (Intake.OperationId == OperationId) return false;
         for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
         {
             if (Receipt.OperationId != OperationId)
@@ -932,6 +941,8 @@ bool UWorldProductionSubsystem::TryCollectCompletedJob(
     for (const TPair<FGuid, FWorldProductionStation>& Pair : Stations)
     {
         for (const FWorldProductionPhysicalIntakeReceipt& Receipt : Pair.Value.PhysicalIntakeReceipts)
+            if (Receipt.OperationId == OperationId) return false;
+        for (const FWorldProductionItemIntakeReceipt& Receipt : Pair.Value.ItemIntakeReceipts)
             if (Receipt.OperationId == OperationId) return false;
         for (const FWorldProductionEnqueueReceipt& Receipt : Pair.Value.EnqueueReceipts)
             if (Receipt.OperationId == OperationId) return false;
