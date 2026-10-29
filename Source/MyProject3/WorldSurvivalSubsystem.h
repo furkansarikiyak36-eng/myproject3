@@ -27,10 +27,75 @@ struct FWorldSurvivalConsumableDefinition
 };
 
 UENUM(BlueprintType)
+enum class EWorldSurvivalConditionKind : uint8 { Injury, Illness, Poisoning };
+
+UENUM(BlueprintType)
+enum class EWorldEquipmentSlot : uint8 { Head, Body, Hands, Legs, Feet };
+
+USTRUCT(BlueprintType)
+struct FWorldSurvivalConditionDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions") FName DefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions") EWorldSurvivalConditionKind Kind = EWorldSurvivalConditionKind::Injury;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="0", ClampMax="100")) float HealthLossPerHour = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="0", ClampMax="100")) float FatiguePerHour = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="0", ClampMax="100")) float StaminaLossPerHour = 0.0f;
+    /** 0 means the condition persists until treated. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="0", ClampMax="604800")) double DurationSeconds = 0.0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions") FName TreatmentItemDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="0", ClampMax="100")) float TreatmentHealthRecovery = 0.0f;
+};
+
+USTRUCT(BlueprintType)
+struct FWorldSurvivalConditionState
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") FGuid ConditionId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") FName DefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") EWorldSurvivalConditionKind Kind = EWorldSurvivalConditionKind::Injury;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") double StartedAtWorldTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") double EndsAtWorldTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions", meta=(ClampMin="0", ClampMax="1")) float Severity = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") int64 Revision = 1;
+};
+
+USTRUCT(BlueprintType)
+struct FWorldSurvivalEquipmentDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment") FName ItemDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment") EWorldEquipmentSlot Slot = EWorldEquipmentSlot::Body;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="0", ClampMax="1")) float Insulation = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="0", ClampMax="1")) float WaterResistance = 0.0f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment") TArray<FName> GrantedCapabilityIds;
+};
+
+USTRUCT(BlueprintType)
+struct FWorldEquippedItemState
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Equipment") FGuid ItemId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Equipment") FName ItemDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Equipment") EWorldEquipmentSlot Slot = EWorldEquipmentSlot::Body;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Equipment") int64 ItemRevision = 0;
+};
+
+USTRUCT(BlueprintType)
+struct FWorldDiscoveryDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") FName DiscoveryId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") TArray<FName> PrerequisiteDiscoveryIds;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") TArray<FName> RequiredEquipmentDefinitionIds;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") TArray<FName> UnlockedDefinitionIds;
+};
+
+UENUM(BlueprintType)
 enum class EWorldSurvivalActionKind : uint8
 {
     ConsumeFoodItem,
-    BeginRest
+    BeginRest,\n    ApplyCondition,\n    TreatCondition,\n    EquipItem,\n    UnequipItem,\n    RecordDiscovery
 };
 
 /** Persistent idempotency receipt stored with the affected survival profile. */
@@ -53,6 +118,11 @@ struct FWorldSurvivalActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedStartTimeSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double RequestedDurationSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double ResultingRestUntilTimeSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid RelatedConditionId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName ConditionDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName DiscoveryId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") EWorldEquipmentSlot EquipmentSlot = EWorldEquipmentSlot::Body;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double ConditionEndTimeSeconds = 0.0;
 };
 
 USTRUCT(BlueprintType)
@@ -84,6 +154,9 @@ struct FWorldSurvivalProfile
     /** A rest action is an interval on the shared world timeline, not a private timer. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival") double RestUntilTimeSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") TArray<FWorldSurvivalActionReceipt> ActionReceipts;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Conditions") TArray<FWorldSurvivalConditionState> Conditions;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Equipment") TArray<FWorldEquippedItemState> EquippedItems;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Equipment", meta=(ClampMin="0", ClampMax="1")) float ClothingWaterResistance = 0.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -93,6 +166,9 @@ struct FWorldDiscoveryRecord
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Exploration") FName DiscoveryId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Exploration") FVector Location = FVector::ZeroVector;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Exploration") double DiscoveredAtTime = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Exploration") FGuid EntityId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Exploration") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Exploration") TArray<FName> UnlockedDefinitionIds;
 };
 
 /**
@@ -155,6 +231,37 @@ public:
         int64 ExpectedProfileRevision, double DurationSeconds);
     /** Legacy numerical helper retained for controlled systems; player food interactions should use TryConsumeFoodItem. */
     bool ConsumeFood(const FGuid& EntityId, float Kcal, float ThirstRelief);
+
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Conditions")
+    bool RegisterConditionDefinition(const FWorldSurvivalConditionDefinition& Definition);
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Conditions")
+    bool TryApplyCondition(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, FName ConditionDefinitionId, float Severity = 1.0f);
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Conditions")
+    bool TryTreatCondition(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, const FGuid& ConditionId,
+        const FGuid& TreatmentItemId, int64 ExpectedItemRevision,
+        const FGuid& ExpectedInventoryOwnerId);
+
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Equipment")
+    bool RegisterEquipmentDefinition(const FWorldSurvivalEquipmentDefinition& Definition);
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Equipment")
+    bool TryEquipItem(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, const FGuid& ItemId, int64 ExpectedItemRevision,
+        const FGuid& ExpectedInventoryOwnerId);
+    UFUNCTION(BlueprintCallable, Category="World|Survival|Equipment")
+    bool TryUnequipItem(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, EWorldEquipmentSlot Slot,
+        const FGuid& ExpectedInventoryOwnerId);
+
+    UFUNCTION(BlueprintCallable, Category="World|Exploration")
+    bool RegisterDiscoveryDefinition(const FWorldDiscoveryDefinition& Definition);
+    UFUNCTION(BlueprintCallable, Category="World|Exploration")
+    bool TryRecordConfiguredDiscovery(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, FName DiscoveryId, FVector Location,
+        double LogicalTimeSeconds);
+    UFUNCTION(BlueprintPure, Category="World|Exploration")
+    bool IsDefinitionUnlocked(const FGuid& EntityId, FName DefinitionId) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetActivityKcalPerHour(ESurvivalActivity Activity) const;
     /** The single felt-temperature function every system reads. */
     UFUNCTION(BlueprintPure, Category="World|Survival") float ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const;
@@ -175,8 +282,21 @@ private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Exploration") TArray<FWorldDiscoveryRecord> Discoveries;
     UPROPERTY(Transient) TArray<TWeakObjectPtr<UHeatSourceComponent>> HeatSources;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Consumables") TArray<FWorldSurvivalConsumableDefinition> ConsumableDefinitions;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions", meta=(ClampMin="1", ClampMax="1024")) int32 MaxConditionDefinitions = 128;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Conditions") TArray<FWorldSurvivalConditionDefinition> ConditionDefinitions;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquipmentDefinitions = 128;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment") TArray<FWorldSurvivalEquipmentDefinition> EquipmentDefinitions;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Equipment", meta=(ClampMin="1", ClampMax="1024")) int32 MaxEquippedItemsPerProfile = 5;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration", meta=(ClampMin="1", ClampMax="4096")) int32 MaxDiscoveryDefinitions = 512;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Exploration") TArray<FWorldDiscoveryDefinition> DiscoveryDefinitions;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Survival|Receipts", meta=(ClampMin="1", ClampMax="8192")) int32 MaxDiscoveryReceiptsPerProfile = 512;
 
     bool IsValidProfile(const FWorldSurvivalProfile& Profile) const;
+    const FWorldSurvivalConditionDefinition* FindConditionDefinition(FName DefinitionId) const;
+    const FWorldSurvivalEquipmentDefinition* FindEquipmentDefinition(FName ItemDefinitionId) const;
+    const FWorldDiscoveryDefinition* FindDiscoveryDefinition(FName DiscoveryId) const;
+    bool FindInventoryForOwner(const FGuid& InventoryOwnerId, class UInventoryCraftingComponent*& OutInventory) const;
+    void RecomputeEquipmentProtection(FWorldSurvivalProfile& Profile) const;
     const FWorldSurvivalConsumableDefinition* FindConsumableDefinition(FName DefinitionId) const;
     const FWorldSurvivalActionReceipt* FindActionReceipt(const FGuid& OperationId) const;
     float GetWeatherTemperatureDelta() const;
