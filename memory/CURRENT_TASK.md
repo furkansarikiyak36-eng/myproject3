@@ -44,6 +44,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md, memory/PLAN_STATUS.md
 
 ## Findings
+- Production source method listing: stock add/take are unbound operations, unlike player-bound recipe enqueue. Need preserve trusted rollback while closing player-facing bypasses.
 - Narrow source read confirms `TryTakeStock` is not adjacent to `AddStock`; production stock ingress and physical/ledger item ingestion are separate APIs. Need enumerate public method definitions before choosing the gated wrapper refactor, to avoid breaking receipt rollback.
 - Initial stock-mutator inspection shows public `AddStock` changes recipe-addressable stock by station revision alone and does not validate a player or progression gate. The source slice also includes `TryIngestWorldOwnedItem`/physical-log ingestion; keep those world-object transactions separate from inventory UI and inspect the exact take method with a narrower search.
 - Re-read existing station progression test (GameWorldTests.cpp around 1340–1425): it explicitly verifies the legacy recipe-start path rejects `fire_pot` before discoveries, then succeeds via `TryStartRecipeForInventory`; it also verifies locked seed deposit/take denial and post-discovery access. Keep these test intentions intact.
