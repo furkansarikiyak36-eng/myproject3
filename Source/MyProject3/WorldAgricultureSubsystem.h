@@ -73,6 +73,7 @@ struct FWorldCropDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName SeedDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName HarvestDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="64")) int32 HarvestUnits = 3;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 SeedReturnUnits = 1;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1")) double SecondsPerStage = 3600.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="1")) float MinimumPlantMoisture = 0.15f;
     /** Empty means year-round; otherwise planting is allowed only in these calendar months (1..12). */
@@ -99,6 +100,8 @@ struct FWorldCropState
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int64 SeedItemExpectedRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") FName HarvestDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int32 HarvestUnits = 0;
+    /** Fixed at planting time so harvesting remains deterministic after save or data tuning. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int32 SeedReturnUnits = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") FGuid HarvestOperationId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") int64 HarvestExpectedRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Transactions") TArray<FGuid> HarvestOutputItemIds;
