@@ -6,6 +6,7 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
 #include "ShelterSensorComponent.h"
 #include "Components/InputComponent.h"
 #include "Engine/Engine.h"
@@ -54,7 +55,7 @@ void UTerrainDigToolComponent::DigInput()
         !FMath::IsFinite(DigRadiusCm) || DigRadiusCm <= 0.0f ||
         !FMath::IsFinite(ToolStrength) || ToolStrength <= 0.0f ||
         !FMath::IsFinite(LogicalCellSizeCm) || LogicalCellSizeCm < 50.0f ||
-        DepthLayer < 0)
+        DepthLayer < 0 || RegionId.IsNone())
     {
         SetStatus(TEXT("Kazı aracı ayarları geçersiz."));
         return;
@@ -138,14 +139,23 @@ void UTerrainDigToolComponent::DigInput()
         EffectiveToolStrength *= Survival->GetWorkEffectiveness(SurvivalSensor->SurvivalEntityId);
     }
 
+    const UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
+    if (!Clock || !Clock->IsClockInitialized())
+    {
+        SetStatus(TEXT("Kazı için ortak dünya saati hazır değil."));
+        return;
+    }
+
     FWorldTerrainCellState CommittedState;
-    const bool bCommitted = TerrainState->TryApplyVoxelExcavation(
+    TArray<FGuid> ResourceItemIds;
+    const bool bCommitted = TerrainState->TryExcavateForGeology(
         FGuid::NewGuid(), Chunk, LocalHit, DigRadiusCm, EffectiveToolStrength,
         Chunk->GetDensityRevision(), LogicalCell, DepthLayer, ExpectedCellRevision,
-        MaterialId, CommittedState);
+        RegionId, Clock->GetRandomSeed(), CommittedState, ResourceItemIds);
 
     if (bCommitted)
-        SetStatus(FString::Printf(TEXT("Kazı tamamlandı. Hücre revizyonu: %lld"), CommittedState.Revision));
+        SetStatus(FString::Printf(TEXT("Kazı tamamlandı. Hücre revizyonu: %lld · Kaynak: %d"),
+            CommittedState.Revision, ResourceItemIds.Num()));
     else
-        SetStatus(TEXT("Kazı reddedildi: sınır, zemin direnci, destek güvenliği veya revizyon kontrolü."));
+        SetStatus(TEXT("Kazı reddedildi: jeoloji/bölge kuralı, kimlik, sınır, destek veya revizyon kontrolü."));
 }
