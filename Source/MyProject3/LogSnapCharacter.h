@@ -107,6 +107,14 @@ protected:
     void HandleJumpReleased();
 
 public:
+    /**
+     * Finds a walking route using this character's live carried mass and current climate severity.
+     * This is a route-cost query; it does not move the character or create missing route edges.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Traversal")
+    bool FindWalkingRoute(FName StartNode, FName GoalNode,
+        TArray<FName>& OutPath, float& OutTotalCost) const;
+
     /** Called by the active vertical-slice chopping handler on every mouse swing. */
     UFUNCTION(BlueprintCallable, Category = "Character|Axe")
     void PlayAxeSwing();
