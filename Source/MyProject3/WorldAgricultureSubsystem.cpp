@@ -1046,6 +1046,103 @@ bool UWorldAgricultureSubsystem::RegisterAnimal(const FWorldAnimalState& Animal)
     return true;
 }
 
+bool UWorldAgricultureSubsystem::ApplyEnvironmentalEffect(
+    FName EffectId, float Severity, double DeltaSeconds)
+{
+    if (EffectId.IsNone() || !FMath::IsFinite(Severity) || Severity < 0.0f ||
+        Severity > 1.0f || !FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 ||
+        DeltaSeconds > 3600.0)
+        return false;
+
+    const bool bContinuousDrying = EffectId == TEXT("crop_moisture_loss");
+    const bool bCropDamage = EffectId == TEXT("crop_damage");
+    if (!bContinuousDrying && !bCropDamage)
+        return false;
+
+    // Preflight the entire domain first so revision exhaustion cannot leave a
+    // partially affected set of fields/crops inside an otherwise valid fixed step.
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        const FWorldFieldCellState& Field = Pair.Value;
+        if (Field.Revision >= MAX_int64 - 1 || !FMath::IsFinite(Field.Moisture) ||
+            Field.Moisture < 0.0f || Field.Moisture > 1.0f)
+            return false;
+    }
+    for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
+    {
+        const FWorldCropState& Crop = Pair.Value;
+        if (Crop.Revision >= MAX_int64 - 1 || !FMath::IsFinite(Crop.Moisture) ||
+            Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
+            !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0)
+            return false;
+    }
+
+    const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
+    if (bContinuousDrying)
+    {
+        const float MoistureLoss = 0.02f * Severity * Hours;
+        for (TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+        {
+            FWorldFieldCellState& Field = Pair.Value;
+            const float OldMoisture = Field.Moisture;
+            Field.Moisture = FMath::Max(0.0f, Field.Moisture -
+                MoistureLoss * (1.0f - FMath::Clamp(Field.Mulch, 0.0f, 1.0f) * MulchMoistureRetention));
+            if (!FMath::IsNearlyEqual(OldMoisture, Field.Moisture))
+                ++Field.Revision;
+        }
+        for (TPair<FGuid, FWorldCropState>& Pair : Crops)
+        {
+            FWorldCropState& Crop = Pair.Value;
+            if (Crop.Stage == ECropGrowthStage::Mature ||
+                Crop.Stage == ECropGrowthStage::Withered ||
+                Crop.Stage == ECropGrowthStage::Harvested ||
+                FieldCells.Contains(Crop.PlotCell))
+                continue;
+
+            const float NewMoisture = FMath::Max(0.0f, Crop.Moisture - MoistureLoss);
+            if (!FMath::IsNearlyEqual(Crop.Moisture, NewMoisture))
+            {
+                Crop.Moisture = NewMoisture;
+                ++Crop.Revision;
+            }
+        }
+    }
+    else
+    {
+        // Hail/crop-impact events remove part of accumulated growth and moisture
+        // once at onset. Crop stage changes remain in the ordinary farm step.
+        const float MoistureLoss = 0.25f * Severity;
+        const float GrowthRetention = FMath::Clamp(1.0f - 0.45f * Severity, 0.0f, 1.0f);
+        for (TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+        {
+            FWorldFieldCellState& Field = Pair.Value;
+            const float OldMoisture = Field.Moisture;
+            Field.Moisture = FMath::Max(0.0f, Field.Moisture - MoistureLoss);
+            if (!FMath::IsNearlyEqual(OldMoisture, Field.Moisture))
+                ++Field.Revision;
+        }
+        for (TPair<FGuid, FWorldCropState>& Pair : Crops)
+        {
+            FWorldCropState& Crop = Pair.Value;
+            if (Crop.Stage == ECropGrowthStage::Mature ||
+                Crop.Stage == ECropGrowthStage::Withered ||
+                Crop.Stage == ECropGrowthStage::Harvested)
+                continue;
+
+            const float OldMoisture = Crop.Moisture;
+            if (FieldCells.Contains(Crop.PlotCell))
+                Crop.Moisture = FieldCells.FindChecked(Crop.PlotCell).Moisture;
+            else
+                Crop.Moisture = FMath::Max(0.0f, Crop.Moisture - MoistureLoss);
+            Crop.GrowthProgressSeconds *= GrowthRetention;
+            if (!FMath::IsNearlyEqual(OldMoisture, Crop.Moisture) ||
+                GrowthRetention < 1.0f)
+                ++Crop.Revision;
+        }
+    }
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::SetCropMoisture(
     const FGuid& CropId, float Moisture, int64 ExpectedRevision)
 {
