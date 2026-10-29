@@ -309,10 +309,9 @@ bool UWorldThreatDirectorSubsystem::CanAdvanceDirectorAtTime(
         return true;
     }
 
-    if (RaidSerial == MAX_int64)
-    {
+    // Raid IDs use a 32-bit serial component; fail closed before that field wraps.
+    if (RaidSerial >= MAX_int32 - 1)
         return false;
-    }
 
     const int64 ProposedSerial = RaidSerial + 1;
     const int32 Seed = Clock->GetRandomSeed() ^ static_cast<int32>(ProposedSerial * 196613);
@@ -321,8 +320,13 @@ bool UWorldThreatDirectorSubsystem::CanAdvanceDirectorAtTime(
     const double ActiveStart = TargetTimeSeconds + WarningDurationSeconds;
     const double PlannedEnd = ActiveStart + RaidDurationSeconds;
     const double NextTime = PlannedEnd + MakeNextInterval(ProposedSerial);
+    FVector ProposedTarget;
+    float ProposedPressure = 0.0f;
     return ProposedId.IsValid() && FMath::IsFinite(ActiveStart) &&
-        FMath::IsFinite(PlannedEnd) && FMath::IsFinite(NextTime);
+        FMath::IsFinite(PlannedEnd) && FMath::IsFinite(NextTime) &&
+        CalculateRaidPressureAndTarget(Seed, ProposedTarget, ProposedPressure) &&
+        !ProposedTarget.ContainsNaN() && FMath::IsFinite(ProposedPressure) &&
+        ProposedPressure >= 0.0f;
 }
 
 bool UWorldThreatDirectorSubsystem::AdvanceDirectorAtTime(
@@ -350,21 +354,21 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirectorAtTime(
     if ((CurrentRaid.State == EThreatRaidState::None || IsTerminal(CurrentRaid.State)) &&
         Now >= NextRaidTimeSeconds)
     {
-        if (RaidSerial == MAX_int64)
-        {
+        if (RaidSerial >= MAX_int32 - 1)
             return false;
-        }
 
-        ++RaidSerial;
-        const int32 Seed = Clock->GetRandomSeed() ^ static_cast<int32>(RaidSerial * 196613);
-        FRandomStream Stream(Seed);
-        const FGuid RaidId = FGuid(Clock->GetRandomSeed(), static_cast<int32>(RaidSerial),
+        const int64 ProposedSerial = RaidSerial + 1;
+        const int32 Seed = Clock->GetRandomSeed() ^ static_cast<int32>(ProposedSerial * 196613);
+        const FGuid RaidId = FGuid(Clock->GetRandomSeed(), static_cast<int32>(ProposedSerial),
             static_cast<int32>(TargetTickIndex), Seed);
-        if (!RaidId.IsValid())
-        {
+        FVector RaidTarget = FVector::ZeroVector;
+        float RaidPressure = 0.0f;
+        if (!RaidId.IsValid() ||
+            !CalculateRaidPressureAndTarget(Seed, RaidTarget, RaidPressure) ||
+            RaidTarget.ContainsNaN() || !FMath::IsFinite(RaidPressure) || RaidPressure < 0.0f)
             return false;
-        }
 
+        RaidSerial = ProposedSerial;
         CurrentRaid = FThreatRaidRecord();
         CurrentRaid.RaidId = RaidId;
         CurrentRaid.Serial = RaidSerial;
@@ -372,10 +376,8 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirectorAtTime(
         CurrentRaid.WarningStartTime = Now;
         CurrentRaid.ActiveStartTime = Now + WarningDurationSeconds;
         CurrentRaid.PlannedEndTime = CurrentRaid.ActiveStartTime + RaidDurationSeconds;
-        CurrentRaid.Pressure = Stream.FRandRange(1.0f, 3.0f);
-        CurrentRaid.TargetLocation = FVector(
-            Stream.FRandRange(-5000.0f, 5000.0f),
-            Stream.FRandRange(-5000.0f, 5000.0f), 0.0f);
+        CurrentRaid.Pressure = RaidPressure;
+        CurrentRaid.TargetLocation = RaidTarget;
         CurrentRaid.Revision = 1;
         NextRaidTimeSeconds = CurrentRaid.PlannedEndTime + MakeNextInterval(RaidSerial);
         if (!FMath::IsFinite(NextRaidTimeSeconds))
