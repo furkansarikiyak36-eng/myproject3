@@ -121,6 +121,9 @@ public:
     UFUNCTION(BlueprintPure, Category="Logistics")
     bool ComputeEdgeCost(const FLogisticsRouteEdge& Edge,
         const FLogisticsRouteCostContext& Context, float& OutCost) const;
+    UFUNCTION(BlueprintPure, Category="Logistics")
+    bool CalculatePathCost(const TArray<FName>& Path,
+        const FLogisticsRouteCostContext& Context, float& OutTotalCost) const;
 
     UFUNCTION(BlueprintPure, Category="Logistics")
     int32 GetNodeCount() const { return Nodes.Num(); }
