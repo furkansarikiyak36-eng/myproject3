@@ -376,6 +376,7 @@ bool UWorldAgricultureSubsystem::TryPlantCropOnField(
     UInventoryCraftingComponent* Inventory = nullptr;
     FWorldOwnedItemRecord Seed;
     if (!Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+        !Inventory->IsDefinitionAvailableForProgression(Definition->SeedDefinitionId) ||
         !Ownership->TryGetItem(SeedItemId, Seed) ||
         Seed.Revision != ExpectedSeedItemRevision ||
         Seed.OwnerKind != EWorldItemOwnerKind::Inventory ||
