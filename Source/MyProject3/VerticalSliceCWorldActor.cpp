@@ -1063,6 +1063,7 @@ void AVerticalSliceCWorldActor::BuildFarmPlot()
     }
 
     FarmPlotTiles.Reset();
+    FarmPlotColours.Reset();
     // Visible, non-blocking soil tiles keep the backend logical grid discoverable
     // without creating a large voxel field or interfering with traversal.
     for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
@@ -1079,7 +1080,10 @@ void AVerticalSliceCWorldActor::BuildFarmPlot()
                 ? FLinearColor(0.20f, 0.125f, 0.065f)
                 : FLinearColor(0.16f, 0.095f, 0.045f);
             if (UStaticMeshComponent* Tile = AddProp(SoilCube, Transform, SoilColour, false))
+            {
                 FarmPlotTiles.Add(Tile);
+                FarmPlotColours.Add(FLinearColor::Transparent);
+            }
         }
     }
 
@@ -1124,7 +1128,13 @@ void AVerticalSliceCWorldActor::RefreshFarmPlotVisuals()
                 if (Cell.bFenced)
                     Colour = FMath::Lerp(Colour, FLinearColor(0.28f, 0.22f, 0.10f), 0.18f);
             }
-            FarmPlotTiles[Index]->SetMaterial(0, Tint(Colour));
+            if (!FarmPlotColours.IsValidIndex(Index) ||
+                !FarmPlotColours[Index].Equals(Colour, 0.001f))
+            {
+                FarmPlotTiles[Index]->SetMaterial(0, Tint(Colour));
+                if (FarmPlotColours.IsValidIndex(Index))
+                    FarmPlotColours[Index] = Colour;
+            }
         }
     }
 }
