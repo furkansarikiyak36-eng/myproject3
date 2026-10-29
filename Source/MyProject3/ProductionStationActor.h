@@ -38,6 +38,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="Station") bool TryDeposit(UInventoryCraftingComponent* Inventory, FName ItemId, int32 Quantity);
     /** Starts a recipe if its inputs are in the station and the fire rule holds. */
     UFUNCTION(BlueprintCallable, Category="Station") bool TryStartRecipe(FName RecipeId, FGuid& OutJobId);
+    /** Starts a knowledge-gated recipe only when this player has the required discoveries. */
+    UFUNCTION(BlueprintCallable, Category="Station|Progression") bool TryStartRecipeForPlayer(FName RecipeId, FGuid PlayerEntityId, FGuid& OutJobId);
+    /** Player inventory adapter. Requires the inventory to be bound to a registered player's progression profile. */
+    UFUNCTION(BlueprintCallable, Category="Station|Progression") bool TryStartRecipeForInventory(FName RecipeId, UInventoryCraftingComponent* Inventory, FGuid& OutJobId);
     /** Collects every finished job into the station's stock. Returns how many were collected. */
     UFUNCTION(BlueprintCallable, Category="Station") int32 CollectFinishedJobs();
     /** Moves items from the station's stock into the inventory. */
