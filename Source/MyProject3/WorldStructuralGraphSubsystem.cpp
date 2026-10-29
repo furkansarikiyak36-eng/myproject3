@@ -908,15 +908,22 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
             }
 
             const AActor* ChildActor = Pair.Value.Actor.Get();
-            const bool bChildLocationValid = IsValid(ChildActor) &&
-                !ChildActor->GetActorLocation().ContainsNaN();
-            bool bAllLocationsValid = bChildLocationValid;
+            if (!IsValid(ChildActor) || ChildActor->GetActorLocation().ContainsNaN())
+            {
+                Visiting.Remove(NodeId);
+                bOutValid = false;
+                return 0.0f;
+            }
             for (const FGuid& SupportId : SupportIds)
             {
                 const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportId);
                 const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
-                bAllLocationsValid &= IsValid(SupportActor) &&
-                    !SupportActor->GetActorLocation().ContainsNaN();
+                if (!IsValid(SupportActor) || SupportActor->GetActorLocation().ContainsNaN())
+                {
+                    Visiting.Remove(NodeId);
+                    bOutValid = false;
+                    return 0.0f;
+                }
             }
 
             TArray<double> RawWeights;
@@ -927,28 +934,18 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
             SupportDistances.Reserve(SupportIds.Num());
             for (const FGuid& SupportId : SupportIds)
             {
-                double Distance = 0.0;
-                if (bAllLocationsValid)
+                const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportId);
+                const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
+                const double Distance = FVector::Distance(
+                    ChildActor->GetActorLocation(), SupportActor->GetActorLocation());
+                if (!FMath::IsFinite(Distance))
                 {
-                    const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportId);
-                    const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
-                    if (!IsValid(SupportActor))
-                    {
-                        Visiting.Remove(NodeId);
-                        bOutValid = false;
-                        return 0.0f;
-                    }
-                    Distance = FVector::Distance(
-                        ChildActor->GetActorLocation(), SupportActor->GetActorLocation());
-                    if (!FMath::IsFinite(Distance))
-                    {
-                        Visiting.Remove(NodeId);
-                        bOutValid = false;
-                        return 0.0f;
-                    }
-                    if (Distance <= 1.0)
-                        ++CoincidentSupports;
+                    Visiting.Remove(NodeId);
+                    bOutValid = false;
+                    return 0.0f;
                 }
+                if (Distance <= 1.0)
+                    ++CoincidentSupports;
                 SupportDistances.Add(Distance);
             }
 
@@ -958,7 +955,7 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
                 for (double Distance : SupportDistances)
                     RawWeights.Add(Distance <= 1.0 ? 1.0 : 0.0);
             }
-            else if (SupportIds.Num() == 2 && bAllLocationsValid)
+            else if (SupportIds.Num() == 2)
             {
                 // For two supports A and B, R_A = P*d_B/(d_A+d_B) and
                 // R_B = P*d_A/(d_A+d_B), where d_* is distance from the load
@@ -971,8 +968,7 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
             {
                 for (double Distance : SupportDistances)
                 {
-                    const double Weight = bAllLocationsValid && Distance > 1.0
-                        ? 1.0 / Distance : 1.0;
+                    const double Weight = Distance > 1.0 ? 1.0 / Distance : 1.0;
                     RawWeights.Add(Weight);
                     WeightTotal += Weight;
                 }
