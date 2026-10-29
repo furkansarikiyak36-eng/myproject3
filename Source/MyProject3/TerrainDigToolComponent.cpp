@@ -72,7 +72,7 @@ void UTerrainDigToolComponent::DigInput()
         SetStatus(TEXT("Kazmak için envanterde Tool.DiggingStick gerekir."));
         return;
     }
-    const float EffectiveToolStrength = FMath::Clamp(
+    float EffectiveToolStrength = FMath::Clamp(
         ToolStrength * DiggingStickStrength, 0.01f, 100.0f);
 
     FVector ViewLocation;
