@@ -143,11 +143,14 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
 }
 
 bool ReconcilePhysicalActorSnapshotsWithItems(
+    UWorld* World,
     const TArray<FWorldPhysicalActorSnapshot>& PhysicalActors,
     TArray<FWorldOwnedItemRecord>& Items,
     const TArray<FWorldStorageContainerRecord>& Storages,
     const TArray<FWorldCarryComponentSnapshot>& CarrySnapshots)
 {
+    if (!World)
+        return false;
     TMap<FGuid, int32> ItemIndices;
     for (int32 Index = 0; Index < Items.Num(); ++Index)
     {
@@ -186,9 +189,38 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
                 *ActorState.IdentityId.ToString());
             return false;
         }
-        // Save the authoritative item record at the same world location as its
-        // physics actor; otherwise a load would restore a stale ledger position.
-        Item.WorldLocation = ActorState.ActorTransform.GetLocation();
+        // For held items the live pawn may have a different location when
+        // loading the save. The carry snapshot's relative transform is canonical;
+        // precompute that final world position before ownership is applied.
+        if (bHeldOwned)
+        {
+            const FWorldCarryComponentSnapshot* Carry = CarrySnapshots.FindByPredicate(
+                [&Item](const FWorldCarryComponentSnapshot& Candidate)
+                {
+                    return Candidate.HeldItemId == Item.ItemId &&
+                        Candidate.CarryOwnerId == Item.OwnerId;
+                });
+            if (!Carry)
+                return false;
+
+            AActor* CarryOwner = Cast<AActor>(Carry->OwnerActorPath.ResolveObject());
+            if (!IsValid(CarryOwner) && Carry->bPlayerControlledOwner)
+                CarryOwner = UGameplayStatics::GetPlayerPawn(World, 0);
+            if (!IsValid(CarryOwner))
+                return false;
+
+            const FTransform HeldWorldTransform =
+                Carry->HeldItemRelativeTransform * CarryOwner->GetActorTransform();
+            if (!HeldWorldTransform.IsValid())
+                return false;
+            Item.WorldLocation = HeldWorldTransform.GetLocation();
+        }
+        else
+        {
+            // Save the authoritative item record at the same world location as
+            // its physics actor; otherwise a load would restore a stale ledger position.
+            Item.WorldLocation = ActorState.ActorTransform.GetLocation();
+        }
     }
     return true;
 }
@@ -1421,24 +1453,18 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
             TEXT("World save refused because held-item/carry-component state could not be captured consistently."));
         return false;
     }
-    if (!ValidateCarryComponentSnapshots(
-        OutSave->Items, OutSave->PhysicalActors, OutSave->CarryComponents))
+    for (const FWorldOwnedItemRecord& Item : OutSave->Items)
     {
-        // PhysicalActors is captured below. Validate identity/ownership now,
-        // then repeat after the full actor manifest has been captured.
-        for (const FWorldOwnedItemRecord& Item : OutSave->Items)
-        {
-            if (Item.OwnerKind == EWorldItemOwnerKind::Held &&
-                !OutSave->CarryComponents.ContainsByPredicate([&Item](const FWorldCarryComponentSnapshot& Carry)
-                {
-                    return Carry.HeldItemId == Item.ItemId && Carry.CarryOwnerId == Item.OwnerId;
-                }))
+        if (Item.OwnerKind == EWorldItemOwnerKind::Held &&
+            !OutSave->CarryComponents.ContainsByPredicate([&Item](const FWorldCarryComponentSnapshot& Carry)
             {
-                UE_LOG(LogTemp, Warning,
-                    TEXT("World save refused: held item %s has no matching carry component."),
-                    *Item.ItemId.ToString());
-                return false;
-            }
+                return Carry.HeldItemId == Item.ItemId && Carry.CarryOwnerId == Item.OwnerId;
+            }))
+        {
+            UE_LOG(LogTemp, Warning,
+                TEXT("World save refused: held item %s has no matching carry component."),
+                *Item.ItemId.ToString());
+            return false;
         }
     }
     Storage->ExportSnapshot(OutSave->StorageContainers, OutSave->StorageReservations);
@@ -1447,7 +1473,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
         !ValidateCarryComponentSnapshots(
             OutSave->Items, OutSave->PhysicalActors, OutSave->CarryComponents) ||
         !ReconcilePhysicalActorSnapshotsWithItems(
-            OutSave->PhysicalActors, OutSave->Items, OutSave->StorageContainers,
+            World, OutSave->PhysicalActors, OutSave->Items, OutSave->StorageContainers,
             OutSave->CarryComponents))
     {
         UE_LOG(LogTemp, Warning, TEXT("World save refused because physical actor state could not be reconciled with item ownership."));
@@ -1534,7 +1560,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (!ValidateCarryComponentSnapshots(
             Snapshot->Items, Snapshot->PhysicalActors, Snapshot->CarryComponents) ||
         !ReconcilePhysicalActorSnapshotsWithItems(
-            Snapshot->PhysicalActors, ValidatedPhysicalItems, Snapshot->StorageContainers,
+            World, Snapshot->PhysicalActors, ValidatedPhysicalItems, Snapshot->StorageContainers,
             Snapshot->CarryComponents))
         return false;
 
