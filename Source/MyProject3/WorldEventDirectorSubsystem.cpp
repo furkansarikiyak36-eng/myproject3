@@ -132,7 +132,7 @@ bool UWorldEventDirectorSubsystem::EvaluateTrigger(
         Definition.Trigger == TEXT("weather.heatwave"))
     {
         if (!IsWeatherTrigger(Definition.Trigger, Weather, Climate->GetTemperatureCelsius()) ||
-            WeatherSeverity < Definition.MinimumSeverity)
+            WeatherSeverity < Definition.TriggerMinimum || WeatherSeverity > Definition.TriggerMaximum)
             return false;
         OutSeverity = WeatherSeverity;
     }
@@ -140,24 +140,17 @@ bool UWorldEventDirectorSubsystem::EvaluateTrigger(
     {
         if (!FMath::IsFinite(Wetness) || Wetness < 0.0f || Wetness > 1.0f)
             return false;
-        if (Definition.Effect == TEXT("crop_moisture_loss"))
-        {
-            if (Wetness > Definition.MaximumSeverity)
-                return false;
-            OutSeverity = 1.0f - Wetness;
-        }
-        else
-        {
-            if (Wetness < Definition.MinimumSeverity)
-                return false;
-            OutSeverity = Wetness;
-        }
+        if (Wetness < Definition.TriggerMinimum || Wetness > Definition.TriggerMaximum)
+            return false;
+        OutSeverity = Definition.Effect == TEXT("crop_moisture_loss")
+            ? 1.0f - Wetness
+            : Wetness;
     }
     else if (Definition.Trigger == TEXT("snow_depth"))
     {
         const float MaxDepth = FMath::Max(Climate->MaxSnowDepthCm, 1.0f);
         const float DepthRatio = FMath::Clamp(SnowDepth / MaxDepth, 0.0f, 1.0f);
-        if (DepthRatio < Definition.MinimumSeverity)
+        if (DepthRatio < Definition.TriggerMinimum || DepthRatio > Definition.TriggerMaximum)
             return false;
         OutSeverity = DepthRatio;
     }
@@ -183,7 +176,7 @@ bool UWorldEventDirectorSubsystem::EvaluateTrigger(
                 ++Affected;
         }
         OutSeverity = static_cast<float>(Affected) / static_cast<float>(Profiles.Num());
-        if (OutSeverity < Definition.MinimumSeverity)
+        if (OutSeverity < Definition.TriggerMinimum || OutSeverity > Definition.TriggerMaximum)
             return false;
     }
     else
