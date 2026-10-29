@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Bind `O` in `SetupPlayer` and implement `RefuelFireInput`: nearest heat source within 350 cm, data-driven fuel definition match against unique owned inventory item, ledger revision validation, `TryAddFuelItem`, and relight if extinguished. Use feedback messages. No build.
+Add focused backend tests for dry firewood→wet and wet firewood→dry around an active heat source; check any API concerns in the new O handler and adjust the docs/status rows for P3.1. P3.2 shelter opening heat loss remains to do. Do not compile yet.
