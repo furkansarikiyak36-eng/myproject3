@@ -1261,9 +1261,20 @@ void ULogBuildToolsComponent::LockInput()
     AConstructionOpeningActor* Opening = TraceView(InteractRange, Hit) ? FindOpening(Hit) : nullptr;
     FString Reason;
     if (!Opening)
-        SetStatus(TEXT("Aim at a door or gate."));
-    else if (Opening->GetBar())
     {
+        SetStatus(TEXT("Aim at a door or gate."));
+        return;
+    }
+
+    // Removing a bar or unlocking a door is a short building interaction.
+    // Preflight before mutating the opening; charge only after success.
+    if (Opening->GetBar())
+    {
+        if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 0.5f, 0.0f))
+        {
+            SetStatus(TEXT("Too exhausted or resting to work the door bar."));
+            return;
+        }
         if (AActor* Stick = Opening->RemoveBar(GetOwner()->GetActorLocation(), Reason))
         {
             if (UWorldObjectIdentityComponent* Identity = Stick->FindComponentByClass<UWorldObjectIdentityComponent>())
@@ -1272,15 +1283,32 @@ void ULogBuildToolsComponent::LockInput()
                     Identity->TryTransitionLifecycle(EWorldObjectLifecycleState::Placed, EWorldObjectLifecycleState::World);
             }
             DropReleasedPiece(Stick);
+            if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 0.5f, 0.0f))
+                UE_LOG(LogTemp, Error, TEXT("Survival activity changed after removing door bar."));
             SetStatus(TEXT("Bar taken off: the door is open to use."), 2.0f);
         }
         else
             SetStatus(Reason);
+        return;
     }
-    else if (Opening->IsLocked() && Opening->ToggleLock(GetOwner()->GetActorLocation(), Reason))
-        SetStatus(TEXT("Unlocked."), 1.5f);
-    else
-        SetStatus(TEXT("Carry a stick and press E on the closed door from the inside to bar it."));
+
+    if (Opening->IsLocked())
+    {
+        if (!CanRecordToolActivity(GetOwner(), ESurvivalActivity::Build, 0.5f, 0.0f))
+        {
+            SetStatus(TEXT("Too exhausted or resting to unlock this door."));
+            return;
+        }
+        if (Opening->ToggleLock(GetOwner()->GetActorLocation(), Reason))
+        {
+            if (!RecordToolActivity(GetOwner(), ESurvivalActivity::Build, 0.5f, 0.0f))
+                UE_LOG(LogTemp, Error, TEXT("Survival activity changed after unlocking door."));
+            SetStatus(TEXT("Unlocked."), 1.5f);
+            return;
+        }
+    }
+
+    SetStatus(TEXT("Carry a stick and press E on the closed door from the inside to bar it."));
 }
 
 void ULogBuildToolsComponent::RopeInput()
@@ -1321,7 +1349,21 @@ void ULogBuildToolsComponent::TowInput()
         SetStatus(TEXT("Aim at a sled."));
         return;
     }
+
+    const bool bStartingTow = !Sled->IsTowed();
+    if (bStartingTow &&
+        !CanRecordToolActivity(GetOwner(), ESurvivalActivity::Carry, 2.0f, 0.0f))
+    {
+        SetStatus(TEXT("Too exhausted or resting to start pulling the sled."));
+        return;
+    }
+
     Sled->ToggleTow(Cast<APawn>(GetOwner()));
+    if (bStartingTow && Sled->IsTowed() &&
+        !RecordToolActivity(GetOwner(), ESurvivalActivity::Carry, 2.0f, 0.0f))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Survival activity changed after sled towing started."));
+    }
     SetStatus(Sled->IsTowed() ? TEXT("Pulling the sled (T to let go).") : TEXT("Sled released."), 2.0f);
 }
 
