@@ -56,7 +56,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/LogSnapCharacter.h` (added base movement speed and survival activity accumulator for non-compounding fatigue modifiers).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` adds calorie burn/stamina cost, now also gates exhausted actions; survival step models rain/storm wetness and warmth/shelter drying; rest uses shared clock).
 - `Config/GameData/conditions.json` (existing `Illness.Cold`, `Illness.DirtyWater`, `Injury.Fall`, and `Injury.AnimalBite` definitions are available for environment triggers).
-- `Source/MyProject3/WorldSurvivalSubsystem.h` (added public `ApplyWetnessExposure` environmental API; profile field remains the same saved Wetness value).
+- `Source/MyProject3/WorldSurvivalSubsystem.h` (declared public environmental `ApplyWetnessExposure`).
+- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (implemented bounded additive wetness; survival step applies configured `Illness.Cold` only after wetness≥0.8, felt temperature sufficiently cold, and core temperature≤36°C; a brief splash alone does not trigger sickness).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
@@ -135,4 +136,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement ApplyWetnessExposure in WorldSurvivalSubsystem.cpp and add the wet/cold condition transition to AdvanceSurvivalStep, then update VerticalSliceCWorldActor::Tick to invoke creek wetness. After that add the scoped-world test.
+Wire the creek exposure method into `VerticalSliceCWorldActor::Tick`. Then add a test for the wet-cold condition and implement P2.1 container-gated dirty-water fill by reading the current inventory API and item data. Do not build.
