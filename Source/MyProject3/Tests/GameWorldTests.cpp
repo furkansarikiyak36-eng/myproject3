@@ -1253,16 +1253,12 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Pot left the hands"), Inventory->GetItemCount(TEXT("Pot.Raw")), 0);
 
     FGuid Job;
-    TestFalse(TEXT("No fire, no firing"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
-
     AActor* FireActor = World->SpawnActor<AActor>();
     UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor);
     FireActor->SetRootComponent(Fire);
     Fire->RegisterComponent();
     FireActor->SetActorLocation(Kiln->GetActorLocation() + FVector(100.0, 0.0, 0.0));
-    TestTrue(TEXT("Wood fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.0f));
-    TestFalse(TEXT("A wood fire is not hot enough"), Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
-    TestTrue(TEXT("Charcoal fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
+    TestTrue(TEXT("Set up a charcoal-hot fire"), Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
     TestFalse(TEXT("Legacy id-less enqueue cannot bypass locked kiln recipe"),
         Kiln->TryStartRecipe(TEXT("fire_pot"), Job));
     TestFalse(TEXT("Player cannot fire the pot before discovering the creek recipe"),
@@ -1277,8 +1273,12 @@ bool FProductionStationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Craft filter after its discovery"), Inventory->TryCraft(TEXT("make_filter")));
     TestEqual(TEXT("One water filter is crafted"), Inventory->GetItemCount(TEXT("Tool.Filter")), 1);
 
-    TestFalse(TEXT("Player cannot skip the charcoal-hot fire rule"),
+    TestTrue(TEXT("Replace it with a plain wood fire"),
+        Fire->RestoreSimulationFuelState(7200.0f, true, 1.0f));
+    TestFalse(TEXT("A wood fire is not hot enough"),
         Kiln->TryStartRecipeForInventory(TEXT("fire_pot"), Inventory, Job));
+    TestTrue(TEXT("Charcoal fire meets the kiln requirement"),
+        Fire->RestoreSimulationFuelState(7200.0f, true, 1.5f));
     TestTrue(TEXT("Firing starts after discovery and fire requirement"),
         Kiln->TryStartRecipeForInventory(TEXT("fire_pot"), Inventory, Job));
     TestEqual(TEXT("The raw pot is used"), Kiln->GetStockCount(TEXT("Pot.Raw")), 0);
