@@ -53,11 +53,13 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current declarations for survival, consumables, conditions, equipment, actions, and profile).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (scenario initialization validates and registers a `ConfiguredRecipe` property).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (recipe is an editor-editable `FWorldProductionRecipe` property, not hard-coded ingredient literals).
-- `Source/MyProject3/WorldGameDataSubsystem.h` (current JSON schemas and subsystem application APIs).
+- `Source/MyProject3/WorldGameDataSubsystem.h` (data schemas: transformations, stations, crops; APIs `ApplyToWorld`, `ApplyToInventory`, `FindTransformation`).
+- `Source/MyProject3/InventoryCraftingComponent.h` (inventory ownership, recipe registration, item/tool checks).
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
-- `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`; P0.5's documented issue is more specifically that old demo config can still register a separate production recipe. Move/validate the configured recipe against loaded data or disable that parallel source.
+- `WorldDemoScenarioActor.h` confirms recipe values are editor-authored `ConfiguredRecipe`, so P0.5 should be resolved by making the game-data loader authoritative and not silently registering a parallel demo recipe.
+- `WorldGameDataSubsystem.h` exposes data transformations and application hooks, but actual wiring must be checked in the implementation; inventory header is next for exact item/recipe APIs.
 - `CODE_INDEX.md` is the authoritative filename/type map; survival API names are recorded. `WorldDemoScenarioActor.cpp` does not contain literal ingredient/output values; it registers a `ConfiguredRecipe` property. Inspect its header before deciding whether P0.5 is still open or the status note is stale.
 - `CODEBASE.md` is a legacy map of `feature/simple-intent`; current branch contains subsequent adoption/fixes. Current roadmap reports 102/102 tests at `bbc57b3`, while older status/memory references 85 tests. Do not conflate these snapshots.
 - Working branch is `game/p00-adopt-group-a`; roadmap status ceiling is `code-written` until batch validation.
