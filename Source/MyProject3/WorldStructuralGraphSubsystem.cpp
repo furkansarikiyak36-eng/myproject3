@@ -885,10 +885,10 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
                 return 0.0f;
             }
 
-            // Approximate a point load at the child actor origin. For two supports,
-            // inverse-distance weights reproduce the linear beam-reaction rule:
-            // the nearer support carries more of the load. For three or more
-            // supports this remains a deterministic heuristic, not a full solver.
+            // Approximate the child as a point load. For exactly two supports,
+            // simple beam statics gives each support a reaction proportional to
+            // its distance from the opposite support. For three or more supports,
+            // retain a deterministic inverse-distance heuristic (not a full solver).
             TArray<FGuid> SupportIds;
             if (Pair.Value.ParentNodeId.IsValid())
                 SupportIds.Add(Pair.Value.ParentNodeId);
@@ -923,9 +923,11 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
             RawWeights.Reserve(SupportIds.Num());
             double WeightTotal = 0.0;
             int32 CoincidentSupports = 0;
+            TArray<double> SupportDistances;
+            SupportDistances.Reserve(SupportIds.Num());
             for (const FGuid& SupportId : SupportIds)
             {
-                double Weight = 1.0;
+                double Distance = 0.0;
                 if (bAllLocationsValid)
                 {
                     const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportId);
@@ -936,7 +938,7 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
                         bOutValid = false;
                         return 0.0f;
                     }
-                    const double Distance = FVector::Distance(
+                    Distance = FVector::Distance(
                         ChildActor->GetActorLocation(), SupportActor->GetActorLocation());
                     if (!FMath::IsFinite(Distance))
                     {
@@ -945,36 +947,34 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
                         return 0.0f;
                     }
                     if (Distance <= 1.0)
-                    {
-                        Weight = 0.0;
                         ++CoincidentSupports;
-                    }
-                    else
-                    {
-                        Weight = 1.0 / Distance;
-                    }
                 }
-                RawWeights.Add(Weight);
-                if (Weight > 0.0)
-                    WeightTotal += Weight;
+                SupportDistances.Add(Distance);
             }
 
             if (CoincidentSupports > 0)
             {
                 WeightTotal = static_cast<double>(CoincidentSupports);
-                for (int32 Index = 0; Index < SupportIds.Num(); ++Index)
+                for (double Distance : SupportDistances)
+                    RawWeights.Add(Distance <= 1.0 ? 1.0 : 0.0);
+            }
+            else if (SupportIds.Num() == 2 && bAllLocationsValid)
+            {
+                // For two supports A and B, R_A = P*d_B/(d_A+d_B) and
+                // R_B = P*d_A/(d_A+d_B), where d_* is distance from the load
+                // point to that support. This conserves the load and moment.
+                RawWeights.Add(SupportDistances[1]);
+                RawWeights.Add(SupportDistances[0]);
+                WeightTotal = RawWeights[0] + RawWeights[1];
+            }
+            else
+            {
+                for (double Distance : SupportDistances)
                 {
-                    const FStructuralNodeRecord* SupportNode = Nodes.Find(SupportIds[Index]);
-                    const AActor* SupportActor = SupportNode ? SupportNode->Actor.Get() : nullptr;
-                    if (!IsValid(SupportActor))
-                    {
-                        Visiting.Remove(NodeId);
-                        bOutValid = false;
-                        return 0.0f;
-                    }
-                    RawWeights[Index] = FVector::Distance(
-                        ChildActor->GetActorLocation(), SupportActor->GetActorLocation()) <= 1.0
-                        ? 1.0 : 0.0;
+                    const double Weight = bAllLocationsValid && Distance > 1.0
+                        ? 1.0 / Distance : 1.0;
+                    RawWeights.Add(Weight);
+                    WeightTotal += Weight;
                 }
             }
 
