@@ -151,4 +151,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Make data-to-inventory application idempotent by detecting an existing recipe ID: accept only if its complete ingredient/output/byproduct/enabled shape matches the game-data-generated recipe, and reject mismatches. Then backfill all existing inventories inside `ApplyToWorld` after data validation and before marking applied.
+Audit `UInventoryCraftingComponent::HasCapacityFor` for unique owned stacks and ensure `TryFillWaterFromCreek` probes exactly the same capacity footprint as the unique dirty-water stack it will add. Add/update a test for a full inventory after checking that method. Then review source compatibility.
