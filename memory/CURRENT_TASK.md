@@ -65,7 +65,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (declared public environmental `ApplyWetnessExposure`).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (bounded additive environmental wetness; wet-cold illness requires Wetness≥0.8, felt temperature sufficiently cold, and core temperature≤36°C).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added fall-impact and hostile-bite automation tests; both are authored/unrun).
-- `memory/PLAN_STATUS.md` (updated P0.4 inventory backfill wording, player input bindings, and P2.5 to list fall/bite triggers as code-written but P2.5 remains partial for toxic rain/status HUD/build validation).
+- `memory/PLAN_STATUS.md` (P2.5 now lists code-written hard-fall and hostile-bite triggers/tests; P0.4 inventory backfill and I/O/J bindings noted).
+- `memory/ROADMAP.md` (progress-log currently has a P2.1–P2.5 entry but doesn't include newer inventory default-subobject/backfill, fall/bite cooldown tests, or the exact latest commits).
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (player location update now detects `IsInCreek` and adds 0.12 wetness each survival update while wading).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
@@ -160,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add current `code-written` progress entries to `ROADMAP.md` (P2.1–P2.5 and default inventory/data-backfill fixes) and update `CODEBASE.md` current-branch source map. Then run a final source-only audit of new API declarations, save schema v26, and tests, and continue with P3 fire wetness/interaction.
+Append an accurate P2.1–P2.5 progress entry to `ROADMAP.md` (don't replace earlier evidence; include latest commits and mark all changes unbuilt/unrun). Then update `CODEBASE.md` current branch map for player inventory/game data/wetness/fall/bite. After docs, perform source-only consistency checks and proceed to P3.1 wet-fuel fire interaction.
