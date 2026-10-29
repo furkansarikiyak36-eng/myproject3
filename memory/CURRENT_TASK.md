@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update `PLAN_STATUS.md` P4.4 from Kısmi to Var (code-written) and adjust the summary counts, documenting strength data validation, starter tool stacks, tree damage/log cutting and digging links; keep test/build/PIE caveat. Update P4.3 summary/docs as already code-written partial, add P4.4 ROADMAP entry, and update CODEBASE tools/terrain/stations rows.
+Append P4.4 code-written evidence to `ROADMAP.md` and add/update `CODEBASE.md` row for data-defined tool strength and action links. Then do a final source consistency check (starter tool add ordering, tool category/strength validation, item JSON parse, all three action callsites) and checkpoint exact unbuilt status.
