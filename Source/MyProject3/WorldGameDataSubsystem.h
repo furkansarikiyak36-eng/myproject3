@@ -84,6 +84,19 @@ struct FGameDataCrop
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 FoundInZone = 0;
 };
 
+USTRUCT(BlueprintType)
+struct FGameDataAnimal
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") FName FeedItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") FName ProductItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 ProductUnitsPerInterval = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double ProductIntervalSeconds = 3600.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") TArray<FName> CaptureToolItemIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") TArray<FGameDataItemAmount> SlaughterYields;
+};
+
 /**
  * Loads and checks the primitive-era game data (Config/GameData/*.json, P0.3/P0.4) and
  * hands it to the systems that use it: production recipes and stations, survival
@@ -116,6 +129,7 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
+    const TArray<FGameDataAnimal>& GetAnimals() const { return Animals; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
@@ -129,6 +143,7 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
+    TArray<FGameDataAnimal> Animals;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 
