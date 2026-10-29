@@ -830,7 +830,6 @@ bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
     {
         // This is the beginning of the authored transformation interval.
         ResultDefinitionId = FName(TEXT("Water.Boiling"));
-        bOutStarted = true;
     }
     else if (Water.DefinitionId == FName(TEXT("Water.Boiling")))
     {
@@ -922,6 +921,7 @@ bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
     Receipt.RequestedStartTimeSeconds = BoilStartTime;
     Receipt.RequestedDurationSeconds = BoilDuration;
     Profile->ActionReceipts.Add(Receipt);
+    bOutStarted = ResultDefinitionId == FName(TEXT("Water.Boiling"));
     return true;
 }
 
