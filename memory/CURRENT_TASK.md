@@ -121,4 +121,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Capture/move/slaughter APIs are already declared and implemented. Implement the canonical four-array agriculture snapshot and restore while keeping two-/three-array compatibility wrappers; validate animal lifecycle, pen membership and receipts. Then wire coordinator capture/apply and v24→v25 migration; add end-to-end lifecycle tests. Then update plan status and continue remaining partial systems. Batch build remains deferred.
+The four-array agriculture snapshot, pen SaveGame field, coordinator capture/apply, schema v24→v25 migration, and animal lifecycle automation test are now committed. Audit and update `CODEBASE.md` and `ROADMAP.md` to record the new files/APIs and unbuilt status. Then continue remaining partials starting with P2 survival world/player triggers. Do not run a build at each small task; keep status at `code-written` until the batch build/test session.
