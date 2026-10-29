@@ -317,7 +317,6 @@ ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVe
     };
 
     const FTransform OriginalTransform = Log->GetActorTransform();
-    FLogLengthCutVariant SelectedVariant;
     ELogLengthFraction KeptFraction = ELogLengthFraction::FullLength;
     ELogLengthFraction RestFraction = ELogLengthFraction::FullLength;
     FTransform KeptTransform = OriginalTransform;
@@ -362,7 +361,6 @@ ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVe
         const FQuat SecondRotation =
             OriginalTransform.GetRotation() * Variant.SecondOutputRotationOffsetLocal.Quaternion();
 
-        SelectedVariant = Variant;
         if (bKeepFirst)
         {
             KeptFraction = Variant.FirstOutputLengthFraction;
@@ -407,10 +405,16 @@ ALogBuildPiece* CutOffRemainder(ALogBuildPiece* Log, float KeepLength, const FVe
 
     // The offcut's shape remains authored and exact; only its final drop position
     // is changed after the split geometry has committed.
-    if (!Rest->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics))
+    if (Rest->SetActorLocation(DropLocation, false, nullptr, ETeleportType::TeleportPhysics))
     {
-        UE_LOG(LogTemp, Error,
-            TEXT("Exact cut committed but the offcut could not be moved to its drop location."));
+        if (!TransferPiece(Rest, EWorldItemOwnerKind::World, FGuid(), Rest->GetActorLocation()))
+        {
+            // Keep actor transform and ownership position coherent if the ledger
+            // refuses to record the drop location.
+            Rest->SetActorTransform(RestTransform, false, nullptr, ETeleportType::TeleportPhysics);
+            UE_LOG(LogTemp, Error,
+                TEXT("Offcut location transfer was rejected; restored its authored split transform."));
+        }
     }
     return Rest;
 }
