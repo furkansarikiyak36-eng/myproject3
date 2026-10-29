@@ -94,6 +94,44 @@ bool AWildlifeActor::ApplyAnimalManagementState(
     return true;
 }
 
+bool AWildlifeActor::TryBiteTarget(APawn* TargetPawn)
+{
+    if (Kind != EWildlifeKind::Enemy || !IsValid(TargetPawn) ||
+        !IsValid(Health) || Health->IsDead() || TimeToNextBiteSeconds > 0.0f ||
+        FVector::Dist2D(TargetPawn->GetActorLocation(), GetActorLocation()) > 190.0f)
+        return false;
+
+    if (UPhysicalHealthComponent* TargetHealth =
+        TargetPawn->FindComponentByClass<UPhysicalHealthComponent>())
+    {
+        const FVector PushDirection =
+            (TargetPawn->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
+        TargetHealth->ApplyPhysicalDamage(
+            8.0f, PushDirection * 110.0f + FVector(0.0f, 0.0f, 35.0f), this);
+    }
+
+    // The physical bite still hurts if the survival profile isn't registered,
+    // but the configured persistent injury is applied when that profile exists.
+    if (const UShelterSensorComponent* Shelter =
+        TargetPawn->FindComponentByClass<UShelterSensorComponent>();
+        Shelter && Shelter->SurvivalEntityId.IsValid() && GetWorld())
+    {
+        if (UWorldSurvivalSubsystem* Survival =
+            GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
+        {
+            FWorldSurvivalProfile Profile;
+            if (Survival->GetProfile(Shelter->SurvivalEntityId, Profile))
+            {
+                Survival->TryApplyCondition(FGuid::NewGuid(), Profile.EntityId,
+                    Profile.Revision, FName(TEXT("Injury.AnimalBite")), 0.5f);
+            }
+        }
+    }
+
+    TimeToNextBiteSeconds = 3.0f;
+    return true;
+}
+
 void AWildlifeActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
@@ -113,36 +151,8 @@ void AWildlifeActor::Tick(float DeltaSeconds)
             if (DistanceToPlayer < 2500.0f)
             {
                 Target = Player->GetActorLocation();
-                if (DistanceToPlayer <= 190.0f && TimeToNextBiteSeconds <= 0.0f)
-                {
-                    if (UPhysicalHealthComponent* PlayerHealth =
-                        Player->FindComponentByClass<UPhysicalHealthComponent>())
-                    {
-                        const FVector PushDirection =
-                            (Player->GetActorLocation() - GetActorLocation()).GetSafeNormal2D();
-                        PlayerHealth->ApplyPhysicalDamage(
-                            8.0f, PushDirection * 110.0f + FVector(0.0f, 0.0f, 35.0f), this);
-                    }
-
-                    if (const UShelterSensorComponent* Shelter =
-                        Player->FindComponentByClass<UShelterSensorComponent>();
-                        Shelter && Shelter->SurvivalEntityId.IsValid())
-                    {
-                        if (UWorldSurvivalSubsystem* Survival =
-                            GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>())
-                        {
-                            FWorldSurvivalProfile Profile;
-                            if (Survival->GetProfile(Shelter->SurvivalEntityId, Profile))
-                            {
-                                Survival->TryApplyCondition(FGuid::NewGuid(), Profile.EntityId,
-                                    Profile.Revision, FName(TEXT("Injury.AnimalBite")), 0.5f);
-                            }
-                        }
-                    }
-
-                    TimeToNextBiteSeconds = 3.0f;
+                if (DistanceToPlayer <= 190.0f && TryBiteTarget(Player))
                     return;
-                }
             }
         }
     }
