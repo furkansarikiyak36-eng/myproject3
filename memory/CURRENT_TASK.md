@@ -51,10 +51,12 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
 ### Changes
 - Implemented receipt-backed inventory-owned water processing transitions and added schema v27 migration.
-- Source audit verified rest blocks jump, while finding missing survival action hooks on pickup/place actions. Added `CanRecordActivity` declaration and implementation; `RecordActivity` now calls this shared preflight so action gating has one source of truth.
+- Source audit verified rest blocks jump and that log-cut/dig already use survival activity hooks. Added `CanRecordActivity` as the shared pure preflight; `RecordActivity` now uses that same preflight.
+- `LogCarryComponent` now gates and charges stamina/energy for regular log/material pickup and central log/material placement commit paths. Preflight coverage was added to the existing rest test; test remains unrun.
+- Other `LogBuildToolsComponent` direct placement/action paths were not exhaustively converted; keep P2.2 partial.
 - Bound player M/F5/F6/F7 interactions for drink, boil, rest and survival status; water tests now cover the complete source-level loop.
 - Added fatigue work-effectiveness API, active-rest action gate, scaling for tree chop/log cut/dig/repair, plus tests for rest/work scaling and warm-shelter drying.
 - Reworked axe-action accounting so misses and cut-marking do not automatically spend work stamina. Log cutting gates/records work when the actual cutting press happens.
 
 ### Next step
-Wire shared preflight/cost calls to successful carry pickup and log/material placement commits. Extend the rest test with preflight assertions, then refresh plan/docs and run source-only checks. Then synchronize any remaining status/roadmap inaccuracies and run a source-only audit; all new code/tests remain unbuilt/unrun.
+Next: update `PLAN_STATUS.md`, `ROADMAP.md` and `CODEBASE.md` with the new carry/build activity gates; keep P2 rows Kısmi until batch build/tests/PIE. Then audit binding/migration/method counts, JSON parse locally if available, and note remaining direct building-tool actions not routed through the shared activity gate. All new code/tests remain unbuilt/unrun.
