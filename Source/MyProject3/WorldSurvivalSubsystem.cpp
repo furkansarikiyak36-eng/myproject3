@@ -135,8 +135,11 @@ bool UWorldSurvivalSubsystem::RecordActivity(
 bool UWorldSurvivalSubsystem::ConsumeFood(const FGuid& EntityId, float Kcal, float ThirstRelief)
 {
     FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
-    if (!Profile || !InRange(Kcal, 0.0f, 10000.0f) || !InRange(ThirstRelief, 0.0f, 100.0f) ||
-        (Kcal == 0.0f && ThirstRelief == 0.0f) || Profile->Revision == MAX_int64)
+    if (!Profile || !IsValidProfile(*Profile) ||
+        !InRange(Kcal, 0.0f, 10000.0f) || !InRange(ThirstRelief, 0.0f, 100.0f) ||
+        (Kcal == 0.0f && ThirstRelief == 0.0f) ||
+        !FMath::IsFinite(MaxCaloriesKcal) || MaxCaloriesKcal <= 0.0f ||
+        Profile->Revision == MAX_int64)
     {
         return false;
     }
