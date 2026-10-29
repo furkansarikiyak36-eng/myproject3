@@ -21,6 +21,8 @@ struct FInventoryItemDefinition
  /** 0 means non-perishable. Rates use the shared in-game simulation clock. */
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Spoilage", meta=(ClampMin="0.0")) double ShelfLifeSeconds = 0.0;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Spoilage") FName SpoiledDefinitionId = NAME_None;
+ /** Fuel duration contributed to the single authoritative heat-source fuel counter. 0 means not fuel. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Fuel", meta=(ClampMin="0.0", ClampMax="86400.0")) float FuelBurnSeconds = 0.0f;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Animals", meta=(ClampMin="0.0", ClampMax="100.0")) float AnimalFeedHungerReduction = 0.0f;
  /** Empty means not equipable. Slot IDs must be stable and unique per equipped item. */
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Inventory|Equipment") FName EquipmentSlotId = NAME_None;
@@ -64,5 +66,7 @@ struct FCraftingRecipe
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") TArray<FRecipeIngredient> Ingredients;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") FInventoryStack Output;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") TArray<FInventoryStack> Byproducts;
+ /** Optional unlock token committed by discovery; NAME_None means always available. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") FName RequiredUnlockId = NAME_None;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") bool bEnabled = true;
 };
