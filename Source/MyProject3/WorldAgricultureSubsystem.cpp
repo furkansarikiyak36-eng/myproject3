@@ -815,6 +815,237 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::GetCropAtPlotCell(
+    const FIntVector& PlotCell, FWorldCropState& OutCrop) const
+{
+    OutCrop = FWorldCropState();
+    const FWorldCropState* Found = nullptr;
+    for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
+    {
+        const FWorldCropState& Crop = Pair.Value;
+        if (Crop.PlotCell != PlotCell || Crop.Stage == ECropGrowthStage::Harvested ||
+            Crop.Stage == ECropGrowthStage::Withered)
+            continue;
+        if (Found)
+            return false; // Ambiguous saved state: never guess which crop to mutate.
+        Found = &Crop;
+    }
+    if (!Found)
+        return false;
+    OutCrop = *Found;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryHarvestCropToInventory(
+    const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
+    UInventoryCraftingComponent* Inventory, const FGuid& SurvivalEntityId,
+    TArray<FGuid>& OutItemIds)
+{
+    OutItemIds.Reset();
+    if (!OperationId.IsValid() || !CropId.IsValid() || ExpectedCropRevision <= 0 ||
+        !IsValid(Inventory) || !SurvivalEntityId.IsValid())
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival =
+        World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !Ownership || !Survival || !GameData || !GameData->IsApplied())
+        return false;
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!InventoryOwnerId.IsValid())
+        return false;
+
+    FWorldCropState Crop;
+    if (!GetCrop(CropId, Crop))
+        return false;
+
+    // A retry after a save/reload is successful only when all harvest outputs
+    // remain owned by this exact inventory and each ID is present there.
+    if (Crop.HarvestOperationId == OperationId)
+    {
+        if (Crop.HarvestExpectedRevision != ExpectedCropRevision ||
+            Crop.HarvestOutputItemIds.IsEmpty())
+            return false;
+        for (const FGuid& ItemId : Crop.HarvestOutputItemIds)
+        {
+            FWorldOwnedItemRecord Item;
+            if (!Ownership->TryGetItem(ItemId, Item) ||
+                Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                Item.OwnerId != InventoryOwnerId ||
+                !Inventory->Items.ContainsByPredicate([&ItemId](const FInventoryStack& Stack)
+                    { return Stack.OwnedWorldItemId == ItemId; }))
+                return false;
+        }
+        OutItemIds = Crop.HarvestOutputItemIds;
+        return true;
+    }
+
+    if (Crop.Revision != ExpectedCropRevision || Crop.Stage != ECropGrowthStage::Mature ||
+        Crop.HarvestUnits <= 0 || Crop.SeedReturnUnits < 0 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits <= 0 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
+        (Crop.SeedReturnUnits > 0 && Crop.SeedDefinitionId.IsNone()) ||
+        Ownership->MaxTrackedItems <= 0 ||
+        Crop.HarvestUnits + Crop.SeedReturnUnits >
+            Ownership->MaxTrackedItems - Ownership->GetTrackedItemCount() ||
+        !Survival->CanRecordActivity(SurvivalEntityId, ESurvivalActivity::Build, 300.0f, 0.0f))
+        return false;
+
+    FGuid InventoryActorBefore;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(InventoryActorBefore, InventoryOwnerBefore,
+        InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != InventoryOwnerId)
+        return false;
+    (void)InventoryActorBefore;
+
+    // Every output becomes its own ledger-owned item. Preflight the real item
+    // weights and inventory capacity before a crop or world-item record changes.
+    TArray<FInventoryStack> CapacityProbe;
+    CapacityProbe.Reserve(Crop.HarvestUnits + Crop.SeedReturnUnits);
+    auto ToInventoryCategory = [](FName Category)
+    {
+        if (Category == TEXT("Tool")) return EInventoryItemCategory::Tool;
+        if (Category == TEXT("Weapon")) return EInventoryItemCategory::Weapon;
+        if (Category == TEXT("BuildingPart")) return EInventoryItemCategory::BuildingPart;
+        if (Category == TEXT("Consumable")) return EInventoryItemCategory::Consumable;
+        if (Category == TEXT("Protection")) return EInventoryItemCategory::Protection;
+        return EInventoryItemCategory::Resource;
+    };
+    auto AddCapacityProbe = [&](FName DefinitionId) -> bool
+    {
+        const FGameDataItem* Definition = GameData->GetItems().Find(DefinitionId);
+        if (!Definition || Definition->WeightGrams <= 0)
+            return false;
+        if (!Inventory->ItemWeightGrams.Contains(DefinitionId))
+            Inventory->ItemWeightGrams.Add(DefinitionId, Definition->WeightGrams);
+
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.Category = ToInventoryCategory(Definition->Category);
+        Stack.MaxStack = 1;
+        Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
+        Stack.OwnedWorldItemId = FGuid::NewGuid();
+        if (!Stack.OwnedWorldItemId.IsValid())
+            return false;
+        CapacityProbe.Add(Stack);
+        return true;
+    };
+    for (int32 Index = 0; Index < Crop.HarvestUnits; ++Index)
+        if (!AddCapacityProbe(Crop.HarvestDefinitionId))
+            return false;
+    for (int32 Index = 0; Index < Crop.SeedReturnUnits; ++Index)
+        if (!AddCapacityProbe(Crop.SeedDefinitionId))
+            return false;
+    if (!Inventory->CanAddItems(CapacityProbe))
+        return false;
+
+    TArray<FWorldCropState> CropsBefore;
+    TArray<FWorldAnimalState> AnimalsBefore;
+    TArray<FWorldFieldCellState> FieldCellsBefore;
+    TArray<FWorldAnimalPenState> AnimalPensBefore;
+    ExportSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipTransfersBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+
+    TArray<FWorldSurvivalProfile> ProfilesBefore;
+    TArray<FWorldDiscoveryRecord> DiscoveriesBefore;
+    EWorldWeatherState WeatherBefore = EWorldWeatherState::Clear;
+    float WeatherSeverityBefore = 0.0f;
+    Survival->ExportSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            OwnershipItemsBefore, OwnershipTransfersBefore, OwnershipSplitsBefore);
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bFarmRestored =
+            RestoreSnapshot(CropsBefore, AnimalsBefore, FieldCellsBefore, AnimalPensBefore);
+        const bool bSurvivalRestored =
+            Survival->RestoreSnapshot(ProfilesBefore, DiscoveriesBefore, WeatherBefore, WeatherSeverityBefore);
+        if (!bOwnershipRestored || !bInventoryRestored || !bFarmRestored || !bSurvivalRestored)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Harvest-to-inventory rollback failed; stop simulation and recover/reset the world."));
+            UE_LOG(LogTemp, Error, TEXT("Harvest-to-inventory rollback failed for crop %s."),
+                *CropId.ToString());
+            return false;
+        }
+        return true;
+    };
+
+    TArray<FGuid> WorldOutputIds;
+    if (!TryHarvestCrop(OperationId, CropId, ExpectedCropRevision, WorldOutputIds) ||
+        WorldOutputIds.Num() != CapacityProbe.Num())
+    {
+        Rollback();
+        return false;
+    }
+
+    for (const FGuid& ItemId : WorldOutputIds)
+    {
+        FWorldOwnedItemRecord WorldItem;
+        if (!Ownership->TryGetItem(ItemId, WorldItem) ||
+            WorldItem.OwnerKind != EWorldItemOwnerKind::World ||
+            WorldItem.Revision <= 0 || WorldItem.Revision >= MAX_int64)
+        {
+            Rollback();
+            return false;
+        }
+
+        FWorldOwnedItemRecord InventoryItem;
+        if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, WorldItem.Revision,
+            EWorldItemOwnerKind::World, EWorldItemOwnerKind::Inventory,
+            InventoryOwnerId, WorldItem.WorldLocation, InventoryItem))
+        {
+            Rollback();
+            return false;
+        }
+
+        const FGameDataItem* Definition = GameData->GetItems().Find(InventoryItem.DefinitionId);
+        if (!Definition)
+        {
+            Rollback();
+            return false;
+        }
+        FInventoryStack Stack;
+        Stack.ItemId = InventoryItem.DefinitionId;
+        Stack.Quantity = 1;
+        Stack.Category = ToInventoryCategory(Definition->Category);
+        Stack.MaxStack = 1;
+        Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
+        Stack.OwnedWorldItemId = InventoryItem.ItemId;
+        if (!Inventory->TryAddItem(Stack))
+        {
+            Rollback();
+            return false;
+        }
+    }
+
+    if (!Survival->RecordActivity(SurvivalEntityId, ESurvivalActivity::Build, 300.0f, 0.0f))
+    {
+        Rollback();
+        return false;
+    }
+
+    OutItemIds = MoveTemp(WorldOutputIds);
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::TryCaptureWildlife(
     const FGuid& OperationId, const FGuid& SourceWildlifeIdentityId, AWildlifeActor* Wildlife,
     const FWorldAnimalCaptureDefinition& Definition, FGuid& OutAnimalId)
