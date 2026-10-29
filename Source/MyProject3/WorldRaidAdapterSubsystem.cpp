@@ -1,6 +1,7 @@
 #include "WorldRaidAdapterSubsystem.h"
 
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
 #include "WorldThreatDirectorSubsystem.h"
@@ -107,6 +108,39 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     // collapse resolution cannot replay this pulse on the next call.
     NextDamageTimeSeconds = NextPulseTime;
     TArray<FGuid> SortedTargets = DefenseTargetNodeIds;
+    const bool bAutoSelectBlockingTarget = SortedTargets.IsEmpty();
+    if (bAutoSelectBlockingTarget)
+    {
+        struct FDefenseTargetCandidate
+        {
+            FGuid NodeId;
+            float DistanceCm = 0.0f;
+        };
+        TArray<FDefenseTargetCandidate> Candidates;
+        for (TActorIterator<AStoneBuildingPiece> It(World); It; ++It)
+        {
+            AStoneBuildingPiece* Piece = *It;
+            if (!IsValid(Piece) || !Piece->IsRaidBlocking())
+                continue;
+            const FGuid NodeId = Piece->GetStructuralNodeId();
+            FStructuralNodeRecord Node;
+            if (!NodeId.IsValid() || !Graph->GetNode(NodeId, Node) || Node.Actor.Get() != Piece)
+                continue;
+            const float DistanceCm = FVector::Distance(Piece->GetActorLocation(), Raid.TargetLocation);
+            if (!FMath::IsFinite(DistanceCm))
+                continue;
+            Candidates.Add({NodeId, DistanceCm});
+        }
+        Candidates.Sort([](const FDefenseTargetCandidate& A, const FDefenseTargetCandidate& B)
+        {
+            if (!FMath::IsNearlyEqual(A.DistanceCm, B.DistanceCm, 0.1f))
+                return A.DistanceCm < B.DistanceCm;
+            return A.NodeId.ToString() < B.NodeId.ToString();
+        });
+        for (const FDefenseTargetCandidate& Candidate : Candidates)
+            SortedTargets.Add(Candidate.NodeId);
+    }
+
     SortedTargets.Sort([](const FGuid& A, const FGuid& B)
         { return A.ToString() < B.ToString(); });
     for (int32 Index = SortedTargets.Num() - 1; Index > 0; --Index)
@@ -130,6 +164,11 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         {
             return false;
         }
+        // When there is no explicit target list, the raid attacks one nearest
+        // blocking structure per pulse. A clear opening is filtered out before
+        // selection, so an open gate does not soak a pulse.
+        if (bAutoSelectBlockingTarget)
+            break;
     }
     return FMath::IsFinite(NextDamageTimeSeconds);
 }
