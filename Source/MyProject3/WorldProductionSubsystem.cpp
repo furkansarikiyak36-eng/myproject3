@@ -112,6 +112,15 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedItem(
     FGuid StationId, FGuid OperationId, FGuid ItemId,
     int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId)
 {
+    return TryIngestWorldOwnedItemForPlayer(StationId, OperationId, ItemId,
+        ExpectedItemRevision, ExpectedStationRevision, FGuid(), OutStockItemId);
+}
+
+bool UWorldProductionSubsystem::TryIngestWorldOwnedItemForPlayer(
+    FGuid StationId, FGuid OperationId, FGuid ItemId,
+    int64 ExpectedItemRevision, int64 ExpectedStationRevision,
+    const FGuid& PlayerEntityId, FName& OutStockItemId)
+{
     OutStockItemId = NAME_None;
     UWorld* World = GetWorld();
     UWorldItemOwnershipSubsystem* Ownership =
@@ -163,7 +172,8 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedItem(
         Item.OwnerKind != EWorldItemOwnerKind::World || Item.OwnerId.IsValid() ||
         Item.Revision != ExpectedItemRevision || Item.Revision >= MAX_int64 - 1 ||
         Item.Quantity != 1 || Item.DefinitionId.IsNone() ||
-        !Item.MeshVariantSetId.IsNone())
+        !Item.MeshVariantSetId.IsNone() ||
+        !IsDefinitionAvailableForPlayer(Item.DefinitionId, PlayerEntityId))
         return false;
 
     // This API is for ledger-backed resources with no separate physical actor.
@@ -238,6 +248,19 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
     FGuid ItemId,
     int64 ExpectedItemRevision,
     int64 ExpectedStationRevision,
+    FName& OutStockItemId)
+{
+    return TryIngestWorldOwnedLogPieceForPlayer(StationId, OperationId, ItemId,
+        ExpectedItemRevision, ExpectedStationRevision, FGuid(), OutStockItemId);
+}
+
+bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPieceForPlayer(
+    FGuid StationId,
+    FGuid OperationId,
+    FGuid ItemId,
+    int64 ExpectedItemRevision,
+    int64 ExpectedStationRevision,
+    const FGuid& PlayerEntityId,
     FName& OutStockItemId)
 {
     OutStockItemId = NAME_None;
@@ -369,6 +392,9 @@ bool UWorldProductionSubsystem::TryIngestWorldOwnedLogPiece(
         return false;
     }
 
+    if (!IsDefinitionAvailableForPlayer(Item.DefinitionId, PlayerEntityId))
+        return false;
+
     const FName StockItemId =
         MakePhysicalStockItemId(Item.DefinitionId, Item.MeshVariantSetId);
     if (StockItemId.IsNone())
@@ -469,6 +495,24 @@ bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
     TSubclassOf<ALogBuildPiece> LogActorClass,
     FGuid& OutWorldItemId)
 {
+    return TryMaterializeStockAsWorldLogForPlayer(StationId, OperationId, StockItemId,
+        DefinitionId, BaseDefinitionId, MeshVariantSetId, ExpectedStationRevision,
+        SpawnTransform, LogActorClass, FGuid(), OutWorldItemId);
+}
+
+bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLogForPlayer(
+    FGuid StationId,
+    FGuid OperationId,
+    FName StockItemId,
+    FName DefinitionId,
+    FName BaseDefinitionId,
+    FName MeshVariantSetId,
+    int64 ExpectedStationRevision,
+    const FTransform& SpawnTransform,
+    TSubclassOf<ALogBuildPiece> LogActorClass,
+    const FGuid& PlayerEntityId,
+    FGuid& OutWorldItemId)
+{
     OutWorldItemId.Invalidate();
     const FVector Location = SpawnTransform.GetLocation();
     const FVector Scale = SpawnTransform.GetScale3D();
@@ -522,6 +566,9 @@ bool UWorldProductionSubsystem::TryMaterializeStockAsWorldLog(
     {
         return false;
     }
+    if (!IsDefinitionAvailableForPlayer(DefinitionId, PlayerEntityId) ||
+        !IsDefinitionAvailableForPlayer(BaseDefinitionId, PlayerEntityId))
+        return false;
 
     UWorldItemOwnershipSubsystem* Ownership =
         GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
