@@ -161,4 +161,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect the complete `TryAddFuelItem` and `AdvanceFuel` implementations, then `WorldSurvivalSubsystem` item exposure/step and coordinator update order. Wet-fuel world conversion must occur before a fuel is loaded into a heat source; inventory wood must not be changed with the world-only `TryUpdateItemDefinition` API.
+Inspect the existing fuel-wetting/drying loop together with the current P3.1 automation test. Identify whether rain changes only world-owned items and whether dry-fire drying checks lit heat sources or accidentally any registered source. Correct the actual gap (if present), tighten/extend the test, then update P3.1 status only to code-written/unbuilt.
