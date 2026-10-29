@@ -54,7 +54,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/ShelterSensorComponent.h` (`SurvivalEntityId` is public and can bridge the player character to the survival profile).
 - `Source/MyProject3/LogSnapCharacter.cpp` (constructor sets base MaxWalkSpeed 420 cm/s; Tick polls WASD and has no existing survival activity call).
 - `Source/MyProject3/LogSnapCharacter.h` (added base movement speed and survival activity accumulator for non-compounding fatigue modifiers).
-- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` currently records calorie burn and drains stamina but does not gate the caller's action; `AdvanceSurvivalStep` already models rain/storm wetness and faster drying near warmth/shelter; `TryBeginRest` uses shared-clock rest quality; condition definitions can be applied with receipts).
+- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (`RecordActivity` adds calorie burn/stamina cost, now also gates exhausted actions; survival step models rain/storm wetness and warmth/shelter drying; rest uses shared clock).
+- `Config/GameData/conditions.json` (existing `Illness.Cold`, `Illness.DirtyWater`, `Injury.Fall`, and `Injury.AnimalBite` definitions are available for environment triggers).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
@@ -133,4 +134,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement a shared-clock wet-cold condition trigger in `WorldSurvivalSubsystem::AdvanceSurvivalStep` using the existing condition definition registry; add a public environmental creek exposure method for `VerticalSliceCWorldActor::Tick`. Then wire a container-gated dirty-water fill input after reading inventory/item data APIs.
+Add a small ApplyWetnessExposure(EntityId, WetnessDelta) API, call it from VerticalSliceCWorldActor::Tick when IsInCreek, and auto-apply the configured Illness.Cold during AdvanceSurvivalStep for prolonged wet/cold exposure. Add automation coverage for creek wetting and cold-illness trigger.
