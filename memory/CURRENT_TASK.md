@@ -84,7 +84,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/LogSnapCharacter.cpp` (now creates one canonical `UInventoryCraftingComponent` default subobject adjacent to carry/build components).
 - `Source/MyProject3/WorldDemoBootstrapActor.cpp` (bootstrap calls `LoadDefault` + `ApplyToWorld` before coordinator initialization, but actor BeginPlay order can leave player inventory already initialized).
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (`ApplyToWorld` does not backfill existing inventories).
-- `Source/MyProject3/InventoryCraftingComponent.cpp` (`RegisterRecipe` rejects duplicate IDs).
+- `Source/MyProject3/InventoryCraftingComponent.cpp` (`RegisterRecipe` rejects duplicate IDs; `HasCapacityFor` stacks only non-owned items, while a uniquely owned water item always needs a new slot).
 - `Source/MyProject3/InventoryCraftingTypes.h` (recipe contract is `RecipeId`, `Ingredients` with `ItemId/Quantity/bConsume`, `Output`, `Byproducts`, `bEnabled`; stacks have item/quantity/category/max-stack/tool/owned-identity fields).
 - GitHub code search found no canonical player inventory attachment.
 - `Source/MyProject3/LogSnapCharacter.h` now forward-declares `UInventoryCraftingComponent` and exposes the intended canonical `Inventory` default-subobject property.
@@ -151,4 +151,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Audit `UInventoryCraftingComponent::HasCapacityFor` for unique owned stacks and ensure `TryFillWaterFromCreek` probes exactly the same capacity footprint as the unique dirty-water stack it will add. Add/update a test for a full inventory after checking that method. Then review source compatibility.
+Fix `TryFillWaterFromCreek`'s capacity probe by giving the simulated dirty-water stack its own valid temporary `OwnedWorldItemId`, so capacity preflight reserves a new unique slot instead of assuming it can merge into an ordinary water stack. Add an automation case where the fired pot fills the only slot, then succeeds once a second slot becomes available.
