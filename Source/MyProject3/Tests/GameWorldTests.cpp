@@ -14,6 +14,7 @@
 #include "HeatSourceComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldAgricultureSubsystem.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
 #include "VoxelTerrainChunkComponent.h"
@@ -725,12 +726,23 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
     UWorldTerrainStateSubsystem* Terrain = World ? World->GetSubsystem<UWorldTerrainStateSubsystem>() : nullptr;
     UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Production"), Production) ||
-        !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Climate"), Climate))
+        !TestNotNull(TEXT("Terrain"), Terrain) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Agriculture"), Agriculture))
         return false;
     TestTrue(TEXT("Load"), Data->LoadDefault());
     TestTrue(FString::Printf(TEXT("Apply (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
     TestFalse(TEXT("Apply only once"), Data->ApplyToWorld());
+    TestEqual(TEXT("Crop definitions are registered into agriculture"), Agriculture->CropDefinitions.Num(), Data->GetCrops().Num());
+    const FWorldCropDefinition* GrainDefinition = Agriculture->CropDefinitions.FindByPredicate(
+        [](const FWorldCropDefinition& D) { return D.CropDefinitionId == TEXT("Crop.Grain"); });
+    TestNotNull(TEXT("Grain crop definition"), GrainDefinition);
+    if (GrainDefinition)
+    {
+        TestTrue(TEXT("Grain has planting months"), GrainDefinition->PlantMonths.Contains(4) && GrainDefinition->PlantMonths.Contains(5));
+        TestEqual(TEXT("Grain returns seed items"), GrainDefinition->SeedReturnUnits, 2);
+    }
 
     TArray<FWorldProductionStation> Stations;
     TArray<FWorldProductionRecipe> Recipes;
@@ -936,6 +948,211 @@ bool FDigLayersFromDataTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Clay item exists"), Ownership->TryGetItem(Id, Record));
         TestEqual(TEXT("It is clay"), Record.DefinitionId, FName(TEXT("Clay")));
     }
+    return true;
+}
+
+
+// P6.1/P6.2: field operations are revision guarded and operation-ID retries replay one result.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFarmFieldWorkReceiptsTest,
+    "MyProject3.World.Farming.FieldWorkIsRevisionGuardedAndIdempotent", Flags)
+bool FFarmFieldWorkReceiptsTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldAgricultureSubsystem* Agriculture = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Agriculture subsystem"), Agriculture))
+        return false;
+
+    FWorldFieldCellState SeedField;
+    SeedField.Cell = FIntVector(7, 3, 0);
+    SeedField.Fertility = 55.0f;
+    SeedField.WeedPressure = 0.8f;
+    SeedField.Moisture = 0.2f;
+    TestTrue(TEXT("Register field cell"), Agriculture->RegisterFieldCell(SeedField));
+
+    FWorldFieldCellState Field;
+    TestTrue(TEXT("Read registered field cell"), Agriculture->GetFieldCell(SeedField.Cell, Field));
+    const int64 InitialRevision = Field.Revision;
+    const FGuid ClearOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Clear field"), Agriculture->TryApplyFieldWork(
+        ClearOperation, Field.Cell, InitialRevision, EWorldFieldWorkKind::Clear, 1.0f, Field));
+    TestTrue(TEXT("Field is cleared"), Field.bCleared);
+    TestFalse(TEXT("Clearing invalidates old till state"), Field.bTilled);
+    const int64 ClearedRevision = Field.Revision;
+
+    FWorldFieldCellState Retried;
+    TestTrue(TEXT("Same clear operation replays"), Agriculture->TryApplyFieldWork(
+        ClearOperation, Field.Cell, InitialRevision, EWorldFieldWorkKind::Clear, 1.0f, Retried));
+    TestEqual(TEXT("Retry returns current field revision"), Retried.Revision, ClearedRevision);
+    TestFalse(TEXT("An operation ID cannot be reused for a different action"), Agriculture->TryApplyFieldWork(
+        ClearOperation, Field.Cell, InitialRevision, EWorldFieldWorkKind::Till, 1.0f, Retried));
+    TestFalse(TEXT("Stale field revision is rejected"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, InitialRevision, EWorldFieldWorkKind::Till, 1.0f, Retried));
+
+    TestTrue(TEXT("Till cleared field"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Till, 1.0f, Field));
+    TestTrue(TEXT("Field is tilled"), Field.bTilled);
+    const float FertilityBefore = Field.Fertility;
+    TestTrue(TEXT("Fertilize field state"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Fertilize, 12.0f, Field));
+    TestTrue(TEXT("Fertilizer raises fertility"), Field.Fertility > FertilityBefore);
+    TestTrue(TEXT("Mulch field state"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Mulch, 0.25f, Field));
+    TestTrue(TEXT("Mulch coverage changes"), Field.MulchCoverage > 0.0f);
+    TestTrue(TEXT("Water field state"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Water, 0.4f, Field));
+    TestTrue(TEXT("Water raises moisture"), Field.Moisture > 0.2f);
+    return true;
+}
+
+// P6.2/P6.3: planting consumes one real owned seed only in season, and harvest returns seed items once.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFarmSeasonSeedReturnAndPersistenceTest,
+    "MyProject3.World.Farming.SeasonalPlantHarvestReturnsSeedsAndPersistsField", Flags)
+bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Agriculture"), Agriculture) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+    TestTrue(TEXT("Load primitive-era data"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply game data: %s"), *Data->GetLastError()), Data->ApplyToWorld());
+    TestTrue(TEXT("Start clock before planting"), Clock->InitializeClock(31415, 0.0));
+
+    FWorldCropDefinition FastCrop;
+    FastCrop.CropDefinitionId = TEXT("Crop.FastTest");
+    FastCrop.SeedDefinitionId = TEXT("Seed.Grain");
+    FastCrop.HarvestDefinitionId = TEXT("Grain.Harvest");
+    FastCrop.HarvestUnits = 2;
+    FastCrop.SecondsPerStage = 1.0;
+    FastCrop.MinimumPlantMoisture = 0.15f;
+    FastCrop.PlantMonths.Add(4);
+    FastCrop.SeedReturnUnits = 1;
+    FastCrop.SoilExhaustionPerHarvest = 8.0f;
+    FastCrop.MinimumFertility = 10.0f;
+    FastCrop.MaximumPlantWeedPressure = 0.7f;
+    TestTrue(TEXT("Register fast test crop"), Agriculture->RegisterCropDefinition(FastCrop));
+
+    AActor* InventoryOwnerActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner actor"), InventoryOwnerActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwnerActor);
+    InventoryOwnerActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    Inventory->ItemWeightGrams.Add(TEXT("Seed.Grain"), 50);
+
+    FWorldOwnedItemRecord SeedRecord;
+    SeedRecord.ItemId = FGuid::NewGuid();
+    SeedRecord.DefinitionId = TEXT("Seed.Grain");
+    SeedRecord.BaseDefinitionId = SeedRecord.DefinitionId;
+    SeedRecord.Quantity = 1;
+    SeedRecord.OwnerKind = EWorldItemOwnerKind::Inventory;
+    SeedRecord.OwnerId = Inventory->GetInventoryOwnerId();
+    SeedRecord.Revision = 1;
+    TestTrue(TEXT("Register unique owned seed"), Ownership->RegisterItem(SeedRecord));
+
+    FInventoryStack SeedStack;
+    SeedStack.ItemId = TEXT("Seed.Grain");
+    SeedStack.Quantity = 1;
+    SeedStack.Category = EInventoryItemCategory::Resource;
+    SeedStack.MaxStack = 1;
+    SeedStack.OwnedWorldItemId = SeedRecord.ItemId;
+    TestTrue(TEXT("Add unique seed reference to inventory"), Inventory->TryAddItem(SeedStack));
+
+    FWorldFieldCellState NewField;
+    NewField.Cell = FIntVector(12, 4, 0);
+    NewField.Fertility = 60.0f;
+    NewField.WeedPressure = 0.8f;
+    NewField.MulchCoverage = 0.0f;
+    NewField.Moisture = 0.25f;
+    TestTrue(TEXT("Register planting plot"), Agriculture->RegisterFieldCell(NewField));
+
+    FWorldFieldCellState Field;
+    TestTrue(TEXT("Read field"), Agriculture->GetFieldCell(NewField.Cell, Field));
+    TestTrue(TEXT("Clear plot"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Clear, 1.0f, Field));
+    TestTrue(TEXT("Till plot"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Till, 1.0f, Field));
+    TestTrue(TEXT("Fertilize plot"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Fertilize, 10.0f, Field));
+    TestTrue(TEXT("Mulch plot"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Mulch, 0.25f, Field));
+    TestTrue(TEXT("Water plot"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Water, 0.5f, Field));
+
+    FGuid CropId;
+    const FGuid PlantOperation = FGuid::NewGuid();
+    const int64 BeforePlantFieldRevision = Field.Revision;
+    TestFalse(TEXT("Out-of-season planting is rejected"), Agriculture->TryPlantCropOnField(
+        PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
+        Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
+    TestEqual(TEXT("Rejected planting keeps seed in inventory"), Inventory->GetItemCount(TEXT("Seed.Grain")), 1);
+    FWorldOwnedItemRecord StillOwnedSeed;
+    TestTrue(TEXT("Seed ledger remains available"), Ownership->TryGetItem(SeedRecord.ItemId, StillOwnedSeed));
+    TestEqual(TEXT("Rejected planting does not transfer seed ownership"), StillOwnedSeed.OwnerKind, EWorldItemOwnerKind::Inventory);
+
+    TestTrue(TEXT("Advance logical clock to April"), Clock->AdvanceSimulation(16.0 * 3600.0));
+    FWorldCalendarDate Date;
+    TestTrue(TEXT("April date is available"), Clock->GetCalendarDate(Date));
+    TestEqual(TEXT("Current month is April"), Date.Month, 4);
+    TestTrue(TEXT("Seasonal planting succeeds"), Agriculture->TryPlantCropOnField(
+        PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
+        Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
+    FGuid RetriedCropId;
+    TestTrue(TEXT("Plant retry returns same crop"), Agriculture->TryPlantCropOnField(
+        PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
+        Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, RetriedCropId));
+    TestEqual(TEXT("Plant retry does not create a second crop"), RetriedCropId, CropId);
+    TestEqual(TEXT("Planted seed stack is consumed"), Inventory->GetItemCount(TEXT("Seed.Grain")), 0);
+    TestTrue(TEXT("Planted field references crop"), Agriculture->GetFieldCell(Field.Cell, Field));
+    TestEqual(TEXT("Field holds the planted crop ID"), Field.PlantedCropId, CropId);
+
+    for (int32 Step = 0; Step < 4; ++Step)
+        TestTrue(FString::Printf(TEXT("Advance crop growth step %d"), Step), Agriculture->AdvanceAgricultureStep(1.0));
+    FWorldCropState MatureCrop;
+    TestTrue(TEXT("Crop state exists"), Agriculture->GetCrop(CropId, MatureCrop));
+    TestTrue(TEXT("Crop matured from field moisture"), MatureCrop.Stage == ECropGrowthStage::Mature);
+
+    TArray<FGuid> HarvestedItemIds;
+    const FGuid HarvestOperation = FGuid::NewGuid();
+    const int32 BeforeHarvestItemCount = Ownership->GetTrackedItemCount();
+    TestTrue(TEXT("Harvest mature crop"), Agriculture->TryHarvestCrop(
+        HarvestOperation, CropId, MatureCrop.Revision, HarvestedItemIds));
+    TestEqual(TEXT("Harvest includes two crops plus one seed return"), HarvestedItemIds.Num(), 3);
+    FWorldCropState HarvestedCrop;
+    TestTrue(TEXT("Harvested crop state exists"), Agriculture->GetCrop(CropId, HarvestedCrop));
+    TestEqual(TEXT("Harvest item count"), HarvestedCrop.HarvestOutputItemIds.Num(), 2);
+    TestEqual(TEXT("Seed return count"), HarvestedCrop.SeedOutputItemIds.Num(), 1);
+    FWorldOwnedItemRecord ReturnedSeed;
+    TestTrue(TEXT("Returned seed exists in ownership ledger"), Ownership->TryGetItem(HarvestedCrop.SeedOutputItemIds[0], ReturnedSeed));
+    TestEqual(TEXT("Returned item definition is seed"), ReturnedSeed.DefinitionId, FName(TEXT("Seed.Grain")));
+    TestEqual(TEXT("Returned seed is back in the world"), ReturnedSeed.OwnerKind, EWorldItemOwnerKind::World);
+    TestTrue(TEXT("Harvest releases field cell"), Agriculture->GetFieldCell(Field.Cell, Field));
+    TestFalse(TEXT("Harvested field no longer has a live crop link"), Field.PlantedCropId.IsValid());
+    TestEqual(TEXT("Soil fertility loses the configured harvest cost"), Field.Fertility, 62.0f);
+
+    TArray<FGuid> RetryOutputs;
+    TestTrue(TEXT("Harvest retry replays recorded outputs"), Agriculture->TryHarvestCrop(
+        HarvestOperation, CropId, MatureCrop.Revision, RetryOutputs));
+    TestTrue(TEXT("Retry output IDs match"), RetryOutputs == HarvestedItemIds);
+    TestEqual(TEXT("Retry creates no additional item"), Ownership->GetTrackedItemCount(), BeforeHarvestItemCount + 3);
+
+    TArray<FWorldCropState> SavedCrops;
+    TArray<FWorldAnimalState> SavedAnimals;
+    TArray<FWorldFieldCellState> SavedFields;
+    Agriculture->ExportSnapshot(SavedCrops, SavedAnimals, SavedFields);
+    const float SavedFertility = Field.Fertility;
+    TestTrue(TEXT("Change field after snapshot"), Agriculture->TryApplyFieldWork(
+        FGuid::NewGuid(), Field.Cell, Field.Revision, EWorldFieldWorkKind::Water, 0.1f, Field));
+    TestTrue(TEXT("Restore farm snapshot"), Agriculture->RestoreSnapshot(SavedCrops, SavedAnimals, SavedFields));
+    TestTrue(TEXT("Read restored field"), Agriculture->GetFieldCell(Field.Cell, Field));
+    TestEqual(TEXT("Field fertility round-trips"), Field.Fertility, SavedFertility);
+    TestTrue(TEXT("Harvested crop still round-trips"), Agriculture->GetCrop(CropId, HarvestedCrop));
+    TestEqual(TEXT("Restored seed outputs retain identity"), HarvestedCrop.SeedOutputItemIds[0], ReturnedSeed.ItemId);
     return true;
 }
 
