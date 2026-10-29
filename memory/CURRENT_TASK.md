@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Update P3.2 status to reflect the shelter measurement fix and test; note that it tests sensor cover only, while heat-loss balance/PIE remains unverified. Update roadmap + codebase. Then continue to P4 station interaction/tool strength link.
+Update `PLAN_STATUS.md` P3.2 to record the fixed opening-gap ray logic + regression test (code-written/unrun), while leaving graph-based per-gap heat loss and P3.3 plaster out of scope. Update `ROADMAP.md` and `CODEBASE.md` with this specific evidence. Then continue P4.3 station use/tool item strength links.
