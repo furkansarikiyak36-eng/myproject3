@@ -1380,6 +1380,13 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& GatherBinding = InputComponent->BindKey(
                 EKeys::G, IE_Pressed, this, &AVerticalSliceCWorldActor::GatherInput);
             GatherBinding.bConsumeInput = false;
+
+            FInputKeyBinding& CycleFieldBinding = InputComponent->BindKey(
+                EKeys::F8, IE_Pressed, this, &AVerticalSliceCWorldActor::CycleFieldActionInput);
+            CycleFieldBinding.bConsumeInput = false;
+            FInputKeyBinding& ApplyFieldBinding = InputComponent->BindKey(
+                EKeys::F9, IE_Pressed, this, &AVerticalSliceCWorldActor::ApplyFieldActionInput);
+            ApplyFieldBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
@@ -2142,6 +2149,128 @@ void AVerticalSliceCWorldActor::GatherInput()
             : TEXT("Inventory is full or gathering failed."));
     if (GEngine)
         GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange, Reason);
+}
+
+void AVerticalSliceCWorldActor::CycleFieldActionInput()
+{
+    UWorld* World = GetWorld();
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!GameData || !GameData->IsApplied() || GameData->GetFieldActions().IsEmpty())
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+                TEXT("Farm action data is not ready."));
+        return;
+    }
+
+    SelectedFieldActionIndex = (SelectedFieldActionIndex + 1) % GameData->GetFieldActions().Num();
+    const FGameDataFieldAction& Action = GameData->GetFieldActions()[SelectedFieldActionIndex];
+    TArray<FString> Requirements;
+    for (const FGameDataItemAmount& Input : Action.Inputs)
+        Requirements.Add(FString::Printf(TEXT("%d x %s"), Input.Quantity, *Input.ItemId.ToString()));
+    for (const FName ToolId : Action.RequiredTools)
+        Requirements.Add(FString::Printf(TEXT("tool: %s (kept)"), *ToolId.ToString()));
+    const FString CostText = Requirements.IsEmpty()
+        ? TEXT("no materials") : FString::Join(Requirements, TEXT(", "));
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor(160, 215, 255),
+            FString::Printf(TEXT("FIELD ACTION: %s | %s | labor %.0f game seconds | F9 apply"),
+                *Action.Id.ToString(), *CostText, Action.LaborSeconds));
+}
+
+void AVerticalSliceCWorldActor::ApplyFieldActionInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UInventoryCraftingComponent* Inventory =
+        Pawn ? Pawn->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    const UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture =
+        World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!World || !Pawn || !Inventory || !GameData || !GameData->IsApplied() ||
+        !Agriculture || !PlayerSurvivalId.IsValid() ||
+        GameData->GetFieldActions().IsEmpty())
+        return;
+
+    if (!GameData->GetFieldActions().IsValidIndex(SelectedFieldActionIndex))
+        SelectedFieldActionIndex = 0;
+    const FGameDataFieldAction& Action = GameData->GetFieldActions()[SelectedFieldActionIndex];
+
+    FIntVector FieldCell = FIntVector::ZeroValue;
+    float BestDistanceSquared = TNumericLimits<float>::Max();
+    bool bFoundCell = false;
+    for (int32 Y = 0; Y < FarmPlotCellsPerAxis; ++Y)
+    {
+        for (int32 X = 0; X < FarmPlotCellsPerAxis; ++X)
+        {
+            const float WorldX = FarmPlotCentre.X +
+                (static_cast<float>(X) - 1.0f) * FarmPlotCellSize;
+            const float WorldY = FarmPlotCentre.Y +
+                (static_cast<float>(Y) - 1.0f) * FarmPlotCellSize;
+            const float DistanceSquared = FVector::DistSquared2D(
+                Pawn->GetActorLocation(), FVector(WorldX, WorldY, 0.0f));
+            if (DistanceSquared < BestDistanceSquared)
+            {
+                BestDistanceSquared = DistanceSquared;
+                FieldCell = FIntVector(X, Y, 0);
+                bFoundCell = true;
+            }
+        }
+    }
+
+    if (!bFoundCell || BestDistanceSquared > FMath::Square(135.0f))
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Silver,
+                TEXT("Farm work must be done on a visible soil tile. Move close to the 3x3 farm patch."));
+        return;
+    }
+
+    FWorldFieldCellState ExistingCell;
+    const int64 ExpectedRevision = Agriculture->GetFieldCell(FieldCell, ExistingCell)
+        ? ExistingCell.Revision : 0;
+    FWorldFieldCellState UpdatedCell;
+    if (!Agriculture->TryApplyFieldActionWithInventory(
+        FGuid::NewGuid(), Inventory, PlayerSurvivalId, FieldCell,
+        Action.Action, ExpectedRevision, UpdatedCell))
+    {
+        if (GEngine)
+        {
+            TArray<FString> Requirements;
+            for (const FGameDataItemAmount& Input : Action.Inputs)
+            {
+                const int32 Have = Inventory->GetItemCount(Input.ItemId);
+                if (Have < Input.Quantity)
+                    Requirements.Add(FString::Printf(TEXT("%s %d/%d"),
+                        *Input.ItemId.ToString(), Have, Input.Quantity));
+            }
+            for (const FName ToolId : Action.RequiredTools)
+                if (Inventory->GetItemCount(ToolId) <= 0)
+                    Requirements.Add(FString::Printf(TEXT("tool %s missing"), *ToolId.ToString()));
+            const FString Detail = Requirements.IsEmpty()
+                ? TEXT("field stage, rest or stamina may be blocking the action")
+                : FString::Join(Requirements, TEXT(", "));
+            GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange,
+                FString::Printf(TEXT("FIELD ACTION FAILED: %s | %s"),
+                    *Action.Id.ToString(), *Detail));
+        }
+        return;
+    }
+
+    if (GEngine)
+    {
+        const FString CellStatus = UpdatedCell.bFenced ? TEXT("fenced")
+            : UpdatedCell.bTilled ? TEXT("tilled")
+            : UpdatedCell.bCleared ? TEXT("cleared")
+            : TEXT("changed");
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor(140, 220, 160),
+            FString::Printf(TEXT("FIELD: %s cell (%d,%d) | revision %lld | stamina charged"),
+                *Action.Id.ToString(), FieldCell.X, FieldCell.Y,
+                static_cast<long long>(UpdatedCell.Revision)));
+    }
 }
 
 void AVerticalSliceCWorldActor::ChopInput()
