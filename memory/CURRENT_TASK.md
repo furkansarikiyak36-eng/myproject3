@@ -147,4 +147,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Create the character inventory default subobject in `LogSnapCharacter.cpp` and then verify the data bootstrap applies `ItemWeightGrams`/consumables to it regardless of BeginPlay ordering.
+The character source creates gameplay components in the constructor but does not currently create an inventory component. Add the canonical inventory default subobject next, then verify the game-data initialization order.
