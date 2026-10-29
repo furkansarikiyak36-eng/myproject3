@@ -507,6 +507,20 @@ bool UWorldSurvivalSubsystem::TryBeginRest(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::UpdateShelterProtection(
+    const FGuid& EntityId, float NewShelterProtection, int64 ExpectedRevision)
+{
+    if (!InRange(NewShelterProtection, 0.0f, 1.0f))
+        return false;
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || Profile->Revision != ExpectedRevision ||
+        Profile->Revision >= MAX_int64 - 1)
+        return false;
+    Profile->ShelterProtection = NewShelterProtection;
+    ++Profile->Revision;
+    return true;
+}
+
 bool UWorldSurvivalSubsystem::UpdateProtection(
     const FGuid& EntityId, float ClothingInsulation, float ShelterProtection, int64 ExpectedRevision)
 {
