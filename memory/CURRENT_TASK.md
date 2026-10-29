@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Link the same `Tool.Axe` requirement/strength to `ULogCarryComponent::ProcessAimedPiece`: verify owner inventory and GameData; reject F-cut if axe absent; scale both the incremental free-cut work and recipe `TryAdvanceCutProgress` work by authored axe strength. Then add P4.4 automation coverage for data strengths and action gating.
+Add P4.4 automation coverage: game data returns the authored Tool.Axe/Tool.DiggingStick strengths, non-tools have no tool strength, invalid tool-strength values reject loading; and a player with Axe damage/cut work uses data strength while missing tools block the action. Existing private input handlers may require a public helper or test through existing component API; keep the test deterministic and do not build.
