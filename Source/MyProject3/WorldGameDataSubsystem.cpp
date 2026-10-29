@@ -424,38 +424,66 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         return Fail(TEXT("zones.json must define exactly five unique zones with indices 0..4"));
 
     TArray<FGameDataCrop> NewCrops;
-    if (const TArray<TSharedPtr<FJsonValue>>* Values = ArrayField(CropsJson, TEXT("crops")))
-        for (const TSharedPtr<FJsonValue>& Value : *Values)
+    const TArray<TSharedPtr<FJsonValue>>* CropValues = ArrayField(CropsJson, TEXT("crops"));
+    if (!CropValues || CropValues->IsEmpty())
+        return Fail(TEXT("crops.json needs at least one crop definition"));
+
+    TSet<FName> CropDefinitionIds;
+    for (const TSharedPtr<FJsonValue>& Value : *CropValues)
+    {
+        if (!Value.IsValid() || Value->Type != EJson::Object)
+            return Fail(TEXT("crops.json contains a non-object crop entry"));
+        const FJson Entry = Value->AsObject();
+        FGameDataCrop Crop;
+        Crop.Id = NameField(Entry, TEXT("id"));
+        Crop.SeedItemId = NameField(Entry, TEXT("seed"));
+        Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
+        Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
+        Crop.SeedReturnUnits = static_cast<int32>(NumberField(Entry, TEXT("seed_return_units"), 1.0));
+        Crop.SoilExhaustionPerHarvest = static_cast<float>(NumberField(Entry, TEXT("soil_exhaustion"), 0.1));
+        Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
+        Crop.PlantLaborSeconds = NumberField(Entry, TEXT("plant_labor_seconds"), 600.0);
+        Crop.HarvestLaborSeconds = NumberField(Entry, TEXT("harvest_labor_seconds"), 450.0);
+        Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
+
+        const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months"));
+        if (!Months || Months->IsEmpty())
+            return Fail(FString::Printf(TEXT("Crop %s needs plant_months"), *Crop.Id.ToString()));
+        TSet<int32> SeenPlantMonths;
+        for (const TSharedPtr<FJsonValue>& MonthValue : *Months)
         {
-            const FJson Entry = Value->AsObject();
-            FGameDataCrop Crop;
-            Crop.Id = NameField(Entry, TEXT("id"));
-            Crop.SeedItemId = NameField(Entry, TEXT("seed"));
-            Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
-            Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
-            Crop.SeedReturnUnits = static_cast<int32>(NumberField(Entry, TEXT("seed_return_units"), 1.0));
-            Crop.SoilExhaustionPerHarvest = static_cast<float>(NumberField(Entry, TEXT("soil_exhaustion"), 0.1));
-            Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
-            Crop.PlantLaborSeconds = NumberField(Entry, TEXT("plant_labor_seconds"), 600.0);
-            Crop.HarvestLaborSeconds = NumberField(Entry, TEXT("harvest_labor_seconds"), 450.0);
-            Crop.FoundInZone = static_cast<int32>(NumberField(Entry, TEXT("found_in_zone")));
-            if (const TArray<TSharedPtr<FJsonValue>>* Months = ArrayField(Entry, TEXT("plant_months")))
-                for (const TSharedPtr<FJsonValue>& Month : *Months)
-                    Crop.PlantMonths.Add(static_cast<int32>(Month->AsNumber()));
-            if (Crop.Id.IsNone() || !HasItem(Crop.SeedItemId) || !HasItem(Crop.HarvestItemId) ||
-                Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
-                Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
-                Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
-                !FMath::IsFinite(Crop.SoilExhaustionPerHarvest) ||
-                Crop.SoilExhaustionPerHarvest < 0.0f || Crop.SoilExhaustionPerHarvest > 1.0f ||
-                !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage < 3600.0 ||
-                !FMath::IsFinite(Crop.PlantLaborSeconds) || Crop.PlantLaborSeconds < 1.0 ||
-                Crop.PlantLaborSeconds > 3600.0 ||
-                !FMath::IsFinite(Crop.HarvestLaborSeconds) || Crop.HarvestLaborSeconds < 1.0 ||
-                Crop.HarvestLaborSeconds > 3600.0 || Crop.PlantMonths.Num() == 0)
-                return Fail(FString::Printf(TEXT("Bad crop %s"), *Crop.Id.ToString()));
-            NewCrops.Add(Crop);
+            if (!MonthValue.IsValid() || MonthValue->Type != EJson::Number)
+                return Fail(FString::Printf(TEXT("Crop %s has a non-numeric planting month"), *Crop.Id.ToString()));
+            const double MonthNumber = MonthValue->AsNumber();
+            if (!FMath::IsFinite(MonthNumber) || MonthNumber < 1.0 || MonthNumber > 12.0 ||
+                MonthNumber != static_cast<double>(static_cast<int32>(MonthNumber)))
+                return Fail(FString::Printf(TEXT("Crop %s has a planting month outside integer range 1..12"),
+                    *Crop.Id.ToString()));
+            const int32 Month = static_cast<int32>(MonthNumber);
+            if (SeenPlantMonths.Contains(Month))
+                return Fail(FString::Printf(TEXT("Crop %s repeats planting month %d"),
+                    *Crop.Id.ToString(), Month));
+            SeenPlantMonths.Add(Month);
+            Crop.PlantMonths.Add(Month);
         }
+
+        if (Crop.Id.IsNone() || CropDefinitionIds.Contains(Crop.Id) ||
+            !HasItem(Crop.SeedItemId) || !HasItem(Crop.HarvestItemId) ||
+            Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
+            Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
+            Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
+            !FMath::IsFinite(Crop.SoilExhaustionPerHarvest) ||
+            Crop.SoilExhaustionPerHarvest < 0.0f || Crop.SoilExhaustionPerHarvest > 1.0f ||
+            !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage < 3600.0 ||
+            !FMath::IsFinite(Crop.PlantLaborSeconds) || Crop.PlantLaborSeconds < 1.0 ||
+            Crop.PlantLaborSeconds > 3600.0 ||
+            !FMath::IsFinite(Crop.HarvestLaborSeconds) || Crop.HarvestLaborSeconds < 1.0 ||
+            Crop.HarvestLaborSeconds > 3600.0)
+            return Fail(FString::Printf(TEXT("Bad or duplicate crop %s"), *Crop.Id.ToString()));
+
+        CropDefinitionIds.Add(Crop.Id);
+        NewCrops.Add(Crop);
+    }
 
     for (const FGameDataCrop& Crop : NewCrops)
     {

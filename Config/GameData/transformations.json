@@ -1,5 +1,5 @@
 {
-  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. kind E = item recipe, F = physical part (frozen until P10). where: hand, a station id, world, log_system, terrain. Seed-saving extensions (plan workflow step 15) run at the threshing floor with authored tool/time costs.",
+  "_about": "Primitive-era game data. Farm cell-state changes live in field_actions.json; drying, threshing, winnowing, grinding and seed separation are timed transformations; item storage remains in WorldStorageSubsystem. Physical assembly kind F remains separate from inventory recipes.",
   "transformations": [
     {
       "n": 1,
@@ -1315,7 +1315,7 @@
       "id": "winnow_grain",
       "name": "Tane → temiz tane",
       "kind": "E",
-      "where": "hand",
+      "where": "threshing_floor",
       "inputs": [
         {
           "item": "Grain.Kernels",
@@ -1331,7 +1331,7 @@
       "tools": [
         "Tool.WinnowingBasket"
       ],
-      "duration_s": 0
+      "duration_s": 600
     },
     {
       "n": 37,

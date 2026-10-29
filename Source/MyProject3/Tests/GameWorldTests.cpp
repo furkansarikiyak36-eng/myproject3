@@ -1819,6 +1819,8 @@ bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Par
         TestTrue(TEXT("Each output remains ledger-backed"), Ownership->TryGetItem(OutputId, Item));
         TestEqual(TEXT("Harvest output records creation time on the shared world clock"),
             Item.CreatedAtWorldTimeSeconds, Clock->GetSimulationTimeSeconds());
+        TestEqual(TEXT("Harvest output starts with no accumulated spoilage age"),
+            Item.SpoilageAgeSeconds, 0.0, 0.001);
         TestTrue(TEXT("Each output is owned by the player inventory"),
             Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
             Item.OwnerId == Inventory->GetInventoryOwnerId());
@@ -2187,6 +2189,25 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
     TestTrue(TEXT("Grain has the longest stage duration"),
         Grain->SecondsPerStage > Root->SecondsPerStage &&
         Grain->SecondsPerStage >= Legume->SecondsPerStage);
+
+    TestTrue(TEXT("Grain uses the slow 120-hour, four-unit yield profile"),
+        FMath::IsNearlyEqual(Grain->SecondsPerStage, 120.0 * 3600.0) &&
+        Grain->HarvestUnits == 4 && Grain->SeedReturnUnits == 1);
+    TestTrue(TEXT("Roots use the 96-hour, three-unit, high-fatigue profile"),
+        FMath::IsNearlyEqual(Root->SecondsPerStage, 96.0 * 3600.0) &&
+        Root->HarvestUnits == 3 && Root->SeedReturnUnits == 1 &&
+        FMath::IsNearlyEqual(Root->SoilExhaustionPerHarvest, 0.18f));
+    TestTrue(TEXT("Legumes use the 96-hour, three-unit, seed-positive low-fatigue profile"),
+        FMath::IsNearlyEqual(Legume->SecondsPerStage, 96.0 * 3600.0) &&
+        Legume->HarvestUnits == 3 && Legume->SeedReturnUnits == 2 &&
+        FMath::IsNearlyEqual(Legume->SoilExhaustionPerHarvest, 0.04f));
+    TestTrue(TEXT("Grain planting months are April and May"),
+        Grain->PlantMonths.Num() == 2 && Grain->PlantMonths.Contains(4) && Grain->PlantMonths.Contains(5));
+    TestTrue(TEXT("Root planting months are April through June"),
+        Root->PlantMonths.Num() == 3 && Root->PlantMonths.Contains(4) &&
+        Root->PlantMonths.Contains(5) && Root->PlantMonths.Contains(6));
+    TestTrue(TEXT("Legume planting months are May and June"),
+        Legume->PlantMonths.Num() == 2 && Legume->PlantMonths.Contains(5) && Legume->PlantMonths.Contains(6));
     TestTrue(TEXT("Root crop has the highest soil exhaustion"),
         Root->SoilExhaustionPerHarvest > Grain->SoilExhaustionPerHarvest &&
         Root->SoilExhaustionPerHarvest > Legume->SoilExhaustionPerHarvest);
@@ -2239,12 +2260,73 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
                 [](const FGameDataItemAmount& A) { return A.ItemId == TEXT("Seed.Legume"); }));
     }
 
+    const FWorldAnimalCaptureDefinition* Rabbit = Data->GetAnimalCaptureDefinitions().FindByPredicate(
+        [](const FWorldAnimalCaptureDefinition& Animal)
+        { return Animal.AnimalDefinitionId == TEXT("Animal.Rabbit"); });
     const FWorldAnimalCaptureDefinition* Bird = Data->GetAnimalCaptureDefinitions().FindByPredicate(
         [](const FWorldAnimalCaptureDefinition& Animal)
         { return Animal.AnimalDefinitionId == TEXT("Animal.Bird"); });
+    TestNotNull(TEXT("Rabbit slaughter profile"), Rabbit);
     TestNotNull(TEXT("Bird product profile"), Bird);
+    if (Rabbit)
+    {
+        TestTrue(TEXT("Rabbit has the authored feed"), Rabbit->FeedDefinitionId == TEXT("Grass"));
+        TestTrue(TEXT("Rabbit slaughter output is meat, hide and bone"),
+            Rabbit->MeatDefinitionId == TEXT("Meat.Raw") && Rabbit->MeatUnits == 2 &&
+            Rabbit->HideDefinitionId == TEXT("Hide.Raw") && Rabbit->HideUnits == 1 &&
+            Rabbit->BoneDefinitionId == TEXT("Bone") && Rabbit->BoneUnits == 1);
+        TestEqual(TEXT("Rabbit has no recurring product batch"), Rabbit->ProductUnitsPerCollection, 0);
+    }
     if (Bird)
+    {
+        TestTrue(TEXT("Bird feed is grain harvest"), Bird->FeedDefinitionId == TEXT("Grain.Harvest"));
         TestEqual(TEXT("Bird feathers use the authored collection batch"), Bird->ProductUnitsPerCollection, 2);
+        TestTrue(TEXT("Bird slaughter output is meat and bone only"),
+            Bird->MeatDefinitionId == TEXT("Meat.Raw") && Bird->MeatUnits == 1 &&
+            Bird->HideDefinitionId.IsNone() && Bird->HideUnits == 0 &&
+            Bird->BoneDefinitionId == TEXT("Bone") && Bird->BoneUnits == 1);
+    }
+
+    TestEqual(TEXT("Seven cell-state field actions remain enum-aligned"), Data->GetFieldActions().Num(), 7);
+    for (const FGameDataFieldAction& Action : Data->GetFieldActions())
+    {
+        TestTrue(FString::Printf(TEXT("%s has bounded positive labor"), *Action.Id.ToString()),
+            FMath::IsFinite(Action.LaborSeconds) && Action.LaborSeconds >= 1.0 &&
+            Action.LaborSeconds <= 3600.0);
+    }
+
+    auto FindFarmTransformation = [Data](FName Id) -> const FGameDataTransformation*
+    {
+        return Data->GetTransformations().FindByPredicate(
+            [Id](const FGameDataTransformation& T) { return T.Id == Id; });
+    };
+    const FName TimedFarmRecipeIds[] =
+    {
+        TEXT("dry_grain"), TEXT("dry_legume"), TEXT("thresh_grain"),
+        TEXT("winnow_grain"), TEXT("grind_flour"),
+        TEXT("separate_grain_seed"), TEXT("separate_legume_seed")
+    };
+    for (const FName RecipeId : TimedFarmRecipeIds)
+    {
+        const FGameDataTransformation* Recipe = FindFarmTransformation(RecipeId);
+        TestNotNull(FString::Printf(TEXT("Farm workflow recipe %s exists"), *RecipeId.ToString()), Recipe);
+        if (Recipe)
+            TestTrue(FString::Printf(TEXT("Farm workflow recipe %s has non-zero duration"), *RecipeId.ToString()),
+                Recipe->DurationSeconds > 0.0);
+    }
+
+    const FGameDataTransformation* ThreshGrain = FindFarmTransformation(TEXT("thresh_grain"));
+    const FGameDataTransformation* WinnowGrain = FindFarmTransformation(TEXT("winnow_grain"));
+    if (ThreshGrain)
+        TestTrue(TEXT("Threshing uses the flail"), ThreshGrain->Tools.Contains(TEXT("Tool.Flail")));
+    if (WinnowGrain)
+        TestTrue(TEXT("Winnowing is a timed threshing-floor job using the basket"),
+            WinnowGrain->Where == TEXT("threshing_floor") &&
+            WinnowGrain->Tools.Contains(TEXT("Tool.WinnowingBasket")));
+
+    return true;
+}
+
 // P5.2: dug terrain gets a purpose. A roofed cellar is a cool store and caves in without a
 // support; a cistern collects rain; a trench must be a dug line.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FEarthworkPurposesTest,
