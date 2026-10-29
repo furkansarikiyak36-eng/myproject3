@@ -985,9 +985,12 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Mountain pass requires cold-protection clothing in July"),
         Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
     TestTrue(TEXT("Reason identifies cold protection"), AccessReason.Contains(TEXT("Capability.ColdProtection")));
-    TestTrue(TEXT("Mountain-pass discovery is also equipment-gated"),
-        Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
-            { return Record.DiscoveryId == TEXT("Discovery.Zone3.LakeSwamp"); }));
+    TestTrue(TEXT("Read profile before the restricted mountain-pass discovery"),
+        Survival->GetProfile(Profile.EntityId, CurrentProfile));
+    TestFalse(TEXT("Mountain-pass discovery cannot be recorded before required clothing"),
+        Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId,
+            CurrentProfile.Revision, TEXT("Discovery.Zone4.MountainPass"), Profile.Location,
+            Clock->GetSimulationTimeSeconds()));
 
     AActor* InventoryOwnerActor = World->SpawnActor<AActor>();
     if (!TestNotNull(TEXT("Inventory owner"), InventoryOwnerActor))
