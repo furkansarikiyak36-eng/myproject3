@@ -1,5 +1,27 @@
 #include "WorldTerrainStateSubsystem.h"
 
+bool UWorldTerrainStateSubsystem::RegisterSolidCell(
+    const FWorldTerrainCellState& InitialCell)
+{
+    if (InitialCell.DepthLayer < 0 ||
+        InitialCell.DepthLayer >= MaxEditableDepthLayers ||
+        InitialCell.DepthLayer >= MaxDepthPerCell ||
+        InitialCell.MaterialId.IsNone() || InitialCell.bExcavated ||
+        InitialCell.Revision != 1 ||
+        InitialCell.bResourceDepositInitialized ||
+        !InitialCell.ResourceDefinitionId.IsNone() ||
+        InitialCell.RemainingResourceUnits != 0 ||
+        MaxEditableDepthLayers <= 0 || MaxDepthPerCell <= 0 ||
+        MaxEditedCells <= 0 || Cells.Num() >= MaxEditedCells ||
+        (PermittedDepthLayers.Num() > 0 &&
+         !PermittedDepthLayers.Contains(InitialCell.DepthLayer)) ||
+        Cells.Contains(InitialCell.Cell))
+        return false;
+
+    Cells.Add(InitialCell.Cell, InitialCell);
+    return true;
+}
+
 bool UWorldTerrainStateSubsystem::TryApplyCellEdit(
     const FGuid& OperationId, const FIntVector& Cell, int32 DepthLayer,
     ETerrainCellEdit Edit, FName MaterialId, int64 ExpectedRevision,
