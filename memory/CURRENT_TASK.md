@@ -47,6 +47,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - After every repository step, update Findings/Changes and Next step here.
 
 ### Read
+- `Source/MyProject3/WorldSurvivalSubsystem.h` (current action/profile APIs reviewed for P2; supports location, activity, owned-item consumption, rest, conditions, weather, and save receipts).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
@@ -125,4 +126,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Open the current headers `LogSnapCharacter.h` and `WorldSurvivalSubsystem.h`, then only their mapped cpp functions for movement/location, exposure, consumable use, rest and conditions. Resolve P2.1–P2.5 by adding explicit world/environment triggers without inventing input APIs; update the checkpoint after each file.
+Read `VerticalSliceCWorldActor.h` and `LogSnapCharacter.cpp` for current world setup, player movement and input calls; then inspect their mapped implementations only. Decide where to connect creek/food/rest interaction and wet-cold/fall/animal triggers using current signatures.
