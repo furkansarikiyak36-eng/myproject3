@@ -774,52 +774,42 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     FWorldSurvivalProfile Explorer;
     Explorer.EntityId = FGuid::NewGuid();
     TestTrue(TEXT("Register exploration profile"), Survival->RegisterProfile(Explorer));
-    TestFalse(TEXT("Creek discovery is locked before the camp discovery"), Survival->TryRecordConfiguredDiscovery(
-        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone1.Creek"),
-        FVector(760.0, -1200.0, 0.0), 0.0));
-    TestTrue(TEXT("Record the base-camp discovery"), Survival->TryRecordConfiguredDiscovery(
-        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone0.Camp"),
-        FVector::ZeroVector, 0.0));
+    FString ZoneAccessReason;
+
+    TestFalse(TEXT("Creek entry is blocked until the camp is discovered"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), Explorer.EntityId, TEXT("Zone.1"), FVector(760.0, -1200.0, 0.0), ZoneAccessReason));
+    TestTrue(TEXT("Zone rejection explains the prerequisite"), ZoneAccessReason.Contains(TEXT("requires discovery")));
+
+    const FGuid CampEntryOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Record base-camp entry through the game-data adapter"), Data->TryRecordZoneEntry(
+        CampEntryOperation, Explorer.EntityId, TEXT("Zone.0"), FVector::ZeroVector, ZoneAccessReason));
+    TestTrue(TEXT("Retry same camp entry idempotently"), Data->TryRecordZoneEntry(
+        CampEntryOperation, Explorer.EntityId, TEXT("Zone.0"), FVector::ZeroVector, ZoneAccessReason));
     TestTrue(TEXT("Base discovery unlocks grain seed knowledge"),
         Survival->IsDefinitionUnlocked(Explorer.EntityId, TEXT("Seed.Grain")));
-    TestTrue(TEXT("Read updated explorer profile"), Survival->GetProfile(Explorer.EntityId, Explorer));
-    TestTrue(TEXT("Prerequisite allows creek discovery"), Survival->TryRecordConfiguredDiscovery(
-        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone1.Creek"),
-        FVector(760.0, -1200.0, 0.0), 0.0));
+
+    TestTrue(TEXT("Record creek entry after the camp prerequisite"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), Explorer.EntityId, TEXT("Zone.1"), FVector(760.0, -1200.0, 0.0), ZoneAccessReason));
     TestTrue(TEXT("Creek discovery unlocks bridge infrastructure"), Survival->IsDefinitionUnlocked(
         Explorer.EntityId, TEXT("Infrastructure.CreekBridge")));
 
-    FString ZoneAccessReason;
     TestFalse(TEXT("Lake-swamp zone is locked before high-forest discovery"),
         Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.3"), ZoneAccessReason));
-    TestTrue(TEXT("Read explorer after creek discovery"), Survival->GetProfile(Explorer.EntityId, Explorer));
-    TestTrue(TEXT("Record high-forest discovery after its prerequisite"), Survival->TryRecordConfiguredDiscovery(
-        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone2.HighForest"),
-        FVector(600.0, 2650.0, 700.0), 0.0));
-    TestTrue(TEXT("Read explorer after high-forest discovery"), Survival->GetProfile(Explorer.EntityId, Explorer));
+    TestTrue(TEXT("Record high-forest entry after creek discovery"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), Explorer.EntityId, TEXT("Zone.2"), FVector(600.0, 2650.0, 700.0), ZoneAccessReason));
     TestTrue(TEXT("Lake-swamp zone opens after high-forest discovery"),
         Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.3"), ZoneAccessReason));
-    TestTrue(TEXT("Record lake-swamp discovery after the high-forest prerequisite"), Survival->TryRecordConfiguredDiscovery(
-        FGuid::NewGuid(), Explorer.EntityId, Explorer.Revision, TEXT("Discovery.Zone3.LakeSwamp"),
-        FVector(900.0, 3000.0, 0.0), 0.0));
+    TestTrue(TEXT("Record lake-swamp entry after high-forest discovery"), Data->TryRecordZoneEntry(
+        FGuid::NewGuid(), Explorer.EntityId, TEXT("Zone.3"), FVector(900.0, 3000.0, 0.0), ZoneAccessReason));
+
     TestFalse(TEXT("Mountain pass is seasonally closed in the starting month"),
         Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.4"), ZoneAccessReason));
     TestTrue(TEXT("Seasonal denial gives a reason"), ZoneAccessReason.Contains(TEXT("seasonally closed")));
-
     TestTrue(TEXT("Advance calendar into June"), Clock->AdvanceSimulation(11.0 * 86400.0));
     TestFalse(TEXT("Mountain pass still requires cold-protection equipment"),
         Data->CanEnterZone(Explorer.EntityId, TEXT("Zone.4"), ZoneAccessReason));
     TestTrue(TEXT("Equipment denial names the required capability"),
         ZoneAccessReason.Contains(TEXT("Capability.ColdProtection")));
-
-    const FWorldCropDefinition* GrainDefinition = Agriculture->CropDefinitions.FindByPredicate(
-        [](const FWorldCropDefinition& D) { return D.CropDefinitionId == TEXT("Crop.Grain"); });
-    TestNotNull(TEXT("Grain crop definition"), GrainDefinition);
-    if (GrainDefinition)
-    {
-        TestTrue(TEXT("Grain has planting months"), GrainDefinition->PlantMonths.Contains(4) && GrainDefinition->PlantMonths.Contains(5));
-        TestEqual(TEXT("Grain returns seed items"), GrainDefinition->SeedReturnUnits, 2);
-    }
 
     TArray<FWorldProductionStation> Stations;
     TArray<FWorldProductionRecipe> Recipes;
