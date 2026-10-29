@@ -26,7 +26,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 
 ## Read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
-- Source/MyProject3/WorldAgricultureSubsystem.h/.cpp (plant/harvest/feed/collect and restore validation)
+- Source/MyProject3/WorldAgricultureSubsystem.h/.cpp
 - Source/MyProject3/WorldGameDataSubsystem.h/.cpp; Config/GameData/crops.json
 - Config/GameData/items.json, Config/GameData/transformations.json
 - Source/MyProject3/WorldCalendar.h, Source/MyProject3/WorldSimulationClockSubsystem.h/.cpp
@@ -35,14 +35,13 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md
 
 ## Findings
-- Field work can reuse the agriculture operation receipt framework: receipts already use stable operation IDs and entity revisions; new field actions must be included in duplicate-ID validation and snapshot integrity checks.
-- Save capture currently calls Agriculture->ExportSnapshot(Crops, Animals), restore calls RestoreSnapshot(Crops, Animals), and schema 22 migration is in WorldSaveCoordinatorSubsystem.cpp. Add a field snapshot and schema v23 migration; preserve the old two-array APIs for compatibility.
-- Seeds, harvest items and Compost are defined in items.json; crops.json has three crop definitions. No Mulch item exists, so mulch remains a bounded field-state action until a data-backed item/tool pass.
-- New tests belong in Tests/GameWorldTests.cpp; FTestWorld creates a bare game world and requires explicit clock initialization after data applies CalendarConfig.
+- Agriculture header now defines per-crop plant months/seed returns/soil costs and a SaveGame field-cell state model with clear/till/fertilize/weed/mulch/water action contracts.
+- Existing two-array crop/animal snapshot APIs are retained as compatibility overloads; the persistence path will use a new field-aware overload.
+- Implementation still needs to enforce field prerequisites, seasonal month checks, item output receipts, field/crop consistency and v23 migration. This header-only change is code-written, not compiled.
 
 ## Changes
 - Created game/p06-farming-seed-cycle from game/p00-adopt-group-a.
-- Checkpointed code and persistence call sites; no source changes or build have occurred yet.
+- Updated WorldAgricultureSubsystem.h with crop growth constraints, field-cell types, work kinds, revision-guarded planting and field-aware snapshot APIs.
 
 ## Next step
-Edit WorldAgricultureSubsystem.h to add crop rules and persisted field-cell/action-receipt types/APIs. Then update implementation and data/save contracts. No build.
+Implement WorldAgricultureSubsystem.cpp against the new declarations, preserving the existing ownership/rollback behavior and validating all receipt/snapshot references. No build.
