@@ -717,6 +717,22 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                  C.HarvestDefinitionId.IsNone() || C.HarvestUnits <= 0 || C.HarvestUnits > 64 ||
                  C.HarvestOutputItemIds.Num() != C.HarvestUnits)) ||
             NewCrops.Contains(C.CropId)) return false;
+        const bool bHasPlantReceipt = C.PlantOperationId.IsValid() &&
+            C.ActionReceipts.ContainsByPredicate([&C](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.Action == EWorldAgricultureActionKind::PlantCrop &&
+                    Receipt.OperationId == C.PlantOperationId;
+            });
+        const bool bHasHarvestReceipt = C.HarvestOperationId.IsValid() &&
+            C.ActionReceipts.ContainsByPredicate([&C](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.Action == EWorldAgricultureActionKind::HarvestCrop &&
+                    Receipt.OperationId == C.HarvestOperationId;
+            });
+        if ((C.PlantOperationId.IsValid() && !bHasPlantReceipt) ||
+            (C.HarvestOperationId.IsValid() && !bHasHarvestReceipt) ||
+            (C.Stage == ECropGrowthStage::Harvested && !bHasHarvestReceipt))
+            return false;
         NewCrops.Add(C.CropId, C);
     }
     for (const FWorldAnimalState& A : AnimalSnapshot)
