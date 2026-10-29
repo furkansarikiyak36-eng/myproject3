@@ -4,6 +4,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "WorldCalendar.h"
 #include "WorldClimateSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 #include "WorldGameDataSubsystem.generated.h"
 
 class UInventoryCraftingComponent;
@@ -65,6 +66,49 @@ struct FGameDataStation
     /** Needs a charcoal-hot fire (pottery). */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") bool bNeedsHotFire = false;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") float SpoilageRate = 1.0f;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataZone
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") int32 Number = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Description;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> ResourceItemIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName BarrierId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString BarrierDescription;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> PermanentSolutionIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<int32> SeasonalMonths;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataRouteNode
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName NodeId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName ZoneId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FVector Location = FVector::ZeroVector;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") bool bEnabled = true;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataRouteEdge
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName FromNode = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName ToNode = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float Cost = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float SlopeRatio = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float SurfaceCostMultiplier = 1.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float WeatherSensitivity = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float LoadSensitivity = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float MissingInfrastructurePenalty = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") bool bHasBuiltInfrastructure = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") bool bRequiresInfrastructure = false;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName InfrastructureId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") bool bEnabled = true;
 };
 
 USTRUCT(BlueprintType)
@@ -130,6 +174,9 @@ public:
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
     const TArray<FGameDataAnimal>& GetAnimals() const { return Animals; }
+    const TArray<FGameDataZone>& GetZones() const { return Zones; }
+    const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
+    const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
@@ -144,6 +191,9 @@ private:
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
     TArray<FGameDataAnimal> Animals;
+    TArray<FGameDataZone> Zones;
+    TArray<FGameDataRouteNode> RouteNodes;
+    TArray<FGameDataRouteEdge> RouteEdges;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
 
