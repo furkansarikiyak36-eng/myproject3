@@ -617,6 +617,13 @@ bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& F
     for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
         if (Pair.Value.FieldCellId == NewCell.FieldCellId)
             return false;
+    if (NewCell.PlantedCropId.IsValid())
+    {
+        const FWorldCropState* Crop = Crops.Find(NewCell.PlantedCropId);
+        if (!Crop || Crop->PlotCell != NewCell.Cell ||
+            Crop->Stage == ECropGrowthStage::Withered || Crop->Stage == ECropGrowthStage::Harvested)
+            return false;
+    }
 
     TSet<FGuid> SeenOperations;
     for (const FWorldAgricultureActionReceipt& Receipt : NewCell.ActionReceipts)
@@ -624,11 +631,15 @@ bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& F
         if (FindActionReceipt(Receipt.OperationId) ||
             !Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
             Receipt.EntityId != NewCell.FieldCellId ||
+            Receipt.ExpectedEntityRevision <= 0 || Receipt.ExpectedEntityRevision >= MAX_int64 - 1 ||
             Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
             Receipt.ResultingEntityRevision > NewCell.Revision ||
             Receipt.Action < EWorldAgricultureActionKind::ClearFieldCell ||
             Receipt.Action > EWorldAgricultureActionKind::WaterFieldCell ||
-            !Receipt.OutputItemIds.IsEmpty() || !FMath::IsFinite(Receipt.WorkAmount))
+            Receipt.InputItemId.IsValid() || Receipt.ExpectedInventoryOwnerId.IsValid() ||
+            Receipt.ExpectedItemRevision != 0 || Receipt.ResultingItemRevision != 0 ||
+            !Receipt.OutputItemIds.IsEmpty() || !FMath::IsFinite(Receipt.WorkAmount) ||
+            Receipt.WorkAmount <= 0.0f || Receipt.DefinitionId.IsNone())
             return false;
         SeenOperations.Add(Receipt.OperationId);
     }
