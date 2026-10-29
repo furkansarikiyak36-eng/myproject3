@@ -73,8 +73,11 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 - Food consumption verifies exact inventory/ownership identity, applies its registered calorie/thirst effects and uses the common logical world clock for freshness.
 - A stale food item follows its configured remaining-energy fraction; a fully spoiled item with a zero fraction is rejected without consumption.
 - Consumption and rest requests carry durable operation receipts. Rest uses an interval on the shared world timeline; recovery uses the overlap of that rest interval with the simulation step.
+- Injury, illness and poisoning can be configured as time-bounded or persistent conditions with shared-clock health/fatigue/stamina effects. A treatment requires the exact owned treatment item and records a durable operation receipt.
+- Equipment definitions bind each inventory item to a clothing slot and authored insulation/water-resistance values. Equip transfers ownership to the survival entity; unequip returns the item to inventory. Protection is recomputed from equipped item definitions.
+- Protection uses one composed exposure result: shelter and clothing reduce weather-driven wetness; equipment no longer needs a second free-floating clothing bonus when equipped.
 
-**Remaining acceptance:** injury/illness/poisoning/medicine progression, equipment and clothing inventory binding, spatial exposure, player-facing needs and engine round-trip validation.
+**Remaining acceptance:** region/location-derived exposure, player-facing needs/equipment UI, more detailed medicine/effect progression and engine round-trip validation.
 
 ### P1 — Frostpunk: fuel as a real owned item
 
@@ -84,11 +87,13 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 
 **Remaining acceptance:** prove the complete fuel stock → fire heat output → shelter/clothing/wetness/region exposure → health chain in UE and execute save/load round-trips for fuel receipts.
 
-### P1 — Subnautica: durable discovery base
+### P1 — Subnautica: prerequisite-gated persistent discovery
 
-- The existing survival subsystem has discovery records and snapshot persistence, while the shared structural graph provides a cross-material construction base.
+- Adds data-driven discovery definitions with prerequisite discovery IDs, required equipped item definitions and persistent unlocked definition IDs.
+- Discovery recording requires the configured prerequisites and currently equipped capabilities/items, must use the authoritative shared world time and stores a durable operation receipt.
+- Unlocked definitions remain queryable after equipment changes and snapshot restore, so discovery does not have to be re-earned.
 
-**Still open:** discovery actor/interaction prerequisites, visible unlock/context, actor reconstruction/reconciliation, and equipment-gated regional access. These need authored interactions but should use the already-defined identity and receipt contracts rather than introduce another ledger.
+**Remaining acceptance:** physical ruin/clue actors and interaction adapters, visible player-facing unlock/context, actor reconstruction/reconciliation and region/vehicle entrance checks wired to the configured equipment capabilities.
 
 ## Cross-system safety invariants
 
@@ -110,6 +115,7 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 - `MyProject3.Survival.RestUsesSharedClockAndIdempotentReceipt`
 - `MyProject3.Survival.FoodConsumesOwnedItemAndUsesSharedClockFreshness`
 - `MyProject3.Survival.HeatSourceConsumesFuelItemOnce`
+- `MyProject3.Survival.EquipmentConditionsAndDiscoveryUseAuthoritativeItemsAndTime`
 - `MyProject3.Survival.HeatFuelAndIgnitionRollbackWithFailedWorldStep`
 - `MyProject3.Production.ResourceIntakeFeedsRecipeAndOutputDoesNotDuplicate`
 - `MyProject3.Threat.DamagePulseClaimIsIdempotentAcrossRestore`
@@ -122,4 +128,4 @@ This pass closes a set of **asset-independent source contracts**. It does not de
 - No Unreal automation test, editor session, PIE run or fault-injection run was performed.
 - No reference group is declared end-to-end complete solely from source-layer changes.
 - No final landscape/map, new meshes, textures, UI or authored Blueprint actor configuration is part of this pass.
-- Group A should only be finally marked closed after the listed engine/runtime acceptance gates and the remaining Subnautica / survival integration requirements are resolved or explicitly re-scoped.
+- Group A's asset-independent **source-contract pass** is prepared for review; full closure still requires the listed engine/runtime acceptance gates and the remaining physical interaction/region wiring to be resolved or explicitly re-scoped.
