@@ -7,6 +7,8 @@
 #include "HarvestableTreeActor.h"
 #include "LogAttachmentComponents.h"
 #include "LogBuildToolsComponent.h"
+#include "InventoryCraftingComponent.h"
+#include "WorldGameDataSubsystem.h"
 #include "LogSnapCharacter.h"
 #include "Placement/PlacementFeatureProvider.h"
 #include "Placement/PlacementKernelSubsystem.h"
@@ -1107,6 +1109,22 @@ bool ULogCarryComponent::ProcessAimedPiece()
         return false;
     }
 
+    const UInventoryCraftingComponent* Inventory = GetOwner()
+        ? GetOwner()->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+    const UWorldGameDataSubsystem* GameData = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    float AxeStrength = 0.0f;
+    if (!Inventory || Inventory->GetItemCount(TEXT("Tool.Axe")) <= 0 ||
+        !GameData || !GameData->IsApplied() ||
+        !GameData->GetToolStrength(TEXT("Tool.Axe"), AxeStrength))
+    {
+        const FString Message = TEXT("Log processing requires an inventory Tool.Axe.");
+        PlacementStatus = Message;
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, FColor::Orange, Message);
+        return false;
+    }
+
     // First press marks the cut where the player looks; the next presses cut it.
     if (ArmedLog.Get() != Piece)
     {
@@ -1166,7 +1184,7 @@ bool ULogCarryComponent::ProcessAimedPiece()
     // Free cuts and post shortening take the same number of swings as a recipe cut.
     if (ArmedKind != ELogCutKind::Recipe)
     {
-        ArmedWork += FMath::Clamp(CutWorkPerPress, 0.05f, 1.0f);
+        ArmedWork += FMath::Clamp(CutWorkPerPress * AxeStrength, 0.05f, 1.0f);
         if (ArmedWork < 1.0f - KINDA_SMALL_NUMBER)
         {
             PlacementStatus = FString::Printf(TEXT("Cutting: %.0f%% - F again to continue"), ArmedWork * 100.0f);
@@ -1206,7 +1224,7 @@ bool ULogCarryComponent::ProcessAimedPiece()
 
     const FWorldOperationResult CutResult = Piece->TryAdvanceCutProgress(
         CutAction,
-        FMath::Clamp(CutWorkPerPress, 0.05f, 1.0f),
+        FMath::Clamp(CutWorkPerPress * AxeStrength, 0.05f, 1.0f),
         FGuid::NewGuid());
 
     if (CutResult.IsSuccess())
