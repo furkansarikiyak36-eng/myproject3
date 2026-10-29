@@ -97,6 +97,9 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 
 ### Findings
 - Current status source lists 22 partial rows (not 27); P10 is explicitly frozen.
+- P0.5 is now data-authoritative, and P6 field prep/calendar/growth/seed return/schema v24 plus animal capture/move/slaughter APIs have been committed as code. These edits are not compiled or PIE verified.
+- Current agriculture CPP implements capture, pen registration/move and slaughter, but snapshot restore still validates only feed/product receipts and does not preserve pen records; save schema is v24 and does not include pens.
+- Snapshot APIs in the header now advertise four arrays, while CPP has not yet implemented the four-array overload. This interface/implementation mismatch must be corrected before build.
 - P0.5 is changed to use data transformation IDs; agriculture now has crop-data registration, calendar gates, field-cell actions/simulation, field save schema v23, and crop seed-return outputs. None of these recent changes have been built or run in Unreal.
 - The migration chain now normalizes v22→v23 empty field cells and v23→v24 crop seed fields. Existing item-backed agriculture test already exercises seed consumption, crop progression, animal feeding and collection; it is the right place to add a harvest seed-return assertion.
 - Field snapshot state is wired through save coordinator; the old two-array agriculture snapshot overload remains for source/API compatibility while coordinator uses the three-array overload.
@@ -118,4 +121,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Extend `WorldAgricultureSubsystem.h` with animal lifecycle states, capture definitions, animal pen records, receipt fields, capture/move/slaughter APIs, and snapshot overloads; then implement source logic. After this, continue crop input/tillage item-cost integration and animal capture/pen/slaughter. Keep the batch unbuilt until requested phase-wide validation.
+Capture/move/slaughter APIs are already declared and implemented. Persist the pen map in SaveGame schema v25; implement the canonical four-array agriculture snapshot and keep older wrappers; validate animal lifecycle, pen membership and receipts on restore; wire save coordinator + v24→v25 migration; add end-to-end animal lifecycle automation coverage. Then update plan status and continue remaining partial systems. Batch build remains deferred.
