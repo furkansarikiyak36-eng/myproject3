@@ -1524,11 +1524,30 @@ bool FFieldActionConsumesConfiguredInputsAndChargesLaborTest::RunTest(const FStr
     };
 
     TestTrue(TEXT("Provide reusable axe"), AddStack(TEXT("Tool.Axe"), 1, EInventoryItemCategory::Tool));
-    TestTrue(TEXT("Provide four sticks"), AddStack(TEXT("Stick"), 4, EInventoryItemCategory::Resource));
-    TestTrue(TEXT("Provide one rope"), AddStack(TEXT("Rope"), 1, EInventoryItemCategory::Resource));
 
     FWorldFieldCellState OutCell;
     const FIntVector Cell(12, -4, 0);
+    FWorldSurvivalProfile BeforeRejectedAction;
+    TestTrue(TEXT("Read profile before rejected field action"),
+        Survival->GetProfile(Profile.EntityId, BeforeRejectedAction));
+    TestFalse(TEXT("Fence rejects missing material before mutating a field"),
+        Agriculture->TryApplyFieldActionWithInventory(FGuid::NewGuid(), Inventory, Profile.EntityId,
+            Cell, EWorldFieldActionKind::Fence, 0, OutCell));
+    FWorldFieldCellState UnchangedCell;
+    TestFalse(TEXT("Rejected action leaves the field cell absent"),
+        Agriculture->GetFieldCell(Cell, UnchangedCell));
+    FWorldSurvivalProfile AfterRejectedAction;
+    TestTrue(TEXT("Read profile after rejected field action"),
+        Survival->GetProfile(Profile.EntityId, AfterRejectedAction));
+    TestEqual(TEXT("Rejected action does not charge labor"),
+        AfterRejectedAction.PendingActivityKcal, BeforeRejectedAction.PendingActivityKcal);
+    TestEqual(TEXT("Rejected action does not drain stamina"),
+        AfterRejectedAction.Stamina, BeforeRejectedAction.Stamina);
+
+    TestTrue(TEXT("Provide four sticks"), AddStack(TEXT("Stick"), 4, EInventoryItemCategory::Resource));
+    TestTrue(TEXT("Provide one rope"), AddStack(TEXT("Rope"), 1, EInventoryItemCategory::Resource));
+
+
     const FGuid ClearOperation = FGuid::NewGuid();
     TestTrue(TEXT("Clear a field with an axe"),
         Agriculture->TryApplyFieldActionWithInventory(ClearOperation, Inventory, Profile.EntityId,
