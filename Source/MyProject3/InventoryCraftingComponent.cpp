@@ -172,19 +172,31 @@ bool UInventoryCraftingComponent::RestoreSnapshot(
  UWorldItemOwnershipSubsystem* Ownership =
   GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
  TSet<FGuid> OwnedIds;
+ TSet<FName> EquippedSlots;
  int64 TotalWeight = 0;
  for (const FInventoryStack& Stack : Snapshot)
  {
   if (Stack.ItemId.IsNone() || Stack.Quantity <= 0 || Stack.MaxStack <= 0 ||
-      Stack.Quantity > Stack.MaxStack) return false;
-  const int32* Weight = ItemWeightGrams.Find(Stack.ItemId);
-  if (!Weight || *Weight <= 0) return false;
-  TotalWeight += static_cast<int64>(*Weight) * Stack.Quantity;
+      Stack.Quantity > Stack.MaxStack || !FMath::IsFinite(Stack.AgeSeconds) ||
+      Stack.AgeSeconds < 0.0 ||
+      (!Stack.EquippedSlotId.IsNone() &&
+       (Stack.Quantity != 1 || Stack.MaxStack != 1 || Stack.OwnedWorldItemId.IsValid() ||
+        Stack.bSpoiled || EquippedSlots.Contains(Stack.EquippedSlotId))))
+   return false;
+  if (!Stack.EquippedSlotId.IsNone())
+  {
+   const FInventoryItemDefinition* Def = FindItemDefinition(Stack.ItemId);
+   if (!Def || Def->EquipmentSlotId != Stack.EquippedSlotId) return false;
+   EquippedSlots.Add(Stack.EquippedSlotId);
+  }
+  const int32 Weight = GetConfiguredWeightGrams(Stack.ItemId);
+  if (Weight <= 0) return false;
+  TotalWeight += static_cast<int64>(Weight) * Stack.Quantity;
   if (TotalWeight > MaxCarryWeightGrams) return false;
-
   if (Stack.OwnedWorldItemId.IsValid())
   {
-   if (!Ownership || Stack.Quantity != 1 || Stack.MaxStack != 1 ||
+   if (!Stack.EquippedSlotId.IsNone() || Stack.bSpoiled ||
+       !Ownership || Stack.Quantity != 1 || Stack.MaxStack != 1 ||
        OwnedIds.Contains(Stack.OwnedWorldItemId)) return false;
    OwnedIds.Add(Stack.OwnedWorldItemId);
    FWorldOwnedItemRecord Item;
@@ -691,6 +703,7 @@ bool UInventoryCraftingComponent::TryRemoveItem(FName ItemId, int32 Quantity)
   const FInventoryStack& Stack = Items[Index];
   if (Stack.ItemId != ItemId) continue;
   const int32 Taken = FMath::Min(Remaining, Stack.Quantity);
+  if (!Stack.EquippedSlotId.IsNone()) return false;
   if (Stack.OwnedWorldItemId.IsValid())
   {
    if (Taken != 1 || Stack.Quantity != 1 || !GetWorld() || !InventoryOwnerId.IsValid())
@@ -779,6 +792,247 @@ bool UInventoryCraftingComponent::TryRemoveItem(FName ItemId, int32 Quantity)
  }
  if (QuickAccessItemId == ItemId && GetItemCount(ItemId) == 0) QuickAccessItemId = NAME_None;
  return Remaining == 0;
+}
+
+bool UInventoryCraftingComponent::BuildRemovalPreview(
+ FName ItemId, int32 Quantity, TArray<FInventoryStack>& OutItems) const
+{
+ OutItems.Reset();
+ if (ItemId.IsNone() || Quantity <= 0 || GetItemCount(ItemId) < Quantity) return false;
+ OutItems = Items;
+ int32 Remaining = Quantity;
+ while (Remaining > 0)
+ {
+  int32 BestIndex = INDEX_NONE;
+  double OldestAge = -1.0;
+  for (int32 Index = 0; Index < OutItems.Num(); ++Index)
+  {
+   const FInventoryStack& Stack = OutItems[Index];
+   if (Stack.ItemId != ItemId || Stack.OwnedWorldItemId.IsValid() ||
+       !Stack.EquippedSlotId.IsNone() || Stack.bSpoiled) continue;
+   if (BestIndex == INDEX_NONE || Stack.AgeSeconds > OldestAge)
+   { BestIndex = Index; OldestAge = Stack.AgeSeconds; }
+  }
+  if (!OutItems.IsValidIndex(BestIndex)) { OutItems.Reset(); return false; }
+  FInventoryStack& Stack = OutItems[BestIndex];
+  const int32 Taken = FMath::Min(Remaining, Stack.Quantity);
+  Stack.Quantity -= Taken;
+  Remaining -= Taken;
+  if (Stack.Quantity <= 0) OutItems.RemoveAt(BestIndex);
+ }
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryConsumeFood(
+ FName ItemId, FGuid SurvivalEntityId, int32 Quantity)
+{
+ if (!GetWorld() || ItemId.IsNone() || !SurvivalEntityId.IsValid() ||
+     Quantity <= 0 || Quantity > 10000) return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(ItemId);
+ if (!Def || !Def->bConsumable || Def->Category != EInventoryItemCategory::Consumable ||
+     !FMath::IsFinite(Def->CaloriesKcal) || Def->CaloriesKcal < 0.0f ||
+     !FMath::IsFinite(Def->HydrationRelief) || Def->HydrationRelief < 0.0f ||
+     (Def->CaloriesKcal <= 0.0f && Def->HydrationRelief <= 0.0f)) return false;
+ const double Kcal = static_cast<double>(Def->CaloriesKcal) * Quantity;
+ const double Hydration = static_cast<double>(Def->HydrationRelief) * Quantity;
+ if (!FMath::IsFinite(Kcal) || Kcal > 10000.0 ||
+     !FMath::IsFinite(Hydration) || Hydration > 100.0) return false;
+ UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+ FWorldSurvivalProfile Profile;
+ if (!Survival || !Survival->GetProfile(SurvivalEntityId, Profile) ||
+     Profile.Revision == MAX_int64) return false;
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildRemovalPreview(ItemId, Quantity, ProposedItems)) return false;
+ if (!Survival->ConsumeFood(SurvivalEntityId, static_cast<float>(Kcal),
+     static_cast<float>(Hydration))) return false;
+ Items = MoveTemp(ProposedItems);
+ if (QuickAccessItemId == ItemId && GetItemCount(ItemId) <= 0) QuickAccessItemId = NAME_None;
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryFeedAnimal(FName ItemId, FGuid AnimalId, int32 Quantity)
+{
+ if (!GetWorld() || ItemId.IsNone() || !AnimalId.IsValid() ||
+     Quantity <= 0 || Quantity > 10000) return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(ItemId);
+ if (!Def || !FMath::IsFinite(Def->AnimalFeedHungerReduction) ||
+     Def->AnimalFeedHungerReduction <= 0.0f) return false;
+ const double Relief = static_cast<double>(Def->AnimalFeedHungerReduction) * Quantity;
+ if (!FMath::IsFinite(Relief) || Relief <= 0.0 || Relief > 100.0) return false;
+ UWorldAgricultureSubsystem* Agriculture = GetWorld()->GetSubsystem<UWorldAgricultureSubsystem>();
+ FWorldAnimalState Animal;
+ if (!Agriculture || !Agriculture->GetAnimal(AnimalId, Animal) ||
+     Animal.Revision == MAX_int64 || Animal.Health <= 0.0f || Animal.Hunger <= 0.0f) return false;
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildRemovalPreview(ItemId, Quantity, ProposedItems)) return false;
+ if (!Agriculture->FeedAnimal(AnimalId, static_cast<float>(Relief), Animal.Revision)) return false;
+ Items = MoveTemp(ProposedItems);
+ if (QuickAccessItemId == ItemId && GetItemCount(ItemId) <= 0) QuickAccessItemId = NAME_None;
+ return true;
+}
+
+bool UInventoryCraftingComponent::CalculateClothingInsulation(
+ const TArray<FInventoryStack>& SourceItems, float& OutInsulation) const
+{
+ OutInsulation = 0.0f;
+ double Remaining = 1.0;
+ TSet<FName> SeenSlots;
+ for (const FInventoryStack& Stack : SourceItems)
+ {
+  if (Stack.EquippedSlotId.IsNone()) continue;
+  if (Stack.Quantity != 1 || Stack.MaxStack != 1 || Stack.OwnedWorldItemId.IsValid() ||
+      Stack.bSpoiled || SeenSlots.Contains(Stack.EquippedSlotId)) return false;
+  const FInventoryItemDefinition* Def = FindItemDefinition(Stack.ItemId);
+  if (!Def || Def->EquipmentSlotId != Stack.EquippedSlotId ||
+      !FMath::IsFinite(Def->ClothingInsulation) ||
+      Def->ClothingInsulation < 0.0f || Def->ClothingInsulation > 1.0f) return false;
+  SeenSlots.Add(Stack.EquippedSlotId);
+  Remaining *= 1.0 - static_cast<double>(Def->ClothingInsulation);
+ }
+ const double Combined = 1.0 - Remaining;
+ if (!FMath::IsFinite(Combined) || Combined < 0.0 || Combined > 1.0) return false;
+ OutInsulation = static_cast<float>(Combined);
+ return true;
+}
+
+float UInventoryCraftingComponent::GetEquippedClothingInsulation() const
+{
+ float Value = 0.0f;
+ return CalculateClothingInsulation(Items, Value) ? Value : 0.0f;
+}
+
+bool UInventoryCraftingComponent::TryEquipItem(FName ItemId)
+{
+ if (ItemId.IsNone() || !GetWorld() || !IsValid(GetOwner())) return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(ItemId);
+ if (!Def || Def->EquipmentSlotId.IsNone() ||
+     !FMath::IsFinite(Def->ClothingInsulation) ||
+     Def->ClothingInsulation < 0.0f || Def->ClothingInsulation > 1.0f) return false;
+ const int32 StackIndex = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
+ {
+  return Stack.ItemId == ItemId && Stack.Quantity == 1 && Stack.MaxStack == 1 &&
+      !Stack.OwnedWorldItemId.IsValid() && !Stack.bSpoiled;
+ });
+ if (!Items.IsValidIndex(StackIndex)) return false;
+ if (Items[StackIndex].EquippedSlotId == Def->EquipmentSlotId) return true;
+ UWorldObjectIdentityComponent* Identity = GetOwner()->FindComponentByClass<UWorldObjectIdentityComponent>();
+ UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+ FWorldSurvivalProfile Profile;
+ if (!Identity || !Identity->HasValidIdentity() || !Survival ||
+     !Survival->GetProfile(Identity->GetInstanceId(), Profile) || Profile.Revision == MAX_int64)
+  return false;
+ TArray<FInventoryStack> Proposed = Items;
+ for (FInventoryStack& Stack : Proposed)
+  if (Stack.EquippedSlotId == Def->EquipmentSlotId) Stack.EquippedSlotId = NAME_None;
+ Proposed[StackIndex].EquippedSlotId = Def->EquipmentSlotId;
+ float NewInsulation = 0.0f;
+ if (!CalculateClothingInsulation(Proposed, NewInsulation) ||
+     !Survival->UpdateProtection(Identity->GetInstanceId(), NewInsulation,
+        Profile.ShelterProtection, Profile.Revision)) return false;
+ Items = MoveTemp(Proposed);
+ return true;
+}
+
+bool UInventoryCraftingComponent::TryUnequipItem(FName EquipmentSlotId)
+{
+ if (EquipmentSlotId.IsNone() || !GetWorld() || !IsValid(GetOwner())) return false;
+ const int32 StackIndex = Items.IndexOfByPredicate([EquipmentSlotId](const FInventoryStack& Stack)
+  { return Stack.EquippedSlotId == EquipmentSlotId; });
+ if (!Items.IsValidIndex(StackIndex)) return true;
+ UWorldObjectIdentityComponent* Identity = GetOwner()->FindComponentByClass<UWorldObjectIdentityComponent>();
+ UWorldSurvivalSubsystem* Survival = GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>();
+ FWorldSurvivalProfile Profile;
+ if (!Identity || !Identity->HasValidIdentity() || !Survival ||
+     !Survival->GetProfile(Identity->GetInstanceId(), Profile) || Profile.Revision == MAX_int64)
+  return false;
+ TArray<FInventoryStack> Proposed = Items;
+ Proposed[StackIndex].EquippedSlotId = NAME_None;
+ float NewInsulation = 0.0f;
+ if (!CalculateClothingInsulation(Proposed, NewInsulation) ||
+     !Survival->UpdateProtection(Identity->GetInstanceId(), NewInsulation,
+        Profile.ShelterProtection, Profile.Revision)) return false;
+ Items = MoveTemp(Proposed);
+ return true;
+}
+
+bool UInventoryCraftingComponent::CanAdvanceItemAging(double DeltaSeconds) const
+{
+ if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0 ||
+     MaxSlots <= 0 || Items.Num() > MaxSlots || ItemDefinitions.Num() > 4096) return false;
+ TSet<FName> SeenDefinitions;
+ for (const FInventoryItemDefinition& Def : ItemDefinitions)
+ {
+  if (Def.ItemId.IsNone() || SeenDefinitions.Contains(Def.ItemId) ||
+      Def.UnitWeightGrams <= 0 || Def.MaxStack <= 0 ||
+      !FMath::IsFinite(Def.CaloriesKcal) || Def.CaloriesKcal < 0.0f || Def.CaloriesKcal > 10000.0f ||
+      !FMath::IsFinite(Def.HydrationRelief) || Def.HydrationRelief < 0.0f || Def.HydrationRelief > 100.0f ||
+      !FMath::IsFinite(Def.ShelfLifeSeconds) || Def.ShelfLifeSeconds < 0.0 ||
+      !FMath::IsFinite(Def.AnimalFeedHungerReduction) ||
+      Def.AnimalFeedHungerReduction < 0.0f || Def.AnimalFeedHungerReduction > 100.0f ||
+      !FMath::IsFinite(Def.ClothingInsulation) || Def.ClothingInsulation < 0.0f ||
+      Def.ClothingInsulation > 1.0f ||
+      (Def.bConsumable && (Def.Category != EInventoryItemCategory::Consumable ||
+       (Def.CaloriesKcal <= 0.0f && Def.HydrationRelief <= 0.0f))) ||
+      (!Def.EquipmentSlotId.IsNone() && Def.MaxStack != 1) ||
+      (Def.AnimalFeedHungerReduction > 0.0f && Def.Category != EInventoryItemCategory::Consumable))
+   return false;
+  SeenDefinitions.Add(Def.ItemId);
+ }
+ for (const FInventoryItemDefinition& Def : ItemDefinitions)
+  if (!Def.SpoiledDefinitionId.IsNone() && !SeenDefinitions.Contains(Def.SpoiledDefinitionId))
+   return false;
+ TSet<FName> EquippedSlots;
+ for (const FInventoryStack& Stack : Items)
+ {
+  if (Stack.ItemId.IsNone() || Stack.Quantity <= 0 || Stack.MaxStack <= 0 ||
+      Stack.Quantity > Stack.MaxStack || !FMath::IsFinite(Stack.AgeSeconds) || Stack.AgeSeconds < 0.0)
+   return false;
+  if (!Stack.EquippedSlotId.IsNone())
+  {
+   if (Stack.Quantity != 1 || Stack.MaxStack != 1 || Stack.OwnedWorldItemId.IsValid() ||
+       Stack.bSpoiled || EquippedSlots.Contains(Stack.EquippedSlotId)) return false;
+   const FInventoryItemDefinition* Def = FindItemDefinition(Stack.ItemId);
+   if (!Def || Def->EquipmentSlotId != Stack.EquippedSlotId) return false;
+   EquippedSlots.Add(Stack.EquippedSlotId);
+  }
+  if (Stack.OwnedWorldItemId.IsValid() || Stack.bSpoiled) continue;
+  const FInventoryItemDefinition* Def = FindItemDefinition(Stack.ItemId);
+  if (!Def || Def->ShelfLifeSeconds <= 0.0) continue;
+  const double NextAge = Stack.AgeSeconds + DeltaSeconds;
+  if (!FMath::IsFinite(NextAge)) return false;
+  if (NextAge >= Def->ShelfLifeSeconds && !Def->SpoiledDefinitionId.IsNone())
+  {
+   const FInventoryItemDefinition* Spoiled = FindItemDefinition(Def->SpoiledDefinitionId);
+   if (!Spoiled || Spoiled->MaxStack < Stack.Quantity ||
+       GetConfiguredWeightGrams(Spoiled->ItemId) <= 0) return false;
+  }
+ }
+ return true;
+}
+
+bool UInventoryCraftingComponent::AdvanceItemAging(double DeltaSeconds)
+{
+ if (!CanAdvanceItemAging(DeltaSeconds)) return false;
+ for (FInventoryStack& Stack : Items)
+ {
+  if (Stack.OwnedWorldItemId.IsValid() || Stack.bSpoiled) continue;
+  const FInventoryItemDefinition* Def = FindItemDefinition(Stack.ItemId);
+  if (!Def || Def->ShelfLifeSeconds <= 0.0) continue;
+  Stack.AgeSeconds += DeltaSeconds;
+  if (Stack.AgeSeconds < Def->ShelfLifeSeconds) continue;
+  const FName SpoiledId = Def->SpoiledDefinitionId;
+  Stack.bSpoiled = true;
+  if (!SpoiledId.IsNone())
+  {
+   const FInventoryItemDefinition* Spoiled = FindItemDefinition(SpoiledId);
+   if (!Spoiled) return false;
+   Stack.ItemId = Spoiled->ItemId;
+   Stack.Category = Spoiled->Category;
+   Stack.MaxStack = Spoiled->MaxStack;
+   Stack.bIsTool = Spoiled->bIsTool;
+  }
+ }
+ return true;
 }
 
 bool UInventoryCraftingComponent::SetQuickAccessItem(FName ItemId)
