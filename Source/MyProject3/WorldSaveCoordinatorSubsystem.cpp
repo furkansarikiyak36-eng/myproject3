@@ -19,6 +19,7 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "Components/ActorComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -116,7 +117,38 @@ bool CapturePhysicalActorSnapshots(UWorld* World, TArray<FWorldPhysicalActorSnap
             FObjectAndNameAsStringProxyArchive ActorArchive(Writer, true);
             ActorArchive.ArIsSaveGame = true;
             Actor->Serialize(ActorArchive);
+            if (Writer.IsError())
+                return false;
         }
+
+        // Actor serialization captures actor UPROPERTY state but does not
+        // provide a stable standalone payload for each owned component. Capture
+        // SaveGame properties on components explicitly (including heat fuel and
+        // its refuel receipts), independently of primitive physics snapshots.
+        ActorState.bHasComponentSaveGameData = true;
+        TArray<UActorComponent*> AllComponents;
+        Actor->GetComponents<UActorComponent>(AllComponents);
+        for (UActorComponent* Component : AllComponents)
+        {
+            if (!IsValid(Component))
+                return false;
+
+            FWorldActorComponentSaveSnapshot& ComponentState =
+                ActorState.ComponentSaveGameData.AddDefaulted_GetRef();
+            ComponentState.ComponentName = Component->GetFName();
+            ComponentState.ComponentClass = FSoftClassPath(Component->GetClass());
+            FMemoryWriter Writer(ComponentState.SaveGameData, true);
+            FObjectAndNameAsStringProxyArchive ComponentArchive(Writer, true);
+            ComponentArchive.ArIsSaveGame = true;
+            Component->Serialize(ComponentArchive);
+            if (Writer.IsError())
+                return false;
+        }
+        ActorState.ComponentSaveGameData.Sort(
+            [](const FWorldActorComponentSaveSnapshot& A, const FWorldActorComponentSaveSnapshot& B)
+            {
+                return A.ComponentName.ToString() < B.ComponentName.ToString();
+            });
 
         TArray<UPrimitiveComponent*> Primitives;
         Actor->GetComponents<UPrimitiveComponent>(Primitives);
@@ -343,6 +375,48 @@ bool ValidatePhysicalActorSnapshotSet(UWorld* World, const TArray<FWorldPhysical
         }
         Seen.Add(State.IdentityId);
 
+        if (!State.bHasComponentSaveGameData && !State.ComponentSaveGameData.IsEmpty())
+            return false;
+        if (State.bHasComponentSaveGameData)
+        {
+            TArray<UActorComponent*> CurrentComponents;
+            (*Found)->GetComponents<UActorComponent>(CurrentComponents);
+            TSet<FName> CurrentComponentNames;
+            for (UActorComponent* Component : CurrentComponents)
+            {
+                if (!IsValid(Component) || CurrentComponentNames.Contains(Component->GetFName()))
+                    return false;
+                CurrentComponentNames.Add(Component->GetFName());
+            }
+            if (CurrentComponentNames.Num() != State.ComponentSaveGameData.Num())
+                return false;
+
+            TSet<FName> SavedComponentNames;
+            for (const FWorldActorComponentSaveSnapshot& ComponentState : State.ComponentSaveGameData)
+            {
+                if (ComponentState.ComponentName.IsNone() ||
+                    SavedComponentNames.Contains(ComponentState.ComponentName) ||
+                    ComponentState.ComponentClass.IsNull() ||
+                    !CurrentComponentNames.Contains(ComponentState.ComponentName))
+                    return false;
+
+                UActorComponent* Match = nullptr;
+                for (UActorComponent* Component : CurrentComponents)
+                {
+                    if (IsValid(Component) && Component->GetFName() == ComponentState.ComponentName)
+                    {
+                        Match = Component;
+                        break;
+                    }
+                }
+                if (!IsValid(Match) ||
+                    FSoftClassPath(Match->GetClass()) != ComponentState.ComponentClass)
+                    return false;
+
+                SavedComponentNames.Add(ComponentState.ComponentName);
+            }
+        }
+
         TSet<FName> ComponentNames;
         for (const FWorldPhysicalComponentSnapshot& Component : State.Components)
         {
@@ -423,6 +497,33 @@ bool ApplyPhysicalActorSnapshots(UWorld* World, const TArray<FWorldPhysicalActor
             Actor->Serialize(ActorArchive);
             if (Reader.IsError())
                 return false;
+        }
+
+        if (State.bHasComponentSaveGameData)
+        {
+            for (const FWorldActorComponentSaveSnapshot& ComponentState : State.ComponentSaveGameData)
+            {
+                UActorComponent* Component = nullptr;
+                TArray<UActorComponent*> ActorComponents;
+                Actor->GetComponents<UActorComponent>(ActorComponents);
+                for (UActorComponent* Candidate : ActorComponents)
+                {
+                    if (IsValid(Candidate) && Candidate->GetFName() == ComponentState.ComponentName)
+                    {
+                        Component = Candidate;
+                        break;
+                    }
+                }
+                if (!IsValid(Component))
+                    return false;
+
+                FMemoryReader ComponentReader(ComponentState.SaveGameData, true);
+                FObjectAndNameAsStringProxyArchive ComponentArchive(ComponentReader, true);
+                ComponentArchive.ArIsSaveGame = true;
+                Component->Serialize(ComponentArchive);
+                if (ComponentReader.IsError())
+                    return false;
+            }
         }
         Identity->DefinitionId = State.DefinitionId;
         Identity->LifecycleState = State.LifecycleState;
