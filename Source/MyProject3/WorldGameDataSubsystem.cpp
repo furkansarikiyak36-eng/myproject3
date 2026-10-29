@@ -363,12 +363,14 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         if (Animal.Id.IsNone() || SeenAnimalIds.Contains(Animal.Id) ||
             !HasItem(Animal.FeedItemId) ||
             (!Animal.ProductItemId.IsNone() && !HasItem(Animal.ProductItemId)) ||
-            !FMath::IsFinite(ProductIntervalHours) || ProductIntervalHours <= 0.0 ||
+            !FMath::IsFinite(ProductIntervalHours) || ProductIntervalHours < 1.0 ||
             !FMath::IsFinite(ProductUnitsValue) || FMath::FloorToDouble(ProductUnitsValue) != ProductUnitsValue ||
             ProductUnitsValue < 1.0 || ProductUnitsValue > 64.0)
             return Fail(FString::Printf(TEXT("Bad animal %s"), *Animal.Id.ToString()));
 
         Animal.ProductIntervalSeconds = ProductIntervalHours * 3600.0;
+        if (!FMath::IsFinite(Animal.ProductIntervalSeconds) || Animal.ProductIntervalSeconds < 3600.0)
+            return Fail(FString::Printf(TEXT("Animal %s has an invalid product interval"), *Animal.Id.ToString()));
         Animal.ProductUnitsPerInterval = static_cast<int32>(ProductUnitsValue);
         const TArray<TSharedPtr<FJsonValue>>* CaptureTools = ArrayField(Entry, TEXT("capture_tools"));
         if (CaptureTools)
