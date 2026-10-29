@@ -2079,16 +2079,23 @@ void AVerticalSliceCWorldActor::ChopInput()
             default: break;
             }
             int32 GenericRepairUnits = 0;
+            bool bHasUniqueRepairItem = false;
             for (const FInventoryStack& Stack : Inventory->Items)
-                if (Stack.ItemId == RepairMaterial && !Stack.OwnedWorldItemId.IsValid())
+            {
+                if (Stack.ItemId != RepairMaterial)
+                    continue;
+                if (Stack.OwnedWorldItemId.IsValid())
+                    bHasUniqueRepairItem = true;
+                else
                     GenericRepairUnits += FMath::Max(0, Stack.Quantity);
-            if (RepairMaterial.IsNone() || GenericRepairUnits <= 0)
+            }
+            if (RepairMaterial.IsNone() || GenericRepairUnits <= 0 || bHasUniqueRepairItem)
             {
                 if (GEngine)
                     GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
                         RepairMaterial.IsNone()
                             ? TEXT("This structural material has no repair rule yet.")
-                            : FString::Printf(TEXT("Repair requires one generic %s."), *RepairMaterial.ToString()));
+                            : FString::Printf(TEXT("Repair requires one generic %s (not a unique physical piece)."), *RepairMaterial.ToString()));
                 return;
             }
 
@@ -2159,8 +2166,8 @@ void AVerticalSliceCWorldActor::ChopInput()
             const float RemainingDamage = Graph->GetNode(Node.NodeId, UpdatedNode)
                 ? UpdatedNode.Damage : Node.Damage;
             Carry->SetPlacementStatus(FString::Printf(
-                TEXT("Repaired %s with 1 %s. Remaining damage: %.0f."),
-                *Node.Kind.ToString(), *RepairMaterial.ToString(), RemainingDamage));
+                TEXT("Repaired with 1 %s. Remaining damage: %.0f."),
+                *RepairMaterial.ToString(), RemainingDamage));
             return;
         }
 
