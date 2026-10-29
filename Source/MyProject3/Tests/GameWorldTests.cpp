@@ -1059,6 +1059,7 @@ bool FNaturalEventSignalAndSaveContractTest::RunTest(const FString& Parameters)
     }
 
     TestTrue(TEXT("Preflight at effect start"), Events->CanAdvanceEventStep(1800.0, 1860.0, 2));
+    TestTrue(TEXT("Advance clock to effect start"), Clock->AdvanceSimulation(1800.0));
     TestTrue(TEXT("Advance into effect phase"), Events->AdvanceEventStep(1800.0, 1860.0, 2));
     const TArray<FWorldNaturalEventInstance> Active = Events->GetActiveNaturalEvents();
     const FWorldNaturalEventInstance* ActiveSnow = Active.FindByPredicate(
