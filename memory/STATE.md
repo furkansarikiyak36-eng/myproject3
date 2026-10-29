@@ -11,6 +11,8 @@ developer; replies in Turkish. Main test level: `/Game/DemoAssets/Maps/VerticalS
 | `feature/global-snap-kernel` | Pushed. One placement kernel for all materials. |
 | `feature/contextual-interaction-resolver` | Another assistant's work on top of the kernel (contextual targets, aim cuts). |
 | `feature/simple-intent` | Newest. Contextual placement without modes, symmetric diagonals, bent end joints. |
+| `group-a-code-closure` | ChatGPT, +182 commits on simple-intent@321e55a: survival items, conditions, equipment, farming items, excavation yield, routes. **Does not compile** (see `CODEBASE.md`). |
+| `fix/vertical-slice-b-core-loop`, `phase-03…14-*-sequential` | Older separate lines without the placement kernel. Not merged anywhere. |
 | PR #34 `architecture/global-snap-variation-library` | Has a second, conflicting kernel. Recommended: close it. |
 
 ## Works (build + 68 automation tests)

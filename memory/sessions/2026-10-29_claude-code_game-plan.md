@@ -9,6 +9,8 @@ Branch: feature/simple-intent
 ## Found
 - No code for seasons/months, spoilage, disease, flood, avalanche, wildfire, soil fertility.
 - Agriculture is plant -> stages by time and moisture only.
+- Audit: found 3 separate code lines; group-a-code-closure (ChatGPT, +182 on our base) does not compile (10 UHT + 6 C++ errors). Corrected map (bridges/zipline exist).
 ## Open
+- Q00: fix and adopt group-a-code-closure?
 - User approval of the plan and the 7 open questions (section 12).
 - Phase 0: merge snap branch, move lists to `Config/` data.

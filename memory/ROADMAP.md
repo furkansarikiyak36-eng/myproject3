@@ -51,6 +51,14 @@ Never write a higher status than you proved. A web assistant that cannot build m
 
 ## Phase 0 — Preparation
 
+**P0.0 · Decide what to do with `group-a-code-closure`** — `blocked-user`
+ChatGPT wrote +182 commits (~6.6k lines) on top of our base: fuel items, freshness, rest, conditions,
+equipment, discovery rewards, excavation → items → production, item-backed farming, route costs.
+It does not compile as pushed: 10 UHT errors + 6 C++ errors in 2 files (see `CODEBASE.md` Findings). Options: (a) fix its build, run the
+tests, then use it as the base for P1–P7; (b) leave it and rebuild those parts task by task.
+Question for the user: "group-a dalını düzeltip temel alalım mı?" Done when: answered and,
+for (a), the branch builds and its tests are counted.
+
 **P0.1 · Decide the base branch** — `blocked-user`
 Question for the user: "`main` is 697 commits behind `feature/simple-intent`. Merge
 `feature/simple-intent` into `main` and work from `main` from now on?" Also: close PR #34
@@ -200,6 +208,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 | Id | Question | Blocks |
 |---|---|---|
+| Q00 | Fix and adopt `group-a-code-closure` as the base? | P0.0, P1–P7 |
 | Q0 | Merge `feature/simple-intent` into `main`? Close PR #34? | P0.1 |
 | Q1 | Days per month (proposal 5 → 60-day year)? | P1.1 (can start with 5) |
 | Q2 | Which 3 crops (grain, root, legume)? | P6.3 |

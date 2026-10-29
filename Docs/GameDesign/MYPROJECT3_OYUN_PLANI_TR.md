@@ -301,7 +301,9 @@ Zorunlu bir bitiş yok (hikâye en son eklenecek). Oyuncunun hedefleri dünyanı
 | Fiziksel montaj | Kütük ve snap çekirdeği ileri (68 test). Son aşamaya kadar donduruldu |
 | Keşif | Keşif kaydı var. Bölge, yatak, bilgi açılımı yok |
 
-Not: `main`, `feature/simple-intent` dalının 697 commit gerisinde.
+Not: `main`, `feature/simple-intent` dalının ~700 commit gerisinde.
+
+**Önemli (2026-10-29 denetimi):** Bu tablo `feature/simple-intent` dalını anlatır. GitHub'daki `group-a-code-closure` dalı (ChatGPT, bizim dalın üstüne +182 commit) yakıt eşyası, yiyecek tazeliği, dinlenme, hastalık ve tedavi, giysi, keşif ödülleri, kazıdan eşya çıkışı, eşyalı tarım ve arazi maliyetli yollar ekliyor; ama **derlenmiyor**. Ayrıca köprü (ip üstünde tahta), zipline ve VerticalSlice_C'deki dere, sığ geçit, eski ip köprü, yamaç terası bizim dalda zaten var. Ayrıntı: `memory/CODEBASE.md`.
 
 Genel: **kod iskeletlerinin çoğu var, sistemler arası bağlantılar ve oyun içi deneme yok.**
 
