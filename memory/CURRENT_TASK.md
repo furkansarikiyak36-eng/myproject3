@@ -1,9 +1,9 @@
 # Current task (checkpoint)
 
-Status: open — P6 and P7.1–P7.4 logical/data contracts source-written; Unreal verification pending
+Status: open — P6 and P7.1–P7.4 logical/data contracts plus idempotent zone-entry discovery API source-written; Unreal verification pending
 Overall goal: Finish partial tasks in memory/PLAN_STATUS.md in dependency order, including player input/HUD where required.
 Current source-written work: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter, and P7.1–P7.4 route context, five-zone catalog, discovery definitions, infrastructure edge updates and route-state persistence.
-Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
+Branch: game/p07-zone-entry-progression (follow-up branch from game/p06-farming-seed-cycle, based on game/p00-adopt-group-a).
 
 ## Fixed constraints
 - Backend first; no per-task Unreal build. Add automation tests as source and perform one batch build/test/fix pass at the end.
@@ -26,9 +26,10 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 11. [x] Add `discoveries.json`, validate prerequisite order, required equipment and unlock IDs, then register definitions into survival; add source tests for discovery prerequisite/unlock and bridge route-cost change.
 12. [x] Add stable infrastructure IDs to route edges, `SetInfrastructureBuilt`, deterministic route graph snapshot/restore and save schema v25 migration.
 13. [ ] Batch Unreal UHT/UBT build and automation tests, then fix all errors. No build/test has run on this branch.
-14. [ ] Connect graph nodes to actual world actors, route query to movement speed/time and player input/HUD; connect zone entry and infrastructure build/repair/weather-damage events to discovery and route state. Keep Zones 3/4 physical placement for the final scene phase.
-15. [ ] Finish remaining field/animal player inputs and the full 15-step farm processing chain; add headless whole-world year simulation.
-16. [ ] Continue P8/P9.2 in dependency order; New Valley scene and PIE acceptance remain last.
+14. [x] Add `TryRecordZoneEntry`: validate `CanEnterZone`, resolve the zone discovery ID, fetch the current profile revision and record the discovery at shared world time with an idempotent operation ID. Extend test source for zone progression and retry.
+15. [ ] Wire a real overlap/interaction trigger to `TryRecordZoneEntry`; connect route graph to actual movement speed/time and player input/HUD; connect infrastructure build/repair/weather-damage events to route state. Keep Zones 3/4 physical placement for the final scene phase.
+16. [ ] Finish remaining field/animal player inputs and the full 15-step farm processing chain; add headless whole-world year simulation.
+17. [ ] Continue P8/P9.2 in dependency order; New Valley scene and PIE acceptance remain last.
 
 ## Files read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
@@ -47,12 +48,12 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - animals.json defines Animal.Rabbit, Animal.Bird and Animal.Goat; item IDs/intervals/tools/yields are checked and registered. The logical animal chain supports both unique-ledger and count-stack capture tools; pen construction consumes 4 Stake + 1 Rope; feed requires a unique ledger-owned feed item; products accrue for captured animals in a closed pen; slaughter yields come from animal data.
 - Save schema v23 persists field cells, v24 persists logical animal pens/capture/slaughter state, and v25 persists route nodes/edges with built-infrastructure state. v22→v23→v24→v25 migration is source-written; v24→v25 retains the current authored route graph as the baseline rather than inventing old infrastructure history. Fixed-step rollback includes fields and pens; route graph is not mutated by normal fixed steps.
 - Tests in GameWorldTests.cpp now cover field-work retries, seasonal planting, item-backed seed consume/return, crop maturation, field snapshot, unique/count-stack capture, pen/material consumption, feed/product collection, slaughter idempotency and farm/pen snapshot. They are source-only and have not run.
-- `zones.json`, `routes.json` and `discoveries.json` are now loaded transactionally. Five zones and all item references validate; route data contains six anchors/12 directed edges for the currently existing camp/creek/ford/lookout. Zones 3/4 are catalogued but not physically placed. Discovery definitions are loaded and registered with ordered prerequisites/equipment gates/unlocks, but they are not yet triggered by real player zone entry and the unlocked items/recipes/seeds are not enforced at their consuming actions. Infrastructure IDs can update route-cost edges and this state is saved in schema v25. Physical build/repair/weather-damage events, route→movement speed/time, player input/HUD, actual WildlifeActor/stick-trap integration, field tools, full 15-step post-harvest chain, whole-year simulation and scene/PIE work remain open.
+- `zones.json`, `routes.json` and `discoveries.json` load transactionally. Five zones and item references validate; route data contains six anchors/12 directed edges for existing camp/creek/ford/lookout. Zones 3/4 are catalogued but not physically placed. `CanEnterZone` gates by season, required equipped capabilities and prerequisite discoveries. New `TryRecordZoneEntry` looks up the per-zone discovery ID, resolves the current player profile revision and records discovery at current shared world time through `TryRecordConfiguredDiscovery`; retries can reuse the same operation ID. The API is not yet called by a real volume/overlap/player interaction, and unlocked items/recipes/seeds are not enforced at consuming actions. Infrastructure IDs update route edges and built-state persists in schema v25. Physical build/repair/weather-damage events, route→movement speed/time, player input/HUD, WildlifeActor/stick-trap integration, field tools, full 15-step post-harvest chain, whole-year simulation and scene/PIE remain open.
 
 ## Changes
-- Branch: game/p06-farming-seed-cycle.
-- Updated WorldAgricultureSubsystem.h/.cpp; WorldGameDataSubsystem.h/.cpp; WorldLogisticsRouteSubsystem.h/.cpp; Config/GameData/crops.json, animals.json, items.json, zones.json, routes.json, discoveries.json; WorldSimulationSaveGame.h (schema v25); WorldSaveCoordinatorSubsystem.cpp; WorldSimulationCoordinatorSubsystem.cpp; LogSnapCharacter.h/.cpp; Tests/GameWorldTests.cpp; Tests/MyProject3CoreTests.cpp; memory/PLAN_STATUS.md; memory/CODEBASE.md.
+- Branch: game/p07-zone-entry-progression; parent implementation branch: game/p06-farming-seed-cycle.
+- Updated WorldAgricultureSubsystem.h/.cpp; WorldGameDataSubsystem.h/.cpp; WorldLogisticsRouteSubsystem.h/.cpp; Config/GameData/crops.json, animals.json, items.json, zones.json, routes.json, discoveries.json; WorldSimulationSaveGame.h (schema v25); WorldSaveCoordinatorSubsystem.cpp; WorldSimulationCoordinatorSubsystem.cpp; LogSnapCharacter.h/.cpp; Tests/GameWorldTests.cpp; Tests/MyProject3CoreTests.cpp; memory/PLAN_STATUS.md; memory/CODEBASE.md; then created `game/p07-zone-entry-progression` and added the `TryRecordZoneEntry` API, zone→discovery references and test-source coverage.
 - No Unreal build, automation test or PIE run has been executed for this branch.
 
 ## Next step
-Next, implement the missing P7 interactions without scene placement: route graph ↔ actual walking speed/time and authored edge state ↔ build/repair/damage events; then connect zone entry to `TryRecordConfiguredDiscovery` and enforce `IsDefinitionUnlocked` at recipe/seed/action execution. Continue to avoid builds until the batch gate. Before the eventual batch build, re-audit P6/P7 snapshot invariants and regenerate CODE_INDEX.md locally. Before the eventual batch build, re-audit all P6 receipt/save invariants and regenerate CODE_INDEX.md locally.
+Next, wire a real zone-overlap/player interaction to `TryRecordZoneEntry`, connect route costs to real movement and build/repair/weather-damage events, and enforce `IsDefinitionUnlocked` at recipe/seed/action execution. Then continue P7/P8/P9.2 in dependency order. No build/test has been run on either work branch; defer to the agreed batch gate. Re-audit P6/P7 snapshot invariants and regenerate CODE_INDEX.md locally before that batch gate.
