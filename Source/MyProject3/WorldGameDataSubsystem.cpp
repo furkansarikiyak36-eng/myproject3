@@ -10,6 +10,8 @@
 #include "WorldTerrainStateSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
@@ -482,6 +484,23 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         Rule.MaximumDepthLayer = L.MaxLayer;
         Rule.UnitsPerCubicMetre = L.UnitsPerCubicMetre;
         Terrain->ResourceYieldRules.Add(Rule);
+    }
+
+    // Heat sources may have begun play before the data loader applied. Apply
+    // authored fuel definitions to all existing sources; newly spawned sources
+    // pick them up from UHeatSourceComponent::BeginPlay.
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        if (!IsValid(*It))
+            continue;
+        TArray<UHeatSourceComponent*> HeatSources;
+        It->GetComponents<UHeatSourceComponent>(HeatSources);
+        for (UHeatSourceComponent* HeatSource : HeatSources)
+        {
+            if (IsValid(HeatSource) && !ApplyToHeatSource(HeatSource))
+                return Fail(FString::Printf(TEXT("Heat source %s refused fuel definitions"),
+                    *GetNameSafe(HeatSource)));
+        }
     }
 
     bApplied = true;
