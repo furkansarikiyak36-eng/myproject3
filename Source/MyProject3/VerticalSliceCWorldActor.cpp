@@ -1108,16 +1108,12 @@ void AVerticalSliceCWorldActor::UpdateZoneDiscoveries()
             { return Record.DiscoveryId == Node.DiscoveryId; }))
             continue;
 
-        FWorldSurvivalProfile Profile;
-        if (!Survival->GetProfile(PlayerSurvivalId, Profile))
-            return;
-
-        if (Survival->TryRecordConfiguredDiscovery(
-            FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision,
-            Node.DiscoveryId, PlayerLocation, Clock->GetSimulationTimeSeconds()))
+        FString AccessReason;
+        if (Data->TryRecordZoneEntry(
+            FGuid::NewGuid(), PlayerSurvivalId, Node.ZoneId, PlayerLocation, AccessReason))
         {
-            UE_LOG(LogTemp, Log, TEXT("Discovery recorded at route anchor %s: %s"),
-                *Node.NodeId.ToString(), *Node.DiscoveryId.ToString());
+            UE_LOG(LogTemp, Log, TEXT("Zone %s discovered at route anchor %s: %s"),
+                *Node.ZoneId.ToString(), *Node.NodeId.ToString(), *Node.DiscoveryId.ToString());
         }
     }
 }
