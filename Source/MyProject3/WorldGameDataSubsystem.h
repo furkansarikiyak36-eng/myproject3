@@ -140,8 +140,9 @@ struct FGameDataWorldEvent
  * Loads and checks the primitive-era game data (Config/GameData/*.json, P0.3/P0.4) and
  * hands it to the systems that use it: production recipes and stations, survival
  * consumables / conditions / equipment, heat fuels, climate months, the calendar, natural-event
- * contracts, and terrain resource layers. Hand recipes and fuels are per component (ApplyToInventory,
- * ApplyToHeatSource); components call those themselves once the data is applied.
+ * contracts, terrain resource layers, ecological zones, and exploration discoveries. Hand recipes and
+ * fuels are per component (ApplyToInventory, ApplyToHeatSource); discovery definitions bind persistent
+ * unlocks to their world markers once the data is applied.
  */
 UCLASS()
 class MYPROJECT3_API UWorldGameDataSubsystem : public UWorldSubsystem
