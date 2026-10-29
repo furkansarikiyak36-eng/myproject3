@@ -8,6 +8,7 @@
 #include "WorldAgricultureSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "HeatSourceComponent.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
@@ -417,6 +418,79 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
                     return false;
             }
         }
+        else if (Definition->Effect == TEXT("fire_spread"))
+        {
+            // Fire affects the canonical structure graph, not physical actors:
+            // the graph is included in the coordinator snapshot, so a failed
+            // world step can roll these damages back atomically.
+            TArray<FWorldStructuralNodeSnapshot> Nodes;
+            if (!StructuralGraph->ExportSnapshot(Nodes))
+                return false;
+            Nodes.Sort([](const FWorldStructuralNodeSnapshot& A, const FWorldStructuralNodeSnapshot& B)
+                { return A.NodeId.ToString() < B.NodeId.ToString(); });
+
+            TArray<TPair<FGuid, FVector>> FlammableNodes;
+            for (const FWorldStructuralNodeSnapshot& Node : Nodes)
+            {
+                if (Node.Kind != EStructuralNodeKind::Wood && Node.Kind != EStructuralNodeKind::Stick)
+                    continue;
+                FStructuralNodeRecord LiveNode;
+                if (!StructuralGraph->GetNode(Node.NodeId, LiveNode) || !LiveNode.Actor.IsValid())
+                    continue;
+                const FVector Location = LiveNode.Actor->GetActorLocation();
+                if (!Location.ContainsNaN())
+                    FlammableNodes.Add(TPair<FGuid, FVector>(Node.NodeId, Location));
+            }
+
+            TArray<FVector> FireOrigins;
+            for (TActorIterator<AActor> It(World); It; ++It)
+            {
+                AActor* Actor = *It;
+                if (!IsValid(Actor))
+                    continue;
+                TInlineComponentArray<UHeatSourceComponent*> HeatSources(Actor);
+                for (const UHeatSourceComponent* Heat : HeatSources)
+                {
+                    if (IsValid(Heat) && Heat->IsLit() && Heat->GetFuelSeconds() > 0.0f)
+                    {
+                        const FVector Location = Heat->GetComponentLocation();
+                        if (!Location.ContainsNaN())
+                            FireOrigins.Add(Location);
+                    }
+                }
+            }
+            FireOrigins.Sort([](const FVector& A, const FVector& B)
+            {
+                if (!FMath::IsNearlyEqual(A.X, B.X)) return A.X < B.X;
+                if (!FMath::IsNearlyEqual(A.Y, B.Y)) return A.Y < B.Y;
+                return A.Z < B.Z;
+            });
+
+            // Heatwave ignition can start even without an existing campfire.
+            // Pick a reproducible vulnerable wooden node as the ignition origin.
+            if (FireOrigins.IsEmpty() && !FlammableNodes.IsEmpty())
+            {
+                const uint32 Seed = Instance.InstanceId.A ^ Instance.InstanceId.B ^
+                    Instance.InstanceId.C ^ Instance.InstanceId.D;
+                FireOrigins.Add(FlammableNodes[Seed % FlammableNodes.Num()].Value);
+            }
+
+            const float SpreadRadius = 1200.0f + 300.0f * Instance.Severity;
+            for (const TPair<FGuid, FVector>& Flammable : FlammableNodes)
+            {
+                float NearestDistance = TNumericLimits<float>::Max();
+                for (const FVector& Origin : FireOrigins)
+                    NearestDistance = FMath::Min(NearestDistance, FVector::Dist2D(Origin, Flammable.Value));
+                if (NearestDistance > SpreadRadius)
+                    continue;
+
+                const float DistanceFactor = FMath::Clamp(1.0f - NearestDistance / SpreadRadius, 0.15f, 1.0f);
+                const float Damage = 18.0f * Instance.Severity * DistanceFactor;
+                bool bThresholdExceeded = false;
+                if (!StructuralGraph->ApplyDamage(Flammable.Key, Damage, bThresholdExceeded))
+                    return false;
+            }
+        }
         else if (Definition->Effect == TEXT("exposure") ||
                  Definition->Effect == TEXT("illness_exposure") ||
                  Definition->Effect == TEXT("illness_spread"))
@@ -424,10 +498,9 @@ bool UWorldEventDirectorSubsystem::ApplyActiveEventEffects(
             if (!ApplyConditionEffect(*Definition, Instance))
                 return false;
         }
-        // Wetness is authored and applied by the climate subsystem itself.
-        // Flood-route closures and physical fire spread are owned by the
-        // logistics/fire adapters; they remain explicit effects in event data
-        // until those systems expose save-safe, reversible operations.
+        // Rain-derived wetness is authored by the climate/survival step.
+        // Flood closures are rebuilt from active instances after commit, avoiding
+        // an untracked route mutation inside a step that may still roll back.
         Instance.bOnsetEffectApplied = true;
         Instance.LastAppliedEffectTickIndex = TargetTickIndex;
         if (Instance.Revision >= MAX_int64 - 1)
