@@ -87,7 +87,7 @@ bool AGatherableResourceActor::TryGather(UInventoryCraftingComponent* Inventory,
         FInventoryStack Stack;
         Stack.ItemId = ItemDefinitionId;
         Stack.Quantity = Units;
-        if (!Inventory->TryAddItem(Stack))
+        if (!Inventory->TryAddProducedItems(Stack))
             return false;
     }
     else

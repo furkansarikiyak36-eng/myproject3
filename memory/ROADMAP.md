@@ -295,6 +295,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-30 · Phase 4 closed · tested · 129/129 (crafted/station/gathered food becomes ledger items)
 - 2026-10-30 · Phase 3 closed · tested · 128/128 (firewood under a roof stays dry)
 - 2026-10-30 · Phase 2 closed · tested · 127/127, statuses corrected from code (fatigue limits, wading, wet-cold illness, falls, bites existed)
 - 2026-10-30 · Phase 0 + Phase 1 closed · tested · 127/127 (events chains/counters/fog/late frost, HUD countdown, save v30)

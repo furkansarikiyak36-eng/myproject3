@@ -2083,4 +2083,57 @@ bool FFirewoodUnderRoofStaysDryTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// P4.2: food and water made by hand become ledger items, so they can be drunk/eaten.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCraftedFoodIsEdibleTest,
+    "MyProject3.World.Crafting.CraftedWaterCanBeDrunk", Flags)
+bool FCraftedFoodIsEdibleTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival))
+        return false;
+    TestTrue(TEXT("Data"), Data->LoadDefault() && Data->ApplyToWorld());
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(3, 0.0));
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    FInventoryStack Dirty;
+    Dirty.ItemId = TEXT("Water.Dirty");
+    Dirty.Quantity = 1;
+    FInventoryStack Filter;
+    Filter.ItemId = TEXT("Tool.Filter");
+    Filter.MaxStack = 1;
+    Filter.bIsTool = true;
+    TestTrue(TEXT("Dirty water"), Inventory->TryAddItem(Dirty));
+    TestTrue(TEXT("Filter"), Inventory->TryAddItem(Filter));
+    TestTrue(TEXT("Filter the water"), Inventory->TryCraft(TEXT("filter_water")));
+
+    TArray<FInventoryStack> Items;
+    FGuid OwnerActor, InventoryId;
+    FName Quick;
+    Inventory->ExportSnapshot(OwnerActor, InventoryId, Items, Quick);
+    const FInventoryStack* Clean = Items.FindByPredicate([](const FInventoryStack& S) { return S.ItemId == TEXT("Water.Boiled"); });
+    if (!TestNotNull(TEXT("Clean water in hand"), Clean))
+        return false;
+    TestTrue(TEXT("It is a ledger item"), Clean->OwnedWorldItemId.IsValid());
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.CaloriesKcal = 1500.0f;
+    Profile.Thirst = 60.0f;
+    TestTrue(TEXT("Profile"), Survival->RegisterProfile(Profile));
+    TestTrue(TEXT("Drink the filtered water"), Survival->TryConsumeFoodItem(FGuid::NewGuid(), Profile.EntityId, 1,
+        Clean->OwnedWorldItemId, 1, InventoryId));
+    FWorldSurvivalProfile After;
+    Survival->GetProfile(Profile.EntityId, After);
+    TestEqual(TEXT("Thirst relieved"), After.Thirst, 20.0f, 0.01f);
+    TestEqual(TEXT("Filter kept"), Inventory->GetItemCount(TEXT("Tool.Filter")), 1);
+    return true;
+}
+
 #endif

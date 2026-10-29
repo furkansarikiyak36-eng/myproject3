@@ -1,4 +1,5 @@
 #include "InventoryCraftingComponent.h"
+#include "WorldSimulationClockSubsystem.h"
 #include "WorldGameDataSubsystem.h"
 
 #include "Engine/World.h"
@@ -840,8 +841,9 @@ bool UInventoryCraftingComponent::TryCraft(FName RecipeId)
  TMap<FName,int32> Required;
  for (const FRecipeIngredient& I : Recipe.Ingredients) if (I.bConsume) Required.FindOrAdd(I.ItemId) += I.Quantity;
  for (const TPair<FName,int32>& P : Required) if (GetItemCount(P.Key) < P.Value) return false;
- // Preflight the entire output set before consuming any ingredient.
- TArray<FInventoryStack> Outputs; Outputs.Add(Recipe.Output); Outputs.Append(Recipe.Byproducts);
+ // Preflight the entire output set before consuming any ingredient (consumables take one slot per unit).
+ TArray<FInventoryStack> Outputs = MakeProducedStacks(Recipe.Output);
+ for (const FInventoryStack& Byproduct : Recipe.Byproducts) Outputs.Append(MakeProducedStacks(Byproduct));
  if (!HasCapacityFor(Outputs)) return false;
  // Snapshot allows rollback if an unexpected mutation failure occurs. Physical
  // ingredients consumed by TryRemoveItem must be restored in the ownership ledger too.
@@ -932,10 +934,67 @@ bool UInventoryCraftingComponent::TryCraft(FName RecipeId)
  {
   if (!TryRemoveItem(P.Key, P.Value)) { RollbackCraft(); return false; }
  }
- if (!TryAddItem(Recipe.Output)) { RollbackCraft(); return false; }
+ if (!TryAddProducedItems(Recipe.Output)) { RollbackCraft(); return false; }
  for (const FInventoryStack& Byproduct : Recipe.Byproducts)
  {
-  if (!TryAddItem(Byproduct)) { RollbackCraft(); return false; }
+  if (!TryAddProducedItems(Byproduct)) { RollbackCraft(); return false; }
+ }
+ return true;
+}
+
+TArray<FInventoryStack> UInventoryCraftingComponent::MakeProducedStacks(const FInventoryStack& Produced, bool bForceLedger) const
+{
+ TArray<FInventoryStack> Result;
+ if (Produced.ItemId.IsNone() || Produced.Quantity <= 0)
+  return Result;
+ bool bLedger = bForceLedger;
+ if (const UWorldGameDataSubsystem* GameData = GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr)
+ {
+  if (const FGameDataItem* Item = GameData->GetItems().Find(Produced.ItemId))
+   bLedger |= Item->bConsumable;
+ }
+ if (!bLedger)
+ {
+  Result.Add(Produced);
+  return Result;
+ }
+ for (int32 Index = 0; Index < Produced.Quantity; ++Index)
+ {
+  FInventoryStack Unit = Produced;
+  Unit.Quantity = 1;
+  Unit.MaxStack = 1;
+  Unit.OwnedWorldItemId.Invalidate();
+  Result.Add(Unit);
+ }
+ return Result;
+}
+
+bool UInventoryCraftingComponent::TryAddProducedItems(const FInventoryStack& Produced, bool bForceLedger)
+{
+ TArray<FInventoryStack> Stacks = MakeProducedStacks(Produced, bForceLedger);
+ if (Stacks.IsEmpty() || !HasCapacityFor(Stacks))
+  return false;
+ UWorld* World = GetWorld();
+ UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+ const UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+ const FGameDataItem* Data = GameData ? GameData->GetItems().Find(Produced.ItemId) : nullptr;
+ if (!(bForceLedger || (Data && Data->bConsumable)))
+  return TryAddItem(Stacks[0]);
+ if (!Ownership)
+  return false;
+ const UWorldSimulationClockSubsystem* Clock = World->GetSubsystem<UWorldSimulationClockSubsystem>();
+ const double Now = Clock && Clock->IsClockInitialized() ? Clock->GetSimulationTimeSeconds() : 0.0;
+ for (FInventoryStack& Unit : Stacks)
+ {
+  FWorldOwnedItemRecord Record;
+  Record.ItemId = FGuid::NewGuid();
+  Record.DefinitionId = Unit.ItemId;
+  Record.OwnerKind = EWorldItemOwnerKind::Inventory;
+  Record.OwnerId = InventoryOwnerId;
+  Record.CreatedAtWorldTimeSeconds = Now; // Freshly made food starts fresh.
+  Unit.OwnedWorldItemId = Record.ItemId;
+  if (!Ownership->RegisterItem(Record) || !TryAddItem(Unit))
+   return false;
  }
  return true;
 }

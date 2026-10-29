@@ -46,6 +46,11 @@ public:
  FGuid GetInventoryOwnerId() const { return InventoryOwnerId; }
  /** True if all these stacks fit (weight and slots). */
  bool CanAddItems(const TArray<FInventoryStack>& Additions) const { return HasCapacityFor(Additions); }
+ /** The stacks a produced item becomes: food and water (consumables in GameData) become one ledger unit each
+  *  so they can be eaten; everything else stays one plain stack. */
+ TArray<FInventoryStack> MakeProducedStacks(const FInventoryStack& Produced, bool bForceLedger = false) const;
+ /** Adds produced items (crafting, stations, gathering). All or nothing; consumables enter the ownership ledger. */
+ bool TryAddProducedItems(const FInventoryStack& Produced, bool bForceLedger = false);
 private:
  int32 FindRecipeIndex(FName RecipeId) const;
  bool HasCapacityFor(const TArray<FInventoryStack>& Additions) const;

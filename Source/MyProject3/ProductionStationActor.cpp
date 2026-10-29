@@ -160,11 +160,12 @@ bool AProductionStationActor::TryTake(UInventoryCraftingComponent* Inventory, FN
     }
     Stack.bIsTool = Stack.Category == EInventoryItemCategory::Tool;
     Stack.MaxStack = Stack.bIsTool ? 1 : 99;
-    if (!Inventory->CanAddItems({ Stack }) ||
+    // Cooked food and boiled water become edible ledger items (one slot each).
+    if (!Inventory->CanAddItems(Inventory->MakeProducedStacks(Stack)) ||
         !Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision))
         return false;
 
-    if (Inventory->TryAddItem(Stack))
+    if (Inventory->TryAddProducedItems(Stack))
         return true;
 
     // Stock was deducted first; restore it if inventory insertion unexpectedly
