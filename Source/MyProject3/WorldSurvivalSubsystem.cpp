@@ -1429,7 +1429,8 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         FWorldSurvivalProfile& P = Pair.Value;
         const double RestOverlapSeconds = FMath::Max(0.0,
             FMath::Min(LogicalTimeSeconds, P.RestUntilTimeSeconds) - PreviousLogicalTimeSeconds);
-        const float RestHours = static_cast<float>(RestOverlapSeconds / 3600.0);
+        // Sleeping in the open, cold or wet recovers less than under a roof by a fire.
+        const float RestHours = static_cast<float>(RestOverlapSeconds / 3600.0) * GetRestQuality(P);
         P.Thirst = FMath::Clamp(P.Thirst + ThirstPerHour * Hours, 0.0f, 100.0f);
         P.Fatigue = FMath::Clamp(P.Fatigue + FatiguePerHour * Hours -
             FatiguePerHour * RestFatigueRecoveryMultiplier * RestHours, 0.0f, 100.0f);
@@ -1702,4 +1703,13 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     Weather = InWeather;
     WeatherSeverity = InSeverity;
     return true;
+}
+
+float UWorldSurvivalSubsystem::GetRestQuality(const FWorldSurvivalProfile& Profile) const
+{
+    const float Shelter = 0.5f + 0.5f * FMath::Clamp(Profile.ShelterProtection, 0.0f, 1.0f);
+    // FeltTemperatureCelsius is the last step's value: what the sleeper actually felt.
+    const float Warmth = Profile.FeltTemperatureCelsius >= ComfortTemperatureCelsius - 8.0f ? 1.0f : 0.5f;
+    const float Dryness = Profile.Wetness > 0.5f ? 0.75f : 1.0f;
+    return Shelter * Warmth * Dryness;
 }

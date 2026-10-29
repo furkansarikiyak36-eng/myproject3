@@ -408,4 +408,54 @@ bool FConsumeCausesConditionTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// P2.2: sleep under a roof and warm recovers more than sleep outside in the cold.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRestPlaceQualityTest,
+    "MyProject3.World.Needs.RestPlaceDecidesRecovery", Flags)
+bool FRestPlaceQualityTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Survival"), Survival))
+        return false;
+    TestTrue(TEXT("Clock"), Clock->InitializeClock(1, 0.0));
+    Survival->AmbientTemperatureCelsius = 15.0f;
+
+    FWorldSurvivalProfile Outside;
+    Outside.EntityId = FGuid::NewGuid();
+    Outside.Fatigue = 80.0f;
+    Outside.Stamina = 20.0f;
+    Outside.Location = FVector(0.0, 0.0, 0.0);
+    FWorldSurvivalProfile Cabin = Outside;
+    Cabin.EntityId = FGuid::NewGuid();
+    Cabin.ShelterProtection = 1.0f;
+    TestTrue(TEXT("Outside sleeper"), Survival->RegisterProfile(Outside));
+    TestTrue(TEXT("Cabin sleeper"), Survival->RegisterProfile(Cabin));
+
+    FWorldSurvivalProfile Cold = Outside;
+    Cold.FeltTemperatureCelsius = -5.0f;
+    Cold.Wetness = 0.8f;
+    FWorldSurvivalProfile Warm = Cabin;
+    Warm.FeltTemperatureCelsius = 20.0f;
+    TestEqual(TEXT("Open, cold and wet is the worst place"), Survival->GetRestQuality(Cold), 0.5f * 0.5f * 0.75f, 0.001f);
+    TestEqual(TEXT("Roof and warmth is the best place"), Survival->GetRestQuality(Warm), 1.0f, 0.001f);
+
+    // Two hours, so neither sleeper reaches full stamina.
+    TestTrue(TEXT("Outside sleeps"), Survival->TryBeginRest(FGuid::NewGuid(), Outside.EntityId, 1, 2.0 * 3600.0));
+    TestTrue(TEXT("Cabin sleeps"), Survival->TryBeginRest(FGuid::NewGuid(), Cabin.EntityId, 1, 2.0 * 3600.0));
+    for (int32 Hour = 1; Hour <= 2; ++Hour)
+    {
+        TestTrue(TEXT("Clock hour"), Clock->AdvanceSimulation(3600.0));
+        TestTrue(TEXT("Night hour"), Survival->AdvanceSurvivalStep(3600.0, Hour * 3600.0));
+    }
+    FWorldSurvivalProfile OutsideAfter, CabinAfter;
+    Survival->GetProfile(Outside.EntityId, OutsideAfter);
+    Survival->GetProfile(Cabin.EntityId, CabinAfter);
+    TestTrue(TEXT("Both rested"), OutsideAfter.Fatigue < 80.0f && CabinAfter.Fatigue < 80.0f);
+    TestTrue(TEXT("The cabin sleeper is less tired"), CabinAfter.Fatigue < OutsideAfter.Fatigue);
+    TestTrue(TEXT("The cabin sleeper has more stamina"), CabinAfter.Stamina > OutsideAfter.Stamina);
+    return true;
+}
+
 #endif

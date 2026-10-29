@@ -293,6 +293,8 @@ public:
     /** The single felt-temperature function every system reads. */
     UFUNCTION(BlueprintPure, Category="World|Survival") float ComputeFeltTemperature(const FWorldSurvivalProfile& Profile) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") float GetHeatAt(const FVector& Location) const;
+    /** 0.19 .. 1: how well this place lets the profile sleep. Shelter, warmth and dry clothes help (P2.2). */
+    UFUNCTION(BlueprintPure, Category="World|Survival") float GetRestQuality(const FWorldSurvivalProfile& Profile) const;
     UFUNCTION(BlueprintPure, Category="World|Survival") bool CanAdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds) const;
     UFUNCTION(BlueprintCallable, Category="World|Survival") bool AdvanceSurvivalStep(double DeltaSeconds, double LogicalTimeSeconds);
     /** Legacy import/dev helper. Player interactions must use TryRecordConfiguredDiscovery. */
