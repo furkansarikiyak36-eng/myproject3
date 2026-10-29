@@ -203,14 +203,16 @@ bool ReconcilePhysicalActorSnapshotsWithItems(
             if (!Carry)
                 return false;
 
-            AActor* CarryOwner = Cast<AActor>(Carry->OwnerActorPath.ResolveObject());
-            if (!IsValid(CarryOwner) && Carry->bPlayerControlledOwner)
-                CarryOwner = UGameplayStatics::GetPlayerPawn(World, 0);
-            if (!IsValid(CarryOwner))
-                return false;
-
-            const FTransform CarryOwnerTransform = Carry->bHasSavedOwnerTransform
-                ? Carry->OwnerActorTransform : CarryOwner->GetActorTransform();
+            FTransform CarryOwnerTransform = Carry->OwnerActorTransform;
+            if (!Carry->bHasSavedOwnerTransform)
+            {
+                AActor* CarryOwner = Cast<AActor>(Carry->OwnerActorPath.ResolveObject());
+                if (!IsValid(CarryOwner) && Carry->bPlayerControlledOwner)
+                    CarryOwner = UGameplayStatics::GetPlayerPawn(World, 0);
+                if (!IsValid(CarryOwner))
+                    return false;
+                CarryOwnerTransform = CarryOwner->GetActorTransform();
+            }
             const FTransform HeldWorldTransform =
                 Carry->HeldItemRelativeTransform * CarryOwnerTransform;
             if (!HeldWorldTransform.IsValid())
