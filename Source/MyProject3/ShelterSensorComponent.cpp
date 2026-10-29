@@ -15,15 +15,39 @@ namespace
 {
     bool HitsBuiltPiece(const UWorld* World, const FVector& From, const FVector& To, const AActor* Ignore)
     {
-        FHitResult Hit;
-        FCollisionQueryParams Params(SCENE_QUERY_STAT(ShelterProbe), false, Ignore);
-        if (!World->LineTraceSingleByChannel(Hit, From, To, ECC_Visibility, Params))
+        if (!World)
             return false;
-        const AActor* Actor = Hit.GetActor();
-        // Only built pieces shelter: a loose log lying around is not a wall or a roof.
-        if (const IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
-            return Piece->IsStructurallyPlaced();
-        return Cast<AConstructionOpeningActor>(Actor) != nullptr;
+
+        TArray<FHitResult> Hits;
+        FCollisionQueryParams Params(SCENE_QUERY_STAT(ShelterProbe), false, Ignore);
+        if (!World->LineTraceMultiByChannel(Hits, From, To, ECC_Visibility, Params))
+            return false;
+
+        for (const FHitResult& Hit : Hits)
+        {
+            const AActor* Actor = Hit.GetActor();
+            if (!IsValid(Actor))
+                continue;
+
+            // The frame of an empty door/gate is only an interaction target,
+            // not a wall. A built, closed panel provides cover; an open panel
+            // must not count. Continue through ignored hits so a real wall
+            // behind the opening can still shelter the point.
+            if (const AConstructionOpeningActor* Opening = Cast<AConstructionOpeningActor>(Actor))
+            {
+                if (Opening->HasPanel() && !Opening->IsOpen())
+                    return true;
+                continue;
+            }
+
+            // Only structurally placed pieces shelter: a loose log is not a wall or roof.
+            if (const IStructuralPieceInterface* Piece = Cast<IStructuralPieceInterface>(Actor))
+            {
+                if (Piece->IsStructurallyPlaced())
+                    return true;
+            }
+        }
+        return false;
     }
 }
 
