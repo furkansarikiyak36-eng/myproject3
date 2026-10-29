@@ -10,6 +10,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "WallCoatingComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Math/RotationMatrix.h"
@@ -260,6 +261,7 @@ ALogBuildPiece::ALogBuildPiece()
     PrimaryActorTick.bCanEverTick = false;
 
     Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("LogMesh"));
+    WallCoating = CreateDefaultSubobject<UWallCoatingComponent>(TEXT("WallCoating"));
     SetRootComponent(Mesh);
     StructuralIdentity = CreateDefaultSubobject<UWorldObjectIdentityComponent>(TEXT("WorldObjectIdentity"));
 
