@@ -83,7 +83,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
 - `Source/MyProject3/LogSnapCharacter.cpp` (now creates one canonical `UInventoryCraftingComponent` default subobject adjacent to carry/build components).
 - `Source/MyProject3/WorldDemoBootstrapActor.cpp` (bootstrap calls `LoadDefault` + `ApplyToWorld` before coordinator initialization, but actor BeginPlay order can leave player inventory already initialized).
-- `Source/MyProject3/WorldGameDataSubsystem.cpp` (`ApplyToWorld` registers recipes/conditions/crops/fuels but did not apply `ApplyToInventory` to inventories already present; inventory BeginPlay only does this if data is already applied).
+- `Source/MyProject3/WorldGameDataSubsystem.cpp` (`ApplyToWorld` does not backfill existing inventories).
+- `Source/MyProject3/InventoryCraftingComponent.cpp` (`RegisterRecipe` rejects every duplicate recipe ID, so naively calling `ApplyToInventory` during backfill could fail on a preconfigured duplicate).
 - GitHub code search found no canonical player inventory attachment.
 - `Source/MyProject3/LogSnapCharacter.h` now forward-declares `UInventoryCraftingComponent` and exposes the intended canonical `Inventory` default-subobject property.
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
@@ -149,4 +150,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Before `ApplyToWorld` sets `bApplied=true`, iterate existing actors/components and call `ApplyToInventory` for every `UInventoryCraftingComponent`, mirroring the existing heat-source backfill. This closes the BeginPlay ordering race for the new player inventory. Then review item capacity probe semantics.
+Add a pre-`bApplied` inventory backfill loop to `ApplyToWorld`, but first make `ApplyToInventory` idempotent for already-registered identical game-data recipe IDs while rejecting mismatched definitions. Use exact current `FCraftingRecipe`/`FRecipeIngredient` fields from `InventoryCraftingTypes.h`.
