@@ -1355,14 +1355,31 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
         return false;
     }
 
+    const FTransform PreviousTransform = Item->GetActorTransform();
+    const bool bPreviousActorCollision = Item->GetActorEnableCollision();
+    UPrimitiveComponent* RootPrimitive =
+        Cast<UPrimitiveComponent>(Item->GetRootComponent());
+    const bool bPreviousSimulatePhysics =
+        RootPrimitive ? RootPrimitive->IsSimulatingPhysics() : false;
+    const ECollisionEnabled::Type PreviousCollision =
+        RootPrimitive ? RootPrimitive->GetCollisionEnabled() : ECollisionEnabled::QueryAndPhysics;
     const FTransform RestoredWorldTransform =
         ItemRelativeTransform * GetOwner()->GetActorTransform();
     if (!RestoredWorldTransform.IsValid() ||
         !Item->SetActorTransform(RestoredWorldTransform, false, nullptr, ETeleportType::TeleportPhysics))
         return false;
 
-    UPrimitiveComponent* RootPrimitive =
-        Cast<UPrimitiveComponent>(Item->GetRootComponent());
+    auto RestorePhysicalState = [&]()
+    {
+        Item->SetActorTransform(PreviousTransform, false, nullptr, ETeleportType::TeleportPhysics);
+        if (RootPrimitive)
+        {
+            RootPrimitive->SetSimulatePhysics(bPreviousSimulatePhysics);
+            RootPrimitive->SetCollisionEnabled(PreviousCollision);
+        }
+        Item->SetActorEnableCollision(bPreviousActorCollision);
+    };
+
     if (RootPrimitive)
     {
         RootPrimitive->SetSimulatePhysics(false);
@@ -1370,6 +1387,7 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
     }
     Item->SetActorEnableCollision(false);
 
+    bool bMaterialWasAlreadyHeld = false;
     if (Log)
     {
         Log->SetHeldState(true);
@@ -1383,8 +1401,19 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
     }
     else
     {
-        if (!SetMaterialHeld(Item, true))
+        if (const AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Item))
+            bMaterialWasAlreadyHeld = Stone->IsHeld();
+        else if (const AStickPrimitivePiece* Stick = Cast<AStickPrimitivePiece>(Item))
+            bMaterialWasAlreadyHeld = Stick->IsHeld();
+
+        // Actor SaveGame payload may already have restored bIsHeld=true.
+        // SetHeldState(true) intentionally rejects a second pickup, so make
+        // restore idempotent without weakening normal pickup validation.
+        if (!bMaterialWasAlreadyHeld && !SetMaterialHeld(Item, true))
+        {
+            RestorePhysicalState();
             return false;
+        }
         EnsureMaterialAnchors(Item);
         if (UStaticMeshComponent* Mesh = Item->FindComponentByClass<UStaticMeshComponent>())
         {
@@ -1400,8 +1429,12 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
         if (Log)
             HeldPiece = nullptr;
         else
+        {
             HeldMaterialPiece = nullptr;
-        Item->SetActorEnableCollision(true);
+            if (!bMaterialWasAlreadyHeld)
+                SetMaterialHeld(Item, false);
+        }
+        RestorePhysicalState();
         return false;
     }
 
