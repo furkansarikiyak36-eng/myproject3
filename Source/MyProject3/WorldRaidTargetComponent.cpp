@@ -4,6 +4,6 @@
 
 FVector UWorldRaidTargetComponent::GetRaidTargetLocation() const
 {
-    const FTransform Transform = GetComponentTransform();
-    return Transform.TransformPosition(TargetOffset);
+    const AActor* Owner = GetOwner();
+    return Owner ? Owner->GetActorTransform().TransformPosition(TargetOffset) : FVector::ZeroVector;
 }
