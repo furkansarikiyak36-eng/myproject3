@@ -1,5 +1,5 @@
 {
-  "_about": "Data-backed discovery markers for the prototype. A one-time marker records the discovery and grants a small generic starter stack when configured; authored unlock IDs remain persistent in the survival discovery ledger.",
+  "_about": "Data-backed discovery markers; reward_unique=true means each output is a separate inventory-owned world-item ledger record (required by the planting transaction).",
   "discoveries": [
     {
       "id": "Discovery.AbandonedCamp",
@@ -15,7 +15,8 @@
         "twist_rope"
       ],
       "reward_item": "",
-      "reward_qty": 0
+      "reward_qty": 0,
+      "reward_unique": false
     },
     {
       "id": "Discovery.GrainSeeds",
@@ -31,7 +32,8 @@
         "Seed.Grain"
       ],
       "reward_item": "Seed.Grain",
-      "reward_qty": 2
+      "reward_qty": 2,
+      "reward_unique": true
     },
     {
       "id": "Discovery.RootSeeds",
@@ -47,7 +49,8 @@
         "Seed.Root"
       ],
       "reward_item": "Seed.Root",
-      "reward_qty": 2
+      "reward_qty": 2,
+      "reward_unique": true
     },
     {
       "id": "Discovery.LegumeSeeds",
@@ -63,7 +66,8 @@
         "Seed.Legume"
       ],
       "reward_item": "Seed.Legume",
-      "reward_qty": 2
+      "reward_qty": 2,
+      "reward_unique": true
     },
     {
       "id": "Discovery.OchreOutcrop",
@@ -79,7 +83,8 @@
         "grind_ochre"
       ],
       "reward_item": "OchreEarth",
-      "reward_qty": 2
+      "reward_qty": 2,
+      "reward_unique": false
     },
     {
       "id": "Discovery.MountainPass",
@@ -95,7 +100,8 @@
         "cure_hide"
       ],
       "reward_item": "Rope",
-      "reward_qty": 1
+      "reward_qty": 1,
+      "reward_unique": false
     }
   ]
 }
