@@ -363,7 +363,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             (bNeedsAmount && Action.Amount <= 0.0f) ||
             (!bNeedsAmount && Action.Amount != 0.0f) ||
             !FMath::IsFinite(Action.LaborSeconds) || Action.LaborSeconds < 1.0 ||
-            Action.LaborSeconds > 7200.0)
+            Action.LaborSeconds > 3600.0)
             return Fail(FString::Printf(TEXT("Bad/duplicate field action %s"), *Action.Id.ToString()));
 
         FieldActionIds.Add(Action.Id);
