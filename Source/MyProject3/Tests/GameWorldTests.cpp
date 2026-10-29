@@ -1093,7 +1093,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Rejected planting keeps seed in inventory"), Inventory->GetItemCount(TEXT("Seed.Grain")), 1);
     FWorldOwnedItemRecord StillOwnedSeed;
     TestTrue(TEXT("Seed ledger remains available"), Ownership->TryGetItem(SeedRecord.ItemId, StillOwnedSeed));
-    TestEqual(TEXT("Rejected planting does not transfer seed ownership"), StillOwnedSeed.OwnerKind, EWorldItemOwnerKind::Inventory);
+    TestTrue(TEXT("Rejected planting does not transfer seed ownership"), StillOwnedSeed.OwnerKind == EWorldItemOwnerKind::Inventory);
 
     TestTrue(TEXT("Advance logical clock to April"), Clock->AdvanceSimulation(16.0 * 3600.0));
     FWorldCalendarDate Date;
@@ -1130,7 +1130,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     FWorldOwnedItemRecord ReturnedSeed;
     TestTrue(TEXT("Returned seed exists in ownership ledger"), Ownership->TryGetItem(HarvestedCrop.SeedOutputItemIds[0], ReturnedSeed));
     TestEqual(TEXT("Returned item definition is seed"), ReturnedSeed.DefinitionId, FName(TEXT("Seed.Grain")));
-    TestEqual(TEXT("Returned seed is back in the world"), ReturnedSeed.OwnerKind, EWorldItemOwnerKind::World);
+    TestTrue(TEXT("Returned seed is back in the world"), ReturnedSeed.OwnerKind == EWorldItemOwnerKind::World);
     TestTrue(TEXT("Harvest releases field cell"), Agriculture->GetFieldCell(Field.Cell, Field));
     TestFalse(TEXT("Harvested field no longer has a live crop link"), Field.PlantedCropId.IsValid());
     TestEqual(TEXT("Soil fertility loses the configured harvest cost"), Field.Fertility, 62.0f);
