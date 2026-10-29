@@ -6,6 +6,7 @@
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "StoneBuildingPiece.h"
 
 UWorldThreatDirectorSubsystem* UWorldRaidAdapterSubsystem::GetThreatDirector() const
 {
@@ -116,6 +117,13 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     {
         FStructuralNodeRecord Node;
         if (!Graph->GetNode(NodeId, Node)) continue;
+
+        // Open doors and gates, and authored wall openings, are not raid
+        // obstacles: do not spend a damage pulse on a passage that is already clear.
+        if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Node.Actor.Get()))
+            if (!Stone->IsRaidBlocking())
+                continue;
+
         bool bThresholdExceeded = false;
         if (!Graph->ApplyDamage(NodeId, DamagePerPulse, bThresholdExceeded)) continue;
         if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
