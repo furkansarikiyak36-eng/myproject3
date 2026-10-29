@@ -762,12 +762,16 @@ bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
         !FMath::IsFinite(Crop.Moisture) || Crop.Moisture < 0.0f || Crop.Moisture > 1.0f ||
         !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
         !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
-        Crop.Revision <= 0 || Crop.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
+        Crop.Revision <= 0 || Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
+        !FMath::IsFinite(Crop.SoilExhaustionPerHarvest) ||
+        Crop.SoilExhaustionPerHarvest < 0.0f || Crop.SoilExhaustionPerHarvest > 100.0f ||
+        !FMath::IsFinite(Crop.MinimumFertility) || Crop.MinimumFertility < 0.0f || Crop.MinimumFertility > 100.0f ||
+        (Crop.SeedReturnUnits > 0 && Crop.SeedOutputDefinitionId.IsNone()) ||
+        Crop.SeedOutputItemIds.Num() > 64 ||
+        Crop.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
         MaxOperationReceiptsPerEntity <= 0 || Crops.Contains(Crop.CropId) ||
         MaxCrops <= 0 || Crops.Num() >= MaxCrops)
-    {
         return false;
-    }
 
     if (Crop.PlantOperationId.IsValid() &&
         (!Crop.SeedItemId.IsValid() || !Crop.SeedInventoryOwnerId.IsValid() ||
@@ -775,8 +779,9 @@ bool UWorldAgricultureSubsystem::RegisterCrop(const FWorldCropState& Crop)
         return false;
     if (Crop.HarvestOperationId.IsValid() &&
         (Crop.Stage != ECropGrowthStage::Harvested || Crop.HarvestExpectedRevision <= 0 ||
-         Crop.HarvestDefinitionId.IsNone() || Crop.HarvestUnits <= 0 ||
-         Crop.HarvestOutputItemIds.Num() != Crop.HarvestUnits))
+         Crop.HarvestDefinitionId.IsNone() || Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
+         Crop.HarvestOutputItemIds.Num() != Crop.HarvestUnits ||
+         Crop.SeedOutputItemIds.Num() != Crop.SeedReturnUnits))
         return false;
 
     TSet<FGuid> SeenOperations;
@@ -829,11 +834,18 @@ bool UWorldAgricultureSubsystem::SetCropMoisture(
     FWorldCropState* Crop = Crops.Find(CropId);
     if (!Crop || Crop->Revision != ExpectedRevision || Crop->Revision >= MAX_int64 - 1 ||
         !FMath::IsFinite(Moisture) || Moisture < 0.0f || Moisture > 1.0f)
-    {
         return false;
-    }
+
+    FWorldFieldCellState* FieldCell = FieldCells.Find(Crop->PlotCell);
+    if (FieldCell && FieldCell->PlantedCropId == CropId && FieldCell->Revision >= MAX_int64 - 1)
+        return false;
     Crop->Moisture = Moisture;
     ++Crop->Revision;
+    if (FieldCell && FieldCell->PlantedCropId == CropId)
+    {
+        FieldCell->Moisture = Moisture;
+        ++FieldCell->Revision;
+    }
     return true;
 }
 
@@ -857,7 +869,8 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
         !FMath::IsFinite(MinimumGrowthMoisture) || MinimumGrowthMoisture < 0.0f ||
         MinimumGrowthMoisture > 1.0f || !FMath::IsFinite(HungerPerHour) ||
         HungerPerHour < 0.0f || !FMath::IsFinite(ProductHungerLimit) ||
-        ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f)
+        ProductHungerLimit < 0.0f || ProductHungerLimit > 100.0f ||
+        MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
         return false;
 
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
@@ -868,6 +881,17 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
             !FMath::IsFinite(Crop.GrowthProgressSeconds) || Crop.GrowthProgressSeconds < 0.0 ||
             !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage <= 0.0 ||
             !FMath::IsFinite(Crop.GrowthProgressSeconds + DeltaSeconds))
+            return false;
+
+        const FWorldFieldCellState* FieldCell = FieldCells.Find(Crop.PlotCell);
+        const float EffectiveMoisture =
+            FieldCell && FieldCell->PlantedCropId == Crop.CropId ? FieldCell->Moisture : Crop.Moisture;
+        if (Crop.Stage != ECropGrowthStage::Mature &&
+            Crop.Stage != ECropGrowthStage::Withered &&
+            Crop.Stage != ECropGrowthStage::Harvested &&
+            EffectiveMoisture < MinimumGrowthMoisture &&
+            FieldCell && FieldCell->PlantedCropId == Crop.CropId &&
+            FieldCell->Revision >= MAX_int64 - 1)
             return false;
     }
     for (const TPair<FGuid, FWorldAnimalState>& Pair : Animals)
@@ -897,13 +921,30 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
         if (Crop.Stage == ECropGrowthStage::Mature || Crop.Stage == ECropGrowthStage::Withered ||
             Crop.Stage == ECropGrowthStage::Harvested)
             continue;
+
+        FWorldFieldCellState* FieldCell = FieldCells.Find(Crop.PlotCell);
+        if (FieldCell && FieldCell->PlantedCropId == Crop.CropId)
+            Crop.Moisture = FieldCell->Moisture;
+
         if (Crop.Moisture < MinimumGrowthMoisture)
         {
             Crop.Stage = ECropGrowthStage::Withered;
             ++Crop.Revision;
+            if (FieldCell && FieldCell->PlantedCropId == Crop.CropId)
+            {
+                FieldCell->PlantedCropId.Invalidate();
+                ++FieldCell->Revision;
+            }
             continue;
         }
-        Crop.GrowthProgressSeconds += DeltaSeconds * FMath::Clamp(Crop.Moisture, 0.0f, 1.0f);
+
+        float GrowthMultiplier = FMath::Clamp(Crop.Moisture, 0.0f, 1.0f);
+        if (FieldCell && FieldCell->PlantedCropId == Crop.CropId)
+        {
+            GrowthMultiplier *= FMath::Clamp(1.0f - FieldCell->WeedPressure * 0.25f, 0.5f, 1.0f);
+            GrowthMultiplier *= 1.0f + FieldCell->MulchCoverage * 0.1f;
+        }
+        Crop.GrowthProgressSeconds += DeltaSeconds * GrowthMultiplier;
         while (Crop.GrowthProgressSeconds >= Crop.SecondsPerStage &&
             Crop.Stage != ECropGrowthStage::Mature)
         {
