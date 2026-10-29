@@ -455,6 +455,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Zone.Number = static_cast<int32>(ZoneNumberValue);
         Entry->TryGetStringField(TEXT("name"), Zone.Name);
         Entry->TryGetStringField(TEXT("description"), Zone.Description);
+        Zone.DiscoveryId = NameField(Entry, TEXT("discovery_id"));
         Zone.BarrierId = NameField(Entry, TEXT("barrier_id"));
         Entry->TryGetStringField(TEXT("barrier_description"), Zone.BarrierDescription);
 
@@ -537,7 +538,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         }
 
         if (Zone.Id.IsNone() || SeenZoneIds.Contains(Zone.Id) ||
-            Zone.Name.IsEmpty() || Zone.BarrierId.IsNone() || SeenZoneNumbers.Contains(Zone.Number) ||
+            Zone.Name.IsEmpty() || Zone.DiscoveryId.IsNone() || Zone.BarrierId.IsNone() ||
+            SeenZoneNumbers.Contains(Zone.Number) ||
             (Zone.Number == 4 && Zone.SeasonalMonths.IsEmpty()))
             return Fail(FString::Printf(TEXT("Bad/duplicate zone definition %s"), *Zone.Id.ToString()));
         SeenZoneIds.Add(Zone.Id);
