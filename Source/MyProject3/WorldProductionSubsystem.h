@@ -55,6 +55,21 @@ struct FWorldProductionPhysicalIntakeReceipt
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
 };
 
+/** Durable receipt for ingesting one non-actor world resource into recipe-addressable stock. */
+USTRUCT(BlueprintType)
+struct FWorldProductionItemIntakeReceipt
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid OperationId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FGuid SourceItemId;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedItemRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ExpectedStationRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName SourceDefinitionId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") FName StockItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingItemRevision = 0;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Production") int64 ResultingStationRevision = 0;
+};
+
 /** Durable receipt for idempotent recipe enqueue requests. */
 USTRUCT(BlueprintType)
 struct FWorldProductionEnqueueReceipt
@@ -104,6 +119,8 @@ struct FWorldProductionStation
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionJob> Jobs;
     /** Receipts prevent one physical source actor from becoming station stock more than once. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionPhysicalIntakeReceipt> PhysicalIntakeReceipts;
+    /** Receipts for unmaterialized world resources entering recipe-addressable stock. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionItemIntakeReceipt> ItemIntakeReceipts;
     /** Durable request results; retained after a job is collected to make retries idempotent. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionEnqueueReceipt> EnqueueReceipts;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Production") TArray<FWorldProductionCollectReceipt> CollectReceipts;
@@ -126,6 +143,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool AddStock(const FGuid& StationId, FName ItemId, int32 Quantity, int64 ExpectedRevision);
     /** Converts one loose, world-owned physical log into one station stock unit. OperationId must be reused for retries. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedLogPiece(FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision, int64 ExpectedStationRevision, FName& OutStockItemId);
+    /** Ingests a uniquely owned ledger-only world resource; rejects items with a physical actor adapter. */
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryIngestWorldOwnedItem(
+        FGuid StationId, FGuid OperationId, FGuid ItemId, int64 ExpectedItemRevision,
+        int64 ExpectedStationRevision, FName& OutStockItemId);
     /** Stable recipe key for physical resource stock; preserves the nominal mesh family when one is authored. */
     UFUNCTION(BlueprintPure, Category="World|Production") static FName MakePhysicalStockItemId(FName DefinitionId, FName MeshVariantSetId);
     /** Converts one aggregate stock unit into a real world-owned physical log. Callers must reuse OperationId for retries. */
