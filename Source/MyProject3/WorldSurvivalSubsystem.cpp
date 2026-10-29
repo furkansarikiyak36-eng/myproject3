@@ -586,6 +586,12 @@ bool UWorldSurvivalSubsystem::TryFillWaterFromCreek(
     WaterCapacityProbe.MaxStack = 1;
     WaterCapacityProbe.bIsTool = false;
     WaterCapacityProbe.Category = EInventoryItemCategory::Consumable;
+    // A filled vessel is a uniquely owned item, not a mergeable stack. Use
+    // a temporary unique identity during preflight so an ordinary water stack
+    // cannot make a full inventory appear to have spare capacity.
+    WaterCapacityProbe.OwnedWorldItemId = FGuid::NewGuid();
+    if (!WaterCapacityProbe.OwnedWorldItemId.IsValid())
+        return false;
     TArray<FInventoryStack> WaterCapacityProbeItems;
     WaterCapacityProbeItems.Add(WaterCapacityProbe);
     if (!bFoundReusablePot || !Inventory->CanAddItems(WaterCapacityProbeItems))
