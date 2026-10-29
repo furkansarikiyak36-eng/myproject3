@@ -50,4 +50,4 @@ Started: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 - Checkpoint reset to the user's current Phase 2 task before source reads.
 
 ### Next step
-Next: inspect ownership definition-update rollback and action receipt validation, then implement a receipt-backed dirty→boiled water transition plus player controls; preserve shared-clock rest and ledger-only consumption.
+Confirmed: the shared coordinator is advanced by the VerticalSlice_C base Tick. The ownership ledger's definition-change receipt currently accepts World-owned fuel only, so inventory water needs an explicit safe extension; the survival receipt enum has strict validation and the save schema is v26. Next: implement the inventory-owned definition transition + matching survival receipt, add the v26→v27 migration, then add player controls and tests.
