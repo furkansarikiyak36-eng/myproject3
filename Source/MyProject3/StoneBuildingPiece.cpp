@@ -750,10 +750,12 @@ void AStoneBuildingPiece::EnsureAutomaticAnchors()
 {
     if (!Mesh)
         return;
+
+    FVector Top = FVector::ZeroVector;
+    FVector Bottom = FVector::ZeroVector;
     if (bUsesStructuralProxy)
     {
-        FVector Top(0.0, 0.0, 200.0);
-        FVector Bottom = FVector::ZeroVector;
+        Top.Z = 200.0;
         if (PieceType == EStonePieceType::DefensiveWall)
             Top.Z = 250.0;
         else if (PieceType == EStonePieceType::FloorSlab ||
@@ -767,30 +769,45 @@ void AStoneBuildingPiece::EnsureAutomaticAnchors()
         }
         else if (PieceType == EStonePieceType::Stair)
             Top.Z = 88.0;
-
-        if (FindAnchorIndex(TEXT("AutoTop")) == INDEX_NONE)
-            AddCustomAnchor(TEXT("AutoTop"), TEXT("Stone"), FTransform(Top), true, false);
-        if (FindAnchorIndex(TEXT("AutoBottom")) == INDEX_NONE)
-            AddCustomAnchor(TEXT("AutoBottom"), TEXT("Stone"), FTransform(Bottom), false, true);
-
-        if (PieceType == EStonePieceType::BridgeDeck ||
-            PieceType == EStonePieceType::ElevatedWalkway)
-        {
-            if (FindAnchorIndex(TEXT("SupportLeft")) == INDEX_NONE)
-                AddCustomAnchor(TEXT("SupportLeft"), TEXT("Stone"),
-                    FTransform(FVector(-120.0, 0.0, -10.0)), false, true);
-            if (FindAnchorIndex(TEXT("SupportRight")) == INDEX_NONE)
-                AddCustomAnchor(TEXT("SupportRight"), TEXT("Stone"),
-                    FTransform(FVector(120.0, 0.0, -10.0)), false, true);
-        }
-        return;
+        else if (PieceType == EStonePieceType::FenceSegment)
+            Top.Z = 120.0;
+        else if (PieceType == EStonePieceType::RailingSegment)
+            Top.Z = 86.0;
+        else if (PieceType == EStonePieceType::RopeCrossingAnchor)
+            Top.Z = 202.5;
+    }
+    else
+    {
+        if (!Mesh->GetStaticMesh())
+            return;
+        const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+        Top = Bounds.Origin + FVector(0.0, 0.0, Bounds.BoxExtent.Z);
+        Bottom = Bounds.Origin - FVector(0.0, 0.0, Bounds.BoxExtent.Z);
     }
 
-    if (!Mesh->GetStaticMesh() || FindAnchorIndex(TEXT("AutoTop")) != INDEX_NONE)
-        return;
-    const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
-    const FVector Top = Bounds.Origin + FVector(0.0, 0.0, Bounds.BoxExtent.Z);
-    const FVector Bottom = Bounds.Origin - FVector(0.0, 0.0, Bounds.BoxExtent.Z);
-    AddCustomAnchor(TEXT("AutoTop"), TEXT("Stone"), FTransform(Top), true, false);
-    AddCustomAnchor(TEXT("AutoBottom"), TEXT("Stone"), FTransform(Bottom), false, true);
+    if (FindAnchorIndex(TEXT("AutoTop")) == INDEX_NONE)
+        AddCustomAnchor(TEXT("AutoTop"), TEXT("Stone"), FTransform(Top), true, false);
+    if (FindAnchorIndex(TEXT("AutoBottom")) == INDEX_NONE)
+        AddCustomAnchor(TEXT("AutoBottom"), TEXT("Stone"), FTransform(Bottom), false, true);
+
+    // Secondary support points are required whether geometry comes from the
+    // proxy kit or a Blueprint-supplied physical mesh. For authored meshes,
+    // anchor positions follow the real mesh bounds instead of fixed proxy sizes.
+    if (PieceType == EStonePieceType::BridgeDeck ||
+        PieceType == EStonePieceType::ElevatedWalkway)
+    {
+        FVector Left(-120.0, 0.0, -10.0);
+        FVector Right(120.0, 0.0, -10.0);
+        if (!bUsesStructuralProxy && Mesh->GetStaticMesh())
+        {
+            const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
+            const double ZBottom = Bounds.Origin.Z - Bounds.BoxExtent.Z;
+            Left = FVector(Bounds.Origin.X - Bounds.BoxExtent.X, Bounds.Origin.Y, ZBottom);
+            Right = FVector(Bounds.Origin.X + Bounds.BoxExtent.X, Bounds.Origin.Y, ZBottom);
+        }
+        if (FindAnchorIndex(TEXT("SupportLeft")) == INDEX_NONE)
+            AddCustomAnchor(TEXT("SupportLeft"), TEXT("Stone"), FTransform(Left), false, true);
+        if (FindAnchorIndex(TEXT("SupportRight")) == INDEX_NONE)
+            AddCustomAnchor(TEXT("SupportRight"), TEXT("Stone"), FTransform(Right), false, true);
+    }
 }

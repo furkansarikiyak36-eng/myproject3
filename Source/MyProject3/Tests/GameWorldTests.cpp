@@ -2696,6 +2696,25 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
                 AnchorIds.Contains(TEXT("SupportLeft")) && AnchorIds.Contains(TEXT("SupportRight")));
         }
     }
+    }
+
+    // Blueprint/authored meshes must receive the same two support anchors;
+    // no proxy fallback should be needed when the root mesh is already configured.
+    const FTransform AuthoredBridgeTransform(FRotator::ZeroRotator, FVector(12000.0, 2000.0, 0.0));
+    AStoneBuildingPiece* AuthoredBridge = World->SpawnActorDeferred<AStoneBuildingPiece>(
+        AStoneBuildingPiece::StaticClass(), AuthoredBridgeTransform);
+    if (!TestNotNull(TEXT("Authored bridge mesh"), AuthoredBridge))
+        return false;
+    AuthoredBridge->PieceType = EStonePieceType::BridgeDeck;
+    AuthoredBridge->Mesh->SetStaticMesh(Cube);
+    AuthoredBridge->FinishSpawning(AuthoredBridgeTransform);
+    TArray<FName> AuthoredAnchorIds;
+    AuthoredBridge->GetStructuralAnchorIds(AuthoredAnchorIds);
+    TestTrue(TEXT("Authored bridge exposes left/right support anchors"),
+        AuthoredAnchorIds.Contains(TEXT("SupportLeft")) &&
+        AuthoredAnchorIds.Contains(TEXT("SupportRight")));
+    TestFalse(TEXT("Authored bridge does not need placeholder components"),
+        AuthoredBridge->GetComponents<UStaticMeshComponent>().Num() > 1);
     return true;
 }
 
