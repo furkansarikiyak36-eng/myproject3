@@ -1415,12 +1415,17 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Agriculture"), Agriculture) ||
-        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership) ||
+        !TestNotNull(TEXT("Survival"), Survival))
         return false;
     TestTrue(TEXT("Load primitive-era data"), Data->LoadDefault());
     TestTrue(FString::Printf(TEXT("Apply game data: %s"), *Data->GetLastError()), Data->ApplyToWorld());
     TestTrue(TEXT("Start clock before planting"), Clock->InitializeClock(31415, 0.0));
+    FWorldSurvivalProfile PlayerProfile;
+    PlayerProfile.EntityId = FGuid::NewGuid();
+    TestTrue(TEXT("Register progression profile for seed gating"), Survival->RegisterProfile(PlayerProfile));
 
     FWorldCropDefinition FastCrop;
     FastCrop.CropDefinitionId = TEXT("Crop.FastTest");
@@ -1442,6 +1447,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwnerActor);
     InventoryOwnerActor->AddInstanceComponent(Inventory);
     Inventory->RegisterComponent();
+    Inventory->SetProgressionEntityId(PlayerProfile.EntityId);
     Inventory->ItemWeightGrams.Add(TEXT("Seed.Grain"), 50);
 
     FWorldOwnedItemRecord SeedRecord;
@@ -1498,7 +1504,16 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     FWorldCalendarDate Date;
     TestTrue(TEXT("April date is available"), Clock->GetCalendarDate(Date));
     TestEqual(TEXT("Current month is April"), Date.Month, 4);
-    TestTrue(TEXT("Seasonal planting succeeds"), Agriculture->TryPlantCropOnField(
+    TestFalse(TEXT("In-season planting is still denied before discovering the grain seed"),
+        Agriculture->TryPlantCropOnField(PlantOperation, FastCrop.CropDefinitionId,
+            SeedRecord.ItemId, SeedRecord.Revision, Inventory->GetInventoryOwnerId(),
+            Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
+    TestEqual(TEXT("Discovery-denied planting keeps the seed"), Inventory->GetItemCount(TEXT("Seed.Grain")), 1);
+    FString ZoneEntryReason;
+    TestTrue(TEXT("Discover the base camp to unlock grain seed use"),
+        Data->TryRecordZoneEntry(FGuid::NewGuid(), PlayerProfile.EntityId,
+            TEXT("Zone.0"), FVector::ZeroVector, ZoneEntryReason));
+    TestTrue(TEXT("Seasonal planting succeeds after seed discovery"), Agriculture->TryPlantCropOnField(
         PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
         Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
     FGuid RetriedCropId;
