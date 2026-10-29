@@ -24,6 +24,7 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "PhysicalHealthComponent.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 
@@ -1813,10 +1814,17 @@ void AVerticalSliceCWorldActor::ShowSurvivalStatusInput()
     UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     UWorldSimulationClockSubsystem* Clock =
         World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UPhysicalHealthComponent* PhysicalHealth = Pawn
+        ? Pawn->FindComponentByClass<UPhysicalHealthComponent>() : nullptr;
     FWorldSurvivalProfile Profile;
     if (!Survival || !PlayerSurvivalId.IsValid() ||
         !Survival->GetProfile(PlayerSurvivalId, Profile))
         return;
+
+    const float PhysicalHp = PhysicalHealth ? PhysicalHealth->Health : -1.0f;
+    const float PhysicalMaxHp = PhysicalHealth ? PhysicalHealth->MaxHealth : -1.0f;
 
     FString Conditions = TEXT("none");
     if (!Profile.Conditions.IsEmpty())
@@ -1832,8 +1840,8 @@ void AVerticalSliceCWorldActor::ShowSurvivalStatusInput()
     const bool bResting = Clock && Clock->IsClockInitialized() &&
         Profile.RestUntilTimeSeconds > Clock->GetSimulationTimeSeconds();
     const FString Status = FString::Printf(
-        TEXT("SURVIVAL | HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s"),
-        Profile.Health, Profile.Thirst, Profile.Stamina, Profile.Fatigue,
+        TEXT("SURVIVAL | Body HP %.0f/%.0f | Survival HP %.0f | Thirst %.0f | Stamina %.0f | Fatigue %.0f | Wet %.0f%% | Core %.1f C | Resting %s | Conditions: %s"),
+        PhysicalHp, PhysicalMaxHp, Profile.Health, Profile.Thirst, Profile.Stamina, Profile.Fatigue,
         Profile.Wetness * 100.0f, Profile.CoreTemperatureCelsius,
         bResting ? TEXT("yes") : TEXT("no"), *Conditions);
     if (GEngine)
