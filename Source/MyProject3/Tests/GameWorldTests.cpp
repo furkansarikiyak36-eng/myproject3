@@ -680,6 +680,9 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Physical parts are marked"), PhysicalParts >= 8);
     TestEqual(TEXT("Stations"), Data->GetStations().Num(), 10);
     TestEqual(TEXT("Three crops"), Data->GetCrops().Num(), 3);
+    TestEqual(TEXT("Five ordered discoveries"), Data->GetDiscoveries().Num(), 5);
+    TestEqual(TEXT("Five route anchors for the current authored slice"), Data->GetRouteNodes().Num(), 6);
+    TestEqual(TEXT("Directed route edges"), Data->GetRouteEdges().Num(), 12);
     TestTrue(TEXT("Every material group has items"), Data->GetItems().Num() >= 80);
     return true;
 }
@@ -891,6 +894,128 @@ bool FRouteInfrastructureSnapshotTest::RunTest(const FString& Parameters)
         Routes->FindRouteWithContext(StartNode, DestinationNode, Context, RestoredPath, RestoredCost));
     TestTrue(TEXT("Built bridge state survives snapshot restore"),
         RestoredPath == AfterPath && FMath::IsNearlyEqual(RestoredCost, AfterCost, 0.001f));
+    return true;
+}
+
+// P7.2/P7.3: zone entry consumes the authored season/capability/discovery contract;
+// discovery rewards are persistent and required equipment must be genuinely owned and equipped.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FZoneAccessAndDiscoveryProgressionTest,
+    "MyProject3.Exploration.ZoneAccessRequiresSeasonGearAndDiscovery", Flags)
+bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        return false;
+
+    TestTrue(TEXT("Load zones, routes and discoveries"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply definitions (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
+    // The configured calendar begins at March 5. Sixteen configured day lengths advance into July.
+    TestTrue(TEXT("Initialize July calendar"), Clock->InitializeClock(28019, 16.0 * Day));
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector(0.0, 0.0, 0.0);
+    TestTrue(TEXT("Register player survival profile"), Survival->RegisterProfile(Profile));
+
+    FString AccessReason;
+    TestTrue(TEXT("Base valley has no progression gate"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.0"), AccessReason));
+    TestFalse(TEXT("Unknown zone is rejected"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.99"), AccessReason));
+
+    TestFalse(TEXT("Lake/swamp remains closed before its required discovery"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.3"), AccessReason));
+    TestTrue(TEXT("Reason explains the discovery gate"), AccessReason.Contains(TEXT("Discovery.Zone2.HighForest")));
+
+    auto RecordDiscovery = [&](FName DiscoveryId) -> bool
+    {
+        FWorldSurvivalProfile Current;
+        if (!Survival->GetProfile(Profile.EntityId, Current))
+            return false;
+        return Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId,
+            Current.Revision, DiscoveryId, Profile.Location, Clock->GetSimulationTimeSeconds());
+    };
+
+    TestTrue(TEXT("Record camp discovery"), RecordDiscovery(TEXT("Discovery.Zone0.Camp")));
+    TestTrue(TEXT("Camp discovery unlocks grain seed definition"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
+    FWorldSurvivalProfile CurrentProfile;
+    TestTrue(TEXT("Read profile before out-of-order discovery"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
+    TestFalse(TEXT("High forest discovery cannot skip creek knowledge"),
+        Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId, CurrentProfile.Revision,
+            TEXT("Discovery.Zone2.HighForest"), Profile.Location, Clock->GetSimulationTimeSeconds()));
+
+    TestTrue(TEXT("Record creek discovery"), RecordDiscovery(TEXT("Discovery.Zone1.Creek")));
+    TestTrue(TEXT("Creek discovery unlocks its bridge solution"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Infrastructure.CreekBridge")));
+    TestTrue(TEXT("Record high-forest discovery after creek"), RecordDiscovery(TEXT("Discovery.Zone2.HighForest")));
+    TestTrue(TEXT("Lake/swamp opens after the high-forest discovery"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.3"), AccessReason));
+    TestTrue(TEXT("Record lake/swamp discovery"), RecordDiscovery(TEXT("Discovery.Zone3.LakeSwamp")));
+
+    TestFalse(TEXT("Mountain pass requires cold-protection clothing in July"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
+    TestTrue(TEXT("Reason identifies cold protection"), AccessReason.Contains(TEXT("Capability.ColdProtection")));
+    TestTrue(TEXT("Mountain-pass discovery is also equipment-gated"),
+        Survival->GetDiscoveries().ContainsByPredicate([](const FWorldDiscoveryRecord& Record)
+            { return Record.DiscoveryId == TEXT("Discovery.Zone3.LakeSwamp"); }));
+
+    AActor* InventoryOwnerActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner"), InventoryOwnerActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwnerActor);
+    InventoryOwnerActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item definitions to clothing inventory"), Data->ApplyToInventory(Inventory));
+
+    auto AddUniqueClothing = [&](FName DefinitionId, int32 WeightGrams) -> FWorldOwnedItemRecord
+    {
+        FWorldOwnedItemRecord Item;
+        Item.ItemId = FGuid::NewGuid();
+        Item.DefinitionId = DefinitionId;
+        Item.BaseDefinitionId = DefinitionId;
+        Item.Quantity = 1;
+        Item.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Item.OwnerId = Inventory->GetInventoryOwnerId();
+        Item.Revision = 1;
+        TestTrue(FString::Printf(TEXT("Register owned clothing %s"), *DefinitionId.ToString()),
+            Ownership->RegisterItem(Item));
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.Category = EInventoryItemCategory::Protection;
+        Stack.MaxStack = 1;
+        Stack.OwnedWorldItemId = Item.ItemId;
+        TestTrue(FString::Printf(TEXT("Add clothing stack %s"), *DefinitionId.ToString()),
+            Inventory->TryAddItem(Stack));
+        return Item;
+    };
+
+    const FWorldOwnedItemRecord Tunic = AddUniqueClothing(TEXT("Clothing.HideTunic"), 2500);
+    const FWorldOwnedItemRecord Boots = AddUniqueClothing(TEXT("Clothing.HideBoots"), 1200);
+    (void)WeightGrams; // Weight is authoritative in item data; the helper argument is informational.
+
+    TestTrue(TEXT("Read profile before equipping tunic"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
+    TestTrue(TEXT("Equip owned hide tunic"), Survival->TryEquipItem(FGuid::NewGuid(), Profile.EntityId,
+        CurrentProfile.Revision, Tunic.ItemId, Tunic.Revision, Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Tunic grants the cold-protection capability"),
+        Survival->HasEquippedCapability(Profile.EntityId, TEXT("Capability.ColdProtection")));
+    TestTrue(TEXT("Mountain pass becomes enterable in summer with cold-protection clothing"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
+
+    TestTrue(TEXT("Read profile before equipping boots"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
+    TestTrue(TEXT("Equip owned hide boots"), Survival->TryEquipItem(FGuid::NewGuid(), Profile.EntityId,
+        CurrentProfile.Revision, Boots.ItemId, Boots.Revision, Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Record mountain-pass discovery with both required clothing items"),
+        RecordDiscovery(TEXT("Discovery.Zone4.MountainPass")));
+    TestTrue(TEXT("Mountain-pass discovery unlocks the forward-camp infrastructure"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Infrastructure.ForwardCamp")));
     return true;
 }
 
