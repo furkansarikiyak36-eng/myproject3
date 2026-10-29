@@ -126,13 +126,15 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, ZonesJson, RoutesJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
         !ReadJson(Directory, TEXT("animals.json"), AnimalsJson, Error) ||
+        !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
+        !ReadJson(Directory, TEXT("routes.json"), RoutesJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
         !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
@@ -415,6 +417,148 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         NewAnimals.Add(Animal);
     }
 
+    TArray<FGameDataZone> NewZones;
+    const TArray<TSharedPtr<FJsonValue>>* ZoneValues = ArrayField(ZonesJson, TEXT("zones"));
+    if (!ZoneValues || ZoneValues->Num() != 5)
+        return Fail(TEXT("zones.json must define exactly the five zone IDs 0–4"));
+    TSet<FName> SeenZoneIds;
+    TSet<int32> SeenZoneNumbers;
+    for (const TSharedPtr<FJsonValue>& Value : *ZoneValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataZone Zone;
+        Zone.Id = NameField(Entry, TEXT("id"));
+        const double ZoneNumberValue = NumberField(Entry, TEXT("number"), -1.0);
+        if (!FMath::IsFinite(ZoneNumberValue) || FMath::FloorToDouble(ZoneNumberValue) != ZoneNumberValue ||
+            ZoneNumberValue < 0.0 || ZoneNumberValue > 4.0)
+            return Fail(FString::Printf(TEXT("Zone %s has an invalid number"), *Zone.Id.ToString()));
+        Zone.Number = static_cast<int32>(ZoneNumberValue);
+        Entry->TryGetStringField(TEXT("name"), Zone.Name);
+        Entry->TryGetStringField(TEXT("description"), Zone.Description);
+        Zone.BarrierId = NameField(Entry, TEXT("barrier_id"));
+        Entry->TryGetStringField(TEXT("barrier_description"), Zone.BarrierDescription);
+
+        const TArray<TSharedPtr<FJsonValue>>* ResourceIds = ArrayField(Entry, TEXT("resource_item_ids"));
+        TSet<FName> SeenResourceIds;
+        if (ResourceIds)
+        {
+            for (const TSharedPtr<FJsonValue>& ResourceValue : *ResourceIds)
+            {
+                const FName ItemId(*ResourceValue->AsString());
+                if (ItemId.IsNone() || !HasItem(ItemId) || SeenResourceIds.Contains(ItemId))
+                    return Fail(FString::Printf(TEXT("Zone %s has an invalid resource item"), *Zone.Id.ToString()));
+                SeenResourceIds.Add(ItemId);
+                Zone.ResourceItemIds.Add(ItemId);
+            }
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* SolutionIds = ArrayField(Entry, TEXT("permanent_solution_ids"));
+        TSet<FName> SeenSolutions;
+        if (SolutionIds)
+        {
+            for (const TSharedPtr<FJsonValue>& SolutionValue : *SolutionIds)
+            {
+                const FName SolutionId(*SolutionValue->AsString());
+                if (SolutionId.IsNone() || SeenSolutions.Contains(SolutionId))
+                    return Fail(FString::Printf(TEXT("Zone %s has an invalid/repeated permanent solution"), *Zone.Id.ToString()));
+                SeenSolutions.Add(SolutionId);
+                Zone.PermanentSolutionIds.Add(SolutionId);
+            }
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* SeasonalMonths = ArrayField(Entry, TEXT("seasonal_months"));
+        TSet<int32> SeenSeasonalMonths;
+        if (SeasonalMonths)
+        {
+            for (const TSharedPtr<FJsonValue>& MonthValue : *SeasonalMonths)
+            {
+                const double Number = MonthValue->AsNumber();
+                if (!FMath::IsFinite(Number) || FMath::FloorToDouble(Number) != Number ||
+                    Number < 1.0 || Number > 12.0 || SeenSeasonalMonths.Contains(static_cast<int32>(Number)))
+                    return Fail(FString::Printf(TEXT("Zone %s has an invalid/repeated seasonal month"), *Zone.Id.ToString()));
+                SeenSeasonalMonths.Add(static_cast<int32>(Number));
+                Zone.SeasonalMonths.Add(static_cast<int32>(Number));
+            }
+        }
+
+        if (Zone.Id.IsNone() || SeenZoneIds.Contains(Zone.Id) ||
+            Zone.Name.IsEmpty() || Zone.BarrierId.IsNone() || SeenZoneNumbers.Contains(Zone.Number) ||
+            (Zone.Number == 4 && Zone.SeasonalMonths.IsEmpty()))
+            return Fail(FString::Printf(TEXT("Bad/duplicate zone definition %s"), *Zone.Id.ToString()));
+        SeenZoneIds.Add(Zone.Id);
+        SeenZoneNumbers.Add(Zone.Number);
+        NewZones.Add(Zone);
+    }
+    if (SeenZoneNumbers.Num() != 5)
+        return Fail(TEXT("zones.json must cover every zone number from 0 through 4"));
+
+    TArray<FGameDataRouteNode> NewRouteNodes;
+    const TArray<TSharedPtr<FJsonValue>>* RouteNodeValues = ArrayField(RoutesJson, TEXT("nodes"));
+    if (!RouteNodeValues || RouteNodeValues->IsEmpty() || RouteNodeValues->Num() > 512)
+        return Fail(TEXT("routes.json must define between 1 and 512 route nodes"));
+    TSet<FName> SeenRouteNodeIds;
+    for (const TSharedPtr<FJsonValue>& Value : *RouteNodeValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataRouteNode Node;
+        Node.NodeId = NameField(Entry, TEXT("id"));
+        Node.ZoneId = NameField(Entry, TEXT("zone"));
+        Node.Location.X = NumberField(Entry, TEXT("x"), TNumericLimits<double>::QuietNaN());
+        Node.Location.Y = NumberField(Entry, TEXT("y"), TNumericLimits<double>::QuietNaN());
+        Node.Location.Z = NumberField(Entry, TEXT("z"), TNumericLimits<double>::QuietNaN());
+        Node.bEnabled = !Entry.IsValid() || !Entry->HasField(TEXT("enabled")) ? true : BoolField(Entry, TEXT("enabled"));
+        if (Node.NodeId.IsNone() || SeenRouteNodeIds.Contains(Node.NodeId) ||
+            !SeenZoneIds.Contains(Node.ZoneId) || Node.Location.ContainsNaN() ||
+            !FMath::IsFinite(Node.Location.X) || !FMath::IsFinite(Node.Location.Y) || !FMath::IsFinite(Node.Location.Z))
+            return Fail(FString::Printf(TEXT("Bad route node %s"), *Node.NodeId.ToString()));
+        SeenRouteNodeIds.Add(Node.NodeId);
+        NewRouteNodes.Add(Node);
+    }
+
+    TArray<FGameDataRouteEdge> NewRouteEdges;
+    const TArray<TSharedPtr<FJsonValue>>* RouteEdgeValues = ArrayField(RoutesJson, TEXT("edges"));
+    if (!RouteEdgeValues || RouteEdgeValues->IsEmpty() || RouteEdgeValues->Num() > 16384)
+        return Fail(TEXT("routes.json must define between 1 and 16384 route edges"));
+    TSet<FString> SeenRoutePairs;
+    for (const TSharedPtr<FJsonValue>& Value : *RouteEdgeValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataRouteEdge Edge;
+        Edge.FromNode = NameField(Entry, TEXT("from"));
+        Edge.ToNode = NameField(Entry, TEXT("to"));
+        const double Cost = NumberField(Entry, TEXT("cost"), 1.0);
+        const double Slope = NumberField(Entry, TEXT("slope_ratio"), 0.0);
+        const double Surface = NumberField(Entry, TEXT("surface_multiplier"), 1.0);
+        const double Weather = NumberField(Entry, TEXT("weather_sensitivity"), 0.0);
+        const double Load = NumberField(Entry, TEXT("load_sensitivity"), 0.0);
+        const double MissingInfrastructure = NumberField(Entry, TEXT("missing_infrastructure_penalty"), 0.0);
+        Edge.Cost = static_cast<float>(Cost);
+        Edge.SlopeRatio = static_cast<float>(Slope);
+        Edge.SurfaceCostMultiplier = static_cast<float>(Surface);
+        Edge.WeatherSensitivity = static_cast<float>(Weather);
+        Edge.LoadSensitivity = static_cast<float>(Load);
+        Edge.MissingInfrastructurePenalty = static_cast<float>(MissingInfrastructure);
+        Edge.InfrastructureId = NameField(Entry, TEXT("infrastructure_id"));
+        Edge.bHasBuiltInfrastructure = BoolField(Entry, TEXT("built"));
+        Edge.bRequiresInfrastructure = BoolField(Entry, TEXT("requires_infrastructure"));
+        Edge.bEnabled = !Entry.IsValid() || !Entry->HasField(TEXT("enabled")) ? true : BoolField(Entry, TEXT("enabled"));
+
+        const FString PairKey = Edge.FromNode.ToString() + TEXT("->") + Edge.ToNode.ToString();
+        if (Edge.FromNode.IsNone() || Edge.ToNode.IsNone() || Edge.FromNode == Edge.ToNode ||
+            !SeenRouteNodeIds.Contains(Edge.FromNode) || !SeenRouteNodeIds.Contains(Edge.ToNode) ||
+            SeenRoutePairs.Contains(PairKey) ||
+            !FMath::IsFinite(Cost) || Cost < 0.0 || Cost > TNumericLimits<float>::Max() ||
+            !FMath::IsFinite(Slope) || Slope < 0.0 || Slope > 10.0 ||
+            !FMath::IsFinite(Surface) || Surface < 0.01 || Surface > 100.0 ||
+            !FMath::IsFinite(Weather) || Weather < 0.0 || Weather > 100.0 ||
+            !FMath::IsFinite(Load) || Load < 0.0 || Load > 100.0 ||
+            !FMath::IsFinite(MissingInfrastructure) || MissingInfrastructure < 0.0 || MissingInfrastructure > 100.0 ||
+            (Edge.bRequiresInfrastructure && Edge.InfrastructureId.IsNone()))
+            return Fail(FString::Printf(TEXT("Bad route edge %s -> %s"), *Edge.FromNode.ToString(), *Edge.ToNode.ToString()));
+        SeenRoutePairs.Add(PairKey);
+        NewRouteEdges.Add(Edge);
+    }
+
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
     NewCalendar.DaysPerMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("days_per_month"), NewCalendar.DaysPerMonth));
@@ -473,6 +617,9 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
+    Zones = MoveTemp(NewZones);
+    RouteNodes = MoveTemp(NewRouteNodes);
+    RouteEdges = MoveTemp(NewRouteEdges);
     Calendar = NewCalendar;
     ClimateMonths = MoveTemp(NewMonths);
     Layers = MoveTemp(NewLayers);
