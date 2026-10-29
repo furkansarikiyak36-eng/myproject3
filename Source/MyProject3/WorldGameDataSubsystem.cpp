@@ -851,8 +851,11 @@ bool UWorldGameDataSubsystem::CanEnterZone(
     const TArray<FWorldDiscoveryRecord> RecordedDiscoveries = Survival->GetDiscoveries();
     for (const FName DiscoveryId : Zone->RequiredDiscoveryIds)
     {
-        if (!RecordedDiscoveries.ContainsByPredicate([DiscoveryId](const FWorldDiscoveryRecord& Record)
-            { return Record.DiscoveryId == DiscoveryId; }))
+        if (!RecordedDiscoveries.ContainsByPredicate([DiscoveryId, PlayerEntityId](const FWorldDiscoveryRecord& Record)
+            {
+                return Record.DiscoveryId == DiscoveryId &&
+                    (!Record.EntityId.IsValid() || Record.EntityId == PlayerEntityId);
+            }))
         {
             OutReason = FString::Printf(TEXT("%s requires discovery %s."),
                 *Zone->Name, *DiscoveryId.ToString());
