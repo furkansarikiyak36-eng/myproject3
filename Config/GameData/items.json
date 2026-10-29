@@ -297,7 +297,10 @@
       "equipment": {
         "slot": "Body",
         "insulation": 0.4,
-        "water_resistance": 0.3
+        "water_resistance": 0.3,
+        "capabilities": [
+          "Capability.ColdProtection"
+        ]
       }
     },
     {
@@ -309,7 +312,10 @@
       "equipment": {
         "slot": "Feet",
         "insulation": 0.15,
-        "water_resistance": 0.4
+        "water_resistance": 0.4,
+        "capabilities": [
+          "Capability.TerrainGrip"
+        ]
       }
     },
     {
