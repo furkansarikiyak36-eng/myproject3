@@ -25,6 +25,9 @@ AStoneBuildingPiece::AStoneBuildingPiece()
 void AStoneBuildingPiece::BeginPlay()
 {
     Super::BeginPlay();
+    // The placeholder kit is only a fallback for the newly authored archetypes;
+    // any Blueprint-assigned physical mesh remains authoritative.
+    BuildStructuralProxyIfNeeded();
     // Its top and bottom joints exist from the start; placement queries never add them.
     EnsureAutomaticAnchors();
 
@@ -97,11 +100,21 @@ void AStoneBuildingPiece::BeginPlay()
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(!bIsPlaced && !bIsHeld);
-        Mesh->SetCollisionProfileName(
-            bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
-        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        if (bUsesStructuralProxy)
+        {
+            // The empty root moves the whole kit; proxy members own its collision.
+            Mesh->SetSimulatePhysics(false);
+            Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
+        else
+        {
+            Mesh->SetSimulatePhysics(!bIsPlaced && !bIsHeld);
+            Mesh->SetCollisionProfileName(
+                bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
+            Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        }
     }
+    ApplyStructuralProxyCollision();
 }
 
 bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
@@ -139,9 +152,13 @@ bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
     bIsPlaced = false;
     bStartsPlaced = false;
     bIsHeld = false;
-    Mesh->SetSimulatePhysics(true);
+    if (bUsesStructuralProxy)
+        Mesh->SetSimulatePhysics(false);
+    else
+        Mesh->SetSimulatePhysics(true);
     Mesh->SetCollisionProfileName(FName(TEXT("PhysicsActor")));
-    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+    Mesh->SetCollisionEnabled(bUsesStructuralProxy ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+    ApplyStructuralProxyCollision();
     SetActorHiddenInGame(false);
     SetActorEnableCollision(true);
     SetActorTickEnabled(true);
@@ -248,10 +265,13 @@ bool AStoneBuildingPiece::SetHeldState(bool bNewHeld)
 
     if (Mesh)
     {
-        Mesh->SetSimulatePhysics(!bIsHeld && !bIsPlaced);
+        Mesh->SetSimulatePhysics(bUsesStructuralProxy ? false : (!bIsHeld && !bIsPlaced));
         Mesh->SetCollisionProfileName(
             bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
+        if (bUsesStructuralProxy)
+            Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     }
+    ApplyStructuralProxyCollision();
     return true;
 }
 
@@ -563,9 +583,201 @@ void AStoneBuildingPiece::GetStructuralAnchorIds(TArray<FName>& OutAnchorIds) co
         OutAnchorIds.Add(Anchor.AnchorId);
 }
 
+void AStoneBuildingPiece::BuildStructuralProxyIfNeeded()
+{
+    if (!Mesh || Mesh->GetStaticMesh() ||
+        static_cast<uint8>(PieceType) <= static_cast<uint8>(EStonePieceType::Other))
+        return;
+
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!Cube)
+        return;
+
+    struct FProxyBox
+    {
+        FVector Center;
+        FVector Size;
+        FRotator Rotation;
+    };
+    TArray<FProxyBox> Boxes;
+    auto Box = [&Boxes](const FVector& Center, const FVector& Size)
+    {
+        Boxes.Add({Center, Size, FRotator::ZeroRotator});
+    };
+    auto SlopedBox = [&Boxes](const FVector& Center, const FVector& Size, float Pitch)
+    {
+        Boxes.Add({Center, Size, FRotator(Pitch, 0.0f, 0.0f)});
+    };
+
+    switch (PieceType)
+    {
+    case EStonePieceType::WallSegment:
+        Box(FVector(0.0, 0.0, 100.0), FVector(300.0, 35.0, 200.0));
+        break;
+    case EStonePieceType::DoorFrame:
+    case EStonePieceType::WallOpening:
+        Box(FVector(-120.0, 0.0, 100.0), FVector(60.0, 35.0, 200.0));
+        Box(FVector(120.0, 0.0, 100.0), FVector(60.0, 35.0, 200.0));
+        Box(FVector(0.0, 0.0, 170.0), FVector(300.0, 35.0, 60.0));
+        break;
+    case EStonePieceType::WindowFrame:
+        Box(FVector(-120.0, 0.0, 100.0), FVector(50.0, 35.0, 200.0));
+        Box(FVector(120.0, 0.0, 100.0), FVector(50.0, 35.0, 200.0));
+        Box(FVector(0.0, 0.0, 160.0), FVector(300.0, 35.0, 40.0));
+        Box(FVector(0.0, 0.0, 45.0), FVector(300.0, 35.0, 30.0));
+        break;
+    case EStonePieceType::FloorSlab:
+    case EStonePieceType::RoofPanel:
+        Box(FVector::ZeroVector, FVector(300.0, 300.0, 20.0));
+        break;
+    case EStonePieceType::Ramp:
+        SlopedBox(FVector::ZeroVector, FVector(300.0, 140.0, 20.0), 18.0f);
+        break;
+    case EStonePieceType::Stair:
+        Box(FVector(-105.0, 0.0, 11.0), FVector(80.0, 120.0, 22.0));
+        Box(FVector(-35.0, 0.0, 33.0), FVector(80.0, 120.0, 22.0));
+        Box(FVector(35.0, 0.0, 55.0), FVector(80.0, 120.0, 22.0));
+        Box(FVector(105.0, 0.0, 77.0), FVector(80.0, 120.0, 22.0));
+        break;
+    case EStonePieceType::BridgeDeck:
+        Box(FVector::ZeroVector, FVector(300.0, 120.0, 20.0));
+        break;
+    case EStonePieceType::ElevatedWalkway:
+        Box(FVector::ZeroVector, FVector(300.0, 100.0, 20.0));
+        for (const float X : {-120.0f, 0.0f, 120.0f})
+        {
+            Box(FVector(X, -45.0, 45.0), FVector(12.0, 12.0, 90.0));
+            Box(FVector(X, 45.0, 45.0), FVector(12.0, 12.0, 90.0));
+        }
+        Box(FVector(0.0, -45.0, 90.0), FVector(300.0, 12.0, 12.0));
+        Box(FVector(0.0, 45.0, 90.0), FVector(300.0, 12.0, 12.0));
+        break;
+    case EStonePieceType::RopeCrossingAnchor:
+        Box(FVector(0.0, 0.0, 20.0), FVector(80.0, 80.0, 40.0));
+        Box(FVector(0.0, 0.0, 105.0), FVector(30.0, 30.0, 170.0));
+        Box(FVector(0.0, 0.0, 190.0), FVector(220.0, 25.0, 25.0));
+        break;
+    case EStonePieceType::Gate:
+        Box(FVector(-125.0, 0.0, 100.0), FVector(35.0, 35.0, 200.0));
+        Box(FVector(125.0, 0.0, 100.0), FVector(35.0, 35.0, 200.0));
+        Box(FVector(0.0, 0.0, 185.0), FVector(280.0, 30.0, 30.0));
+        for (const float X : {-80.0f, -40.0f, 0.0f, 40.0f, 80.0f})
+            Box(FVector(X, 0.0, 95.0), FVector(12.0, 15.0, 160.0));
+        break;
+    case EStonePieceType::FenceSegment:
+        Box(FVector(-130.0, 0.0, 60.0), FVector(25.0, 25.0, 120.0));
+        Box(FVector(130.0, 0.0, 60.0), FVector(25.0, 25.0, 120.0));
+        Box(FVector(0.0, 0.0, 35.0), FVector(280.0, 15.0, 15.0));
+        Box(FVector(0.0, 0.0, 85.0), FVector(280.0, 15.0, 15.0));
+        break;
+    case EStonePieceType::RailingSegment:
+        for (const float X : {-130.0f, -65.0f, 0.0f, 65.0f, 130.0f})
+            Box(FVector(X, 0.0, 40.0), FVector(10.0, 12.0, 80.0));
+        Box(FVector(0.0, 0.0, 80.0), FVector(300.0, 12.0, 12.0));
+        break;
+    case EStonePieceType::DefensiveWall:
+        Box(FVector(0.0, 0.0, 110.0), FVector(300.0, 50.0, 220.0));
+        for (const float X : {-100.0f, 0.0f, 100.0f})
+            Box(FVector(X, 0.0, 235.0), FVector(45.0, 50.0, 30.0));
+        break;
+    default:
+        return;
+    }
+
+    Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Mesh->SetSimulatePhysics(false);
+    bUsesStructuralProxy = true;
+    StructuralProxyParts.Reset();
+    StructuralProxyParts.Reserve(Boxes.Num());
+    for (int32 Index = 0; Index < Boxes.Num(); ++Index)
+    {
+        const FProxyBox& Shape = Boxes[Index];
+        UStaticMeshComponent* Part = NewObject<UStaticMeshComponent>(
+            this, *FString::Printf(TEXT("StructuralProxy_%02d"), Index));
+        if (!Part)
+        {
+            bUsesStructuralProxy = false;
+            StructuralProxyParts.Reset();
+            return;
+        }
+        AddInstanceComponent(Part);
+        Part->SetupAttachment(Mesh);
+        Part->SetStaticMesh(Cube);
+        Part->SetRelativeLocation(Shape.Center);
+        Part->SetRelativeRotation(Shape.Rotation);
+        Part->SetRelativeScale3D(Shape.Size / 100.0f);
+        Part->SetSimulatePhysics(false);
+        Part->SetCollisionProfileName(TEXT("BlockAll"));
+        Part->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        Part->RegisterComponent();
+        StructuralProxyParts.Add(Part);
+    }
+}
+
+void AStoneBuildingPiece::ApplyStructuralProxyCollision()
+{
+    if (!bUsesStructuralProxy)
+        return;
+
+    for (UStaticMeshComponent* Part : StructuralProxyParts)
+    {
+        if (!IsValid(Part))
+            continue;
+        Part->SetSimulatePhysics(false);
+        if (bIsHeld)
+        {
+            Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
+        else
+        {
+            Part->SetCollisionProfileName(
+                bIsPlaced ? FName(TEXT("BlockAll")) : FName(TEXT("PhysicsActor")));
+            Part->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+        }
+    }
+}
+
 void AStoneBuildingPiece::EnsureAutomaticAnchors()
 {
-    if (!Mesh || !Mesh->GetStaticMesh() || FindAnchorIndex(TEXT("AutoTop")) != INDEX_NONE)
+    if (!Mesh)
+        return;
+    if (bUsesStructuralProxy)
+    {
+        FVector Top(0.0, 0.0, 200.0);
+        FVector Bottom = FVector::ZeroVector;
+        if (PieceType == EStonePieceType::DefensiveWall)
+            Top.Z = 250.0;
+        else if (PieceType == EStonePieceType::FloorSlab ||
+                 PieceType == EStonePieceType::RoofPanel ||
+                 PieceType == EStonePieceType::Ramp ||
+                 PieceType == EStonePieceType::BridgeDeck ||
+                 PieceType == EStonePieceType::ElevatedWalkway)
+        {
+            Top.Z = 10.0;
+            Bottom.Z = -10.0;
+        }
+        else if (PieceType == EStonePieceType::Stair)
+            Top.Z = 88.0;
+
+        if (FindAnchorIndex(TEXT("AutoTop")) == INDEX_NONE)
+            AddCustomAnchor(TEXT("AutoTop"), TEXT("Stone"), FTransform(Top), true, false);
+        if (FindAnchorIndex(TEXT("AutoBottom")) == INDEX_NONE)
+            AddCustomAnchor(TEXT("AutoBottom"), TEXT("Stone"), FTransform(Bottom), false, true);
+
+        if (PieceType == EStonePieceType::BridgeDeck ||
+            PieceType == EStonePieceType::ElevatedWalkway)
+        {
+            if (FindAnchorIndex(TEXT("SupportLeft")) == INDEX_NONE)
+                AddCustomAnchor(TEXT("SupportLeft"), TEXT("Stone"),
+                    FTransform(FVector(-120.0, 0.0, -10.0)), false, true);
+            if (FindAnchorIndex(TEXT("SupportRight")) == INDEX_NONE)
+                AddCustomAnchor(TEXT("SupportRight"), TEXT("Stone"),
+                    FTransform(FVector(120.0, 0.0, -10.0)), false, true);
+        }
+        return;
+    }
+
+    if (!Mesh->GetStaticMesh() || FindAnchorIndex(TEXT("AutoTop")) != INDEX_NONE)
         return;
     const FBoxSphereBounds Bounds = Mesh->GetStaticMesh()->GetBounds();
     const FVector Top = Bounds.Origin + FVector(0.0, 0.0, Bounds.BoxExtent.Z);

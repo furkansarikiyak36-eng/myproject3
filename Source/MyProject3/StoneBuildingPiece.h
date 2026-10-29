@@ -98,6 +98,9 @@ public:
      * bounds when they are missing, so loose pieces can be stacked and placed.
      */
     void EnsureAutomaticAnchors();
+    /** Lightweight engine-cube placeholders for structural piece archetypes when no authored mesh is assigned. */
+    void BuildStructuralProxyIfNeeded();
+    void ApplyStructuralProxyCollision();
     virtual bool SetStructuralAnchorOccupied(FName AnchorId, bool bOccupied) override;
     virtual bool IsStructurallyPlaced() const override { return bIsPlaced; }
     virtual bool CanAttachAsCrossMaterialChild() const override;
@@ -108,6 +111,12 @@ public:
 private:
     UPROPERTY(Transient)
     bool bIsPlaced = false;
+
+    UPROPERTY(Transient)
+    bool bUsesStructuralProxy = false;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> StructuralProxyParts;
 
     UPROPERTY(Transient)
     bool bIsHeld = false;
