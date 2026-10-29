@@ -3198,4 +3198,54 @@ bool FTerrainExcavationCreatesPersistentOwnedResourcesTest::RunTest(const FStrin
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLogCutProgressOperationIdempotencyTest,
+    "MyProject3.Wood.CutProgressOperationIDDoesNotAdvanceTwice", TestFlags)
+bool FLogCutProgressOperationIdempotencyTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    ALogBuildPiece* Log = SpawnConfiguredLog(TestWorld.World, true);
+    if (!TestNotNull(TEXT("Configured log"), Log))
+        return false;
+
+    const ELogCutAction Action = ELogCutAction::SplitLengthHalf;
+    const FGuid FirstWorkOperation = FGuid::NewGuid();
+    const FWorldOperationResult First = Log->TryAdvanceCutProgress(
+        Action, 0.25f, FirstWorkOperation);
+    TestTrue(TEXT("First work step succeeds"), First.IsSuccess());
+    TestTrue(TEXT("First step advances to 25 percent"),
+        FMath::IsNearlyEqual(Log->GetCutProgress(), 0.25f, 0.001f));
+
+    const FWorldOperationResult FirstRetry = Log->TryAdvanceCutProgress(
+        Action, 0.25f, FirstWorkOperation);
+    TestTrue(TEXT("Retry returns original successful progress result"), FirstRetry.IsSuccess());
+    TestTrue(TEXT("Duplicate operation ID does not add another 25 percent"),
+        FMath::IsNearlyEqual(Log->GetCutProgress(), 0.25f, 0.001f));
+
+    const FWorldOperationResult ConflictingRetry = Log->TryAdvanceCutProgress(
+        Action, 0.5f, FirstWorkOperation);
+    TestFalse(TEXT("Same operation ID with changed work is rejected"), ConflictingRetry.IsSuccess());
+    TestEqual(TEXT("Conflicting retry leaves progress unchanged"),
+        Log->GetCutProgress(), 0.25f);
+
+    const FWorldOperationResult Second = Log->TryAdvanceCutProgress(
+        Action, 0.25f, FGuid::NewGuid());
+    const FWorldOperationResult Third = Log->TryAdvanceCutProgress(
+        Action, 0.25f, FGuid::NewGuid());
+    TestTrue(TEXT("Later work steps commit separately"), Second.IsSuccess() && Third.IsSuccess());
+    TestTrue(TEXT("Progress reaches 75 percent"),
+        FMath::IsNearlyEqual(Log->GetCutProgress(), 0.75f, 0.001f));
+
+    const FGuid FinalOperation = FGuid::NewGuid();
+    const FWorldOperationResult Final = Log->TryAdvanceCutProgress(Action, 0.25f, FinalOperation);
+    TestTrue(FString::Printf(TEXT("Final cut commits: %s"), *Final.Message.ToString()), Final.IsSuccess());
+    TestEqual(TEXT("Split commits exactly two log actors"), CountLogs(TestWorld.World), 2);
+    const FWorldOperationResult FinalRetry = Log->TryAdvanceCutProgress(Action, 0.25f, FinalOperation);
+    TestTrue(TEXT("Final progress request replays its original success"), FinalRetry.IsSuccess());
+    TestEqual(TEXT("Final retry does not spawn another child"), CountLogs(TestWorld.World), 2);
+    TestTrue(TEXT("Final retry returns the same output identities"),
+        FinalRetry.AffectedObjectIds == Final.AffectedObjectIds);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
