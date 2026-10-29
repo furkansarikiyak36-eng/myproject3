@@ -44,6 +44,9 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/PlatformTime.h"
+#include "Serialization/MemoryReader.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/ObjectAndNameAsStringProxyArchive.h"
 #include "GameFramework/WorldSettings.h"
 
 namespace MyProject3Tests
@@ -2806,6 +2809,33 @@ bool FHeatFuelOwnershipReceiptTest::RunTest(const FString& Parameters)
         FuelOperationId, FuelItemId, 1, InventoryOwnerId));
     TestTrue(TEXT("Fuel duration is added"), FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f));
     TestEqual(TEXT("Fuel stack was removed"), Inventory->GetItemCount(FuelItem.DefinitionId), 0);
+
+    TestTrue(TEXT("Fuel source ignites before serialization"), Heat->Ignite());
+    TArray<uint8> ComponentSaveData;
+    {
+        FMemoryWriter Writer(ComponentSaveData, true);
+        FObjectAndNameAsStringProxyArchive Archive(Writer, true);
+        Archive.ArIsSaveGame = true;
+        Heat->Serialize(Archive);
+        TestFalse(TEXT("Component save payload has no archive error"), Writer.IsError());
+    }
+    Heat->AdvanceFuel(120.0, EWorldWeatherState::Clear, 0.0f);
+    TestTrue(TEXT("Tentative burn empties fuel"), FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 0.0f));
+    TestFalse(TEXT("Empty source extinguishes"), Heat->IsLit());
+    {
+        FMemoryReader Reader(ComponentSaveData, true);
+        FObjectAndNameAsStringProxyArchive Archive(Reader, true);
+        Archive.ArIsSaveGame = true;
+        Heat->Serialize(Archive);
+        TestFalse(TEXT("Component load payload has no archive error"), Reader.IsError());
+    }
+    TestTrue(TEXT("Serialized fuel duration is restored"), FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f));
+    TestTrue(TEXT("Serialized ignition state is restored"), Heat->IsLit());
+
+    TestTrue(TEXT("Duplicate refuel receipt survives component serialization"),
+        Heat->TryAddFuelItem(FuelOperationId, FuelItemId, 1, InventoryOwnerId));
+    TestTrue(TEXT("Restored receipt prevents double fuel addition"),
+        FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f));
 
     TestTrue(TEXT("Duplicate refuel replays success"), Heat->TryAddFuelItem(
         FuelOperationId, FuelItemId, 1, InventoryOwnerId));
