@@ -4209,6 +4209,88 @@ bool FWarmShelterDriesWetPlayerTest::RunTest(const FString& Parameters)
 }
 
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFireDistanceDriesWetPlayerTest,
+    "MyProject3.Survival.FireDistanceControlsWetnessDrying", TestFlags)
+bool FFireDistanceDriesWetPlayerTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Shared clock"), Clock) ||
+        !TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+
+    TestTrue(TEXT("Initialize fire-drying clock"), Clock->InitializeClock(8128, 1000.0));
+    TestTrue(TEXT("Set controlled clear weather"), Survival->SetWeather(EWorldWeatherState::Clear, 0.0f));
+    Survival->AmbientTemperatureCelsius = 20.0f;
+    Survival->ComfortTemperatureCelsius = 18.0f;
+    Survival->WetnessPenaltyCelsius = 10.0f;
+    Survival->ClothingWarmthCelsius = 0.0f;
+    Survival->ShelterWarmthCelsius = 0.0f;
+
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    AActor* FireActor = World->SpawnActor<AActor>(
+        AActor::StaticClass(), FTransform(FVector::ZeroVector), SpawnParameters);
+    if (!TestNotNull(TEXT("Drying fire actor"), FireActor))
+        return false;
+    UHeatSourceComponent* Fire = NewObject<UHeatSourceComponent>(FireActor);
+    if (!TestNotNull(TEXT("Drying heat component"), Fire))
+        return false;
+    FireActor->AddInstanceComponent(Fire);
+    FireActor->SetRootComponent(Fire);
+    Fire->RadiusCm = 450.0f;
+    Fire->HeatOutputCelsius = 25.0f;
+    Fire->RegisterComponent();
+    TestTrue(TEXT("Fuel drying fire"), Fire->AddFuel(7200.0f));
+    TestTrue(TEXT("Light drying fire"), Fire->Ignite());
+    Survival->RegisterHeatSource(Fire);
+
+    FWorldSurvivalProfile NearProfile;
+    NearProfile.EntityId = FGuid::NewGuid();
+    NearProfile.Location = FVector::ZeroVector;
+    NearProfile.Wetness = 0.9f;
+    NearProfile.ClothingInsulation = 0.0f;
+    NearProfile.ClothingWaterResistance = 0.0f;
+    NearProfile.ShelterProtection = 0.0f;
+    NearProfile.CoreTemperatureCelsius = 37.0f;
+    FWorldSurvivalProfile FarProfile = NearProfile;
+    FarProfile.EntityId = FGuid::NewGuid();
+    FarProfile.Location = FVector(2000.0f, 0.0f, 0.0f);
+    TestTrue(TEXT("Register near-fire wet profile"), Survival->RegisterProfile(NearProfile));
+    TestTrue(TEXT("Register far-from-fire wet profile"), Survival->RegisterProfile(FarProfile));
+
+    TestTrue(TEXT("Near profile receives local fire heat"), Survival->GetHeatAt(NearProfile.Location) > 20.0f);
+    TestEqual(TEXT("Fire contributes no heat beyond its radius"),
+        Survival->GetHeatAt(FarProfile.Location), 0.0f);
+
+    TestTrue(TEXT("Advance shared clock by one hour"), Clock->AdvanceSimulation(3600.0));
+    const double LogicalTime = Clock->GetSimulationTimeSeconds();
+    TestTrue(TEXT("Validate distance-drying step"),
+        Survival->CanAdvanceSurvivalStep(3600.0, LogicalTime));
+    TestTrue(TEXT("Advance distance-drying step"),
+        Survival->AdvanceSurvivalStep(3600.0, LogicalTime));
+
+    FWorldSurvivalProfile NearAfter;
+    FWorldSurvivalProfile FarAfter;
+    TestTrue(TEXT("Read near-fire drying result"), Survival->GetProfile(NearProfile.EntityId, NearAfter));
+    TestTrue(TEXT("Read far-from-fire drying result"), Survival->GetProfile(FarProfile.EntityId, FarAfter));
+    TestTrue(TEXT("Near fire dries the player faster than distance alone"),
+        NearAfter.Wetness < FarAfter.Wetness);
+    TestTrue(TEXT("Near-fire wetness drops from its initial value"),
+        NearAfter.Wetness < NearProfile.Wetness);
+    TestTrue(TEXT("Far profile still receives the baseline environmental drying"),
+        FarAfter.Wetness < FarProfile.Wetness);
+    TestTrue(TEXT("Near and far drying remain bounded"),
+        NearAfter.Wetness >= 0.0f && NearAfter.Wetness <= 1.0f &&
+        FarAfter.Wetness >= 0.0f && FarAfter.Wetness <= 1.0f);
+    return true;
+}
+
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFallImpactAppliesPhysicalAndSurvivalInjuryTest,
     "MyProject3.Survival.FallImpactAppliesConfiguredInjuryOnce", TestFlags)
 bool FFallImpactAppliesPhysicalAndSurvivalInjuryTest::RunTest(const FString& Parameters)
