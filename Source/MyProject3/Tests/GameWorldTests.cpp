@@ -1778,6 +1778,19 @@ bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Par
     Crop.HarvestDefinitionId = CropDefinition->HarvestItemId;
     Crop.HarvestUnits = CropDefinition->HarvestUnits;
     Crop.SeedReturnUnits = CropDefinition->SeedReturnUnits;
+
+    FWorldFieldCellState FieldState;
+    TestTrue(TEXT("Prepare a field cell for the crop"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), Crop.PlotCell,
+            EWorldFieldActionKind::Clear, 0, 0.0f));
+    TestTrue(TEXT("Till the same field cell"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), Crop.PlotCell,
+            EWorldFieldActionKind::Till, 1, 0.0f));
+    TestTrue(TEXT("Fertilize the test field before harvest"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), Crop.PlotCell,
+            EWorldFieldActionKind::Fertilize, 2, 0.2f));
+    TestTrue(TEXT("Read fertility before harvesting"), Agriculture->GetFieldCell(Crop.PlotCell, FieldState));
+    const float FertilityBeforeHarvest = FieldState.Fertility;
     TestTrue(TEXT("Register mature crop"), Agriculture->RegisterCrop(Crop));
 
     FWorldSurvivalProfile BeforeHarvest;
@@ -1794,6 +1807,11 @@ bool FCropHarvestToInventoryChargesAuthoredLaborTest::RunTest(const FString& Par
         Inventory->GetItemCount(CropDefinition->HarvestItemId), CropDefinition->HarvestUnits);
     TestEqual(TEXT("Returned seeds are in the inventory"),
         Inventory->GetItemCount(CropDefinition->SeedItemId), CropDefinition->SeedReturnUnits);
+    TestTrue(TEXT("Harvest applies crop-specific soil exhaustion"),
+        Agriculture->GetFieldCell(Crop.PlotCell, FieldState));
+    TestEqual(TEXT("Soil fertility decreases by the crop profile's authored value"),
+        FieldState.Fertility,
+        FMath::Max(0.0f, FertilityBeforeHarvest - CropDefinition->SoilExhaustionPerHarvest), 0.001f);
 
     for (const FGuid& OutputId : OutputIds)
     {
