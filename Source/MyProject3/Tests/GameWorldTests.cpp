@@ -1580,6 +1580,7 @@ bool FFieldActionConsumesConfiguredInputsAndChargesLaborTest::RunTest(const FStr
         return false;
 
     TestTrue(TEXT("Load field action definitions"), GameData->LoadDefault());
+    TestEqual(TEXT("All seven field actions loaded"), GameData->GetFieldActions().Num(), 7);
     TestTrue(TEXT("Apply field action definitions to agriculture"), GameData->ApplyToWorld());
     TestTrue(TEXT("Initialize shared world clock"), Clock->InitializeClock(65431));
 
