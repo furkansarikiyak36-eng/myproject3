@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect `ConstructionOpeningActor.h/.cpp` semantics and collision/shape to verify whether opening actors represent empty holes or blockers. Then determine if P3.2 needs a safe ray-shelter change or a separate explicit opening/roof gap measure; preserve build-piece rules and add an automation case for an open doorway vs a closed wall/roof.
+Fix `ShelterSensorComponent::HitsBuiltPiece` to skip `AConstructionOpeningActor` hits unless the panel exists and is closed. Prefer a multi-hit line trace so an empty/open frame doesn't mask a legitimate built piece behind it. Add/update the shelter automation test for empty door opening vs closed built panel vs open door and ensure only placed structural pieces count. Then update P3.2 status.
