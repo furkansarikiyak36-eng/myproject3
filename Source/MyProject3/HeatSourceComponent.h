@@ -59,6 +59,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Fuel", meta=(ClampMin="1", ClampMax="256"))
     int32 MaxFuelReceipts = 128;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Fuel", meta=(ClampMin="1", ClampMax="1024"))
+    int32 MaxFuelDefinitions = 64;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Heat|Fuel")
     TArray<FHeatFuelDefinition> FuelDefinitions;
 
