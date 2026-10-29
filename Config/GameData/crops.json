@@ -1,5 +1,5 @@
 {
-  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. Crop choice is a placeholder until the user answers Q2.",
+  "_about": "Primitive-era crop data. Plant months and soil/seed values are tuning placeholders; review during the game balance pass.",
   "crops": [
     {
       "id": "Crop.Grain",
@@ -12,6 +12,10 @@
         4,
         5
       ],
+      "seed_return_units": 2,
+      "soil_exhaustion_per_harvest": 12,
+      "minimum_fertility": 20,
+      "maximum_plant_weed_pressure": 0.65,
       "found_in_zone": 1
     },
     {
@@ -26,6 +30,10 @@
         5,
         6
       ],
+      "seed_return_units": 1,
+      "soil_exhaustion_per_harvest": 8,
+      "minimum_fertility": 15,
+      "maximum_plant_weed_pressure": 0.6,
       "found_in_zone": 2
     },
     {
@@ -39,6 +47,10 @@
         5,
         6
       ],
+      "seed_return_units": 2,
+      "soil_exhaustion_per_harvest": 5,
+      "minimum_fertility": 10,
+      "maximum_plant_weed_pressure": 0.7,
       "found_in_zone": 3
     }
   ]
