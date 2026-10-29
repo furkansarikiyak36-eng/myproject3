@@ -754,6 +754,108 @@ bool UWorldAgricultureSubsystem::TryMoveAnimalToPen(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::TrySlaughterAnimal(
+    const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+    TArray<FGuid>& OutItemIds)
+{
+    OutItemIds.Reset();
+    if (!OperationId.IsValid() || !AnimalId.IsValid() || ExpectedAnimalRevision <= 0)
+        return false;
+
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        if (Existing->Action != EWorldAgricultureActionKind::SlaughterAnimal ||
+            Existing->EntityId != AnimalId ||
+            Existing->ExpectedEntityRevision != ExpectedAnimalRevision)
+            return false;
+        OutItemIds = Existing->OutputItemIds;
+        return !OutItemIds.IsEmpty();
+    }
+
+    FWorldAnimalState* Animal = Animals.Find(AnimalId);
+    if (!Animal || Animal->LifecycleState != EWorldAnimalLifecycleState::Penned ||
+        Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
+        !Animal->PenId.IsValid() || Animal->Health <= 0.0f || Animal->ProductUnits != 0 ||
+        Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
+        return false;
+
+    FWorldAnimalPenState* Pen = AnimalPens.Find(Animal->PenId);
+    if (!Pen || Pen->Revision >= MAX_int64 - 1 || !Pen->AnimalIds.Contains(AnimalId))
+        return false;
+
+    const int32 TotalOutputUnits = Animal->MeatUnits + Animal->HideUnits + Animal->BoneUnits;
+    if (TotalOutputUnits <= 0 || TotalOutputUnits > 64 ||
+        Animal->MeatUnits < 0 || Animal->MeatUnits > 64 ||
+        Animal->HideUnits < 0 || Animal->HideUnits > 64 ||
+        Animal->BoneUnits < 0 || Animal->BoneUnits > 64 ||
+        (Animal->MeatUnits > 0 && Animal->MeatDefinitionId.IsNone()) ||
+        (Animal->HideUnits > 0 && Animal->HideDefinitionId.IsNone()) ||
+        (Animal->BoneUnits > 0 && Animal->BoneDefinitionId.IsNone()))
+        return false;
+
+    AWildlifeActor* Wildlife = nullptr;
+    if (Animal->SourceWildlifeIdentityId.IsValid())
+    {
+        Wildlife = FindWildlifeActor(Animal->SourceWildlifeIdentityId);
+        if (!IsValid(Wildlife) || !Wildlife->bCapturedForAnimalManagement ||
+            Wildlife->CapturedAnimalId != AnimalId || Wildlife->AnimalPenId != Animal->PenId)
+            return false;
+    }
+
+    TArray<FName> Definitions;
+    TArray<FVector> Locations;
+    Definitions.Reserve(TotalOutputUnits);
+    Locations.Reserve(TotalOutputUnits);
+    int32 OutputIndex = 0;
+    auto AddOutputs = [&](FName DefinitionId, int32 Units)
+    {
+        for (int32 Index = 0; Index < Units; ++Index)
+        {
+            Definitions.Add(DefinitionId);
+            Locations.Add(Animal->Location + FVector(
+                static_cast<double>(OutputIndex++) * 20.0, 0.0, 15.0));
+        }
+    };
+    AddOutputs(Animal->MeatDefinitionId, Animal->MeatUnits);
+    AddOutputs(Animal->HideDefinitionId, Animal->HideUnits);
+    AddOutputs(Animal->BoneDefinitionId, Animal->BoneUnits);
+
+    TArray<FGuid> CreatedItems;
+    if (!RegisterWorldOutputsAtomically(Definitions, Locations, CreatedItems))
+        return false;
+
+    const int64 PreviousAnimalRevision = Animal->Revision;
+    const FGuid PreviousPenId = Animal->PenId;
+    const int64 PreviousPenRevision = Pen->Revision;
+    Pen->AnimalIds.RemoveSingle(AnimalId);
+    ++Pen->Revision;
+    Animal->LifecycleState = EWorldAnimalLifecycleState::Slaughtered;
+    Animal->Health = 0.0f;
+    Animal->PenId.Invalidate();
+    Animal->ProductProgressSeconds = 0.0;
+    ++Animal->Revision;
+
+    FWorldAgricultureActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.Action = EWorldAgricultureActionKind::SlaughterAnimal;
+    Receipt.EntityId = AnimalId;
+    Receipt.SourceWildlifeIdentityId = Animal->SourceWildlifeIdentityId;
+    Receipt.PenId = PreviousPenId;
+    Receipt.ExpectedEntityRevision = PreviousAnimalRevision;
+    Receipt.ResultingEntityRevision = Animal->Revision;
+    Receipt.ExpectedPenRevision = PreviousPenRevision;
+    Receipt.ResultingPenRevision = Pen->Revision;
+    Receipt.DefinitionId = Animal->AnimalDefinitionId;
+    Receipt.RequestedOutputUnits = TotalOutputUnits;
+    Receipt.OutputItemIds = CreatedItems;
+    Animal->ActionReceipts.Add(Receipt);
+
+    if (IsValid(Wildlife))
+        Wildlife->Destroy();
+    OutItemIds = MoveTemp(CreatedItems);
+    return true;
+}
+
 bool UWorldAgricultureSubsystem::TryFeedAnimal(
     const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
     const FGuid& FeedItemId, int64 ExpectedFeedItemRevision,
@@ -782,6 +884,8 @@ bool UWorldAgricultureSubsystem::TryFeedAnimal(
     FWorldOwnedItemRecord FeedItem;
     if (!Animal || !Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
         Animal->Revision != ExpectedAnimalRevision || Animal->Revision >= MAX_int64 - 1 ||
+        Animal->LifecycleState == EWorldAnimalLifecycleState::Wild ||
+        Animal->LifecycleState == EWorldAnimalLifecycleState::Slaughtered ||
         Animal->Health <= 0.0f || Animal->FeedDefinitionId.IsNone() ||
         Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity ||
         !Ownership->TryGetItem(FeedItemId, FeedItem) ||
@@ -834,12 +938,13 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
     FWorldAnimalState* Animal = Animals.Find(AnimalId);
     if (!Animal || Animal->Revision != ExpectedAnimalRevision ||
         Animal->Revision >= MAX_int64 - 1 || Animal->Health <= 0.0f ||
+        (Animal->LifecycleState != EWorldAnimalLifecycleState::Managed &&
+         Animal->LifecycleState != EWorldAnimalLifecycleState::Penned) ||
         Animal->ProductDefinitionId.IsNone() || Animal->ProductUnits <= 0 ||
-        Animal->ProductUnits > 64 ||
         Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
         return false;
 
-    const int32 Units = Animal->ProductUnits;
+    const int32 Units = FMath::Min(Animal->ProductUnits, 64);
     TArray<FName> Definitions;
     TArray<FVector> Locations;
     Definitions.Init(Animal->ProductDefinitionId, Units);
@@ -861,7 +966,7 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
     Receipt.RequestedOutputUnits = Units;
     Receipt.OutputItemIds = CreatedItems;
 
-    Animal->ProductUnits = 0;
+    Animal->ProductUnits -= Units;
     ++Animal->Revision;
     Animal->ActionReceipts.Add(Receipt);
     OutItemIds = MoveTemp(CreatedItems);
@@ -1095,8 +1200,11 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
             static_cast<float>(DeltaSeconds / 3600.0), 0.0f, 100.0f);
         if (Animal.Hunger >= 80.0f)
             Animal.Health = FMath::Max(0.0f, Animal.Health - static_cast<float>(DeltaSeconds / 3600.0) * 2.0f);
-        if (Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
-            !Animal.ProductDefinitionId.IsNone())
+        if (Animal.LifecycleState != EWorldAnimalLifecycleState::Slaughtered &&
+            Animal.Health > 0.0f && Animal.Hunger <= ProductHungerLimit &&
+            !Animal.ProductDefinitionId.IsNone() &&
+            (Animal.LifecycleState == EWorldAnimalLifecycleState::Managed ||
+             Animal.LifecycleState == EWorldAnimalLifecycleState::Penned))
         {
             Animal.ProductProgressSeconds += DeltaSeconds;
             while (Animal.ProductProgressSeconds >= 3600.0 && Animal.ProductUnits < MAX_int32)
