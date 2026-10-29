@@ -587,7 +587,8 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger ||
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !Routes ||
         !Clock->IsClockInitialized() || !Threat->IsDirectorInitialized()) return false;
     if (OperationLedger->HasPendingOperations())
     {
@@ -640,6 +641,7 @@ bool UWorldSaveCoordinatorSubsystem::CaptureCurrentState(UWorldSimulationSaveGam
     }
     Terrain->ExportSnapshot(OutSave->TerrainCells, OutSave->TerrainReceipts);
     Agriculture->ExportSnapshot(OutSave->Crops, OutSave->Animals, OutSave->FieldCells, OutSave->AnimalPens);
+    Routes->ExportSnapshot(OutSave->RouteNodes, OutSave->RouteEdges);
     Survival->ExportSnapshot(OutSave->SurvivalProfiles, OutSave->Discoveries,
         OutSave->Weather, OutSave->WeatherSeverity);
     Production->ExportSnapshot(OutSave->ProductionStations, OutSave->ProductionRecipes);
@@ -673,8 +675,9 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     UWorldCargoTransportSubsystem* Cargo = World->GetSubsystem<UWorldCargoTransportSubsystem>();
     UWorldStorageSubsystem* Storage = World->GetSubsystem<UWorldStorageSubsystem>();
     UWorldOperationLedgerSubsystem* OperationLedger = World->GetSubsystem<UWorldOperationLedgerSubsystem>();
+    UWorldLogisticsRouteSubsystem* Routes = World->GetSubsystem<UWorldLogisticsRouteSubsystem>();
     UWorldStructuralGraphSubsystem* StructuralGraph = World->GetSubsystem<UWorldStructuralGraphSubsystem>();
-    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !StructuralGraph)
+    if (!Clock || !Threat || !Items || !Terrain || !Agriculture || !Survival || !Production || !Cargo || !Storage || !OperationLedger || !Routes || !StructuralGraph)
         return false;
 
     if (!ValidateProductionReceiptItemReferences(Snapshot->Items, Snapshot->ProductionStations))
@@ -765,6 +768,7 @@ bool UWorldSaveCoordinatorSubsystem::ApplySnapshot(const UWorldSimulationSaveGam
     if (RestoredInventories.Num() != CurrentInventories.Num()) return false;
 
     if (!Terrain->RestoreSnapshot(Snapshot->TerrainCells, Snapshot->TerrainReceipts)) return false;
+    if (!Routes->RestoreSnapshot(Snapshot->RouteNodes, Snapshot->RouteEdges)) return false;
     if (!Agriculture->RestoreSnapshot(Snapshot->Crops, Snapshot->Animals, Snapshot->FieldCells, Snapshot->AnimalPens)) return false;
     if (!Survival->RestoreSnapshot(Snapshot->SurvivalProfiles, Snapshot->Discoveries,
         Snapshot->Weather, Snapshot->WeatherSeverity)) return false;
@@ -791,6 +795,9 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
     UWorldSimulationSaveGame* Candidate = Cast<UWorldSimulationSaveGame>(
         UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex));
     if (!Candidate) return false;
+    UWorld* CurrentWorld = GetWorld();
+    UWorldLogisticsRouteSubsystem* CurrentRoutes =
+        CurrentWorld ? CurrentWorld->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
 
     // Schema v5 adds the optional ownership-transfer receipt snapshot. A v4
     // save has the complete item ledger but no receipt array; migrate it with
@@ -953,6 +960,16 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         // Legacy animals remain uncaptured; no pen links or historical slaughter outputs are inferred.
         Candidate->AnimalPens.Reset();
         Candidate->SchemaVersion = 24;
+    }
+
+    if (Candidate->SchemaVersion == 24)
+    {
+        // Schema v25 adds the route graph and built-infrastructure cost state.
+        // Older saves lack this history; preserve the graph authored into the current world as a baseline.
+        if (!CurrentRoutes)
+            return false;
+        CurrentRoutes->ExportSnapshot(Candidate->RouteNodes, Candidate->RouteEdges);
+        Candidate->SchemaVersion = 25;
     }
 
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
