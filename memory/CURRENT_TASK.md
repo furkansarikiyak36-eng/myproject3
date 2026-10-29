@@ -121,7 +121,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WildlifeActor.cpp` (current spawning/tick/death behavior inspected).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.h` (confirmed exact owned-item fields and owner kinds).
 - `Source/MyProject3/WorldItemOwnershipSubsystem.cpp` (`RegisterItem` requires an inventory owner ID, finite timestamps/location and capacity; fills `BaseDefinitionId`).
-- `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival condition records is present).
+- `Source/MyProject3/PhysicalHealthComponent.h/.cpp` (physical hits reduce local health, launch characters and broadcast damage/death; no bridge to survival conditions exists).
+- `Source/MyProject3/WildlifeActor.h/.cpp` (Enemy already approaches the player and stops at ~150 cm, but there is no bite cooldown or attack/damage action; SmallAnimal capture state is present).
 - Re-read current agriculture implementation and coordinator lines 635–650 to check field validation/capture wiring after edits.
 - `Source/MyProject3/WorldCalendar.h` (calendar configuration/date struct and season enum).
 - `Source/MyProject3/WorldSimulationClockSubsystem.h` (current shared clock and `GetCalendarDate` query contract).
@@ -153,4 +154,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Inspect the character's landing/movement state and wildlife hostile behavior to choose a single authoritative place for fall and bite triggers. Prefer a public survival helper that applies a condition by entity ID using the expected profile revision and existing `Injury.Fall`/`Injury.AnimalBite` definitions; avoid duplicate triggers across ticks.
+Implement thresholded landing impact detection in `ALogSnapCharacter` and a rate-limited enemy bite in `AWildlifeActor`. Use `UShelterSensorComponent::SurvivalEntityId` to call `TryApplyCondition` for configured Injury.Fall/Injury.AnimalBite and apply `PhysicalHealthComponent` damage once per event/cooldown. Add regression tests for a direct fall impact helper and enemy bite if feasible without PIE.
