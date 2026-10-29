@@ -1040,16 +1040,13 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
         Data->CanEnterZone(Profile.EntityId, TEXT("Zone.3"), AccessReason));
     TestTrue(TEXT("Reason explains the discovery gate"), AccessReason.Contains(TEXT("Discovery.Zone2.HighForest")));
 
-    auto RecordDiscovery = [&](FName DiscoveryId) -> bool
+    auto RecordZoneEntry = [&](FName ZoneId) -> bool
     {
-        FWorldSurvivalProfile Current;
-        if (!Survival->GetProfile(Profile.EntityId, Current))
-            return false;
-        return Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId,
-            Current.Revision, DiscoveryId, Profile.Location, Clock->GetSimulationTimeSeconds());
+        return Data->TryRecordZoneEntry(
+            FGuid::NewGuid(), Profile.EntityId, ZoneId, Profile.Location, AccessReason);
     };
 
-    TestTrue(TEXT("Record camp discovery"), RecordDiscovery(TEXT("Discovery.Zone0.Camp")));
+    TestTrue(TEXT("Record camp discovery from zone entry"), RecordZoneEntry(TEXT("Zone.0")));
     TestTrue(TEXT("Camp discovery unlocks grain seed definition"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Seed.Grain")));
     FWorldSurvivalProfile CurrentProfile;
@@ -1058,10 +1055,10 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
         Survival->TryRecordConfiguredDiscovery(FGuid::NewGuid(), Profile.EntityId, CurrentProfile.Revision,
             TEXT("Discovery.Zone2.HighForest"), Profile.Location, Clock->GetSimulationTimeSeconds()));
 
-    TestTrue(TEXT("Record creek discovery"), RecordDiscovery(TEXT("Discovery.Zone1.Creek")));
+    TestTrue(TEXT("Record creek discovery after entering Zone 1"), RecordZoneEntry(TEXT("Zone.1")));
     TestTrue(TEXT("Creek discovery unlocks its bridge solution"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Infrastructure.CreekBridge")));
-    TestTrue(TEXT("Record high-forest discovery after creek"), RecordDiscovery(TEXT("Discovery.Zone2.HighForest")));
+    TestTrue(TEXT("Record high-forest discovery after entering Zone 2"), RecordZoneEntry(TEXT("Zone.2")));
     TestTrue(TEXT("Lake/swamp opens after the high-forest discovery"),
         Data->CanEnterZone(Profile.EntityId, TEXT("Zone.3"), AccessReason));
     FWorldSurvivalProfile OtherProfile;
@@ -1069,7 +1066,7 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Register a second player profile"), Survival->RegisterProfile(OtherProfile));
     TestFalse(TEXT("One player's discovery does not open a zone for another player"),
         Data->CanEnterZone(OtherProfile.EntityId, TEXT("Zone.3"), AccessReason));
-    TestTrue(TEXT("Record lake/swamp discovery"), RecordDiscovery(TEXT("Discovery.Zone3.LakeSwamp")));
+    TestTrue(TEXT("Record lake/swamp discovery after entering Zone 3"), RecordZoneEntry(TEXT("Zone.3")));
 
     TestFalse(TEXT("Mountain pass requires cold-protection clothing in July"),
         Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
@@ -1126,10 +1123,23 @@ bool FZoneAccessAndDiscoveryProgressionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read profile before equipping boots"), Survival->GetProfile(Profile.EntityId, CurrentProfile));
     TestTrue(TEXT("Equip owned hide boots"), Survival->TryEquipItem(FGuid::NewGuid(), Profile.EntityId,
         CurrentProfile.Revision, Boots.ItemId, Boots.Revision, Inventory->GetInventoryOwnerId()));
+    const FGuid MountainEntryOperationId = FGuid::NewGuid();
     TestTrue(TEXT("Record mountain-pass discovery with both required clothing items"),
-        RecordDiscovery(TEXT("Discovery.Zone4.MountainPass")));
+        Data->TryRecordZoneEntry(MountainEntryOperationId, Profile.EntityId,
+            TEXT("Zone.4"), Profile.Location, AccessReason));
     TestTrue(TEXT("Mountain-pass discovery unlocks the forward-camp infrastructure"),
         Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("Infrastructure.ForwardCamp")));
+
+    TestFalse(TEXT("Reusing the committed operation at a different location is rejected"),
+        Data->TryRecordZoneEntry(MountainEntryOperationId, Profile.EntityId,
+            TEXT("Zone.4"), Profile.Location + FVector(1.0, 0.0, 0.0), AccessReason));
+    TestTrue(TEXT("Move the clock out of the mountain season"),
+        Clock->InitializeClock(28019, 0.0));
+    TestFalse(TEXT("The mountain pass closes outside summer"),
+        Data->CanEnterZone(Profile.EntityId, TEXT("Zone.4"), AccessReason));
+    TestTrue(TEXT("Exact zone-entry retry replays success after the season closes"),
+        Data->TryRecordZoneEntry(MountainEntryOperationId, Profile.EntityId,
+            TEXT("Zone.4"), Profile.Location, AccessReason));
     return true;
 }
 
