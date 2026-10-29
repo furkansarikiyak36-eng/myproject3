@@ -1446,6 +1446,60 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                 return false;
         }
     }
+    // The persisted lifecycle must be backed by the corresponding historical receipts.
+    for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
+    {
+        const FWorldAnimalState& Animal = Pair.Value;
+        const bool bHasCapture = Animal.ActionReceipts.ContainsByPredicate(
+            [&Animal](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.Action == EWorldAgricultureActionKind::CaptureAnimal &&
+                    Receipt.SourceWildlifeIdentityId == Animal.SourceWildlifeIdentityId;
+            });
+        const bool bHasMoveToCurrentPen = Animal.ActionReceipts.ContainsByPredicate(
+            [&Animal](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.Action == EWorldAgricultureActionKind::MoveAnimalToPen &&
+                    Receipt.PenId == Animal.PenId;
+            });
+        const bool bHasSlaughter = Animal.ActionReceipts.ContainsByPredicate(
+            [](const FWorldAgricultureActionReceipt& Receipt)
+            {
+                return Receipt.Action == EWorldAgricultureActionKind::SlaughterAnimal;
+            });
+
+        if (Animal.LifecycleState == EWorldAnimalLifecycleState::Managed)
+        {
+            if (Animal.SourceWildlifeIdentityId.IsValid() || Animal.PenId.IsValid() ||
+                bHasCapture || bHasMoveToCurrentPen || bHasSlaughter)
+                return false;
+        }
+        else if (Animal.LifecycleState == EWorldAnimalLifecycleState::Captured)
+        {
+            if (!Animal.SourceWildlifeIdentityId.IsValid() || !bHasCapture ||
+                Animal.PenId.IsValid() || bHasMoveToCurrentPen || bHasSlaughter)
+                return false;
+        }
+        else if (Animal.LifecycleState == EWorldAnimalLifecycleState::Penned)
+        {
+            if (!Animal.SourceWildlifeIdentityId.IsValid() || !bHasCapture ||
+                !Animal.PenId.IsValid() || !bHasMoveToCurrentPen || bHasSlaughter)
+                return false;
+        }
+        else if (Animal.LifecycleState == EWorldAnimalLifecycleState::Slaughtered)
+        {
+            if (!Animal.SourceWildlifeIdentityId.IsValid() || !bHasCapture || !bHasSlaughter ||
+                Animal.PenId.IsValid() || Animal.Health > 0.0f || Animal.ProductUnits != 0)
+                return false;
+        }
+        else
+        {
+            // Logical wildlife is represented by AWildlifeActor until capture;
+            // only managed/captured/penned/slaughtered records are authoritative here.
+            return false;
+        }
+    }
+
     TSet<FGuid> SeenOperationIds;
     TSet<FGuid> SeenOutputIds;
     bool bNeedsItemValidation = false;
@@ -1554,6 +1608,8 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                     Receipt.SourceWildlifeIdentityId != Animal.SourceWildlifeIdentityId ||
                     !Receipt.PenId.IsValid() || Receipt.ExpectedPenRevision <= 0 ||
                     Receipt.ResultingPenRevision != Receipt.ExpectedPenRevision + 1 ||
+                    !NewAnimalPens.Contains(Receipt.PenId) ||
+                    Receipt.ResultingPenRevision > NewAnimalPens.FindChecked(Receipt.PenId).Revision ||
                     Receipt.DefinitionId != Animal.AnimalDefinitionId ||
                     !Receipt.OutputItemIds.IsEmpty())
                     return false;
@@ -1565,7 +1621,10 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
                     Receipt.SourceWildlifeIdentityId != Animal.SourceWildlifeIdentityId ||
                     !Receipt.PenId.IsValid() || Receipt.ExpectedPenRevision <= 0 ||
                     Receipt.ResultingPenRevision != Receipt.ExpectedPenRevision + 1 ||
+                    !NewAnimalPens.Contains(Receipt.PenId) ||
+                    Receipt.ResultingPenRevision > NewAnimalPens.FindChecked(Receipt.PenId).Revision ||
                     Receipt.DefinitionId != Animal.AnimalDefinitionId ||
+                    Receipt.RequestedOutputUnits != Animal.MeatUnits + Animal.HideUnits + Animal.BoneUnits ||
                     Receipt.RequestedOutputUnits <= 0 || Receipt.RequestedOutputUnits > 64 ||
                     Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits ||
                     Animal.LifecycleState != EWorldAnimalLifecycleState::Slaughtered)
