@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Append P4.4 code-written evidence to `ROADMAP.md` and add/update `CODEBASE.md` row for data-defined tool strength and action links. Then do a final source consistency check (starter tool add ordering, tool category/strength validation, item JSON parse, all three action callsites) and checkpoint exact unbuilt status.
+Appended P4.4 code-written evidence to `ROADMAP.md` and added a `CODEBASE.md` row for data-defined tool strength and action links. Next: inspect P4.3 production station coverage without placing scene actors yet; close remaining backend transfer/recipe gaps where safe, then return to P4.1 world placement at the final scene pass.
