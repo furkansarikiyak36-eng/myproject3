@@ -658,7 +658,9 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
          !SupportPiece->GetStructuralAnchor(SupportAnchorId, SupportAnchor) ||
          !ChildAnchor.bCanConnect || !SupportAnchor.bCanReceive ||
          ChildAnchor.bOccupied || SupportAnchor.bOccupied ||
-         ChildAnchor.Tag != SupportAnchor.Tag))
+         ChildAnchor.Tag != SupportAnchor.Tag ||
+         FVector::Dist(Child->Actor->GetActorTransform().TransformPosition(ChildAnchor.LocalTransform.GetLocation()),
+             Support->Actor->GetActorTransform().TransformPosition(SupportAnchor.LocalTransform.GetLocation())) > 50.0f))
         return false;
 
     FStructuralSupportLink Link;

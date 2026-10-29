@@ -2586,7 +2586,7 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     };
 
     AStoneBuildingPiece* SupportA = SpawnGroundStone(FVector(0.0, 0.0, 0.0));
-    AStoneBuildingPiece* SupportB = SpawnGroundStone(FVector(500.0, 0.0, 0.0));
+    AStoneBuildingPiece* SupportB = SpawnGroundStone(FVector(240.0, 0.0, 0.0));
     const FTransform BridgeTransform(FRotator::ZeroRotator, FVector(250.0, 0.0, 100.0));
     AStoneBuildingPiece* Bridge = World->SpawnActorDeferred<AStoneBuildingPiece>(
         AStoneBuildingPiece::StaticClass(), BridgeTransform);
@@ -2610,6 +2610,9 @@ bool FStructuralProxyAndSecondaryAnchorReservationTest::RunTest(const FString& P
     TestTrue(TEXT("Bridge can be held for primary placement"), Bridge->SetHeldState(true));
     TestTrue(TEXT("Connect deck to first support"),
         Bridge->TryConnectToAnchor(SupportA, TEXT("AutoTop"), TEXT("SupportLeft")));
+    TestTrue(TEXT("Deck support anchor meets the second foundation in world space"),
+        FVector::Dist(Bridge->GetAnchorWorldTransform(TEXT("SupportRight")).GetLocation(),
+            SupportB->GetAnchorWorldTransform(TEXT("AutoTop")).GetLocation()) <= 50.0f);
     TestTrue(TEXT("Reserve secondary bridge support through the canonical graph"),
         Graph->TryAddSecondarySupport(Bridge->GetStructuralNodeId(), SupportB->GetStructuralNodeId(),
             TEXT("AutoTop"), TEXT("SupportRight")));
