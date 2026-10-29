@@ -199,6 +199,37 @@ bool UWorldSurvivalSubsystem::TryRemoveAffliction(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::TryApplyMedicalTreatment(
+    const FGuid& EntityId, float HealthRestore, FName AfflictionId, int64 ExpectedRevision)
+{
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    if (!Profile || Profile->Revision != ExpectedRevision ||
+        Profile->Revision == MAX_int64 || !IsValidProfile(*Profile) ||
+        !InRange(HealthRestore, 0.0f, 100.0f) ||
+        (HealthRestore <= 0.0f && AfflictionId.IsNone()))
+        return false;
+
+    int32 AfflictionIndex = INDEX_NONE;
+    if (!AfflictionId.IsNone())
+    {
+        AfflictionIndex = Profile->Afflictions.IndexOfByPredicate(
+            [AfflictionId](const FWorldSurvivalAffliction& Existing)
+                { return Existing.AfflictionId == AfflictionId; });
+        if (AfflictionIndex == INDEX_NONE) return false;
+    }
+
+    const float RestoredHealth = FMath::Min(100.0f, Profile->Health + HealthRestore);
+    const bool bHealthChanged = RestoredHealth > Profile->Health;
+    if (!bHealthChanged && AfflictionIndex == INDEX_NONE)
+        return false;
+
+    Profile->Health = RestoredHealth;
+    if (AfflictionIndex != INDEX_NONE)
+        Profile->Afflictions.RemoveAt(AfflictionIndex);
+    ++Profile->Revision;
+    return true;
+}
+
 float UWorldSurvivalSubsystem::GetWeatherTemperatureDelta() const
 {
     switch (Weather)
