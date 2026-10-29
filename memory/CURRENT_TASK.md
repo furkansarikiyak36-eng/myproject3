@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read the closest `TryConsumeFoodItem` test setup and reuse its owned-item inventory helper for `Pot.Fired` and `Water.Dirty`. Then append an automation test for fill failure/success/retry/snapshot validation.
+Wire a dedicated interaction key in `VerticalSliceCWorldActor` to fill from the creek while `IsInCreek(PlayerLocation)` and call the survival transaction with the exact owned `Pot.Fired` GUID/revision from the inventory. Read current input key conflicts and a safe component lookup pattern before editing. Then update `PLAN_STATUS.md`, `ROADMAP.md`, and `CODEBASE.md`; no build or test execution has been run.
