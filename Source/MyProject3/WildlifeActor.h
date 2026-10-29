@@ -6,6 +6,7 @@
 
 class UPhysicalHealthComponent;
 class UStaticMeshComponent;
+class UWorldObjectIdentityComponent;
 
 UENUM(BlueprintType)
 enum class EWildlifeKind : uint8
@@ -30,6 +31,19 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wildlife")
     TObjectPtr<UPhysicalHealthComponent> Health;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wildlife")
+    TObjectPtr<UWorldObjectIdentityComponent> Identity;
+
+    /** Domain actor remains visible in-world while its authoritative animal record tracks capture and pen state. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Wildlife|Animal")
+    bool bCapturedForAnimalManagement = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Wildlife|Animal")
+    FGuid CapturedAnimalId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Wildlife|Animal")
+    FGuid AnimalPenId;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wildlife")
     EWildlifeKind Kind = EWildlifeKind::SmallAnimal;
 
@@ -41,6 +55,10 @@ public:
 
     /** Sets shape, size, colour and health for the kind. Call before or after spawning. */
     void ConfigureKind(EWildlifeKind NewKind);
+
+    /** Called by the agriculture domain after a capture/pen transaction has been preflighted. */
+    bool ApplyAnimalManagementState(const FGuid& AnimalId, const FGuid& PenId,
+        const FVector& TargetLocation);
 
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
