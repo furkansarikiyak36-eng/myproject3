@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add the wetness and wet-cold illness regression tests in `MyProject3CoreTests.cpp`, then update `PLAN_STATUS.md`, `CODEBASE.md`, and `ROADMAP.md` with the new P2.1–P2.3 code-written work and schema v26. Check for obvious API mismatches in the edited source but do not compile/test yet.
+Add `MyProject3.Survival.CreekWetColdExposureCanCauseConfiguredIllness`: initialize shared clock, register `Illness.Cold`, set ambient temperature to a sufficiently cold but valid finite value, wet the profile via `ApplyWetnessExposure`, advance the shared clock/survival step and assert the saved condition appears. Then update plan/codebase/roadmap status for P2.1–P2.3; all source remains unbuilt.
