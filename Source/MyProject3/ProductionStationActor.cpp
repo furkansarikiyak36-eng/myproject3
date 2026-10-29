@@ -4,6 +4,7 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldProductionSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -74,8 +75,19 @@ bool AProductionStationActor::TryDeposit(UInventoryCraftingComponent* Inventory,
         return false; // No room in the station.
     if (!Inventory->TryRemoveItem(ItemId, Quantity))
     {
-        Production->GetStation(StationId, Station);
-        Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision);
+        FWorldProductionStation CurrentStation;
+        const bool bStockRead = Production->GetStation(StationId, CurrentStation);
+        const bool bStockRolledBack = bStockRead &&
+            Production->TryTakeStock(StationId, ItemId, Quantity, CurrentStation.Revision);
+        if (!bStockRolledBack)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Station deposit rollback failed after inventory removal was refused."));
+            UE_LOG(LogTemp, Error, TEXT("Station %s could not roll back deposited stock for %s."),
+                *GetName(), *ItemId.ToString());
+        }
         return false;
     }
     return true;
@@ -145,9 +157,29 @@ bool AProductionStationActor::TryTake(UInventoryCraftingComponent* Inventory, FN
     FInventoryStack Stack;
     Stack.ItemId = ItemId;
     Stack.Quantity = Quantity;
-    if (!Inventory->CanAddItems({ Stack }) || !Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision))
+    if (!Inventory->CanAddItems({ Stack }) ||
+        !Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision))
         return false;
-    return Inventory->TryAddItem(Stack);
+    if (Inventory->TryAddItem(Stack))
+        return true;
+
+    // Stock leaves the station before TryAddItem commits. If the inventory refuses
+    // an output after a successful capacity preflight, restore it or fault the
+    // simulation rather than silently deleting the station's items.
+    FWorldProductionStation CurrentStation;
+    const bool bStationRead = Production->GetStation(StationId, CurrentStation);
+    const bool bStockRestored = bStationRead &&
+        Production->AddStock(StationId, ItemId, Quantity, CurrentStation.Revision);
+    if (!bStockRestored)
+    {
+        if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+            GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            Coordinator->MarkSimulationFaulted(
+                TEXT("Station take rollback failed after inventory insertion was refused."));
+        UE_LOG(LogTemp, Error, TEXT("Station %s could not restore taken stock for %s."),
+            *GetName(), *ItemId.ToString());
+    }
+    return false;
 }
 
 int32 AProductionStationActor::GetStockCount(FName ItemId) const
