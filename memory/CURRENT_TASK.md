@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement nearest station query and E/F/R handlers in `VerticalSliceCWorldActor.cpp`, add station/data/production includes and bind keys in `SetupPlayer`; ensure F won't deposit unique ledger-owned stacks and only deposits recipe inputs/tools for the nearby station.
+Audit station use for source/API issues and test seams: verify `FGameDataItemAmount`/`FWorldProductionJob` field names, station capacity rollback, and ensure E reports missing fire only when an input-ready recipe needs fire. Then add automation for station data registration, deposit/start/collect/take, and item category preservation. Keep unbuilt.
