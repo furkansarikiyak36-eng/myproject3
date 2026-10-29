@@ -1181,8 +1181,8 @@ bool UWorldAgricultureSubsystem::TryCaptureWildlife(
     OutAnimalId.Invalidate();
     if (!OperationId.IsValid() || !SourceWildlifeIdentityId.IsValid() ||
         Definition.AnimalDefinitionId.IsNone() ||
-        Definition.ProductUnits < 0 || Definition.ProductUnits > 64 ||
-        (Definition.ProductUnits > 0 && Definition.ProductDefinitionId.IsNone()) ||
+        Definition.ProductUnitsPerCollection < 0 || Definition.ProductUnitsPerCollection > 64 ||
+        (Definition.ProductUnitsPerCollection > 0 && Definition.ProductDefinitionId.IsNone()) ||
         Definition.MeatUnits < 0 || Definition.MeatUnits > 64 ||
         Definition.HideUnits < 0 || Definition.HideUnits > 64 ||
         Definition.BoneUnits < 0 || Definition.BoneUnits > 64 ||
@@ -1241,7 +1241,7 @@ bool UWorldAgricultureSubsystem::TryCaptureWildlife(
     Animal.Hunger = 0.0f;
     Animal.FeedDefinitionId = Definition.FeedDefinitionId;
     Animal.ProductDefinitionId = Definition.ProductDefinitionId;
-    Animal.ProductUnits = Definition.ProductUnits;
+    Animal.ProductUnits = 0;
     Animal.MeatDefinitionId = Definition.MeatDefinitionId;
     Animal.MeatUnits = Definition.MeatUnits;
     Animal.HideDefinitionId = Definition.HideDefinitionId;
@@ -1524,7 +1524,21 @@ bool UWorldAgricultureSubsystem::TryCollectAnimalProducts(
         Animal->ActionReceipts.Num() >= MaxOperationReceiptsPerEntity)
         return false;
 
-    const int32 Units = FMath::Min(Animal->ProductUnits, 64);
+    int32 UnitsPerCollection = 1;
+    const UWorldGameDataSubsystem* GameData =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (GameData && GameData->IsLoaded())
+    {
+        if (const FWorldAnimalCaptureDefinition* Definition =
+            GameData->GetAnimalCaptureDefinitions().FindByPredicate(
+                [Animal](const FWorldAnimalCaptureDefinition& Candidate)
+                { return Candidate.AnimalDefinitionId == Animal->AnimalDefinitionId; }))
+        {
+            if (Definition->ProductUnitsPerCollection > 0)
+                UnitsPerCollection = Definition->ProductUnitsPerCollection;
+        }
+    }
+    const int32 Units = FMath::Min(Animal->ProductUnits, UnitsPerCollection);
     TArray<FName> Definitions;
     TArray<FVector> Locations;
     Definitions.Init(Animal->ProductDefinitionId, Units);

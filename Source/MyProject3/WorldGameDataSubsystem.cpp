@@ -477,7 +477,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Definition.AnimalDefinitionId = NameField(Entry, TEXT("id"));
         Definition.FeedDefinitionId = NameField(Entry, TEXT("feed"));
         Definition.ProductDefinitionId = NameField(Entry, TEXT("product"));
-        Definition.ProductUnits = static_cast<int32>(NumberField(Entry, TEXT("product_units"), 0.0));
+        Definition.ProductUnitsPerCollection = static_cast<int32>(NumberField(Entry, TEXT("product_units_per_collection"), 0.0));
         Definition.MeatDefinitionId = NameField(Entry, TEXT("meat"));
         Definition.MeatUnits = static_cast<int32>(NumberField(Entry, TEXT("meat_units"), 0.0));
         Definition.HideDefinitionId = NameField(Entry, TEXT("hide"));
@@ -494,8 +494,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             !ValidOptionalItem(Definition.MeatDefinitionId) ||
             !ValidOptionalItem(Definition.HideDefinitionId) ||
             !ValidOptionalItem(Definition.BoneDefinitionId) ||
-            Definition.ProductUnits < 0 || Definition.ProductUnits > 64 ||
-            (Definition.ProductUnits > 0 && Definition.ProductDefinitionId.IsNone()) ||
+            Definition.ProductUnitsPerCollection < 0 || Definition.ProductUnitsPerCollection > 64 ||
+            (Definition.ProductUnitsPerCollection > 0 && Definition.ProductDefinitionId.IsNone()) ||
             Definition.MeatUnits < 0 || Definition.MeatUnits > 64 ||
             Definition.HideUnits < 0 || Definition.HideUnits > 64 ||
             Definition.BoneUnits < 0 || Definition.BoneUnits > 64 ||

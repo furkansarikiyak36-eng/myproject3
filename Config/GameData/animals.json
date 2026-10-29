@@ -5,25 +5,25 @@
       "id": "Animal.Rabbit",
       "feed": "Grass",
       "product": "",
-      "product_units": 0,
       "meat": "Meat.Raw",
       "meat_units": 2,
       "hide": "Hide.Raw",
       "hide_units": 1,
       "bone": "Bone",
-      "bone_units": 1
+      "bone_units": 1,
+      "product_units_per_collection": 0
     },
     {
       "id": "Animal.Bird",
       "feed": "Grain.Harvest",
       "product": "Feather",
-      "product_units": 2,
       "meat": "Meat.Raw",
       "meat_units": 1,
       "hide": "",
       "hide_units": 0,
       "bone": "Bone",
-      "bone_units": 1
+      "bone_units": 1,
+      "product_units_per_collection": 2
     }
   ]
 }

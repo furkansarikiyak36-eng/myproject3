@@ -154,7 +154,7 @@ struct FWorldAnimalCaptureDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName FeedDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName ProductDefinitionId = NAME_None;
     /** Units delivered by each successful product collection cycle. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 ProductUnits = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 ProductUnitsPerCollection = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName MeatDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 MeatUnits = 2;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName HideDefinitionId = NAME_None;

@@ -2184,7 +2184,7 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
     {
         TestTrue(FString::Printf(TEXT("%s has a valid feed item"), *Animal.AnimalDefinitionId.ToString()),
             Data->GetItems().Contains(Animal.FeedDefinitionId));
-        if (Animal.ProductUnits > 0)
+        if (Animal.ProductUnitsPerCollection > 0)
             TestTrue(TEXT("Product output is a known item"),
                 Data->GetItems().Contains(Animal.ProductDefinitionId));
         if (Animal.MeatUnits > 0)
@@ -2199,7 +2199,7 @@ bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parame
         { return Animal.AnimalDefinitionId == TEXT("Animal.Bird"); });
     TestNotNull(TEXT("Bird product profile"), Bird);
     if (Bird)
-        TestEqual(TEXT("Bird feathers are awarded in authored batches"), Bird->ProductUnits, 2);
+        TestEqual(TEXT("Bird feathers use the authored collection batch"), Bird->ProductUnitsPerCollection, 2);
     return true;
 }
 
