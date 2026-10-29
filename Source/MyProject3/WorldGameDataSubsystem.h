@@ -114,6 +114,8 @@ struct FGameDataDiscovery
     /** Optional one-time item reward; zero quantity means a knowledge/location-only discovery. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName RewardItemId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") int32 RewardQuantity = 0;
+    /** True when each reward unit must be separately ledger-owned (for plantable seeds). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") bool bRewardUniqueItems = false;
 };
 
 USTRUCT(BlueprintType)
