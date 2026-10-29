@@ -17,6 +17,7 @@
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldInfrastructureRouteLinkComponent.h"
+#include "BuildPlanActor.h"
 #include "WorldAgricultureSubsystem.h"
 #include "GatherableResourceActor.h"
 #include "ProductionStationActor.h"
@@ -902,6 +903,63 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Two flakes"), Inventory->GetItemCount(TEXT("FlintFlake")), 2);
     TestEqual(TEXT("One flint used"), Inventory->GetItemCount(TEXT("Flint")), 1);
     TestEqual(TEXT("Hammer stone kept"), Inventory->GetItemCount(TEXT("HammerStone")), 1);
+    return true;
+}
+
+// P7.4: a crossing is not traversable as built infrastructure until every bridge-plan slot is complete.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCreekBridgePlanCompletionActivatesRouteTest,
+    "MyProject3.Logistics.CreekBridgePlanEnablesRouteOnlyWhenComplete", Flags)
+bool FCreekBridgePlanCompletionActivatesRouteTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Route graph"), Routes))
+        return false;
+
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply game data (%s)"), *Data->GetLastError()), Data->ApplyToWorld());
+
+    const FName StartNode(TEXT("Route.Camp"));
+    const FName DestinationNode(TEXT("Route.Creek.EastBank"));
+    FLogisticsRouteCostContext Context;
+    TArray<FName> BeforePath;
+    float BeforeCost = 0.0f;
+    TestTrue(TEXT("Find the initial route"), Routes->FindRouteWithContext(
+        StartNode, DestinationNode, Context, BeforePath, BeforeCost));
+    TestTrue(TEXT("Initial route uses the ford"), BeforePath.Contains(TEXT("Route.Ford.WestBank")));
+
+    ABuildPlanActor* BridgePlan = World->SpawnActor<ABuildPlanActor>();
+    if (!TestNotNull(TEXT("Creek bridge plan"), BridgePlan))
+        return false;
+    BridgePlan->InitializePlan(EBuildPlanKind::CreekBridge);
+    TestEqual(TEXT("Bridge has six posts, six beams, 13 deck logs and four ramp logs"),
+        BridgePlan->GetSlotCount(), 29);
+    TestFalse(TEXT("Fresh bridge plan is incomplete"), BridgePlan->IsComplete());
+
+    BridgePlan->MarkFilled(0, nullptr);
+    TArray<FName> PartialPath;
+    float PartialCost = 0.0f;
+    TestTrue(TEXT("Route remains available through detour while bridge is partial"),
+        Routes->FindRouteWithContext(StartNode, DestinationNode, Context, PartialPath, PartialCost));
+    TestTrue(TEXT("Partial bridge does not change route choice"),
+        PartialPath == BeforePath && FMath::IsNearlyEqual(PartialCost, BeforeCost, 0.001f));
+
+    // Use null slot occupants intentionally: this tests the completion contract, not log placement physics.
+    const int32 SlotCount = BridgePlan->GetSlotCount();
+    for (int32 Index = 1; Index < SlotCount; ++Index)
+        BridgePlan->MarkFilled(Index, nullptr);
+
+    TArray<FName> CompletedPath;
+    float CompletedCost = 0.0f;
+    TestTrue(TEXT("Route resolves after all bridge slots complete"),
+        Routes->FindRouteWithContext(StartNode, DestinationNode, Context, CompletedPath, CompletedCost));
+    TestTrue(TEXT("Completed bridge activates the direct creek crossing"),
+        CompletedPath.Contains(TEXT("Route.Creek.WestBank")) &&
+        CompletedPath.Contains(TEXT("Route.Creek.EastBank")) &&
+        !CompletedPath.Contains(TEXT("Route.Ford.WestBank")));
+    TestTrue(TEXT("Completed crossing is cheaper than the ford detour"), CompletedCost < BeforeCost);
     return true;
 }
 
