@@ -127,6 +127,7 @@ struct FGameDataCrop
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") FName HarvestItemId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 HarvestUnits = 1;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") int32 SeedReturnUnits = 1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") float SoilExhaustionPerHarvest = 0.1f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double SecondsPerStage = 3600.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double PlantLaborSeconds = 600.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") double HarvestLaborSeconds = 450.0;
@@ -199,6 +200,7 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
+    const TArray<FWorldAnimalCaptureDefinition>& GetAnimalCaptureDefinitions() const { return AnimalCaptureDefinitions; }
     const TArray<FGameDataFieldAction>& GetFieldActions() const { return FieldActions; }
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
@@ -220,6 +222,7 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
+    TArray<FWorldAnimalCaptureDefinition> AnimalCaptureDefinitions;
     TArray<FGameDataFieldAction> FieldActions;
     TArray<FGameDataZone> Zones;
     TArray<FGameDataDiscovery> Discoveries;

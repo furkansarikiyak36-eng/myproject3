@@ -106,6 +106,8 @@ struct FWorldCropDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName HarvestDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="64")) int32 HarvestUnits = 3;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 SeedReturnUnits = 1;
+    /** Soil fertility lost per harvest; legume crops can use a lower value. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="0", ClampMax="1")) float SoilExhaustionPerHarvest = 0.1f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1")) double SecondsPerStage = 3600.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="3600")) double PlantLaborSeconds = 600.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="3600")) double HarvestLaborSeconds = 450.0;
@@ -151,6 +153,8 @@ struct FWorldAnimalCaptureDefinition
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName AnimalDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName FeedDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName ProductDefinitionId = NAME_None;
+    /** Units delivered by each successful product collection cycle. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 ProductUnits = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName MeatDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 MeatUnits = 2;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName HideDefinitionId = NAME_None;

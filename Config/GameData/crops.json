@@ -1,5 +1,5 @@
 {
-  "_about": "Primitive era game data from Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md. Edit freely; ids must stay unique. Crop choice is a placeholder until the user answers Q2.",
+  "_about": "Primitive-era crop profiles. Growth time is hours per stage; soil_exhaustion is fertility lost per harvest (0..1). Grain is a slower, higher-yield staple; roots are faster but soil-demanding; legumes give more seed back and exhaust soil less.",
   "crops": [
     {
       "id": "Crop.Grain",
@@ -15,7 +15,8 @@
       "found_in_zone": 1,
       "seed_return_units": 1,
       "plant_labor_seconds": 600,
-      "harvest_labor_seconds": 600
+      "harvest_labor_seconds": 600,
+      "soil_exhaustion": 0.12
     },
     {
       "id": "Crop.Root",
@@ -32,7 +33,8 @@
       "found_in_zone": 2,
       "seed_return_units": 1,
       "plant_labor_seconds": 450,
-      "harvest_labor_seconds": 450
+      "harvest_labor_seconds": 450,
+      "soil_exhaustion": 0.18
     },
     {
       "id": "Crop.Legume",
@@ -46,9 +48,10 @@
         6
       ],
       "found_in_zone": 3,
-      "seed_return_units": 1,
+      "seed_return_units": 2,
       "plant_labor_seconds": 450,
-      "harvest_labor_seconds": 450
+      "harvest_labor_seconds": 450,
+      "soil_exhaustion": 0.04
     }
   ]
 }

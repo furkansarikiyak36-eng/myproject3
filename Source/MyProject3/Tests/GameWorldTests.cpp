@@ -2136,4 +2136,71 @@ bool FCraftedFoodIsEdibleTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FGameDataCropBalanceAndAnimalCaptureDataTest,
+    "MyProject3.World.Farming.CropBalanceAndAnimalCaptureData", Flags)
+bool FGameDataCropBalanceAndAnimalCaptureDataTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldGameDataSubsystem* Data = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data subsystem"), Data))
+        return false;
+
+    TestTrue(TEXT("Load all game data including animals"), Data->LoadDefault());
+    TestEqual(TEXT("Three crop profiles are available"), Data->GetCrops().Num(), 3);
+    TestEqual(TEXT("Two animal capture profiles are available"),
+        Data->GetAnimalCaptureDefinitions().Num(), 2);
+
+    const FGameDataCrop* Grain = Data->GetCrops().FindByPredicate(
+        [](const FGameDataCrop& Crop) { return Crop.Id == TEXT("Crop.Grain"); });
+    const FGameDataCrop* Root = Data->GetCrops().FindByPredicate(
+        [](const FGameDataCrop& Crop) { return Crop.Id == TEXT("Crop.Root"); });
+    const FGameDataCrop* Legume = Data->GetCrops().FindByPredicate(
+        [](const FGameDataCrop& Crop) { return Crop.Id == TEXT("Crop.Legume"); });
+    if (!TestNotNull(TEXT("Grain profile"), Grain) ||
+        !TestNotNull(TEXT("Root profile"), Root) ||
+        !TestNotNull(TEXT("Legume profile"), Legume))
+        return false;
+
+    TestTrue(TEXT("Grain has the longest stage duration"),
+        Grain->SecondsPerStage > Root->SecondsPerStage &&
+        Grain->SecondsPerStage >= Legume->SecondsPerStage);
+    TestTrue(TEXT("Root crop has the highest soil exhaustion"),
+        Root->SoilExhaustionPerHarvest > Grain->SoilExhaustionPerHarvest &&
+        Root->SoilExhaustionPerHarvest > Legume->SoilExhaustionPerHarvest);
+    TestTrue(TEXT("Legume crop has the lowest soil exhaustion and more returned seed"),
+        Legume->SoilExhaustionPerHarvest < Grain->SoilExhaustionPerHarvest &&
+        Legume->SeedReturnUnits > Grain->SeedReturnUnits);
+    for (const FGameDataCrop& Crop : Data->GetCrops())
+    {
+        TestTrue(FString::Printf(TEXT("%s soil exhaustion stays bounded"), *Crop.Id.ToString()),
+            FMath::IsFinite(Crop.SoilExhaustionPerHarvest) &&
+            Crop.SoilExhaustionPerHarvest >= 0.0f &&
+            Crop.SoilExhaustionPerHarvest <= 1.0f);
+    }
+
+    for (const FWorldAnimalCaptureDefinition& Animal : Data->GetAnimalCaptureDefinitions())
+    {
+        TestTrue(FString::Printf(TEXT("%s has a valid feed item"), *Animal.AnimalDefinitionId.ToString()),
+            Data->GetItems().Contains(Animal.FeedDefinitionId));
+        if (Animal.ProductUnits > 0)
+            TestTrue(TEXT("Product output is a known item"),
+                Data->GetItems().Contains(Animal.ProductDefinitionId));
+        if (Animal.MeatUnits > 0)
+            TestTrue(TEXT("Meat output is a known item"), Data->GetItems().Contains(Animal.MeatDefinitionId));
+        if (Animal.HideUnits > 0)
+            TestTrue(TEXT("Hide output is a known item"), Data->GetItems().Contains(Animal.HideDefinitionId));
+        if (Animal.BoneUnits > 0)
+            TestTrue(TEXT("Bone output is a known item"), Data->GetItems().Contains(Animal.BoneDefinitionId));
+    }
+    const FWorldAnimalCaptureDefinition* Bird = Data->GetAnimalCaptureDefinitions().FindByPredicate(
+        [](const FWorldAnimalCaptureDefinition& Animal)
+        { return Animal.AnimalDefinitionId == TEXT("Animal.Bird"); });
+    TestNotNull(TEXT("Bird product profile"), Bird);
+    if (Bird)
+        TestEqual(TEXT("Bird feathers are awarded in authored batches"), Bird->ProductUnits, 2);
+    return true;
+}
+
 #endif

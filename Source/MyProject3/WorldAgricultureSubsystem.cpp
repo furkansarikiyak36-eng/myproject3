@@ -597,6 +597,8 @@ bool UWorldAgricultureSubsystem::RegisterCropDefinition(const FWorldCropDefiniti
         Definition.PlantLaborSeconds > 3600.0 ||
         !FMath::IsFinite(Definition.HarvestLaborSeconds) || Definition.HarvestLaborSeconds < 1.0 ||
         Definition.HarvestLaborSeconds > 3600.0 ||
+        !FMath::IsFinite(Definition.SoilExhaustionPerHarvest) ||
+        Definition.SoilExhaustionPerHarvest < 0.0f || Definition.SoilExhaustionPerHarvest > 1.0f ||
         !FMath::IsFinite(Definition.MinimumPlantMoisture) ||
         Definition.MinimumPlantMoisture < 0.0f || Definition.MinimumPlantMoisture > 1.0f ||
         MaxCropDefinitions <= 0 || MaxCropDefinitions > 4096 ||
@@ -870,7 +872,8 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     }
 
     FWorldCropState* Crop = Crops.Find(CropId);
-    if (!Crop || Crop->Revision != ExpectedCropRevision ||
+    const FWorldCropDefinition* CropDefinition = Crop ? FindCropDefinition(Crop->CropDefinitionId) : nullptr;
+    if (!Crop || !CropDefinition || Crop->Revision != ExpectedCropRevision ||
         Crop->Revision >= MAX_int64 - 1 || Crop->Stage != ECropGrowthStage::Mature ||
         Crop->HarvestDefinitionId.IsNone() || Crop->HarvestUnits <= 0 ||
         Crop->HarvestUnits > 64 || Crop->SeedReturnUnits < 0 || Crop->SeedReturnUnits > 64 ||
@@ -920,7 +923,7 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
 
     if (FieldForHarvest)
     {
-        FieldForHarvest->Fertility = FMath::Max(0.0f, FieldForHarvest->Fertility - SoilExhaustionPerHarvest);
+        FieldForHarvest->Fertility = FMath::Max(0.0f, FieldForHarvest->Fertility - CropDefinition->SoilExhaustionPerHarvest);
         ++FieldForHarvest->HarvestCount;
         ++FieldForHarvest->Revision;
     }
@@ -1178,6 +1181,8 @@ bool UWorldAgricultureSubsystem::TryCaptureWildlife(
     OutAnimalId.Invalidate();
     if (!OperationId.IsValid() || !SourceWildlifeIdentityId.IsValid() ||
         Definition.AnimalDefinitionId.IsNone() ||
+        Definition.ProductUnits < 0 || Definition.ProductUnits > 64 ||
+        (Definition.ProductUnits > 0 && Definition.ProductDefinitionId.IsNone()) ||
         Definition.MeatUnits < 0 || Definition.MeatUnits > 64 ||
         Definition.HideUnits < 0 || Definition.HideUnits > 64 ||
         Definition.BoneUnits < 0 || Definition.BoneUnits > 64 ||
@@ -1198,6 +1203,7 @@ bool UWorldAgricultureSubsystem::TryCaptureWildlife(
         const FWorldAnimalState& ExistingAnimal = Animals.FindChecked(Existing->EntityId);
         if (ExistingAnimal.FeedDefinitionId != Definition.FeedDefinitionId ||
             ExistingAnimal.ProductDefinitionId != Definition.ProductDefinitionId ||
+            ExistingAnimal.ProductUnits != Definition.ProductUnits ||
             ExistingAnimal.MeatDefinitionId != Definition.MeatDefinitionId ||
             ExistingAnimal.MeatUnits != Definition.MeatUnits ||
             ExistingAnimal.HideDefinitionId != Definition.HideDefinitionId ||
@@ -1235,7 +1241,7 @@ bool UWorldAgricultureSubsystem::TryCaptureWildlife(
     Animal.Hunger = 0.0f;
     Animal.FeedDefinitionId = Definition.FeedDefinitionId;
     Animal.ProductDefinitionId = Definition.ProductDefinitionId;
-    Animal.ProductUnits = 0;
+    Animal.ProductUnits = Definition.ProductUnits;
     Animal.MeatDefinitionId = Definition.MeatDefinitionId;
     Animal.MeatUnits = Definition.MeatUnits;
     Animal.HideDefinitionId = Definition.HideDefinitionId;

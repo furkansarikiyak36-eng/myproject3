@@ -141,12 +141,13 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, FieldActionsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, FieldActionsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("animals.json"), AnimalsJson, Error) ||
         !ReadJson(Directory, TEXT("field_actions.json"), FieldActionsJson, Error) ||
         !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
         !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
@@ -433,6 +434,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Crop.HarvestItemId = NameField(Entry, TEXT("harvest"));
             Crop.HarvestUnits = static_cast<int32>(NumberField(Entry, TEXT("units"), 1.0));
             Crop.SeedReturnUnits = static_cast<int32>(NumberField(Entry, TEXT("seed_return_units"), 1.0));
+            Crop.SoilExhaustionPerHarvest = static_cast<float>(NumberField(Entry, TEXT("soil_exhaustion"), 0.1));
             Crop.SecondsPerStage = NumberField(Entry, TEXT("hours_per_stage"), 1.0) * 3600.0;
             Crop.PlantLaborSeconds = NumberField(Entry, TEXT("plant_labor_seconds"), 600.0);
             Crop.HarvestLaborSeconds = NumberField(Entry, TEXT("harvest_labor_seconds"), 450.0);
@@ -444,6 +446,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
                 Crop.HarvestUnits <= 0 || Crop.HarvestUnits > 64 ||
                 Crop.SeedReturnUnits < 0 || Crop.SeedReturnUnits > 64 ||
                 Crop.HarvestUnits + Crop.SeedReturnUnits > 64 ||
+                !FMath::IsFinite(Crop.SoilExhaustionPerHarvest) ||
+                Crop.SoilExhaustionPerHarvest < 0.0f || Crop.SoilExhaustionPerHarvest > 1.0f ||
                 !FMath::IsFinite(Crop.SecondsPerStage) || Crop.SecondsPerStage < 3600.0 ||
                 !FMath::IsFinite(Crop.PlantLaborSeconds) || Crop.PlantLaborSeconds < 1.0 ||
                 Crop.PlantLaborSeconds > 3600.0 ||
@@ -458,6 +462,53 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         if (!ZoneIndices.Contains(Crop.FoundInZone))
             return Fail(FString::Printf(TEXT("Crop %s names unknown zone index %d"),
                 *Crop.Id.ToString(), Crop.FoundInZone));
+    }
+
+    // Animal capture/product definitions are data-driven; all produced and consumed item IDs must exist.
+    TArray<FWorldAnimalCaptureDefinition> NewAnimalCaptureDefinitions;
+    const TArray<TSharedPtr<FJsonValue>>* AnimalValues = ArrayField(AnimalsJson, TEXT("animals"));
+    if (!AnimalValues || AnimalValues->IsEmpty())
+        return Fail(TEXT("animals.json needs at least one animal definition"));
+    TSet<FName> AnimalDefinitionIds;
+    for (const TSharedPtr<FJsonValue>& Value : *AnimalValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FWorldAnimalCaptureDefinition Definition;
+        Definition.AnimalDefinitionId = NameField(Entry, TEXT("id"));
+        Definition.FeedDefinitionId = NameField(Entry, TEXT("feed"));
+        Definition.ProductDefinitionId = NameField(Entry, TEXT("product"));
+        Definition.ProductUnits = static_cast<int32>(NumberField(Entry, TEXT("product_units"), 0.0));
+        Definition.MeatDefinitionId = NameField(Entry, TEXT("meat"));
+        Definition.MeatUnits = static_cast<int32>(NumberField(Entry, TEXT("meat_units"), 0.0));
+        Definition.HideDefinitionId = NameField(Entry, TEXT("hide"));
+        Definition.HideUnits = static_cast<int32>(NumberField(Entry, TEXT("hide_units"), 0.0));
+        Definition.BoneDefinitionId = NameField(Entry, TEXT("bone"));
+        Definition.BoneUnits = static_cast<int32>(NumberField(Entry, TEXT("bone_units"), 0.0));
+
+        const int32 SlaughterUnits = Definition.MeatUnits + Definition.HideUnits + Definition.BoneUnits;
+        auto ValidOptionalItem = [&NewItems](FName ItemId) { return ItemId.IsNone() || NewItems.Contains(ItemId); };
+        if (Definition.AnimalDefinitionId.IsNone() ||
+            AnimalDefinitionIds.Contains(Definition.AnimalDefinitionId) ||
+            Definition.FeedDefinitionId.IsNone() || !NewItems.Contains(Definition.FeedDefinitionId) ||
+            !ValidOptionalItem(Definition.ProductDefinitionId) ||
+            !ValidOptionalItem(Definition.MeatDefinitionId) ||
+            !ValidOptionalItem(Definition.HideDefinitionId) ||
+            !ValidOptionalItem(Definition.BoneDefinitionId) ||
+            Definition.ProductUnits < 0 || Definition.ProductUnits > 64 ||
+            (Definition.ProductUnits > 0 && Definition.ProductDefinitionId.IsNone()) ||
+            Definition.MeatUnits < 0 || Definition.MeatUnits > 64 ||
+            Definition.HideUnits < 0 || Definition.HideUnits > 64 ||
+            Definition.BoneUnits < 0 || Definition.BoneUnits > 64 ||
+            SlaughterUnits <= 0 || SlaughterUnits > 64 ||
+            (Definition.MeatUnits > 0 && Definition.MeatDefinitionId.IsNone()) ||
+            (Definition.HideUnits > 0 && Definition.HideDefinitionId.IsNone()) ||
+            (Definition.BoneUnits > 0 && Definition.BoneDefinitionId.IsNone()))
+        {
+            return Fail(FString::Printf(TEXT("Bad animal capture definition %s"),
+                *Definition.AnimalDefinitionId.ToString()));
+        }
+        AnimalDefinitionIds.Add(Definition.AnimalDefinitionId);
+        NewAnimalCaptureDefinitions.Add(Definition);
     }
 
     // Natural-event contracts are data-driven and validated before replacing live data.
@@ -711,6 +762,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
+    AnimalCaptureDefinitions = MoveTemp(NewAnimalCaptureDefinitions);
     FieldActions = MoveTemp(NewFieldActions);
     Zones = MoveTemp(NewZones);
     Discoveries = MoveTemp(TopologicalDiscoveries);
@@ -914,6 +966,7 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         Definition.HarvestDefinitionId = C.HarvestItemId;
         Definition.HarvestUnits = C.HarvestUnits;
         Definition.SeedReturnUnits = C.SeedReturnUnits;
+        Definition.SoilExhaustionPerHarvest = C.SoilExhaustionPerHarvest;
         Definition.SecondsPerStage = C.SecondsPerStage;
         Definition.PlantLaborSeconds = C.PlantLaborSeconds;
         Definition.HarvestLaborSeconds = C.HarvestLaborSeconds;
