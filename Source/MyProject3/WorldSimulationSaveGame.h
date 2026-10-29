@@ -75,6 +75,21 @@ struct FWorldPhysicalComponentSnapshot
 };
 
 USTRUCT()
+struct FWorldActorComponentSaveSnapshot
+{
+    GENERATED_BODY()
+
+    UPROPERTY(SaveGame)
+    FName ComponentName = NAME_None;
+
+    UPROPERTY(SaveGame)
+    FSoftClassPath ComponentClass;
+
+    UPROPERTY(SaveGame)
+    TArray<uint8> SaveGameData;
+};
+
+USTRUCT()
 struct FWorldPhysicalActorSnapshot
 {
     GENERATED_BODY()
@@ -112,6 +127,13 @@ struct FWorldPhysicalActorSnapshot
     /** Actor-level UPROPERTY(SaveGame) payload for domain lifecycle fields. */
     UPROPERTY(SaveGame)
     TArray<uint8> ActorSaveGameData;
+
+    /** True for new snapshots; false only for legacy saves that never captured component properties. */
+    UPROPERTY(SaveGame)
+    bool bHasComponentSaveGameData = false;
+
+    UPROPERTY(SaveGame)
+    TArray<FWorldActorComponentSaveSnapshot> ComponentSaveGameData;
 };
 
 USTRUCT()
@@ -137,7 +159,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 19;
+    static constexpr int32 CurrentSchemaVersion = 20;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
