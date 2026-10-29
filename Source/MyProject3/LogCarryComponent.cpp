@@ -1392,6 +1392,12 @@ bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
         Item->SetActorTickEnabled(bPreviousTickEnabled);
     };
 
+    // BeginPlay quarantines actors whose ownership says Held. They are being
+    // reattached to their explicit saved carrier now, so unhide them and restore
+    // actor ticking before applying the intentional no-collision held state.
+    Item->SetActorHiddenInGame(false);
+    Item->SetActorTickEnabled(true);
+
     if (RootPrimitive)
     {
         RootPrimitive->SetSimulatePhysics(false);
