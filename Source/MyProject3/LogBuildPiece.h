@@ -217,6 +217,16 @@ public:
     /** Result-bearing processing entry point; legacy bool API remains compatible. */
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     FWorldOperationResult TryApplyCutAction(ELogCutAction Action, FGuid OperationId);
+
+    /** Returns an unambiguous authored split recipe for an exact source geometry. */
+    bool TryGetAuthoredLengthCutVariant(ELogCutAction Action, FLogLengthCutVariant& OutVariant) const;
+
+    /**
+     * Switches a loose/held piece to an exact authored length/profile mesh.
+     * Geometry and ownership definition are validated before metadata commits.
+     */
+    bool TrySetAuthoredGeometryVariant(ELogLengthFraction NewLength,
+        ELogCrossSectionProfile NewProfile, const FTransform& NewTransform, FGuid OperationId);
     /** Adds normalized cut work (0..1) before committing the geometry transaction. */
     UFUNCTION(BlueprintCallable, Category = "Log Piece|Processing")
     FWorldOperationResult TryAdvanceCutProgress(ELogCutAction Action, float NormalizedWork, FGuid OperationId);
