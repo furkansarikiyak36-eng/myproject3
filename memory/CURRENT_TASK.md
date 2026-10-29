@@ -137,4 +137,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement `TryFillWaterFromCreek` in `WorldSurvivalSubsystem.cpp` using the exact item ownership + inventory rollback pattern from `TryConsumeFoodItem`; make the retry validate same source/container/location and output ID. Update restore action validation to include the new receipt without requiring the pot to remain in inventory forever.
+Audit the inserted fill code for UE-compatible `FInventoryStack` initialization, then extend `IsValidProfile` and `RestoreSnapshot` receipt validators/ownership checks for `FillWaterFromCreek`. Bump SaveGame schema to v26 and add v25→v26 migration. Only then write and wire creek interaction tests.
