@@ -3883,7 +3883,14 @@ bool FCreekWaterFillWithReusablePotTest::RunTest(const FString& Parameters)
 
     const FGuid FillOperationId = FGuid::NewGuid();
     FGuid WaterItemId;
-    TestTrue(TEXT("Fill fired pot from creek"), Survival->TryFillWaterFromCreek(
+    Inventory->MaxSlots = 1;
+    TestFalse(TEXT("Full inventory rejects unique water output without a free slot"),
+        Survival->TryFillWaterFromCreek(FillOperationId, Profile.EntityId, Profile.Revision,
+            PotId, 1, InventoryOwnerId, CreekLocation, WaterItemId));
+    TestFalse(TEXT("Capacity rejection creates no output identity"), WaterItemId.IsValid());
+    TestEqual(TEXT("Capacity rejection leaves no dirty water"), Inventory->GetItemCount(TEXT("Water.Dirty")), 0);
+    Inventory->MaxSlots = 2;
+    TestTrue(TEXT("Same operation can be retried once a slot is available"), Survival->TryFillWaterFromCreek(
         FillOperationId, Profile.EntityId, Profile.Revision, PotId, 1,
         InventoryOwnerId, CreekLocation, WaterItemId));
     TestTrue(TEXT("Fill creates a unique water item ID"), WaterItemId.IsValid());
