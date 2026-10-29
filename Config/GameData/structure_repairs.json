@@ -1,0 +1,35 @@
+{
+  "_about": "P7 repair contracts. Materials are consumed and tools stay reusable. Recovery yields are conservative salvage for standalone pieces only; connected structure dismantle is rejected until actor/anchor transactions are implemented.",
+  "repairs": [
+    {
+      "id": "repair_wood_structure",
+      "target_kind": "Wood",
+      "material": "ShortLog",
+      "material_units": 1,
+      "tool": "Tool.Axe",
+      "repair_amount": 35,
+      "recovery_item": "ShortLog",
+      "recovery_units": 1
+    },
+    {
+      "id": "repair_stone_structure",
+      "target_kind": "Stone",
+      "material": "Stone",
+      "material_units": 2,
+      "tool": "Tool.Chisel",
+      "repair_amount": 35,
+      "recovery_item": "Stone",
+      "recovery_units": 2
+    },
+    {
+      "id": "repair_stick_structure",
+      "target_kind": "Stick",
+      "material": "Stick",
+      "material_units": 2,
+      "tool": "Tool.Chisel",
+      "repair_amount": 30,
+      "recovery_item": "Stick",
+      "recovery_units": 1
+    }
+  ]
+}

@@ -118,6 +118,21 @@ struct FGameDataDiscovery
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") bool bRewardUniqueItems = false;
 };
 
+/** Data-authored material/tool contract for repairing one structural node and conservative standalone salvage. */
+USTRUCT(BlueprintType)
+struct FGameDataStructuralRepair
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") FName TargetKind = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") FName MaterialItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") int32 MaterialUnits = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") FName ToolItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") float RepairAmount = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") FName RecoveryItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Structure") int32 RecoveryUnits = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FGameDataCrop
 {
@@ -202,6 +217,8 @@ public:
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
     const TArray<FWorldAnimalCaptureDefinition>& GetAnimalCaptureDefinitions() const { return AnimalCaptureDefinitions; }
     const TArray<FGameDataFieldAction>& GetFieldActions() const { return FieldActions; }
+    const TArray<FGameDataStructuralRepair>& GetStructuralRepairs() const { return StructuralRepairs; }
+    const FGameDataStructuralRepair* FindStructuralRepair(FName Id) const;
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
     bool IsDiscoveryGatedDefinition(FName DefinitionId) const;
@@ -224,6 +241,7 @@ private:
     TArray<FGameDataCrop> Crops;
     TArray<FWorldAnimalCaptureDefinition> AnimalCaptureDefinitions;
     TArray<FGameDataFieldAction> FieldActions;
+    TArray<FGameDataStructuralRepair> StructuralRepairs;
     TArray<FGameDataZone> Zones;
     TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataWorldEvent> WorldEvents;

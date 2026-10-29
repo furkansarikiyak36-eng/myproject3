@@ -141,7 +141,7 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, FieldActionsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, FieldActionsJson, ZonesJson, DiscoveriesJson, EventsJson, CalendarJson, ClimateJson, LayersJson, StructuralRepairsJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
@@ -154,7 +154,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         !ReadJson(Directory, TEXT("events.json"), EventsJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
-        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
+        !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error) ||
+        !ReadJson(Directory, TEXT("structure_repairs.json"), StructuralRepairsJson, Error))
         return Fail(Error);
 
     // Parse into locals; the subsystem changes only when everything is valid.
@@ -782,6 +783,44 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             NewLayers.Add(L);
         }
 
+    TArray<FGameDataStructuralRepair> NewStructuralRepairs;
+    const TArray<TSharedPtr<FJsonValue>>* RepairValues =
+        ArrayField(StructuralRepairsJson, TEXT("repairs"));
+    if (!RepairValues || RepairValues->IsEmpty())
+        return Fail(TEXT("structure_repairs.json needs at least one repair profile"));
+    TSet<FName> StructuralRepairIds;
+    for (const TSharedPtr<FJsonValue>& Value : *RepairValues)
+    {
+        if (!Value.IsValid() || Value->Type != EJson::Object)
+            return Fail(TEXT("structure_repairs.json contains a non-object repair profile"));
+        const FJson Entry = Value->AsObject();
+        FGameDataStructuralRepair Repair;
+        Repair.Id = NameField(Entry, TEXT("id"));
+        Repair.TargetKind = NameField(Entry, TEXT("target_kind"));
+        Repair.MaterialItemId = NameField(Entry, TEXT("material"));
+        Repair.MaterialUnits = static_cast<int32>(NumberField(Entry, TEXT("material_units"), 0.0));
+        Repair.ToolItemId = NameField(Entry, TEXT("tool"));
+        Repair.RepairAmount = static_cast<float>(NumberField(Entry, TEXT("repair_amount"), 0.0));
+        Repair.RecoveryItemId = NameField(Entry, TEXT("recovery_item"));
+        Repair.RecoveryUnits = static_cast<int32>(NumberField(Entry, TEXT("recovery_units"), 0.0));
+        const FGameDataItem* Material = NewItems.Find(Repair.MaterialItemId);
+        const FGameDataItem* Tool = NewItems.Find(Repair.ToolItemId);
+        const FGameDataItem* Recovery = NewItems.Find(Repair.RecoveryItemId);
+        const bool bSupportedKind = Repair.TargetKind == TEXT("Wood") ||
+            Repair.TargetKind == TEXT("Stone") || Repair.TargetKind == TEXT("Stick");
+        if (Repair.Id.IsNone() || StructuralRepairIds.Contains(Repair.Id) || !bSupportedKind ||
+            !Material || Material->Category == TEXT("Tool") ||
+            !Tool || Tool->Category != TEXT("Tool") ||
+            !Recovery || Recovery->Category == TEXT("Tool") ||
+            Repair.MaterialUnits < 1 || Repair.MaterialUnits > 64 ||
+            Repair.RecoveryUnits < 1 || Repair.RecoveryUnits > 64 ||
+            !FMath::IsFinite(Repair.RepairAmount) || Repair.RepairAmount <= 0.0f ||
+            Repair.RepairAmount > 100.0f)
+            return Fail(FString::Printf(TEXT("Bad structural repair profile %s"), *Repair.Id.ToString()));
+        StructuralRepairIds.Add(Repair.Id);
+        NewStructuralRepairs.Add(Repair);
+    }
+
     Items = MoveTemp(NewItems);
     Stations = MoveTemp(NewStations);
     Transformations = MoveTemp(NewTransformations);
@@ -792,6 +831,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Crops = MoveTemp(NewCrops);
     AnimalCaptureDefinitions = MoveTemp(NewAnimalCaptureDefinitions);
     FieldActions = MoveTemp(NewFieldActions);
+    StructuralRepairs = MoveTemp(NewStructuralRepairs);
     Zones = MoveTemp(NewZones);
     Discoveries = MoveTemp(TopologicalDiscoveries);
     WorldEvents = MoveTemp(NewWorldEvents);
@@ -804,6 +844,12 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     return true;
 }
 
+
+const FGameDataStructuralRepair* UWorldGameDataSubsystem::FindStructuralRepair(FName Id) const
+{
+    return StructuralRepairs.FindByPredicate(
+        [Id](const FGameDataStructuralRepair& Repair) { return Repair.Id == Id; });
+}
 
 bool UWorldGameDataSubsystem::IsDiscoveryGatedDefinition(FName DefinitionId) const
 {
