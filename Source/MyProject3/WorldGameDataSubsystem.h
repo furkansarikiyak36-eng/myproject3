@@ -86,6 +86,7 @@ struct FGameDataZone
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") int32 Number = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Name;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Description;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName DiscoveryId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> ResourceItemIds;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName BarrierId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString BarrierDescription;
@@ -192,6 +193,8 @@ public:
     const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
     /** Evaluates season, required clothing capabilities and prerequisite discoveries for a zone. */
     UFUNCTION(BlueprintCallable, Category="GameData|Zones") bool CanEnterZone(const FGuid& PlayerEntityId, FName ZoneId, FString& OutReason) const;
+    /** Validates access gates and records this zone's discovery once at the current world time. */
+    UFUNCTION(BlueprintCallable, Category="GameData|Zones") bool TryRecordZoneEntry(const FGuid& OperationId, const FGuid& PlayerEntityId, FName ZoneId, FVector EntryLocation, FString& OutReason);
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
 private:
