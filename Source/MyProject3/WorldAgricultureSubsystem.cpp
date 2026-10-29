@@ -730,6 +730,130 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             NewAnimals.Contains(A.AnimalId)) return false;
         NewAnimals.Add(A.AnimalId, A);
     }
+    TSet<FGuid> SeenOperationIds;
+    TSet<FGuid> SeenOutputIds;
+    bool bNeedsItemValidation = false;
+    for (const TPair<FGuid, FWorldCropState>& Pair : NewCrops)
+    {
+        const FWorldCropState& Crop = Pair.Value;
+        for (const FWorldAgricultureActionReceipt& Receipt : Crop.ActionReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || SeenOperationIds.Contains(Receipt.OperationId) ||
+                Receipt.EntityId != Crop.CropId ||
+                (Receipt.Action != EWorldAgricultureActionKind::PlantCrop &&
+                 Receipt.Action != EWorldAgricultureActionKind::HarvestCrop))
+                return false;
+            if (Receipt.Action == EWorldAgricultureActionKind::PlantCrop)
+            {
+                if (Receipt.OperationId != Crop.PlantOperationId ||
+                    Receipt.InputItemId != Crop.SeedItemId ||
+                    Receipt.ExpectedInventoryOwnerId != Crop.SeedInventoryOwnerId ||
+                    Receipt.ExpectedItemRevision != Crop.SeedItemExpectedRevision ||
+                    Receipt.DefinitionId != Crop.CropDefinitionId ||
+                    Receipt.ExpectedEntityRevision != 0 || Receipt.ResultingEntityRevision != 1 ||
+                    Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                    !Receipt.InputItemId.IsValid() || !Receipt.ExpectedInventoryOwnerId.IsValid())
+                    return false;
+                bNeedsItemValidation = true;
+            }
+            else
+            {
+                if (Receipt.OperationId != Crop.HarvestOperationId ||
+                    Receipt.ExpectedEntityRevision != Crop.HarvestExpectedRevision ||
+                    Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
+                    Receipt.DefinitionId != Crop.HarvestDefinitionId ||
+                    Receipt.RequestedOutputUnits != Crop.HarvestUnits ||
+                    Receipt.OutputItemIds != Crop.HarvestOutputItemIds ||
+                    Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits ||
+                    Receipt.OutputItemIds.IsEmpty())
+                    return false;
+                for (const FGuid& ItemId : Receipt.OutputItemIds)
+                {
+                    if (!ItemId.IsValid() || SeenOutputIds.Contains(ItemId))
+                        return false;
+                    SeenOutputIds.Add(ItemId);
+                }
+                bNeedsItemValidation = true;
+            }
+            SeenOperationIds.Add(Receipt.OperationId);
+        }
+    }
+
+    for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
+    {
+        const FWorldAnimalState& Animal = Pair.Value;
+        for (const FWorldAgricultureActionReceipt& Receipt : Animal.ActionReceipts)
+        {
+            if (!Receipt.OperationId.IsValid() || SeenOperationIds.Contains(Receipt.OperationId) ||
+                Receipt.EntityId != Animal.AnimalId ||
+                (Receipt.Action != EWorldAgricultureActionKind::FeedAnimal &&
+                 Receipt.Action != EWorldAgricultureActionKind::CollectAnimalProducts) ||
+                Receipt.ExpectedEntityRevision <= 0 ||
+                Receipt.ResultingEntityRevision != Receipt.ExpectedEntityRevision + 1 ||
+                Receipt.ResultingEntityRevision > Animal.Revision)
+                return false;
+
+            if (Receipt.Action == EWorldAgricultureActionKind::FeedAnimal)
+            {
+                if (!Receipt.InputItemId.IsValid() || !Receipt.ExpectedInventoryOwnerId.IsValid() ||
+                    Receipt.ExpectedItemRevision <= 0 ||
+                    Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                    Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.FeedDefinitionId ||
+                    !FMath::IsFinite(Receipt.HungerReduction) ||
+                    Receipt.HungerReduction <= 0.0f || Receipt.HungerReduction > 100.0f ||
+                    !Receipt.OutputItemIds.IsEmpty())
+                    return false;
+            }
+            else
+            {
+                if (Receipt.DefinitionId.IsNone() || Receipt.DefinitionId != Animal.ProductDefinitionId ||
+                    Receipt.RequestedOutputUnits <= 0 || Receipt.RequestedOutputUnits > 64 ||
+                    Receipt.OutputItemIds.Num() != Receipt.RequestedOutputUnits)
+                    return false;
+                for (const FGuid& ItemId : Receipt.OutputItemIds)
+                {
+                    if (!ItemId.IsValid() || SeenOutputIds.Contains(ItemId))
+                        return false;
+                    SeenOutputIds.Add(ItemId);
+                }
+            }
+            bNeedsItemValidation = true;
+            SeenOperationIds.Add(Receipt.OperationId);
+        }
+    }
+
+    if (bNeedsItemValidation)
+    {
+        UWorldItemOwnershipSubsystem* Ownership =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+        if (!Ownership)
+            return false;
+        auto Exists = [Ownership](const FGuid& ItemId)
+        {
+            FWorldOwnedItemRecord Item;
+            return ItemId.IsValid() && Ownership->TryGetItem(ItemId, Item);
+        };
+        for (const TPair<FGuid, FWorldCropState>& Pair : NewCrops)
+        {
+            const FWorldCropState& Crop = Pair.Value;
+            if (Crop.PlantOperationId.IsValid() && !Exists(Crop.SeedItemId))
+                return false;
+            for (const FGuid& ItemId : Crop.HarvestOutputItemIds)
+                if (!Exists(ItemId)) return false;
+        }
+        for (const TPair<FGuid, FWorldAnimalState>& Pair : NewAnimals)
+        {
+            for (const FWorldAgricultureActionReceipt& Receipt : Pair.Value.ActionReceipts)
+            {
+                if (Receipt.Action == EWorldAgricultureActionKind::FeedAnimal &&
+                    !Exists(Receipt.InputItemId))
+                    return false;
+                for (const FGuid& ItemId : Receipt.OutputItemIds)
+                    if (!Exists(ItemId)) return false;
+            }
+        }
+    }
+
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
     return true;
