@@ -1,0 +1,91 @@
+{
+  "_about": "Player field-action costs and effort. Inputs are consumed; tools are required but reusable. Amount is the field state delta passed to the agriculture state machine.",
+  "field_actions": [
+    {
+      "id": "clear",
+      "action": "Clear",
+      "inputs": [],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "amount": 0,
+      "labor_seconds": 600
+    },
+    {
+      "id": "till",
+      "action": "Till",
+      "inputs": [],
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "amount": 0,
+      "labor_seconds": 900
+    },
+    {
+      "id": "fertilize",
+      "action": "Fertilize",
+      "inputs": [
+        {
+          "item": "Compost",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "amount": 0.25,
+      "labor_seconds": 300
+    },
+    {
+      "id": "water",
+      "action": "Water",
+      "inputs": [
+        {
+          "item": "Water.Dirty",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "amount": 0.35,
+      "labor_seconds": 120
+    },
+    {
+      "id": "weed",
+      "action": "Weed",
+      "inputs": [],
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "amount": 0.25,
+      "labor_seconds": 300
+    },
+    {
+      "id": "mulch",
+      "action": "Mulch",
+      "inputs": [
+        {
+          "item": "Straw",
+          "qty": 2
+        }
+      ],
+      "tools": [],
+      "amount": 0.25,
+      "labor_seconds": 300
+    },
+    {
+      "id": "fence",
+      "action": "Fence",
+      "inputs": [
+        {
+          "item": "Stick",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "amount": 0,
+      "labor_seconds": 1800
+    }
+  ]
+}
