@@ -5,12 +5,20 @@
 #include "WorldAgricultureSubsystem.generated.h"
 
 class UInventoryCraftingComponent;
+class AWildlifeActor;
 
 UENUM(BlueprintType)
 enum class ECropGrowthStage : uint8 { Seed, Sprout, Growing, Mature, Withered, Harvested };
 
 UENUM(BlueprintType)
-enum class EWorldAgricultureActionKind : uint8 { PlantCrop, HarvestCrop, FeedAnimal, CollectAnimalProducts };
+enum class EWorldAgricultureActionKind : uint8
+{
+    PlantCrop, HarvestCrop, FeedAnimal, CollectAnimalProducts,
+    CaptureAnimal, MoveAnimalToPen, SlaughterAnimal
+};
+
+UENUM(BlueprintType)
+enum class EWorldAnimalLifecycleState : uint8 { Managed, Wild, Captured, Penned, Slaughtered };
 
 UENUM(BlueprintType)
 enum class EWorldFieldActionKind : uint8 { Clear, Till, Fertilize, Water, Weed, Mulch, Fence };
@@ -53,6 +61,10 @@ struct FWorldAgricultureActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FGuid OperationId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") EWorldAgricultureActionKind Action = EWorldAgricultureActionKind::PlantCrop;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FGuid EntityId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FGuid SourceWildlifeIdentityId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FGuid PenId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int64 ExpectedPenRevision = 0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int64 ResultingPenRevision = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FGuid InputItemId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") FGuid ExpectedInventoryOwnerId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") int64 ExpectedEntityRevision = 0;
@@ -109,6 +121,36 @@ struct FWorldCropState
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Receipts") TArray<FWorldAgricultureActionReceipt> ActionReceipts;
 };
 
+/** Data copied from an authored animal type when a wildlife actor is captured. */
+USTRUCT(BlueprintType)
+struct FWorldAnimalCaptureDefinition
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName AnimalDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName FeedDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName ProductDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName MeatDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 MeatUnits = 2;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName HideDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 HideUnits = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions") FName BoneDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Definitions", meta=(ClampMin="0", ClampMax="64")) int32 BoneUnits = 1;
+};
+
+/** Capacity-limited logical pen. Visual fence/buildings remain world actors. */
+USTRUCT(BlueprintType)
+struct FWorldAnimalPenState
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals|Pens") FGuid PenId;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals|Pens") FVector Location = FVector::ZeroVector;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals|Pens", meta=(ClampMin="1", ClampMax="128")) int32 Capacity = 4;
+    /** Empty allows all animal definitions; otherwise the pen admits only listed definitions. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals|Pens") TArray<FName> AllowedAnimalDefinitionIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Pens") TArray<FGuid> AnimalIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals|Pens") int64 Revision = 1;
+};
+
 USTRUCT(BlueprintType)
 struct FWorldAnimalState
 {
@@ -116,10 +158,19 @@ struct FWorldAnimalState
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FGuid AnimalId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName AnimalDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FGuid OwnerSettlementId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals") EWorldAnimalLifecycleState LifecycleState = EWorldAnimalLifecycleState::Managed;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals") FGuid SourceWildlifeIdentityId;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals") FGuid PenId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="100")) float Hunger = 0.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="100")) float Health = 100.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName FeedDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName ProductDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName MeatDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="64")) int32 MeatUnits = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName HideDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="64")) int32 HideUnits = 0;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals") FName BoneDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0", ClampMax="64")) int32 BoneUnits = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0")) int32 ProductUnits = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Animals", meta=(ClampMin="0")) double ProductProgressSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Animals") int64 Revision = 1;
@@ -163,6 +214,17 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCrop(
         const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
         TArray<FGuid>& OutItemIds);
+    UFUNCTION(BlueprintCallable, Category="World|Animals|Pens") bool RegisterAnimalPen(const FWorldAnimalPenState& Pen);
+    UFUNCTION(BlueprintPure, Category="World|Animals|Pens") bool GetAnimalPen(const FGuid& PenId, FWorldAnimalPenState& OutPen) const;
+    UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryCaptureWildlife(
+        const FGuid& OperationId, const FGuid& SourceWildlifeIdentityId, AWildlifeActor* Wildlife,
+        const FWorldAnimalCaptureDefinition& Definition, FGuid& OutAnimalId);
+    UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryMoveAnimalToPen(
+        const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+        const FGuid& PenId, int64 ExpectedPenRevision);
+    UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TrySlaughterAnimal(
+        const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
+        TArray<FGuid>& OutItemIds);
     UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryFeedAnimal(
         const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
         const FGuid& FeedItemId, int64 ExpectedFeedItemRevision,
@@ -183,13 +245,18 @@ public:
     void ExportSnapshot(TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals) const;
     void ExportSnapshot(TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
         TArray<FWorldFieldCellState>& OutFieldCells) const;
+    void ExportSnapshot(TArray<FWorldCropState>& OutCrops, TArray<FWorldAnimalState>& OutAnimals,
+        TArray<FWorldFieldCellState>& OutFieldCells, TArray<FWorldAnimalPenState>& OutAnimalPens) const;
     bool RestoreSnapshot(const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot);
     bool RestoreSnapshot(const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot,
         const TArray<FWorldFieldCellState>& FieldCellSnapshot);
+    bool RestoreSnapshot(const TArray<FWorldCropState>& CropSnapshot, const TArray<FWorldAnimalState>& AnimalSnapshot,
+        const TArray<FWorldFieldCellState>& FieldCellSnapshot, const TArray<FWorldAnimalPenState>& AnimalPenSnapshot);
 private:
     const FWorldCropDefinition* FindCropDefinition(FName CropDefinitionId) const;
     const FWorldFieldActionReceipt* FindFieldActionReceipt(const FGuid& OperationId) const;
     const FWorldAgricultureActionReceipt* FindActionReceipt(const FGuid& OperationId) const;
+    AWildlifeActor* FindWildlifeActor(const FGuid& IdentityId) const;
     bool FindInventoryForOwner(const FGuid& InventoryOwnerId, UInventoryCraftingComponent*& OutInventory) const;
     bool ConsumeInventoryItemAtomically(const FGuid& OperationId, const FGuid& ItemId,
         int64 ExpectedItemRevision, const FGuid& InventoryOwnerId,
@@ -199,5 +266,6 @@ private:
 
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FGuid, FWorldCropState> Crops;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals") TMap<FGuid, FWorldAnimalState> Animals;
+    UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Animals|Pens") TMap<FGuid, FWorldAnimalPenState> AnimalPens;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Farm") TMap<FIntVector, FWorldFieldCellState> FieldCells;
 };
