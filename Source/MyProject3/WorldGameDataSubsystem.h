@@ -69,6 +69,39 @@ struct FGameDataStation
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData") float SpoilageRate = 1.0f;
 };
 
+/** Authored ecological region; one index is the stable crop/discovery zone id. */
+USTRUCT(BlueprintType)
+struct FGameDataZone
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") int32 Index = -1;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FVector Center = FVector::ZeroVector;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") float RadiusCm = 1000.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") TArray<FName> ResourceItemIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString Obstacle;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Zones") FString PermanentSolution;
+};
+
+/** Data definition for a discoverable knowledge/material site in the world. */
+USTRUCT(BlueprintType)
+struct FGameDataDiscovery
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName ZoneId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FVector Location = FVector::ZeroVector;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") float RevealRadiusCm = 300.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") TArray<FName> PrerequisiteDiscoveryIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") TArray<FName> RequiredEquipmentDefinitionIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") TArray<FName> UnlockedDefinitionIds;
+    /** Optional one-time item reward; zero quantity means a knowledge/location-only discovery. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") FName RewardItemId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Discovery") int32 RewardQuantity = 0;
+};
+
 USTRUCT(BlueprintType)
 struct FGameDataCrop
 {
@@ -137,6 +170,11 @@ public:
     const TArray<FGameDataTransformation>& GetTransformations() const { return Transformations; }
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
+    const TArray<FGameDataZone>& GetZones() const { return Zones; }
+    const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
+    const FGameDataZone* FindZone(FName ZoneId) const;
+    /** Best-fitting containing region in 2D world space; null when outside every region. */
+    const FGameDataZone* FindZoneAtLocation(const FVector& WorldLocation) const;
     const TArray<FGameDataWorldEvent>& GetWorldEvents() const { return WorldEvents; }
     const FGameDataTransformation* FindTransformation(FName Id) const;
 
@@ -151,6 +189,8 @@ private:
     TArray<FGameDataTransformation> Transformations;
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
+    TArray<FGameDataZone> Zones;
+    TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataWorldEvent> WorldEvents;
     FWorldCalendarConfig Calendar;
     TArray<FWorldMonthClimate> ClimateMonths;
