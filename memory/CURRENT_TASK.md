@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Fix two stale station help strings in `VerticalSliceCWorldActor.cpp` (still say R/E although station keys are F2/F3/F4). Update the station integration-test helper so `HalfLog` is added as `BuildingPart`, while Wedge/Chisel remain `Tool`; then finish source-only station API/test audit. After that update P4.3 status/roadmap/codebase and proceed P4.4 tool strength.
+Update the station integration-test helper so `HalfLog` is category `BuildingPart`, while Wedge/Chisel stay `Tool`; then perform source-only P4.3 audit and update status docs. No build/run.
