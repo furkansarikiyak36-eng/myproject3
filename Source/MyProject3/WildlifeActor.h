@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "WildlifeActor.generated.h"
 
+class APawn;
 class UPhysicalHealthComponent;
 class UStaticMeshComponent;
 class UWorldObjectIdentityComponent;
@@ -59,6 +60,9 @@ public:
     /** Called by the agriculture domain after a capture/pen transaction has been preflighted. */
     bool ApplyAnimalManagementState(const FGuid& AnimalId, const FGuid& PenId,
         const FVector& TargetLocation);
+
+    /** Attempts one rate-limited close-range bite; false means not in reach or still cooling down. */
+    bool TryBiteTarget(APawn* TargetPawn);
 
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
