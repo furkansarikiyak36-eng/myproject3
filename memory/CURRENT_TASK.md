@@ -16,8 +16,8 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 1. [x] Read shared project memory and codebase map.
 2. [x] Inspect agriculture, game-data, calendar, ownership, save and world-test code.
 3. [x] Identify crop/field integration gaps and persistence call sites.
-4. [ ] Implement field-cell state/actions, seasonal planting, soil exhaustion/rotation and seed return under idempotent operation rules.
-5. [ ] Load crop months/seed-return/soil parameters from crops.json; validate all references and register definitions in ApplyToWorld.
+4. [x] Add field-cell state/work contracts, revisioned operations, seasonal planting, seed-output records, soil exhaustion and crop/field consistency rules.
+5. [x] Extend crops.json and data-loader parsing/registration for seed-return, season and soil rules; add schema v23 field-state persistence/migration.
 6. [ ] Add automation-test source for positive, negative, seasonal, retry and snapshot cases.
 7. [ ] Continue P6.4 animal capture/pen/slaughter lifecycle.
 8. [ ] Update PLAN_STATUS/CODEBASE/checkpoint honestly; keep P7/P8/P9.2 and full-year test queued.
@@ -35,13 +35,16 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md
 
 ## Findings
-- Agriculture header now defines per-crop plant months/seed returns/soil costs and a SaveGame field-cell state model with clear/till/fertilize/weed/mulch/water action contracts.
-- Existing two-array crop/animal snapshot APIs are retained as compatibility overloads; the persistence path will use a new field-aware overload.
-- Implementation still needs to enforce field prerequisites, seasonal month checks, item output receipts, field/crop consistency and v23 migration. This header-only change is code-written, not compiled.
+- Field state now tracks clearing, tilling, fertility, weed pressure, mulch coverage, moisture, planted crop, last crop/cycle and stable field action receipts. Field operations are revision-guarded and retry-safe.
+- Planting now requires a prepared field, permitted plant month, fertility/weed/moisture conditions and a unique seed item owned by the expected inventory. Legacy TryPlantCrop delegates to the guarded contract.
+- Harvest materializes harvest outputs plus configured seed-return items in one output registration call, clears the field planting link, and depletes fertility with a larger penalty for consecutive repeat crops.
+- crops.json now carries seed-return/soil/weed values; parser validates crop IDs and planting month ranges/duplicates; ApplyToWorld registers all three crop definitions.
+- Save schema v23 persists field cells. v22 migration deliberately clears absent field history and disables invented seed returns for legacy crop records.
+- These are source edits only. No UHT/UBT build, automation test or PIE check has been run on this branch; parent branch's earlier 102/102 result is not evidence for these edits.
 
 ## Changes
 - Created game/p06-farming-seed-cycle from game/p00-adopt-group-a.
-- Updated WorldAgricultureSubsystem.h with crop growth constraints, field-cell types, work kinds, revision-guarded planting and field-aware snapshot APIs.
+- Updated WorldAgricultureSubsystem.h/.cpp, WorldGameDataSubsystem.h/.cpp, Config/GameData/crops.json, WorldSimulationSaveGame.h and WorldSaveCoordinatorSubsystem.cpp.
 
 ## Next step
-Implement WorldAgricultureSubsystem.cpp against the new declarations, preserving the existing ownership/rollback behavior and validating all receipt/snapshot references. No build.
+Fix remaining static consistency issues (crop field links on wither, snapshot receipt/legacy validation, data-loader assertions), then add GameWorldTests.cpp coverage for field work retries, seasonal rejection/acceptance, exact seed ownership, returned seeds, soil exhaustion and field snapshot round-trip. No build.
