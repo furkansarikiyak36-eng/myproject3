@@ -102,6 +102,17 @@ struct FWorldCarryComponentSnapshot
     UPROPERTY(SaveGame)
     FSoftObjectPath OwnerActorPath;
 
+    /** Stable identity when the carry owner participates in the physical actor manifest. */
+    UPROPERTY(SaveGame)
+    FGuid OwnerActorIdentityId;
+
+    /** Actor transform is required for owners such as the player pawn that have no world identity component. */
+    UPROPERTY(SaveGame)
+    FTransform OwnerActorTransform = FTransform::Identity;
+
+    UPROPERTY(SaveGame)
+    bool bHasSavedOwnerTransform = true;
+
     UPROPERTY(SaveGame)
     FName CarryComponentName = NAME_None;
 
@@ -144,7 +155,7 @@ class MYPROJECT3_API UWorldSimulationSaveGame : public USaveGame
 {
     GENERATED_BODY()
 public:
-    static constexpr int32 CurrentSchemaVersion = 18;
+    static constexpr int32 CurrentSchemaVersion = 19;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") int32 SchemaVersion = CurrentSchemaVersion;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldSimulationClockSnapshot Clock;
     UPROPERTY(VisibleAnywhere, SaveGame, Category="World|Save") FWorldThreatDirectorSnapshot Threat;
