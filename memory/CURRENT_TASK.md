@@ -64,7 +64,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Config/GameData/conditions.json` (existing `Illness.Cold`, `Illness.DirtyWater`, `Injury.Fall`, and `Injury.AnimalBite` definitions are available for environment triggers).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (declared public environmental `ApplyWetnessExposure`).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (bounded additive environmental wetness; wet-cold illness requires Wetness≥0.8, felt temperature sufficiently cold, and core temperature≤36°C).
-- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (test file currently lacks `LogSnapCharacter.h`; current last tests cover reusable-pot creek fill and wet-cold illness, suitable location for a fall-impact regression).
+- `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (added `MyProject3.Survival.FallImpactAppliesConfiguredInjuryOnce`: 800 cm/s does nothing; 1300 cm/s deals physical damage and adds one registered `Injury.Fall` condition; source only/unrun).
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (player location update now detects `IsInCreek` and adds 0.12 wetness each survival update while wading).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
@@ -159,4 +159,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Add `LogSnapCharacter.h` and a focused automation test: spawn a character, register the survival profile + `Injury.Fall`, verify 800 cm/s has no effect, then 1300 cm/s reduces physical health and records the condition. Then add an enemy-bite test if a deterministic player pawn can be used.
+Add a deterministic hostile-bite regression by exposing a small `AWildlifeActor::TryBiteTarget(APawn*)` method used by Tick and test: spawn player with survival profile + `Injury.AnimalBite`, put Enemy within attack distance, invoke once (health and condition change), invoke again during cooldown (no second hit). Afterward update plan/status for P2.1–P2.5.
