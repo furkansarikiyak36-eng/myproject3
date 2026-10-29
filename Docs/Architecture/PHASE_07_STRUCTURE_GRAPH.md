@@ -20,7 +20,7 @@
 - `WallOpening` has a clear-passage state independent of a movable door.
 - Bridge deck/elevated walkway accepts traversal only with a primary and second independent support, bounded span, valid support path, and both physical support anchors reserved. Active traversal IDs reserve a shared weight budget and can be released.
 - Rope crossing anchors create a visible link between two compatible sockets, reject invalid/overlong spans, reserve each endpoint, and provide ticket-based movement along the line with a per-traveler and shared load limit.
-- Raid target processing checks `IsRaidBlocking()`: an open door/gate or a wall opening is skipped; closed gates, window frames, fences and defensive walls remain damageable targets if configured in `DefenseTargetNodeIds`.
+- Raid target processing respects `IsRaidBlocking()`: open doors/gates and wall openings are removed from an explicit target list. If that leaves no target (or no list was authored), the adapter picks the nearest blocking stone structure to the raid target location and attacks one structure per pulse; closed gates, window frames, fences and defensive walls therefore participate without requiring a hand-authored target list. Explicit valid target lists retain their deterministic order.
 
 ## M063/M069 source completion
 

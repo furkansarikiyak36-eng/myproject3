@@ -10,6 +10,7 @@
 - Bridge/walkway second-anchor/span preflight, concurrent traversal weight tickets and explicit release.
 - Visible rope anchor-to-anchor link, span and traveler-weight limits, ticket-based traversal progression and endpoint cleanup.
 - Connected dismantle returns authored salvage for each removed structure node while consuming unique source ownership records; raid collapse uses the same batch transaction without salvage.
+- Raid target lists discard open passages. When no valid explicit obstacle remains, the adapter selects the nearest blocking stone structure to the raid target location and attacks one obstacle per pulse.
 - Alternate healthy supports are promoted to primary and physical actor/anchor links are rebuilt; transaction rollback restores the graph, inventory, item ledger and actor attachments on pre-destruction failures.
 - Source tests cover these behaviors, including stale revisions and ownership preservation.
 

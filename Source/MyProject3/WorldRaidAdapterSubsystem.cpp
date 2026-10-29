@@ -108,6 +108,18 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     // collapse resolution cannot replay this pulse on the next call.
     NextDamageTimeSeconds = NextPulseTime;
     TArray<FGuid> SortedTargets = DefenseTargetNodeIds;
+    if (!SortedTargets.IsEmpty())
+    {
+        SortedTargets.RemoveAll([Graph](const FGuid& NodeId)
+        {
+            FStructuralNodeRecord Node;
+            if (!Graph->GetNode(NodeId, Node))
+                return true;
+            if (AStoneBuildingPiece* Stone = Cast<AStoneBuildingPiece>(Node.Actor.Get()))
+                return !Stone->IsRaidBlocking();
+            return false;
+        });
+    }
     const bool bAutoSelectBlockingTarget = SortedTargets.IsEmpty();
     if (bAutoSelectBlockingTarget)
     {
