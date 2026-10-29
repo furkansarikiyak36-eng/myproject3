@@ -19,6 +19,8 @@
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
 
 #include "Components/DirectionalLightComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -1074,6 +1076,52 @@ void AVerticalSliceCWorldActor::SetupPlayer()
     }
 }
 
+void AVerticalSliceCWorldActor::UpdateZoneDiscoveries()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Pawn || !Data || !Data->IsApplied() || !Survival || !Clock ||
+        !Clock->IsClockInitialized() || !PlayerSurvivalId.IsValid())
+        return;
+
+    const FVector PlayerLocation = Pawn->GetActorLocation();
+    const TArray<FWorldDiscoveryRecord> ExistingDiscoveries = Survival->GetDiscoveries();
+    for (const FGameDataRouteNode& Node : Data->GetRouteNodes())
+    {
+        if (!Node.bEnabled || Node.DiscoveryId.IsNone() ||
+            !FMath::IsFinite(Node.DiscoveryRadiusCm) || Node.DiscoveryRadiusCm <= 0.0f)
+            continue;
+
+        const FVector2D PlayerXY(PlayerLocation.X, PlayerLocation.Y);
+        const FVector2D NodeXY(Node.Location.X, Node.Location.Y);
+        if (FVector2D::DistSquared(PlayerXY, NodeXY) >
+            FMath::Square(static_cast<double>(Node.DiscoveryRadiusCm)))
+            continue;
+
+        // Discovery is a one-time world event. Do not manufacture new receipts
+        // every second for an ID already stored in the save, even after reload.
+        if (ExistingDiscoveries.ContainsByPredicate([&Node](const FWorldDiscoveryRecord& Record)
+            { return Record.DiscoveryId == Node.DiscoveryId; }))
+            continue;
+
+        FWorldSurvivalProfile Profile;
+        if (!Survival->GetProfile(PlayerSurvivalId, Profile))
+            return;
+
+        if (Survival->TryRecordConfiguredDiscovery(
+            FGuid::NewGuid(), PlayerSurvivalId, Profile.Revision,
+            Node.DiscoveryId, PlayerLocation, Clock->GetSimulationTimeSeconds()))
+        {
+            UE_LOG(LogTemp, Log, TEXT("Discovery recorded at route anchor %s: %s"),
+                *Node.NodeId.ToString(), *Node.DiscoveryId.ToString());
+        }
+    }
+}
+
 void AVerticalSliceCWorldActor::ChopInput()
 {
     APlayerController* Controller = GetWorld()->GetFirstPlayerController();
@@ -1190,6 +1238,7 @@ void AVerticalSliceCWorldActor::Tick(float DeltaSeconds)
         if (Survival && Controller && Controller->GetPawn())
         {
             Survival->UpdateLocation(PlayerSurvivalId, Controller->GetPawn()->GetActorLocation());
+            UpdateZoneDiscoveries();
             const bool bNight = Hours < 6.0f || Hours > 19.5f;
             Survival->SetWeather(bNight ? EWorldWeatherState::Snow : EWorldWeatherState::Wind, bNight ? 0.5f : 0.35f);
         }
