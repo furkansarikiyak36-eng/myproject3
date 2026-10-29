@@ -6,6 +6,7 @@
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "Engine/World.h"
+#include "Engine/Engine.h"
 #include "Misc/Crc.h"
 
 namespace
@@ -66,6 +67,8 @@ bool UWorldEventDirectorSubsystem::InitializeEventDirector()
     Fresh.LastProcessedTimeSeconds = Clock->GetSimulationTimeSeconds();
     Fresh.PreviousSnowDepthCm = Climate->GetSnowDepthCm();
     State = MoveTemp(Fresh);
+    PresentedSignalIds.Reset();
+    PresentedActiveIds.Reset();
     return true;
 }
 
@@ -354,6 +357,57 @@ FString UWorldEventDirectorSubsystem::GetEventStatusText() const
     return Result;
 }
 
+void UWorldEventDirectorSubsystem::PublishEventNotifications()
+{
+    if (!GEngine)
+        return;
+
+    const UWorldGameDataSubsystem* Data = GetGameData();
+    TSet<FGuid> LiveSignals;
+    TSet<FGuid> LiveActive;
+    for (const FWorldNaturalEventInstance& Instance : State.Instances)
+    {
+        if (Instance.Phase != EWorldNaturalEventPhase::Signal &&
+            Instance.Phase != EWorldNaturalEventPhase::Active)
+            continue;
+        const FGameDataWorldEvent* Definition = Data
+            ? Data->GetWorldEvents().FindByPredicate([&Instance](const FGameDataWorldEvent& Event)
+                { return Event.Id == Instance.DefinitionId; })
+            : nullptr;
+        const FString Name = Definition ? Definition->Name : Instance.DefinitionId.ToString();
+        const uint32 KeyHash = FCrc::StrCrc32(*Instance.InstanceId.ToString()) & 0x3FFFFFFF;
+        if (Instance.Phase == EWorldNaturalEventPhase::Signal)
+        {
+            LiveSignals.Add(Instance.InstanceId);
+            if (!PresentedSignalIds.Contains(Instance.InstanceId))
+            {
+                const double Remaining = FMath::Max(0.0, Instance.StartsAtSeconds - State.LastProcessedTimeSeconds);
+                const FString Message = FString::Printf(TEXT("DOĞAL OLAY UYARISI: %s (başlangıca %.0f oyun dakikası)"),
+                    *Name, Remaining / 60.0);
+                GEngine->AddOnScreenDebugMessage(static_cast<int32>(KeyHash), 7.0f, FColor::Orange, Message);
+                PresentedSignalIds.Add(Instance.InstanceId);
+            }
+        }
+        else
+        {
+            LiveActive.Add(Instance.InstanceId);
+            if (!PresentedActiveIds.Contains(Instance.InstanceId))
+            {
+                GEngine->AddOnScreenDebugMessage(static_cast<int32>(KeyHash | 0x40000000), 7.0f,
+                    FColor::Red, FString::Printf(TEXT("DOĞAL OLAY BAŞLADI: %s"), *Name));
+                PresentedActiveIds.Add(Instance.InstanceId);
+            }
+        }
+    }
+
+    for (auto It = PresentedSignalIds.CreateIterator(); It; ++It)
+        if (!LiveSignals.Contains(*It))
+            It.RemoveCurrent();
+    for (auto It = PresentedActiveIds.CreateIterator(); It; ++It)
+        if (!LiveActive.Contains(*It))
+            It.RemoveCurrent();
+}
+
 bool UWorldEventDirectorSubsystem::IsValidSnapshot(const FWorldEventDirectorSnapshot& Snapshot) const
 {
     if (Snapshot.SchemaVersion != 1 || Snapshot.Serial < 0 ||
@@ -410,6 +464,8 @@ bool UWorldEventDirectorSubsystem::RestoreSnapshot(const FWorldEventDirectorSnap
             return false;
 
     State = Snapshot;
+    PresentedSignalIds.Reset();
+    PresentedActiveIds.Reset();
     ApplyActiveEventWeather();
     return true;
 }
