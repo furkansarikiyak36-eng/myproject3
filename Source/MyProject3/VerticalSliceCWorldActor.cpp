@@ -1073,9 +1073,104 @@ void AVerticalSliceCWorldActor::SetupPlayer()
             FInputKeyBinding& FillWaterBinding = InputComponent->BindKey(
                 EKeys::I, IE_Pressed, this, &AVerticalSliceCWorldActor::FillCreekWaterInput);
             FillWaterBinding.bConsumeInput = false;
+            FInputKeyBinding& RefuelBinding = InputComponent->BindKey(
+                EKeys::O, IE_Pressed, this, &AVerticalSliceCWorldActor::RefuelFireInput);
+            RefuelBinding.bConsumeInput = false;
             bInputBound = true;
         }
     }
+}
+
+void AVerticalSliceCWorldActor::RefuelFireInput()
+{
+    UWorld* World = GetWorld();
+    APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+    APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+    if (!World || !Pawn)
+        return;
+
+    UInventoryCraftingComponent* Inventory = Pawn->FindComponentByClass<UInventoryCraftingComponent>();
+    UWorldItemOwnershipSubsystem* Ownership = World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Inventory || !Ownership)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Red,
+                TEXT("Cannot refuel: inventory or item ownership system unavailable."));
+        return;
+    }
+
+    UHeatSourceComponent* NearestHeat = nullptr;
+    float NearestDistanceSquared = FMath::Square(400.0f);
+    TArray<AActor*> NearbyActors;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!IsValid(Actor))
+            continue;
+        TArray<UHeatSourceComponent*> Sources;
+        Actor->GetComponents<UHeatSourceComponent>(Sources);
+        for (UHeatSourceComponent* Source : Sources)
+        {
+            if (!IsValid(Source) || Source->FuelDefinitions.IsEmpty())
+                continue;
+            const float DistanceSquared = FVector::DistSquared(
+                Pawn->GetActorLocation(), Source->GetComponentLocation());
+            if (DistanceSquared <= NearestDistanceSquared)
+            {
+                NearestDistanceSquared = DistanceSquared;
+                NearestHeat = Source;
+            }
+        }
+    }
+
+    if (!NearestHeat)
+    {
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
+                TEXT("Move close to a campfire or hearth to refuel it. (O)"));
+        return;
+    }
+
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    if (!InventoryOwnerId.IsValid())
+        return;
+
+    for (const FInventoryStack& Stack : Inventory->Items)
+    {
+        if (!Stack.OwnedWorldItemId.IsValid() || Stack.Quantity != 1 || Stack.MaxStack != 1 ||
+            !NearestHeat->FuelDefinitions.ContainsByPredicate(
+                [&Stack](const FHeatFuelDefinition& Definition)
+                { return Definition.ItemDefinitionId == Stack.ItemId; }))
+            continue;
+
+        FWorldOwnedItemRecord FuelItem;
+        if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, FuelItem) ||
+            FuelItem.OwnerKind != EWorldItemOwnerKind::Inventory ||
+            FuelItem.OwnerId != InventoryOwnerId ||
+            FuelItem.DefinitionId != Stack.ItemId)
+            continue;
+
+        const bool bAdded = NearestHeat->TryAddFuelItem(
+            FGuid::NewGuid(), FuelItem.ItemId, FuelItem.Revision, InventoryOwnerId);
+        if (!bAdded)
+            continue;
+
+        const bool bWasLit = NearestHeat->IsLit();
+        const bool bIgnited = bWasLit || NearestHeat->Ignite();
+        if (GEngine)
+        {
+            const FColor MessageColor = bIgnited ? FColor(255, 190, 90) : FColor::Orange;
+            const FString Message = bIgnited
+                ? FString::Printf(TEXT("Added %s to the fire."), *Stack.ItemId.ToString())
+                : FString::Printf(TEXT("Added %s, but the fire could not be lit."), *Stack.ItemId.ToString());
+            GEngine->AddOnScreenDebugMessage(-1, 2.5f, MessageColor, Message);
+        }
+        return;
+    }
+
+    if (GEngine)
+        GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
+            TEXT("Carry an owned firewood or charcoal item to refuel this fire."));
 }
 
 void AVerticalSliceCWorldActor::FillCreekWaterInput()
