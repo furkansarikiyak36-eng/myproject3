@@ -1153,8 +1153,11 @@ bool AStoneBuildingPiece::TryBeginRopeTraversal(
     if (!CanBeginRopeTraversal(WeightKg))
         return false;
     const bool bStartsAtOwner = Owner == this;
+    AStoneBuildingPiece* StartPiece = bStartsAtOwner ? Owner : Owner->RopeOtherEnd.Get();
     const FName StartAnchor = bStartsAtOwner ? Owner->RopeLocalAnchorId : Owner->RopeRemoteAnchorId;
-    const FVector Start = GetAnchorWorldTransform(StartAnchor).GetLocation();
+    if (!IsValid(StartPiece) || StartAnchor.IsNone())
+        return false;
+    const FVector Start = StartPiece->GetAnchorWorldTransform(StartAnchor).GetLocation();
     const FGuid Ticket = FGuid::NewGuid();
     if (!Ticket.IsValid() || Owner->ActiveRopeTravelers.Contains(Ticket))
         return false;
@@ -1220,8 +1223,14 @@ void AStoneBuildingPiece::ResetActorLocalAttachmentStateForGraphRestore(bool bPl
     OwnAnchorIdUsed = NAME_None;
     AttachedPieces.Reset();
     CrossMaterialParent.Reset();
+
+    // Rope endpoints are runtime links outside the structural graph. A graph
+    // restore must clear structural reservations but preserve an active rope's
+    // local socket reservation, otherwise a second rope can claim the same socket.
+    const bool bPreserveRopeSocket = RopeOtherEnd.IsValid() && !RopeLocalAnchorId.IsNone();
+    const FName PreservedRopeSocket = RopeLocalAnchorId;
     for (FStoneSnapAnchor& Anchor : Anchors)
-        Anchor.bOccupied = false;
+        Anchor.bOccupied = bPreserveRopeSocket && Anchor.AnchorId == PreservedRopeSocket;
     bIsHeld = false;
     bIsPlaced = bPlaced;
     if (Mesh)

@@ -2860,6 +2860,20 @@ bool FStructuralInteractivePiecesAndRopeTraversalTest::RunTest(const FString& Pa
     TestTrue(TEXT("Traveler arrives at the far socket"),
         FVector::Dist(Traveler->GetActorLocation(), RopeB->GetAnchorWorldTransform(TEXT("RopeSocket")).GetLocation()) <= 1.0f);
 
+    // Starting from the remote endpoint must use that endpoint's socket, not
+    // accidentally query the remote anchor name on the owner actor.
+    FGuid ReverseTraversalId;
+    TestTrue(TEXT("Begin rope traversal from the non-owner endpoint"),
+        RopeB->TryBeginRopeTraversal(Traveler, 80.0f, ReverseTraversalId));
+    TestTrue(TEXT("Reverse traversal starts at the remote socket"),
+        FVector::Dist(Traveler->GetActorLocation(), RopeB->GetAnchorWorldTransform(TEXT("RopeSocket")).GetLocation()) <= 1.0f);
+    TestTrue(TEXT("Reverse traversal can advance toward the owner"),
+        RopeB->AdvanceRopeTraversal(ReverseTraversalId, 0.5f));
+    TestTrue(TEXT("Reverse traversal midpoint remains on the rope"),
+        FMath::IsNearlyEqual(Traveler->GetActorLocation().X, 300.0f, 1.0f));
+    TestTrue(TEXT("Cancel reverse traversal releases capacity"),
+        RopeB->CancelRopeTraversal(ReverseTraversalId));
+
     AStoneBuildingPiece* RopeFarA = SpawnPiece(EStonePieceType::RopeCrossingAnchor, FVector(0.0, 8000.0, 0.0));
     AStoneBuildingPiece* RopeFarB = SpawnPiece(EStonePieceType::RopeCrossingAnchor, FVector(1800.0, 8000.0, 0.0));
     if (!TestNotNull(TEXT("Long rope source"), RopeFarA) || !TestNotNull(TEXT("Long rope target"), RopeFarB))
