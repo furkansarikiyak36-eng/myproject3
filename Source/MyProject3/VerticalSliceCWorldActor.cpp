@@ -1496,13 +1496,41 @@ void AVerticalSliceCWorldActor::StationDepositInput()
     if (!Production->GetStation(Station->GetStationId(), State))
         return;
 
-    auto TryDepositDeficit = [&](FName ItemId, int32 RequiredUnits) -> bool
+    // Build one requirement map for every recipe registered at this station.
+    // F3 moves all currently available generic deficits in one press, rather than
+    // forcing one key press per ingredient. Unique ledger-owned items stay excluded.
+    TMap<FName, int32> DesiredStock;
+    for (const FGameDataTransformation& Transformation : GameData->GetTransformations())
     {
-        if (ItemId.IsNone() || RequiredUnits <= State.Stock.FindRef(ItemId))
-            return false;
+        if (Transformation.Where != Station->StationDataId || Transformation.Inputs.IsEmpty())
+            continue;
+        for (const FGameDataItemAmount& Input : Transformation.Inputs)
+        {
+            if (!Input.ItemId.IsNone() && Input.Quantity > 0)
+                DesiredStock.FindOrAdd(Input.ItemId) =
+                    FMath::Max(DesiredStock.FindRef(Input.ItemId), Input.Quantity);
+        }
+        for (const FName ToolId : Transformation.Tools)
+        {
+            if (!ToolId.IsNone())
+                DesiredStock.FindOrAdd(ToolId) = FMath::Max(DesiredStock.FindRef(ToolId), 1);
+        }
+    }
 
-        // Aggregate station stock cannot retain a unique ledger item identity.
-        // Only generic stacks are eligible for this prototype deposit action.
+    TArray<FName> ItemIds;
+    DesiredStock.GetKeys(ItemIds);
+    ItemIds.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+
+    int32 DepositedKinds = 0;
+    int32 DepositedUnits = 0;
+    for (const FName ItemId : ItemIds)
+    {
+        if (!Production->GetStation(Station->GetStationId(), State))
+            break;
+        const int32 Missing = DesiredStock.FindRef(ItemId) - State.Stock.FindRef(ItemId);
+        if (Missing <= 0)
+            continue;
+
         int32 PlainAvailable = 0;
         bool bContainsUniqueIdentity = false;
         for (const FInventoryStack& Stack : Inventory->Items)
@@ -1515,55 +1543,23 @@ void AVerticalSliceCWorldActor::StationDepositInput()
                 PlainAvailable += Stack.Quantity;
         }
         if (bContainsUniqueIdentity || PlainAvailable <= 0)
-            return false;
-
-        const int32 ToDeposit = FMath::Min(RequiredUnits - State.Stock.FindRef(ItemId), PlainAvailable);
-        if (ToDeposit <= 0 || !Station->TryDeposit(Inventory, ItemId, ToDeposit))
-            return false;
-
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(150, 205, 255),
-                FString::Printf(TEXT("Deposited %d x %s at %s."),
-                    ToDeposit, *ItemId.ToString(), *Station->StationDataId.ToString()));
-        return true;
-    };
-
-    bool bRecipeAlreadyStocked = false;
-    for (const FGameDataTransformation& Transformation : GameData->GetTransformations())
-    {
-        if (Transformation.Where != Station->StationDataId || Transformation.Inputs.IsEmpty())
             continue;
 
-        bool bAllInputsStocked = true;
-        for (const FGameDataItemAmount& Input : Transformation.Inputs)
+        const int32 ToDeposit = FMath::Min(Missing, PlainAvailable);
+        if (Station->TryDeposit(Inventory, ItemId, ToDeposit))
         {
-            if (State.Stock.FindRef(Input.ItemId) < Input.Quantity)
-            {
-                bAllInputsStocked = false;
-                if (TryDepositDeficit(Input.ItemId, Input.Quantity))
-                    return;
-            }
+            ++DepositedKinds;
+            DepositedUnits += ToDeposit;
         }
-        for (const FName ToolId : Transformation.Tools)
-        {
-            if (State.Stock.FindRef(ToolId) < 1)
-            {
-                bAllInputsStocked = false;
-                if (TryDepositDeficit(ToolId, 1))
-                    return;
-            }
-        }
-        if (bAllInputsStocked)
-            bRecipeAlreadyStocked = true;
     }
 
     if (GEngine)
     {
-        const FString Message = bRecipeAlreadyStocked
-            ? TEXT("Required items are already at the station. Press F2 to start when fire requirements are met.")
-            : TEXT("No missing recipe input/tool is available as a generic inventory stack.");
-        GEngine->AddOnScreenDebugMessage(-1, 2.5f,
-            bRecipeAlreadyStocked ? FColor(130, 220, 150) : FColor::Orange, Message);
+        const FString Message = DepositedUnits > 0
+            ? FString::Printf(TEXT("Deposited %d items across %d types at %s."),
+                DepositedUnits, DepositedKinds, *Station->StationDataId.ToString())
+            : TEXT("No missing recipe inputs/tools could be deposited; check generic inventory stacks and station capacity.");
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, DepositedUnits > 0 ? FColor(150, 205, 255) : FColor::Orange, Message);
     }
 }
 
@@ -1594,27 +1590,37 @@ void AVerticalSliceCWorldActor::StationTakeInput()
     TArray<FName> StockIds;
     State.Stock.GetKeys(StockIds);
     StockIds.Sort([](const FName& A, const FName& B) { return A.LexicalLess(B); });
+    int32 WithdrawnKinds = 0;
+    int32 WithdrawnUnits = 0;
     for (const FName ItemId : StockIds)
     {
-        if (State.Stock.FindRef(ItemId) <= 0)
+        if (!Production->GetStation(Station->GetStationId(), State))
+            break;
+        const int32 Available = State.Stock.FindRef(ItemId);
+        if (Available <= 0)
             continue;
-        if (Station->TryTake(Inventory, ItemId, 1))
+
+        // Withdraw the largest whole stack that fits; proceed to other item types
+        // if this one cannot fit, preserving station stock on every failed attempt.
+        for (int32 Quantity = Available; Quantity >= 1; --Quantity)
         {
-            if (GEngine)
-                GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor(140, 220, 150),
-                    FString::Printf(TEXT("Took 1 x %s from %s."), *ItemId.ToString(),
-                        *Station->StationDataId.ToString()));
-            return;
+            if (Station->TryTake(Inventory, ItemId, Quantity))
+            {
+                ++WithdrawnKinds;
+                WithdrawnUnits += Quantity;
+                break;
+            }
         }
-        if (GEngine)
-            GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Orange,
-                TEXT("Could not take stock. Check inventory capacity and item data."));
-        return;
     }
 
     if (GEngine)
-        GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver,
-            TEXT("Station stock is empty."));
+    {
+        const FString Message = WithdrawnUnits > 0
+            ? FString::Printf(TEXT("Withdrew %d items across %d types from %s."),
+                WithdrawnUnits, WithdrawnKinds, *Station->StationDataId.ToString())
+            : TEXT("No station stock could fit in inventory.");
+        GEngine->AddOnScreenDebugMessage(-1, 2.5f, WithdrawnUnits > 0 ? FColor(140, 220, 150) : FColor::Orange, Message);
+    }
 }
 
 void AVerticalSliceCWorldActor::FillCreekWaterInput()
