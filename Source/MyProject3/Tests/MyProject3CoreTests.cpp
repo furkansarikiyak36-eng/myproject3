@@ -4139,6 +4139,52 @@ bool FCreekWetColdExposureIllnessTest::RunTest(const FString& Parameters)
 }
 
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWarmShelterDriesWetPlayerTest,
+    "MyProject3.Survival.WarmShelterDriesWetPlayer", TestFlags)
+bool FWarmShelterDriesWetPlayerTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock = World
+        ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World
+        ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Shared clock"), Clock) ||
+        !TestNotNull(TEXT("Survival subsystem"), Survival))
+        return false;
+    TestTrue(TEXT("Initialize drying clock"), Clock->InitializeClock(8127, 1000.0));
+    TestTrue(TEXT("Set clear conditions for controlled drying"),
+        Survival->SetWeather(EWorldWeatherState::Clear, 0.0f));
+
+    Survival->AmbientTemperatureCelsius = 28.0f;
+    Survival->ComfortTemperatureCelsius = 18.0f;
+    Survival->WetnessPenaltyCelsius = 10.0f;
+    Survival->ShelterWarmthCelsius = 8.0f;
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid::NewGuid();
+    Profile.Location = FVector::ZeroVector;
+    Profile.Wetness = 0.9f;
+    Profile.ShelterProtection = 0.8f;
+    Profile.ClothingInsulation = 0.0f;
+    Profile.CoreTemperatureCelsius = 37.0f;
+    TestTrue(TEXT("Register wet sheltered profile"), Survival->RegisterProfile(Profile));
+
+    TestTrue(TEXT("Advance shared clock for one hour"), Clock->AdvanceSimulation(3600.0));
+    const double LogicalTime = Clock->GetSimulationTimeSeconds();
+    TestTrue(TEXT("Validate drying step"), Survival->CanAdvanceSurvivalStep(3600.0, LogicalTime));
+    TestTrue(TEXT("Advance drying step"), Survival->AdvanceSurvivalStep(3600.0, LogicalTime));
+
+    FWorldSurvivalProfile AfterDrying;
+    TestTrue(TEXT("Read profile after drying"), Survival->GetProfile(Profile.EntityId, AfterDrying));
+    TestTrue(TEXT("Warmth and shelter reduce wetness"),
+        AfterDrying.Wetness < Profile.Wetness);
+    TestTrue(TEXT("Wetness remains normalized"),
+        AfterDrying.Wetness >= 0.0f && AfterDrying.Wetness <= 1.0f);
+    return true;
+}
+
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFallImpactAppliesPhysicalAndSurvivalInjuryTest,
     "MyProject3.Survival.FallImpactAppliesConfiguredInjuryOnce", TestFlags)
 bool FFallImpactAppliesPhysicalAndSurvivalInjuryTest::RunTest(const FString& Parameters)
