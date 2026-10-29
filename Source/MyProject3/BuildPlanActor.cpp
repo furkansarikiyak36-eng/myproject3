@@ -6,6 +6,7 @@
 #include "HarvestableTreeActor.h"
 #include "LogAttachmentComponents.h"
 #include "WildlifeActor.h"
+#include "WorldInfrastructureRouteLinkComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
@@ -229,6 +230,69 @@ void ABuildPlanActor::InitializePlan(EBuildPlanKind InKind)
         for (int32 Index = 0; Index < 4; ++Index)
             AddSlot(FVector(-54 + Index * 36.0f, 0, 2.0f * R + 80 + 3.0f * R), AlongY, 110.0f, 6);
         break;
+    case EBuildPlanKind::CreekBridge:
+    {
+        // 720 cm bank-to-bank crossing. Three overlapping 300 cm beam segments
+        // per side sit on six ground-supported posts. Cross-deck logs span both
+        // beams; 300 cm inclined end logs meet the deck at z=234 and reach ground
+        // near x=+/-540. The route is not enabled until all 29 slots are filled.
+        constexpr float Span = 720.0f;
+        constexpr float DeckZ = 234.0f;
+        constexpr float BeamZ = DeckZ - 2.0f * R;
+        constexpr float HalfSpan = Span * 0.5f;
+        constexpr float SupportSpacing = 240.0f;
+        constexpr float BeamOffsetY = 90.0f;
+
+        // Intermediate abutment/piers, centred under each of the three beam segments.
+        for (int32 Segment = 0; Segment < 3; ++Segment)
+        {
+            const float X = -SupportSpacing + Segment * SupportSpacing;
+            for (int32 Side = 0; Side < 2; ++Side)
+            {
+                const float Y = Side == 0 ? -BeamOffsetY : BeamOffsetY;
+                AddSlot(FVector(X, Y, 90.0f), Up, 180.0f, INDEX_NONE);
+            }
+        }
+
+        // Six overlapping longitudinal beam segments. Each segment bears on a post.
+        const int32 FirstBeamSlot = Slots.Num();
+        for (int32 Segment = 0; Segment < 3; ++Segment)
+        {
+            const float X = -SupportSpacing + Segment * SupportSpacing;
+            for (int32 Side = 0; Side < 2; ++Side)
+            {
+                const float Y = Side == 0 ? -BeamOffsetY : BeamOffsetY;
+                const int32 SupportSlot = Segment * 2 + Side;
+                AddSlot(FVector(X, Y, BeamZ), AlongX, 300.0f, SupportSlot);
+            }
+        }
+
+        // Thirteen transverse deck logs overlap at 60 cm pitch over the 720 cm span.
+        for (int32 Index = 0; Index <= 12; ++Index)
+        {
+            const float X = -HalfSpan + Index * 60.0f;
+            const int32 Segment = FMath::Clamp(
+                FMath::RoundToInt((X + SupportSpacing) / SupportSpacing), 0, 2);
+            const int32 SupportSlot = FirstBeamSlot + Segment * 2 + (Index % 2);
+            AddSlot(FVector(X, 0.0f, DeckZ), AlongY, 180.0f, SupportSlot);
+        }
+
+        // Two sloped approach logs per bank, parallel to the crossing direction.
+        // Pitch is chosen so a 300 cm log rises from ground to the deck height.
+        const float RampPitch = FMath::RadiansToDegrees(FMath::Asin(DeckZ / 300.0f));
+        for (int32 Side = 0; Side < 2; ++Side)
+        {
+            const float Y = Side == 0 ? -60.0f : 60.0f;
+            const int32 LeftSupport = FirstBeamSlot + Side;
+            const int32 RightSupport = FirstBeamSlot + 4 + Side;
+            AddSlot(FVector(-450.0f, Y, DeckZ * 0.5f),
+                FRotator(RampPitch, 0.0f, 0.0f), 300.0f, LeftSupport);
+            AddSlot(FVector(450.0f, Y, DeckZ * 0.5f),
+                FRotator(-RampPitch, 0.0f, 0.0f), 300.0f, RightSupport);
+        }
+        break;
+    }
+
     case EBuildPlanKind::CornerRamp:
     {
         // A ramp up to a landing, then a second ramp turning 90 degrees.
@@ -375,6 +439,35 @@ void ABuildPlanActor::Complete()
     case EBuildPlanKind::LogSled: ContainerKind = ELogContainerKind::BasicSled; bSpawnContainer = true; break;
     default: break;
     }
+    if (Kind == EBuildPlanKind::CreekBridge && World)
+    {
+        // A route link is a separate invisible root, not one of the deck logs.
+        // It only comes into existence when Complete() is reached (all slots filled).
+        const FTransform RouteTransform(GetActorRotation(), GetActorLocation());
+        AActor* RouteRoot = World->SpawnActorDeferred<AActor>(
+            AActor::StaticClass(), RouteTransform, nullptr, nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (RouteRoot)
+        {
+            USceneComponent* Root = NewObject<USceneComponent>(RouteRoot, TEXT("BridgeRouteRoot"));
+            RouteRoot->SetRootComponent(Root);
+            Root->RegisterComponent();
+
+            UWorldInfrastructureRouteLinkComponent* RouteLink =
+                NewObject<UWorldInfrastructureRouteLinkComponent>(RouteRoot, TEXT("CreekBridgeRouteLink"));
+            RouteRoot->AddInstanceComponent(RouteLink);
+            RouteLink->InfrastructureId = TEXT("Infrastructure.CreekBridge");
+            RouteLink->bInfrastructureUsable = false;
+            RouteLink->RegisterComponent();
+            RouteRoot->FinishSpawning(RouteTransform);
+            if (!RouteLink->SetInfrastructureUsable(true))
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("Creek bridge completed physically but route graph has no matching Infrastructure.CreekBridge edge."));
+            }
+        }
+    }
+
     if (Kind == EBuildPlanKind::RabbitHutch && World)
     {
         // A rabbit moves into the finished hutch.
