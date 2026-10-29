@@ -80,7 +80,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldGameDataSubsystem.cpp` (JSON validation and data→system registration paths inspected).
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing `FCreekWaterFillWithReusablePotTest` covers missing vessel, dirty-water output, reusable pot unchanged, retry, and profile snapshot restore; `FCreekWetColdExposureIllnessTest` also exists. Both are source-only/unrun).
-- `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I/O key bindings already include I=FillCreekWater and O=RefuelFire; fill traces none, it checks `IsInCreek`, finds a unique `Pot.Fired`, then calls the survival transaction and displays feedback).
+- `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
+- `Source/MyProject3/LogSnapCharacter.cpp` (current pawn constructor/create-subobject path fetched again to verify whether inventory exists by default).
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: scenario recipe selection resolves from game data).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
