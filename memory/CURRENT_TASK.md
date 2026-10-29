@@ -50,7 +50,8 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (P2 API declarations: profile/location/activity/owned-item consume/rest/condition/weather/snapshots).
 - `Source/MyProject3/VerticalSliceCWorldActor.h` (scene has `IsInCreek`, `PlayerSurvivalId`, `SetupPlayer`, `ChopInput`, `HelperOrderInput`, and its own day/night timer).
 - `Source/MyProject3/VerticalSliceCWorldActor.cpp` (Tick drives separate time/weather and updates survival location; only LMB chop and J helper inputs are bound; `IsInCreek` currently only classifies water for log drift).
-- `Source/MyProject3/LogSnapCharacter.cpp` (current movement, tick, and input binding functions inspected for action-cost/speed integration).
+- `Source/MyProject3/LogSnapCharacter.cpp` (WASD movement is polled in Tick; no survival action-cost or fatigue speed integration exists).
+- `Source/MyProject3/WorldSurvivalSubsystem.cpp` (current location/activity/rest/condition/step functions re-read for P2 wiring).
 - `memory/CODE_INDEX.md` (current symbol map read for player and survival entry-point discovery; index is stale for newly added agriculture symbols).
 - `Source/MyProject3/LogSnapCharacter.h` (input bindings/movement actions: MoveForward/Backward/Right/Left, Tick, Jump and actor components).
 - `Source/MyProject3/WorldSurvivalSubsystem.h` (current action, profile, condition, consumable, weather, rest and snapshot API declarations).
