@@ -133,4 +133,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Modify `WorldSurvivalSubsystem::RecordActivity` to fail closed for Run/Chop/Dig/Build/Carry when stamina/fatigue are depleted. Then make `VerticalSliceCWorldActor::ChopInput` call RecordActivity before repairs/cutting and show feedback when exhausted. Next add P2.3 creek exposure + long wet-cold condition, then P2.1 container-gated water fill.
+Modify `WorldSurvivalSubsystem::RecordActivity` to fail closed for Run/Chop/Dig/Build/Carry when stamina/fatigue are depleted. Make `VerticalSliceCWorldActor::ChopInput` preflight the Chop activity so the gate controls real work. Then add P2.3 creek exposure + long wet-cold condition and P2.1 container-gated water fill.
