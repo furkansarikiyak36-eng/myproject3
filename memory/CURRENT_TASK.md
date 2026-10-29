@@ -21,45 +21,40 @@
 ## Task
 
 Status: `open`
-Goal: Finish every "Kısmi" task of `memory/PLAN_STATUS.md` (27), backend + player input where the task says so.
-Asked by the user: "kısmileri bitirelim" (2026-10-29)
-Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a` (from origin/group-a-code-closure + merge of feature/simple-intent)
+Goal: Close the remaining partial tasks listed in `memory/PLAN_STATUS.md` on `game/p00-adopt-group-a`, prioritizing backend completeness and necessary player-facing interactions, then record exact status. This plan has 22 partial rows; P10 is frozen and must be skipped.
+Asked by the user: "bu kısmileri bitirelim" (2026-10-29)
+Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a`
 
-### Plan (one commit per step; tick when tested)
-0. [x] Adopt group-a (250ce13, 85/85): new branch, merge simple-intent, fix 10 UHT + 6 C++ errors, run all tests, fix failures.
-1. [x] P1.1 calendar (88/88) (day/month/season/year from clock, days per month 5)
-2. [x] P1.2 monthly climate, snow depth, ground wetness (91/91)
-3. [x] P2.1/P2.5 consume conditions (92), P2.2 rest quality (93), P2.4 spoilage by storage+temperature (94)
-4. [x] P3.1 fuel heat 95/95; P3.2 shelter keeps fire heat + placed pieces only 96/96
-5. [x] P0.3/P0.4 data, P4.2 recipes, P4.4 hand tools (99); P4.1 gatherable actor, P4.3 station actor (101)
-6. [x] P5.1 layer data (102)
-7. [ ] P6.2-P6.4 field steps, seeds, animal chain
-8. [ ] P7.1-P7.4 player route cost, zones, reward placement, infrastructure
-9. [ ] P8.2-P8.3 raid signals, snow load/avalanche/fire, repair
-10. [ ] P9.2 helper uses stations; P10 thatch/notches (frozen: skip); save gaps
-Order may change; record why here.
-User 2026-10-29: no more builds per task; write code (ROADMAP 'Writing code without a compiler'), batch build/fix at the end.
-User 2026-10-29: scene last. Backend first; add a headless whole-world year test.
-User 2026-10-29: "p4-yap p10-atla" -> do P0.3/P0.4 data files as part of P4; skip P10 (frozen).
+### Plan (write code and tests; do not build per small task; status ceiling is code-written until batch build)
+
+0. [x] Update this checkpoint before reading source code; scope is current `PLAN_STATUS.md`, not the stale count of 27 in older notes.
+1. [ ] P0.5 + P2.1–P2.5: remove hard-coded demo recipe; complete water, fatigue action effects, wetness/cold triggers, illness/injury triggers; review ledger item ownership.
+2. [ ] P3.1–P3.2 + P4.1/P4.3/P4.4: fuel wetness and fire interaction, enclosure heat-loss gaps, resource placement hooks, station interaction, tool-item strength links.
+3. [ ] P6.1–P6.4: field-cell states, calendar-gated planting, all crop steps supported by current architecture, soil exhaustion/seed return, animal capture/pen/slaughter chain; register definitions from data.
+4. [ ] P7.1–P7.4: player route cost, populated zones, physical discovery placement and unlock gates, missing primitive infrastructure and weather maintenance.
+5. [ ] P8.2–P8.3: raid signals, snow load/avalanche/fire spread, material-based repair.
+6. [ ] P9.2 + Save: helper station usage and persistence of all relevant actor transforms/system state.
+7. [ ] Do not implement P10 now (explicitly frozen); do not invent work for completed tasks. Keep existing physical snap kernel unchanged.
+8. [ ] Add/update targeted automation tests for the changed logic and a headless whole-world year/save-load test, without invoking a build at each step.
+9. [ ] Update `PLAN_STATUS.md`, `CODEBASE.md`, this checkpoint and roadmap truthfully. Mark code only as `code-written`; do not claim compile/PIE verified until batch validation is run.
+10. [ ] Once all intended edits are in, prepare one batch build/fix session and then wire/inspect the scene; scene remains last.
+
+### Rules inherited from user
+- No build after each task: write code and tests, batch build/fix at the end (`memory/ROADMAP.md`).
+- Backend first; scene last; include a headless full-year simulation test.
+- P10 physical assembly is frozen: skip it rather than extending the scope now.
+- Use names/signatures from headers read in this session; do not guess Unreal reflection/API names.
+- After every repository step, update this file with Findings/Changes and Next step.
 
 ### Read
-- —
+- `memory/CURRENT_TASK.md` (this checkpoint only; no gameplay source read yet).
 
 ### Findings
-- Wetness already exists in the survival profile (rain x shelter x clothing, drying); PLAN_STATUS corrected (P2.3 Yok -> Kısmi).
-- VerticalSlice_C keeps its own Hours and never calls the coordinator: clock, survival needs, fuel do not advance in the main level (only UpdateLocation + day/night SetWeather). Only WorldDemoBootstrapActor drives AdvanceFixedStep. -> player-wiring task (P1.4).
-- —
+- Current status source lists 22 partial tasks (not 27); P10 is one row but explicitly frozen.
+- Working branch is `game/p00-adopt-group-a`; `memory/ROADMAP.md` says code status must remain `code-written` until batch validation.
 
 ### Changes
-- Branch game/p00-adopt-group-a created, merged simple-intent (8dc514c, DECISIONS conflict kept both).
-- Fixes: survival header private config lost BlueprintReadWrite; FBox IsValid() -> IsValid (field) x2; receipt ExpectedInventoryOwnerId -> ExpectedItemOwnerId (3 sites). Build: Succeeded.
-- Tests: 85 total, 81 pass, 4 fail: Survival.Body.ColdCoolsCoreAndBurnsCalories (line 680 'Advance one hour' false) and Survival.Heat.RainDrownsOpenFireButNotHearth (736-742) = OLD tests broken by group-a; Terrain.Voxel.BoundedDigChecksMaterialToolAndRevision (866 collision not published) and Terrain.Voxel.DigRejectsNearGroundedStructure (947-949 dig not refused) = new group-a tests.
-- Cause 1-2: group-a made AdvanceSurvivalStep take the END time (coordinator passes TargetTime); old tests passed start time -> tests fixed. Cause 4: test spawns bare AActor without root, SetActorLocation ignored -> test fixed. Cause 3: trace exactly through pit-centre vertex (radius 100, voxel 50) -> trace offset; to confirm.
+- Replaced the previous stale checkpoint with this user's current task and plan before opening gameplay source.
 
 ### Next step
-Any assistant: step 7, P6 farming, WITHOUT building (ROADMAP rules). Read first: WorldAgricultureSubsystem.h
-(FWorldCropDefinition, TryPlantCrop, TryHarvestCrop, ECropGrowthStage), Config/GameData/crops.json,
-WorldGameDataSubsystem.h (FGameDataCrop). Then: field cell state (cleared, tilled, fertility, weeds, mulch, moisture),
-plant only in plant_months (WorldCalendar), soil exhaustion per harvest, seed saving (harvest gives seeds back),
-register crops from data in UWorldGameDataSubsystem::ApplyToWorld. Write tests. Then P6.4, P7, P8, P9.2,
-the headless whole-world year test, then the batch build/fix session, then the scene.
+Read `memory/CODEBASE.md` and `memory/CODE_INDEX.md` only to identify the exact source/header paths for P0.5/P2, then fetch and inspect the relevant headers before writing code. Update this checkpoint after each read/edit.
