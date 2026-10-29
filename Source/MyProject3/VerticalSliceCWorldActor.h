@@ -118,7 +118,7 @@ private:
     bool bGatherableZonesAssigned = false;
     bool bFarmPlotBuilt = false;
     float FarmPlotVisualRefreshTimer = 0.0f;
-    int32 SelectedFieldActionIndex = 0;
+    int32 SelectedFieldActionIndex = INDEX_NONE;
     UPROPERTY(Transient)
     TArray<TObjectPtr<UStaticMeshComponent>> FarmPlotTiles;
     int32 ChopSwingCount = 0;
