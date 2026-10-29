@@ -1,8 +1,8 @@
 # Current task (checkpoint)
 
-Status: open — P6 and P7.1–P7.4 logical/data contracts source-written; Unreal verification pending
+Status: open — P6 and P7.1–P7.4 source-written, including live traversal effort, route-anchor discovery and structural damage/repair hooks; Unreal verification pending
 Overall goal: Finish partial tasks in memory/PLAN_STATUS.md in dependency order, including player input/HUD where required.
-Current source-written work: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter, and P7.1–P7.4 route context, five-zone catalog, discovery definitions, infrastructure edge updates and route-state persistence.
+Current source-written work: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter, P7.1 live slope/snow/wetness/weather/sprint movement modifier + survival effort accounting, P7.2–P7.3 current-scene route-anchor discovery triggers, and P7.4 route-link component plus structural graph damage/repair updates.
 Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 
 ## Fixed constraints
@@ -26,9 +26,12 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 11. [x] Add `discoveries.json`, validate prerequisite order, required equipment and unlock IDs, then register definitions into survival; add source tests for discovery prerequisite/unlock and bridge route-cost change.
 12. [x] Add stable infrastructure IDs to route edges, `SetInfrastructureBuilt`, deterministic route graph snapshot/restore and save schema v25 migration.
 13. [ ] Batch Unreal UHT/UBT build and automation tests, then fix all errors. No build/test has run on this branch.
-14. [ ] Connect graph nodes to actual world actors, route query to movement speed/time and player input/HUD; connect zone entry and infrastructure build/repair/weather-damage events to discovery and route state. Keep Zones 3/4 physical placement for the final scene phase.
-15. [ ] Finish remaining field/animal player inputs and the full 15-step farm processing chain; add headless whole-world year simulation.
-16. [ ] Continue P8/P9.2 in dependency order; New Valley scene and PIE acceptance remain last.
+14. [ ] Finish world binding: route graph anchors are still data-defined rather than discovered from scene actors; add route preview input/HUD and material-specific surface costs. Route-anchor proximity records camp/creek/lookout discoveries in VerticalSlice C, but Zones 3/4 placement remains for the final scene phase.
+15. [x] Apply slope/snow/wetness/weather/sprint multipliers to actual character movement through CarryLoadComponent; report terrain effort to the existing survival profile without changing world-clock rate. Add source tests for speed-modifier composition and effort scaling.
+16. [x] Add `UWorldInfrastructureRouteLinkComponent`; structural graph damage/repair updates the linked route state, with route costs and state covered by source test. Build system still needs an explicit completed-crossing signal; individual deck placements do not automatically mark a bridge built.
+17. [ ] Finish remaining field/animal player inputs and the full 15-step farm processing chain; add headless whole-world year simulation.
+18. [ ] Enforce `IsDefinitionUnlocked` at recipe/seed/action consumption sites and connect additional build/damage/weather hooks; continue P8/P9.2 in dependency order.
+19. [ ] New Valley scene and PIE acceptance remain last.
 
 ## Files read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
@@ -47,12 +50,12 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - animals.json defines Animal.Rabbit, Animal.Bird and Animal.Goat; item IDs/intervals/tools/yields are checked and registered. The logical animal chain supports both unique-ledger and count-stack capture tools; pen construction consumes 4 Stake + 1 Rope; feed requires a unique ledger-owned feed item; products accrue for captured animals in a closed pen; slaughter yields come from animal data.
 - Save schema v23 persists field cells, v24 persists logical animal pens/capture/slaughter state, and v25 persists route nodes/edges with built-infrastructure state. v22→v23→v24→v25 migration is source-written; v24→v25 retains the current authored route graph as the baseline rather than inventing old infrastructure history. Fixed-step rollback includes fields and pens; route graph is not mutated by normal fixed steps.
 - Tests in GameWorldTests.cpp now cover field-work retries, seasonal planting, item-backed seed consume/return, crop maturation, field snapshot, unique/count-stack capture, pen/material consumption, feed/product collection, slaughter idempotency and farm/pen snapshot. They are source-only and have not run.
-- `zones.json`, `routes.json` and `discoveries.json` are now loaded transactionally. Five zones and all item references validate; route data contains six anchors/12 directed edges for the currently existing camp/creek/ford/lookout. Zones 3/4 are catalogued but not physically placed. Discovery definitions are loaded and registered with ordered prerequisites/equipment gates/unlocks, but they are not yet triggered by real player zone entry and the unlocked items/recipes/seeds are not enforced at their consuming actions. Infrastructure IDs can update route-cost edges and this state is saved in schema v25. Physical build/repair/weather-damage events, route→movement speed/time, player input/HUD, actual WildlifeActor/stick-trap integration, field tools, full 15-step post-harvest chain, whole-year simulation and scene/PIE work remain open.
+- `zones.json`, `routes.json` and `discoveries.json` are loaded transactionally. Five zones and item/equipment/discovery references validate; six route anchors/12 edges describe the current C camp/creek/ford/lookout. Discovery radii on camp/creek/lookout call `TryRecordConfiguredDiscovery` from `VerticalSliceCWorldActor`; Zones 3/4 remain catalog-only. Character Tick now applies slope/snow/wetness/weather/sprint to actual movement speed, composes that with carried mass, and reports Walk/Run effort through `RecordActivity` on the shared profile/world clock. `UWorldInfrastructureRouteLinkComponent` updates the same infrastructure ID on all directed route edges; structural graph threshold damage/repair now toggles a linked root actor. These are source changes only: automatic bridge completion detection, a route preview HUD, material-specific surface data, unlock enforcement where items/recipes/seeds are consumed, field tools/animal player interactions, WildlifeActor/trap integration, the full 15-step post-harvest chain, whole-year simulation, and Zones 3/4 scene placement remain open.
 
 ## Changes
 - Branch: game/p06-farming-seed-cycle.
-- Updated WorldAgricultureSubsystem.h/.cpp; WorldGameDataSubsystem.h/.cpp; WorldLogisticsRouteSubsystem.h/.cpp; Config/GameData/crops.json, animals.json, items.json, zones.json, routes.json, discoveries.json; WorldSimulationSaveGame.h (schema v25); WorldSaveCoordinatorSubsystem.cpp; WorldSimulationCoordinatorSubsystem.cpp; LogSnapCharacter.h/.cpp; Tests/GameWorldTests.cpp; Tests/MyProject3CoreTests.cpp; memory/PLAN_STATUS.md; memory/CODEBASE.md.
+- Updated WorldAgricultureSubsystem.h/.cpp; WorldInfrastructureRouteLinkComponent.h/.cpp; WorldStructuralGraphSubsystem.cpp;
 - No Unreal build, automation test or PIE run has been executed for this branch.
 
 ## Next step
-Next, implement the missing P7 interactions without scene placement: route graph ↔ actual walking speed/time and authored edge state ↔ build/repair/damage events; then connect zone entry to `TryRecordConfiguredDiscovery` and enforce `IsDefinitionUnlocked` at recipe/seed/action execution. Continue to avoid builds until the batch gate. Before the eventual batch build, re-audit P6/P7 snapshot invariants and regenerate CODE_INDEX.md locally. Before the eventual batch build, re-audit all P6 receipt/save invariants and regenerate CODE_INDEX.md locally.
+Next, connect the route-link component to an explicit completed-bridge/route-build signal and enforce `IsDefinitionUnlocked` at recipe/seed/action execution; finish P8/P9.2 and the headless whole-year simulation before the final scene. Continue to avoid builds until the batch gate. Before the eventual batch build, re-audit P6/P7 snapshot invariants and regenerate CODE_INDEX.md locally.
