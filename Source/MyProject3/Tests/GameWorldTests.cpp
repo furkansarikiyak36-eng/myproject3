@@ -1256,22 +1256,12 @@ bool FAnimalCapturePenSlaughterLifecycleTest::RunTest(const FString& Parameters)
         Inventory->GetInventoryOwnerId()));
 
     const FGuid CaptureOperation = FGuid::NewGuid();
-    TestTrue(TEXT("Capture goat with owned net"), Agriculture->TryCaptureAnimal(
-        CaptureOperation, Animal.AnimalId, Animal.Revision, NetItem.ItemId, NetItem.Revision,
-        Inventory->GetInventoryOwnerId()));
-    TestTrue(TEXT("Capture retry returns success without consuming net"), Agriculture->TryCaptureAnimal(
-        CaptureOperation, Animal.AnimalId, Animal.Revision, NetItem.ItemId, NetItem.Revision,
-        Inventory->GetInventoryOwnerId()));
-    TestEqual(TEXT("Net remains in inventory"), Inventory->GetItemCount(TEXT("Net")), 1);
-
-    // Crafted Net is a normal quantity stack (no unique ledger ItemId); it is reusable for capture.
-    FInventoryStack CraftedNet;
-    CraftedNet.ItemId = TEXT("Net");
-    CraftedNet.Quantity = 1;
-    CraftedNet.Category = EInventoryItemCategory::Tool;
-    CraftedNet.MaxStack = 99;
-    CraftedNet.bIsTool = true;
-    TestTrue(TEXT("Add count-based crafted net"), Inventory->TryAddItem(CraftedNet));
+    TestTrue(TEXT("Capture goat with a count-based rope stack"), Agriculture->TryCaptureAnimalWithToolStack(
+        CaptureOperation, Animal.AnimalId, Animal.Revision, TEXT("Rope"), Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Count-based capture retry succeeds without consuming the rope"), Agriculture->TryCaptureAnimalWithToolStack(
+        CaptureOperation, Animal.AnimalId, Animal.Revision, TEXT("Rope"), Inventory->GetInventoryOwnerId()));
+    TestEqual(TEXT("Rope remains available for pen construction"), Inventory->GetItemCount(TEXT("Rope")), 1);
+    TestEqual(TEXT("Unique net remains in inventory"), Inventory->GetItemCount(TEXT("Net")), 1);
 
     FWorldAnimalState Rabbit;
     Rabbit.AnimalId = FGuid::NewGuid();
@@ -1280,15 +1270,15 @@ bool FAnimalCapturePenSlaughterLifecycleTest::RunTest(const FString& Parameters)
     Rabbit.Location = FVector(460.0, 60.0, 0.0);
     TestTrue(TEXT("Register wild rabbit"), Agriculture->RegisterAnimal(Rabbit));
     TestTrue(TEXT("Read wild rabbit"), Agriculture->GetAnimal(Rabbit.AnimalId, Rabbit));
-    const FGuid StackCaptureOperation = FGuid::NewGuid();
-    TestTrue(TEXT("Capture rabbit with a normal inventory tool stack"), Agriculture->TryCaptureAnimalWithToolStack(
-        StackCaptureOperation, Rabbit.AnimalId, Rabbit.Revision, TEXT("Net"), Inventory->GetInventoryOwnerId()));
-    TestTrue(TEXT("Count-based capture retry succeeds without consuming the net"), Agriculture->TryCaptureAnimalWithToolStack(
-        StackCaptureOperation, Rabbit.AnimalId, Rabbit.Revision, TEXT("Net"), Inventory->GetInventoryOwnerId()));
-    TestEqual(TEXT("Both net representations remain in inventory"), Inventory->GetItemCount(TEXT("Net")), 2);
-    TestTrue(TEXT("Stack-captured rabbit has no unique tool ItemId"), Agriculture->GetAnimal(Rabbit.AnimalId, Rabbit));
-    TestFalse(TEXT("Stack-captured rabbit keeps no unique tool ItemId"), Rabbit.CaptureToolItemId.IsValid());
-    TestTrue(TEXT("Stack-captured rabbit records its tool definition"), Rabbit.CaptureToolDefinitionId == TEXT("Net"));
+    const FGuid UniqueCaptureOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Capture rabbit with a uniquely-owned net"), Agriculture->TryCaptureAnimal(
+        UniqueCaptureOperation, Rabbit.AnimalId, Rabbit.Revision, NetItem.ItemId, NetItem.Revision,
+        Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Unique-item capture retry remains idempotent"), Agriculture->TryCaptureAnimal(
+        UniqueCaptureOperation, Rabbit.AnimalId, Rabbit.Revision, NetItem.ItemId, NetItem.Revision,
+        Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Unique capture retains the net identity"), Agriculture->GetAnimal(Rabbit.AnimalId, Rabbit));
+    TestTrue(TEXT("Uniquely-captured rabbit stores tool ID"), Rabbit.CaptureToolItemId == NetItem.ItemId);
 
     FGuid PenId;
     FGuid RetriedPenId;
