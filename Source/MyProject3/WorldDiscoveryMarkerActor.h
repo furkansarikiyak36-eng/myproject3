@@ -9,7 +9,8 @@ class UStaticMeshComponent;
 /**
  * Cheap primitive discovery marker. The world survival ledger owns permanence;
  * this actor only presents a location and commits one configured discovery when
- * the player reaches it. Item rewards are generic stacks, not unique world items.
+ * the player reaches it. Rewards may be ordinary stacks or unique ledger-owned items
+ * (plantable seeds use the latter so the crop transaction can consume an exact item).
  */
 UCLASS()
 class MYPROJECT3_API AWorldDiscoveryMarkerActor : public AActor
