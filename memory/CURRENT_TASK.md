@@ -81,7 +81,7 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - `Source/MyProject3/WorldSurvivalSubsystem.cpp` (survival item transactions, conditions, exposure/rest, and simulation-step functions inspected by symbol).
 - `Source/MyProject3/Tests/MyProject3CoreTests.cpp` (existing `FCreekWaterFillWithReusablePotTest` covers missing vessel, dirty-water output, reusable pot unchanged, retry, and profile snapshot restore; `FCreekWetColdExposureIllnessTest` also exists. Both are source-only/unrun).
 - `Source/MyProject3/VerticalSliceCWorldActor.h/.cpp` (I=FillCreekWater and O=RefuelFire are already bound; fill requires `IsInCreek`, a pawn inventory, and a unique ledger-owned `Pot.Fired`).
-- `Source/MyProject3/LogSnapCharacter.cpp` (current pawn constructor/create-subobject path fetched again to verify whether inventory exists by default).
+- `Source/MyProject3/LogSnapCharacter.cpp` (constructor/create-subobject path contains no `UInventoryCraftingComponent`, so the new I-key action cannot work on the plain C++ pawn unless a Blueprint adds inventory).
 - `Source/MyProject3/WorldProductionSubsystem.h` (current recipe/station record shapes and production APIs).
 - `Source/MyProject3/WorldDemoScenarioActor.cpp` (edited: scenario recipe selection resolves from game data).
 - `Source/MyProject3/WorldDemoScenarioActor.h` (edited: replaced editable recipe struct with a `FName` ID).
@@ -145,4 +145,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-The existing test and I-key interaction were already present on the current branch, so do not duplicate them. Audit whether the active player pawn actually has `UInventoryCraftingComponent`; inspect the character/bootstrap/gamemode setup and test the fill transaction's inventory-capacity preflight. If the pawn is missing inventory by default, attach the component through the existing character setup, not a parallel inventory system.
+Check current project for any existing player inventory component injection/duplicate setup. If none, add one canonical `UInventoryCraftingComponent` default subobject to `ALogSnapCharacter` (header declaration + cpp include/constructor) so I-key water collection and owned-item survival actions have a real inventory. Then audit capacity preflight and test restore.
