@@ -104,6 +104,9 @@ struct FGameDataRouteNode
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName ZoneId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FVector Location = FVector::ZeroVector;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") bool bEnabled = true;
+    /** Optional deterministic proximity trigger for this authored route anchor. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName DiscoveryId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float DiscoveryRadiusCm = 0.0f;
 };
 
 USTRUCT(BlueprintType)
