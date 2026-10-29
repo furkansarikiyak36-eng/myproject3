@@ -15,7 +15,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 0. [x] Create isolated task branch.
 1. [x] Read shared project memory and codebase map.
 2. [x] Inspect agriculture, game-data, calendar, ownership, save and world-test code.
-3. [x] Identify crop/field integration gaps.
+3. [x] Identify crop/field integration gaps and persistence call sites.
 4. [ ] Implement field-cell state/actions, seasonal planting, soil exhaustion/rotation and seed return under idempotent operation rules.
 5. [ ] Load crop months/seed-return/soil parameters from crops.json; validate all references and register definitions in ApplyToWorld.
 6. [ ] Add automation-test source for positive, negative, seasonal, retry and snapshot cases.
@@ -26,7 +26,7 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 
 ## Read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
-- Source/MyProject3/WorldAgricultureSubsystem.h/.cpp
+- Source/MyProject3/WorldAgricultureSubsystem.h/.cpp (plant/harvest/feed/collect and restore validation)
 - Source/MyProject3/WorldGameDataSubsystem.h/.cpp; Config/GameData/crops.json
 - Config/GameData/items.json, Config/GameData/transformations.json
 - Source/MyProject3/WorldCalendar.h, Source/MyProject3/WorldSimulationClockSubsystem.h/.cpp
@@ -35,16 +35,14 @@ Branch: game/p06-farming-seed-cycle (based on game/p00-adopt-group-a).
 - Source/MyProject3/Tests/GameWorldTests.cpp, memory/CODE_INDEX.md
 
 ## Findings
-- Agriculture has item-backed Plant/Harvest/Feed/Collect receipts but no field-cell state; TryPlantCrop neither checks planting month nor requires a cleared/tilled plot.
-- crops.json has plant_months and zone data; its parser does not validate month range/duplicates, and ApplyToWorld does not register parsed crop definitions into UWorldAgricultureSubsystem.
-- Harvest creates harvest items only; the crop/field contract has no seed-return output or soil exhaustion/fertility state.
-- Current save schema is v22 and agriculture snapshots contain crops/animals only. Persisted field cells require a new save field and v23 migration.
-- Data already defines Seed.Grain/Root/Legume and harvest outputs, plus Compost; no dedicated Mulch item is defined. Keep field work state separate from physical tool/resource UI for now.
-- Parent-branch history reports 102/102 tests at bbc57b3; this is not evidence for current-branch edits.
+- Field work can reuse the agriculture operation receipt framework: receipts already use stable operation IDs and entity revisions; new field actions must be included in duplicate-ID validation and snapshot integrity checks.
+- Save capture currently calls Agriculture->ExportSnapshot(Crops, Animals), restore calls RestoreSnapshot(Crops, Animals), and schema 22 migration is in WorldSaveCoordinatorSubsystem.cpp. Add a field snapshot and schema v23 migration; preserve the old two-array APIs for compatibility.
+- Seeds, harvest items and Compost are defined in items.json; crops.json has three crop definitions. No Mulch item exists, so mulch remains a bounded field-state action until a data-backed item/tool pass.
+- New tests belong in Tests/GameWorldTests.cpp; FTestWorld creates a bare game world and requires explicit clock initialization after data applies CalendarConfig.
 
 ## Changes
 - Created game/p06-farming-seed-cycle from game/p00-adopt-group-a.
-- Checkpointed the audited crop, data and persistence gaps before implementation.
+- Checkpointed code and persistence call sites; no source changes or build have occurred yet.
 
 ## Next step
-Implement the agriculture data contracts and save snapshot changes: field cell/field-work receipts, crop planting months/soil parameters/seed-return units, and v23 persistence. Then wire crops.json to the loader and add tests. No build.
+Edit WorldAgricultureSubsystem.h to add crop rules and persisted field-cell/action-receipt types/APIs. Then update implementation and data/save contracts. No build.
