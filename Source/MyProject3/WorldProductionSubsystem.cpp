@@ -1,4 +1,5 @@
 #include "WorldProductionSubsystem.h"
+#include "ProductionStationActor.h"
 
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -890,6 +891,23 @@ bool UWorldProductionSubsystem::AdvanceProductionStep(double DeltaSeconds)
     {
         FWorldProductionStation& Station = Pair.Value;
         bool bStationChanged = false;
+        bool bCanRunStation = true;
+        if (UWorld* World = GetWorld())
+        {
+            for (TActorIterator<AProductionStationActor> It(World); It; ++It)
+            {
+                AProductionStationActor* Actor = *It;
+                if (IsValid(Actor) && Actor->GetStationId() == Station.StationId)
+                {
+                    bCanRunStation = Actor->HasRequiredFire();
+                    break;
+                }
+            }
+        }
+        // Jobs keep their inputs and progress while a required fire is absent.
+        // Do not consume simulation time until the station's fire condition returns.
+        if (!bCanRunStation)
+            continue;
         for (FWorldProductionJob& Job : Station.Jobs)
         {
             if (Job.State == EProductionJobState::Completed || Job.State == EProductionJobState::Blocked)
