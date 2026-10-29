@@ -72,6 +72,27 @@ bool ARopeLineActor::TrySendAlong(AActor* Piece)
         PieceMassKg > MaxLoadMassKg)
         return false;
 
+    // The capacity is the total rated load of the line, not a per-item limit.
+    // Re-estimate current riders from the same nominal-volume model and fail
+    // closed if any in-transit actor has an invalid mass estimate.
+    double ProposedTotalLoadKg = static_cast<double>(PieceMassKg);
+    for (const FRider& ExistingRider : Riders)
+    {
+        const AActor* ExistingPiece = ExistingRider.Piece.Get();
+        if (!IsValid(ExistingPiece))
+            continue; // Tick will remove the stale weak rider record.
+        const float ExistingMassKg = EstimateMassKg(ExistingPiece);
+        if (!FMath::IsFinite(ExistingMassKg) || ExistingMassKg <= 0.0f)
+            return false;
+        ProposedTotalLoadKg += static_cast<double>(ExistingMassKg);
+        if (!FMath::IsFinite(ProposedTotalLoadKg) ||
+            ProposedTotalLoadKg > static_cast<double>(MaxLoadMassKg))
+            return false;
+    }
+    if (!FMath::IsFinite(ProposedTotalLoadKg) ||
+        ProposedTotalLoadKg > static_cast<double>(MaxLoadMassKg))
+        return false;
+
     UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(Piece->GetRootComponent());
     UWorldObjectIdentityComponent* Identity =
         Piece->FindComponentByClass<UWorldObjectIdentityComponent>();
