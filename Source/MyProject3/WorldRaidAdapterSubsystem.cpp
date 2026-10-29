@@ -64,10 +64,33 @@ bool UWorldRaidAdapterSubsystem::HasActiveRaidPawns() const
 
 bool UWorldRaidAdapterSubsystem::HasRaidPawnReachedTarget() const
 {
+    if (!bHasMaterializedRaidTargetLocation ||
+        MaterializedRaidTargetLocation.ContainsNaN() ||
+        !FMath::IsFinite(RaidTargetAcceptanceRadiusCm) ||
+        RaidTargetAcceptanceRadiusCm < 10.0f ||
+        RaidTargetAcceptanceRadiusCm > 2000.0f)
+        return false;
+
+    const double AcceptanceSquared = FMath::Square(
+        static_cast<double>(RaidTargetAcceptanceRadiusCm));
     for (const TWeakObjectPtr<APawn>& Pawn : ActiveRaidPawns)
+    {
+        if (!Pawn.IsValid())
+            continue;
         if (const ARaidPlaceholderPawn* Raider = Cast<ARaidPlaceholderPawn>(Pawn.Get()))
+        {
             if (Raider->HasReachedRaidTarget())
                 return true;
+            continue;
+        }
+
+        // Custom pawn classes may implement their own navigation/AI. Their
+        // world-facing success condition is proximity to the same authored goal.
+        const FVector Location = Pawn->GetActorLocation();
+        if (!Location.ContainsNaN() &&
+            FVector::DistSquared(Location, MaterializedRaidTargetLocation) <= AcceptanceSquared)
+            return true;
+    }
     return false;
 }
 
@@ -89,6 +112,8 @@ bool UWorldRaidAdapterSubsystem::CanAdvanceRaidWorldAdapterAtTime(double TargetT
         !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
         RaidWaveSize < 1 || RaidWaveSize > 12 ||
         !FMath::IsFinite(SpawnDistanceFromTargetCm) || SpawnDistanceFromTargetCm < 0.0f ||
+        !FMath::IsFinite(RaidTargetAcceptanceRadiusCm) || RaidTargetAcceptanceRadiusCm < 10.0f ||
+        RaidTargetAcceptanceRadiusCm > 2000.0f ||
         !Graph)
     {
         return false;
@@ -397,7 +422,9 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
         !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
         RaidWaveSize < 1 || RaidWaveSize > 12 ||
-        !FMath::IsFinite(SpawnDistanceFromTargetCm) || SpawnDistanceFromTargetCm < 0.0f)
+        !FMath::IsFinite(SpawnDistanceFromTargetCm) || SpawnDistanceFromTargetCm < 0.0f ||
+        !FMath::IsFinite(RaidTargetAcceptanceRadiusCm) || RaidTargetAcceptanceRadiusCm < 10.0f ||
+        RaidTargetAcceptanceRadiusCm > 2000.0f)
     {
         return false;
     }
@@ -411,6 +438,8 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         ActiveRaidPawns.Reset();
         MaterializedRaidId.Invalidate();
         MaterializedTargetNodeId.Invalidate();
+        MaterializedRaidTargetLocation = FVector::ZeroVector;
+        bHasMaterializedRaidTargetLocation = false;
         NextDamageTimeSeconds = 0.0;
         return true;
     }
@@ -448,6 +477,8 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
             ActiveRaidPawns.Reset();
             MaterializedRaidId.Invalidate();
             MaterializedTargetNodeId.Invalidate();
+            MaterializedRaidTargetLocation = FVector::ZeroVector;
+            bHasMaterializedRaidTargetLocation = false;
         }
 
         if (!RaidPawnClass || RaidPawnClass->HasAnyClassFlags(
@@ -468,6 +499,8 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         }
         if (TargetLocation.ContainsNaN())
             return false;
+        MaterializedRaidTargetLocation = TargetLocation;
+        bHasMaterializedRaidTargetLocation = true;
 
         // Stable raid-ID-based radial placement avoids spawning every raider
         // inside the objective. NavMesh movement is visual; attack pulses stay
