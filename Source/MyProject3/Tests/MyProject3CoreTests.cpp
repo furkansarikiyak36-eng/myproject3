@@ -3663,4 +3663,151 @@ bool FAgricultureFieldPreparationAndSnapshotTest::RunTest(const FString& Paramet
     return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWildlifeCapturePenSlaughterSnapshotTest,
+    "MyProject3.Animals.CapturePenSlaughterAndSaveAreIdempotent", TestFlags)
+bool FWildlifeCapturePenSlaughterSnapshotTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldAgricultureSubsystem* Agriculture = World
+        ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World
+        ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Agriculture subsystem"), Agriculture) ||
+        !TestNotNull(TEXT("Item ownership subsystem"), Ownership))
+        return false;
+
+    auto SpawnSmallAnimal = [World]() -> AWildlifeActor*
+    {
+        if (!World) return nullptr;
+        const FTransform SpawnTransform(FVector(150.0, 250.0, 40.0));
+        AWildlifeActor* Wildlife = World->SpawnActor<AWildlifeActor>(
+            AWildlifeActor::StaticClass(), SpawnTransform);
+        if (!Wildlife) return nullptr;
+        Wildlife->ConfigureKind(EWildlifeKind::SmallAnimal);
+        if (!Wildlife->Identity || !Wildlife->Identity->EnsureIdentity())
+        {
+            Wildlife->Destroy();
+            return nullptr;
+        }
+        return Wildlife;
+    };
+
+    AWildlifeActor* FirstWildlife = SpawnSmallAnimal();
+    AWildlifeActor* SecondWildlife = SpawnSmallAnimal();
+    if (!TestNotNull(TEXT("First live wildlife actor"), FirstWildlife) ||
+        !TestNotNull(TEXT("Second live wildlife actor"), SecondWildlife))
+        return false;
+
+    FWorldAnimalCaptureDefinition Definition;
+    Definition.AnimalDefinitionId = TEXT("Test.Goat");
+    Definition.FeedDefinitionId = TEXT("Test.Feed");
+    Definition.ProductDefinitionId = TEXT("Test.Milk");
+    Definition.MeatDefinitionId = TEXT("Test.Meat");
+    Definition.MeatUnits = 2;
+    Definition.HideDefinitionId = TEXT("Test.Hide");
+    Definition.HideUnits = 1;
+    Definition.BoneDefinitionId = TEXT("Test.Bone");
+    Definition.BoneUnits = 1;
+
+    const FGuid FirstCaptureOperation = FGuid::NewGuid();
+    const FGuid FirstWildlifeId = FirstWildlife->Identity->GetInstanceId();
+    FGuid FirstAnimalId;
+    TestTrue(TEXT("Capture live small animal"), Agriculture->TryCaptureWildlife(
+        FirstCaptureOperation, FirstWildlifeId, FirstWildlife, Definition, FirstAnimalId));
+    TestTrue(TEXT("Captured animal has a logical record"), FirstAnimalId.IsValid());
+    TestTrue(TEXT("Capture freezes the wildlife actor"), FirstWildlife->bCapturedForAnimalManagement);
+    FWorldAnimalState Captured;
+    TestTrue(TEXT("Read captured state"), Agriculture->GetAnimal(FirstAnimalId, Captured));
+    TestEqual(TEXT("Animal is captured, not yet penned"),
+        Captured.LifecycleState, EWorldAnimalLifecycleState::Captured);
+
+    FWorldAnimalPenState Pen;
+    Pen.PenId = FGuid::NewGuid();
+    Pen.Location = FVector(500.0, 300.0, 20.0);
+    Pen.Capacity = 1;
+    Pen.AllowedAnimalDefinitionIds.Add(Definition.AnimalDefinitionId);
+    TestTrue(TEXT("Register one-animal pen"), Agriculture->RegisterAnimalPen(Pen));
+
+    const FGuid MoveOperation = FGuid::NewGuid();
+    TestTrue(TEXT("Move captured animal to pen"), Agriculture->TryMoveAnimalToPen(
+        MoveOperation, FirstAnimalId, Captured.Revision, Pen.PenId, Pen.Revision));
+    FWorldAnimalState Penned;
+    FWorldAnimalPenState OccupiedPen;
+    TestTrue(TEXT("Read penned animal"), Agriculture->GetAnimal(FirstAnimalId, Penned));
+    TestTrue(TEXT("Read occupied pen"), Agriculture->GetAnimalPen(Pen.PenId, OccupiedPen));
+    TestEqual(TEXT("Animal is now penned"), Penned.LifecycleState, EWorldAnimalLifecycleState::Penned);
+    TestEqual(TEXT("Pen membership contains captured animal"), OccupiedPen.AnimalIds.Num(), 1);
+    TestEqual(TEXT("Pen revision advanced"), OccupiedPen.Revision, static_cast<int64>(2));
+
+    FGuid SecondAnimalId;
+    TestTrue(TEXT("Capture second live animal"), Agriculture->TryCaptureWildlife(
+        FGuid::NewGuid(), SecondWildlife->Identity->GetInstanceId(),
+        SecondWildlife, Definition, SecondAnimalId));
+    FWorldAnimalState SecondCaptured;
+    TestTrue(TEXT("Read second captured animal"), Agriculture->GetAnimal(SecondAnimalId, SecondCaptured));
+    TestFalse(TEXT("Capacity blocks a second animal"), Agriculture->TryMoveAnimalToPen(
+        FGuid::NewGuid(), SecondAnimalId, SecondCaptured.Revision, Pen.PenId, OccupiedPen.Revision));
+    FWorldAnimalState StillCaptured;
+    TestTrue(TEXT("Second animal remains captured after rejected move"),
+        Agriculture->GetAnimal(SecondAnimalId, StillCaptured));
+    TestEqual(TEXT("Rejected move doesn't mutate lifecycle"),
+        StillCaptured.LifecycleState, EWorldAnimalLifecycleState::Captured);
+
+    const FGuid SlaughterOperation = FGuid::NewGuid();
+    TArray<FGuid> Outputs;
+    TestTrue(TEXT("Slaughter penned animal"), Agriculture->TrySlaughterAnimal(
+        SlaughterOperation, FirstAnimalId, Penned.Revision, Outputs));
+    TestEqual(TEXT("Slaughter creates meat, hide, and bone outputs"), Outputs.Num(), 4);
+    int32 MeatCount = 0, HideCount = 0, BoneCount = 0;
+    for (const FGuid& OutputId : Outputs)
+    {
+        FWorldOwnedItemRecord Item;
+        TestTrue(TEXT("Slaughter output exists in ownership ledger"), Ownership->TryGetItem(OutputId, Item));
+        TestEqual(TEXT("Slaughter output is world-owned"), Item.OwnerKind, EWorldItemOwnerKind::World);
+        MeatCount += Item.DefinitionId == TEXT("Test.Meat") ? 1 : 0;
+        HideCount += Item.DefinitionId == TEXT("Test.Hide") ? 1 : 0;
+        BoneCount += Item.DefinitionId == TEXT("Test.Bone") ? 1 : 0;
+    }
+    TestEqual(TEXT("Configured meat units"), MeatCount, 2);
+    TestEqual(TEXT("Configured hide units"), HideCount, 1);
+    TestEqual(TEXT("Configured bone units"), BoneCount, 1);
+    TestFalse(TEXT("Slaughtered animal is removed from the pen"), Agriculture->GetAnimalPen(Pen.PenId, OccupiedPen) &&
+        OccupiedPen.AnimalIds.Contains(FirstAnimalId));
+
+    TArray<FGuid> SlaughterRetryOutputs;
+    TestTrue(TEXT("Slaughter retry returns committed outputs"), Agriculture->TrySlaughterAnimal(
+        SlaughterOperation, FirstAnimalId, Penned.Revision, SlaughterRetryOutputs));
+    TestTrue(TEXT("Slaughter retry uses original output IDs"), SlaughterRetryOutputs == Outputs);
+    TestEqual(TEXT("No duplicate slaughter outputs"), Ownership->GetTrackedItemCount(), 4);
+
+    TArray<FWorldCropState> Crops;
+    TArray<FWorldAnimalState> Animals;
+    TArray<FWorldFieldCellState> Fields;
+    TArray<FWorldAnimalPenState> Pens;
+    Agriculture->ExportSnapshot(Crops, Animals, Fields, Pens);
+    TestEqual(TEXT("Both animals are saved"), Animals.Num(), 2);
+    TestEqual(TEXT("Pen is saved"), Pens.Num(), 1);
+
+    FWorldAnimalPenState BrokenPen = Pens[0];
+    BrokenPen.AnimalIds.Add(FGuid::NewGuid());
+    TArray<FWorldAnimalPenState> InvalidPens = Pens;
+    InvalidPens[0] = BrokenPen;
+    TestFalse(TEXT("Restore rejects a pen referencing an unknown animal"),
+        Agriculture->RestoreSnapshot(Crops, Animals, Fields, InvalidPens));
+
+    TestTrue(TEXT("Restore accepts valid animal lifecycle and pen snapshot"),
+        Agriculture->RestoreSnapshot(Crops, Animals, Fields, Pens));
+    FWorldAnimalState Slaughtered;
+    TestTrue(TEXT("Read restored slaughtered animal"), Agriculture->GetAnimal(FirstAnimalId, Slaughtered));
+    TestEqual(TEXT("Slaughter state survives snapshot"), Slaughtered.LifecycleState,
+        EWorldAnimalLifecycleState::Slaughtered);
+    TArray<FGuid> RestoredOutputs;
+    TestTrue(TEXT("Slaughter retry remains idempotent after restore"),
+        Agriculture->TrySlaughterAnimal(SlaughterOperation, FirstAnimalId, Penned.Revision, RestoredOutputs));
+    TestTrue(TEXT("Restored slaughter returns same item IDs"), RestoredOutputs == Outputs);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
