@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Read `ShelterSensorComponent.h/.cpp` for opening/roof/wall detection and then the exact survival heat aggregation functions. Determine whether an unfinished cabin opening should reduce heat retention, and if the existing sensor already exposes a numeric cover/protection value, wire only that API rather than deriving a second geometry model.
+Inspect `ConstructionOpeningActor.h/.cpp` semantics and collision/shape to verify whether opening actors represent empty holes or blockers. Then determine if P3.2 needs a safe ray-shelter change or a separate explicit opening/roof gap measure; preserve build-piece rules and add an automation case for an open doorway vs a closed wall/roof.
