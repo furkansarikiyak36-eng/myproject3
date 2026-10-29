@@ -226,7 +226,8 @@ bool UWorldItemOwnershipSubsystem::TryUpdateItemDefinition(
     FWorldOwnedItemRecord& OutRecord)
 {
     if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedRevision <= 0 ||
-        ExpectedOwner != EWorldItemOwnerKind::World || NewDefinitionId.IsNone())
+        (ExpectedOwner != EWorldItemOwnerKind::World &&
+         ExpectedOwner != EWorldItemOwnerKind::Held) || NewDefinitionId.IsNone())
     {
         return false;
     }
