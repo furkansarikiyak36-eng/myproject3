@@ -3678,12 +3678,14 @@ bool FWildlifeCapturePenSlaughterSnapshotTest::RunTest(const FString& Parameters
         !TestNotNull(TEXT("Item ownership subsystem"), Ownership))
         return false;
 
-    auto SpawnSmallAnimal = [World]() -> AWildlifeActor*
+    auto SpawnSmallAnimal = [World](const FVector& Location) -> AWildlifeActor*
     {
         if (!World) return nullptr;
-        const FTransform SpawnTransform(FVector(150.0, 250.0, 40.0));
+        const FTransform SpawnTransform(Location);
+        FActorSpawnParameters SpawnParameters;
+        SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
         AWildlifeActor* Wildlife = World->SpawnActor<AWildlifeActor>(
-            AWildlifeActor::StaticClass(), SpawnTransform);
+            AWildlifeActor::StaticClass(), SpawnTransform, SpawnParameters);
         if (!Wildlife) return nullptr;
         Wildlife->ConfigureKind(EWildlifeKind::SmallAnimal);
         if (!Wildlife->Identity || !Wildlife->Identity->EnsureIdentity())
@@ -3694,8 +3696,8 @@ bool FWildlifeCapturePenSlaughterSnapshotTest::RunTest(const FString& Parameters
         return Wildlife;
     };
 
-    AWildlifeActor* FirstWildlife = SpawnSmallAnimal();
-    AWildlifeActor* SecondWildlife = SpawnSmallAnimal();
+    AWildlifeActor* FirstWildlife = SpawnSmallAnimal(FVector(150.0, 250.0, 40.0));
+    AWildlifeActor* SecondWildlife = SpawnSmallAnimal(FVector(350.0, 250.0, 40.0));
     if (!TestNotNull(TEXT("First live wildlife actor"), FirstWildlife) ||
         !TestNotNull(TEXT("Second live wildlife actor"), SecondWildlife))
         return false;
