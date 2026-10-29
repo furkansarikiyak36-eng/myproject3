@@ -164,4 +164,4 @@ Started: 2026-10-29 · Last saved: 2026-10-29 · Branch: `game/p00-adopt-group-a
 - P6 work added data-defined month/zone/seed return, field operations and simulation, SaveGame field persistence, migration v22→v23, plus field preparation/snapshot automation coverage authored.
 
 ### Next step
-Implement `EnsureStarterTools()` in VerticalSlice_C and call it from Tick after `SetupPlayer()`. It must wait for `GameData->IsApplied()`, apply item weights/recipes to the pawn inventory, validate both tool definitions/strengths, and add only missing generic Tool-category singleton stacks with capacity preflight.
+Modify `TerrainDigToolComponent.cpp` to require `Tool.DiggingStick` in the owner's inventory and multiply its configured `ToolStrength` by the authored item strength; add proper feedback if data/tool is missing. Then modify `LogCarryComponent::ProcessAimedPiece` to require `Tool.Axe` and scale ordinary + recipe cut work progress by authored axe strength.
