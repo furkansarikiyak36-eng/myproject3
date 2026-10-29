@@ -13,6 +13,7 @@
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
 #include "WorldAgricultureSubsystem.h"
+#include "HeatSourceComponent.h"
 
 UInventoryCraftingComponent::UInventoryCraftingComponent()
 {
@@ -901,6 +902,30 @@ float UInventoryCraftingComponent::GetEquippedClothingInsulation() const
  return CalculateClothingInsulation(Items, Value) ? Value : 0.0f;
 }
 
+bool UInventoryCraftingComponent::TryFuelHeatSource(
+ FName ItemId, UHeatSourceComponent* HeatSource, int32 Quantity)
+{
+ if (!GetWorld() || !IsValid(HeatSource) || HeatSource->GetWorld() != GetWorld() ||
+     ItemId.IsNone() || Quantity <= 0 || Quantity > 10000)
+  return false;
+ const FInventoryItemDefinition* Def = FindItemDefinition(ItemId);
+ if (!Def || !FMath::IsFinite(Def->FuelBurnSeconds) ||
+     Def->FuelBurnSeconds <= 0.0f || Def->FuelBurnSeconds > 86400.0f)
+  return false;
+ const double BurnSeconds = static_cast<double>(Def->FuelBurnSeconds) * Quantity;
+ const double ProjectedFuel = static_cast<double>(HeatSource->GetFuelSeconds()) + BurnSeconds;
+ if (!FMath::IsFinite(BurnSeconds) || BurnSeconds <= 0.0 ||
+     !FMath::IsFinite(ProjectedFuel) || ProjectedFuel > HeatSource->MaxFuelSeconds)
+  return false;
+ TArray<FInventoryStack> ProposedItems;
+ if (!BuildRemovalPreview(ItemId, Quantity, ProposedItems)) return false;
+ if (!HeatSource->AddFuel(static_cast<float>(BurnSeconds))) return false;
+ Items = MoveTemp(ProposedItems);
+ if (QuickAccessItemId == ItemId && GetItemCount(ItemId) <= 0)
+  QuickAccessItemId = NAME_None;
+ return true;
+}
+
 bool UInventoryCraftingComponent::TryEquipItem(FName ItemId)
 {
  if (ItemId.IsNone() || !GetWorld() || !IsValid(GetOwner())) return false;
@@ -967,6 +992,7 @@ bool UInventoryCraftingComponent::CanAdvanceItemAging(double DeltaSeconds) const
       !FMath::IsFinite(Def.CaloriesKcal) || Def.CaloriesKcal < 0.0f || Def.CaloriesKcal > 10000.0f ||
       !FMath::IsFinite(Def.HydrationRelief) || Def.HydrationRelief < 0.0f || Def.HydrationRelief > 100.0f ||
       !FMath::IsFinite(Def.ShelfLifeSeconds) || Def.ShelfLifeSeconds < 0.0 ||
+      !FMath::IsFinite(Def.FuelBurnSeconds) || Def.FuelBurnSeconds < 0.0f || Def.FuelBurnSeconds > 86400.0f ||
       !FMath::IsFinite(Def.AnimalFeedHungerReduction) ||
       Def.AnimalFeedHungerReduction < 0.0f || Def.AnimalFeedHungerReduction > 100.0f ||
       !FMath::IsFinite(Def.ClothingInsulation) || Def.ClothingInsulation < 0.0f ||
@@ -1060,6 +1086,12 @@ bool UInventoryCraftingComponent::CanCraft(FName RecipeId, TArray<FInventoryStac
  const int32 Index = FindRecipeIndex(RecipeId);
  if (!Recipes.IsValidIndex(Index) || !Recipes[Index].bEnabled) return false;
  const FCraftingRecipe& Recipe = Recipes[Index];
+ if (!Recipe.RequiredUnlockId.IsNone())
+ {
+  const UWorldSurvivalSubsystem* Survival =
+      GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+  if (!Survival || !Survival->IsContentUnlocked(Recipe.RequiredUnlockId)) return false;
+ }
  TMap<FName,int32> Required;
  for (const FRecipeIngredient& I : Recipe.Ingredients) if (I.bConsume) Required.FindOrAdd(I.ItemId) += I.Quantity;
  for (const TPair<FName,int32>& P : Required)
