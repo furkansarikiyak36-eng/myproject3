@@ -635,12 +635,15 @@ bool UWorldAgricultureSubsystem::TryPlantCropWithLabor(
     // twice or charging labor again.
     if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
     {
+        const FWorldCropState* ExistingCrop = Crops.Find(Existing->EntityId);
         if (Existing->Action != EWorldAgricultureActionKind::PlantCrop ||
             Existing->InputItemId != SeedItemId ||
             Existing->ExpectedItemRevision != ExpectedSeedItemRevision ||
             Existing->ExpectedInventoryOwnerId != InventoryOwnerId ||
-            Existing->DefinitionId != CropDefinitionId ||
-            !Crops.Contains(Existing->EntityId))
+            Existing->DefinitionId != CropDefinitionId || !ExistingCrop ||
+            ExistingCrop->CropDefinitionId != CropDefinitionId ||
+            ExistingCrop->PlotCell != PlotCell ||
+            ExistingCrop->SeedItemId != SeedItemId)
             return false;
         OutCropId = Existing->EntityId;
         return true;
