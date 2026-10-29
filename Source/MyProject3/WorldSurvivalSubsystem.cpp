@@ -335,7 +335,9 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
         // Afflictions use logical time and per-hour rates, not rendered frames.
         for (FWorldSurvivalAffliction& Affliction : P.Afflictions)
         {
-            const float Rate = Affliction.Severity * Hours;
+            const double ActiveSeconds = FMath::Min(DeltaSeconds, Affliction.RemainingSeconds);
+            const float ActiveHours = static_cast<float>(ActiveSeconds / 3600.0);
+            const float Rate = Affliction.Severity * ActiveHours;
             P.Health = FMath::Max(0.0f, P.Health - Affliction.HealthLossPerHour * Rate);
             P.Thirst = FMath::Clamp(P.Thirst + Affliction.ThirstGainPerHour * Rate, 0.0f, 100.0f);
             P.Fatigue = FMath::Clamp(P.Fatigue + Affliction.FatigueGainPerHour * Rate, 0.0f, 100.0f);
@@ -512,7 +514,9 @@ bool UWorldSurvivalSubsystem::RestoreSnapshot(
     const TArray<FWorldDiscoveryRecord>& DiscoverySnapshot,
     EWorldWeatherState InWeather, float InSeverity)
 {
-    if (!InRange(InSeverity, 0.0f, 1.0f)) return false;
+    if (!InRange(InSeverity, 0.0f, 1.0f) || MaxDiscoveryRecords < 1 ||
+        MaxDiscoveryRecords > 4096 || DiscoverySnapshot.Num() > MaxDiscoveryRecords)
+        return false;
     TMap<FGuid, FWorldSurvivalProfile> Proposed;
     for (const FWorldSurvivalProfile& P : ProfileSnapshot)
     {
