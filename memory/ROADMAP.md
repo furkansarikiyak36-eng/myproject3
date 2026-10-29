@@ -320,3 +320,10 @@ Newest first, one line each: `date · task · status · evidence (commit, test c
 ## Active branch progress note (2026-10-29)
 
 The current working branch `work/phase-3-4-closure` now also contains `zones.json` (five canonical indexed ecological regions) and `discoveries.json` (six location-bound discoveries with generic rewards/unlocks). `UWorldGameDataSubsystem` validates region/resource/discovery references, registers unlock definitions, and resolves gatherable actors to regions. `AWorldDiscoveryMarkerActor` records permanent discovery and rolls back discovery/inventory if reward delivery fails. Player craft and authoritative production enqueue paths enforce definitions explicitly listed in discovery unlocks. Automation tests are authored but **unbuilt/unrun**; the parent branch's 102/102 metric does not cover these edits.
+
+
+## Active branch progress note — field costs and usable crop loop (2026-10-29)
+
+- `field_actions.json` defines seven field actions with material/tool requirements, field-state deltas and labor. `TryApplyFieldActionWithInventory` preflights item/tool/stamina requirements and commits inventory, ownership, field state and Build labor under rollback snapshots. VerticalSlice_C's F9/F10 controls select and apply actions to a nine-tile primitive plot.
+- Crop data includes three provisional profiles, zone index, planting months, growth duration, yield/seed returns and plant/harvest labor. A shared farm-cell resolver powers the P interaction: prepared tile + unlocked unique seed plants a crop; a mature crop is harvested into inventory.
+- `TryHarvestCropToInventory` preflights capacity/ledger limits, creates harvest + seed outputs as unique owned items, transfers them to inventory, charges authored labor, and rolls back crop/field/ownership/inventory/survival on failure. Same-operation retries verify the original outputs remain in that inventory and do not charge twice. `FCropHarvestToInventoryChargesAuthoredLaborTest` and discovery/planting tests are authored but **unbuilt/unrun**.
