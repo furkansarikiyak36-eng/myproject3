@@ -9,8 +9,10 @@ ChatGPT, Antigravity IDE. Read this folder instead of analysing the whole repo.
 2. Read the newest files in `sessions/` (what the last sessions did).
 3. Check what changed since then: `git log --oneline --since=<date of the newest session>`.
 4. Read `ROADMAP.md`: take the next `todo` task and follow its "How to continue" rules.
-5. Open `modules/<area>.md` for the area of the task, then only the files it names.
-6. Need a reference (how another game does it)? Read `references/`.
+5. Need to know what code exists? Read `CODEBASE.md` (map + status) and search `CODE_INDEX.md`;
+   do not scan the repo. After any analysis, update `CODEBASE.md` (its first section says how).
+6. Open `modules/<area>.md` for the area of the task, then only the files it names.
+7. Need a reference (how another game does it)? Read `references/`.
 
 Code and git history are always the truth. When memory and code disagree, trust
 the code and fix the memory.
@@ -54,6 +56,8 @@ Branch: feature/simple-intent · Commits: 7de76ff, eaf6d8d
 |---|---|
 | `STATE.md` | Current state: branches, what works, what is open. |
 | `ROADMAP.md` | Ordered tasks of the game plan, honest status, how to continue. |
+| `CODEBASE.md` | Living analysis: every area, its files, status and gap vs the plan. |
+| `CODE_INDEX.md` | Generated list of every C++ file, type, enum, UFUNCTION (`tools/memory_code_index.py`). |
 | `DECISIONS.md` | Lasting decisions and why. |
 | `modules/*.md` | Per area: files, rules, open issues. |
 | `sessions/*.md` | One log per working session. |
