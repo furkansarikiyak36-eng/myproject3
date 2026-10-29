@@ -71,7 +71,7 @@ bool AProductionStationActor::TryDeposit(UInventoryCraftingComponent* Inventory,
         !Inventory->IsDefinitionAvailableForProgression(ItemId) || !EnsureRegistered() ||
         !Production->GetStation(StationId, Station) || Inventory->GetItemCount(ItemId) < Quantity)
         return false;
-    if (!Production->AddStock(StationId, ItemId, Quantity, Station.Revision))
+    if (!Production->AddStockForPlayer(StationId, ItemId, Quantity, Station.Revision, Inventory->ProgressionEntityId))
         return false; // No room in the station.
     if (!Inventory->TryRemoveItem(ItemId, Quantity))
     {
@@ -158,7 +158,7 @@ bool AProductionStationActor::TryTake(UInventoryCraftingComponent* Inventory, FN
     Stack.ItemId = ItemId;
     Stack.Quantity = Quantity;
     if (!Inventory->CanAddItems({ Stack }) ||
-        !Production->TryTakeStock(StationId, ItemId, Quantity, Station.Revision))
+        !Production->TryTakeStockForPlayer(StationId, ItemId, Quantity, Station.Revision, Inventory->ProgressionEntityId))
         return false;
     if (Inventory->TryAddItem(Stack))
         return true;
