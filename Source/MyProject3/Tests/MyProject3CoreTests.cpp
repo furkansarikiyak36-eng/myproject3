@@ -2848,15 +2848,36 @@ bool FHeatFuelOwnershipReceiptTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Duplicate refuel does not add burn time twice"),
         FMath::IsNearlyEqual(Heat->GetFuelSeconds(), 120.0f));
 
+    const FGuid SecondFuelItemId = FGuid::NewGuid();
+    FWorldOwnedItemRecord SecondFuelItem = FuelItem;
+    SecondFuelItem.ItemId = SecondFuelItemId;
+    TestTrue(TEXT("Register a second independently owned fuel item"),
+        Ownership->RegisterItem(SecondFuelItem));
+    FInventoryStack SecondFuelStack = FuelStack;
+    SecondFuelStack.OwnedWorldItemId = SecondFuelItemId;
+    TestTrue(TEXT("Keep second fuel item in inventory"),
+        Inventory->TryAddItem(SecondFuelStack));
+
     AActor* SecondHeatActor = World->SpawnActor<AActor>();
+    UWorldObjectIdentityComponent* SecondHeatIdentity =
+        NewObject<UWorldObjectIdentityComponent>(SecondHeatActor);
     UHeatSourceComponent* SecondHeat = NewObject<UHeatSourceComponent>(SecondHeatActor);
+    SecondHeatActor->AddInstanceComponent(SecondHeatIdentity);
+    SecondHeatIdentity->RegisterComponent();
+    TestTrue(TEXT("Second heat source has stable identity"), SecondHeatIdentity->EnsureIdentity());
     SecondHeatActor->AddInstanceComponent(SecondHeat);
     SecondHeat->RegisterComponent();
     SecondHeat->MaxFuelSeconds = 600.0f;
-    TestTrue(TEXT("Second heat source rejects cross-source reuse of operation ID"),
-        !SecondHeat->TryAddFuelItem(FuelOperationId, FuelItemId, 1, InventoryOwnerId));
-    TestTrue(TEXT("Second heat source receives no duplicated fuel"),
+    TestTrue(TEXT("Register second heat source fuel definition"),
+        SecondHeat->RegisterFuelDefinition(FuelDefinition));
+    TestFalse(TEXT("Second heat source rejects reused operation ID before consuming another item"),
+        SecondHeat->TryAddFuelItem(FuelOperationId, SecondFuelItemId, 1, InventoryOwnerId));
+    TestTrue(TEXT("Second heat source receives no fuel"),
         FMath::IsNearlyEqual(SecondHeat->GetFuelSeconds(), 0.0f));
+    FWorldOwnedItemRecord SecondFuelAfter;
+    TestTrue(TEXT("Second fuel record still exists"), Ownership->TryGetItem(SecondFuelItemId, SecondFuelAfter));
+    TestEqual(TEXT("Second fuel remains inventory-owned"), SecondFuelAfter.OwnerKind, EWorldItemOwnerKind::Inventory);
+    TestEqual(TEXT("Second fuel remains in inventory"), Inventory->GetItemCount(FuelItem.DefinitionId), 1);
 
     FWorldOwnedItemRecord ConsumedFuel;
     TestTrue(TEXT("Consumed fuel retains identity history"), Ownership->TryGetItem(FuelItemId, ConsumedFuel));
