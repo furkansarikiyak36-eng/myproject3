@@ -129,12 +129,13 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, EventsJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
+        !ReadJson(Directory, TEXT("events.json"), EventsJson, Error) ||
         !ReadJson(Directory, TEXT("calendar.json"), CalendarJson, Error) ||
         !ReadJson(Directory, TEXT("climate.json"), ClimateJson, Error) ||
         !ReadJson(Directory, TEXT("layers.json"), LayersJson, Error))
@@ -311,6 +312,46 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             NewCrops.Add(Crop);
         }
 
+    // Natural-event contracts are data-driven and validated before replacing live data.
+    TArray<FGameDataWorldEvent> NewWorldEvents;
+    TSet<FName> WorldEventIds;
+    const TArray<TSharedPtr<FJsonValue>>* EventValues = ArrayField(EventsJson, TEXT("events"));
+    if (!EventValues)
+        return Fail(TEXT("events.json has no events"));
+    for (const TSharedPtr<FJsonValue>& Value : *EventValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataWorldEvent Event;
+        Event.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Event.Name);
+        Event.Trigger = NameField(Entry, TEXT("trigger"));
+        Event.Signal = NameField(Entry, TEXT("signal"));
+        Event.Effect = NameField(Entry, TEXT("effect"));
+        Event.WarningSeconds = NumberField(Entry, TEXT("warning_h")) * 3600.0;
+        Event.DurationSeconds = NumberField(Entry, TEXT("duration_h")) * 3600.0;
+        Event.MinimumSeverity = static_cast<float>(NumberField(Entry, TEXT("min_severity")));
+        Event.MaximumSeverity = static_cast<float>(NumberField(Entry, TEXT("max_severity"), 1.0));
+        Event.CounterItemId = NameField(Entry, TEXT("counter_item"));
+        Event.CounterQuantity = static_cast<int32>(NumberField(Entry, TEXT("counter_qty")));
+        if (Event.Id.IsNone() || WorldEventIds.Contains(Event.Id) || Event.Name.IsEmpty() ||
+            Event.Trigger.IsNone() || Event.Signal.IsNone() || Event.Effect.IsNone() ||
+            !FMath::IsFinite(Event.WarningSeconds) || Event.WarningSeconds < 0.0 ||
+            !FMath::IsFinite(Event.DurationSeconds) || Event.DurationSeconds <= 0.0 ||
+            !FMath::IsFinite(Event.MinimumSeverity) || !FMath::IsFinite(Event.MaximumSeverity) ||
+            Event.MinimumSeverity < 0.0f || Event.MaximumSeverity > 1.0f ||
+            Event.MinimumSeverity > Event.MaximumSeverity ||
+            ((!Event.CounterItemId.IsNone()) &&
+                (!HasItem(Event.CounterItemId) || Event.CounterQuantity <= 0)) ||
+            (Event.CounterItemId.IsNone() && Event.CounterQuantity != 0))
+        {
+            return Fail(FString::Printf(TEXT("Bad world event %s"), *Event.Id.ToString()));
+        }
+        WorldEventIds.Add(Event.Id);
+        NewWorldEvents.Add(Event);
+    }
+    if (NewWorldEvents.IsEmpty())
+        return Fail(TEXT("events.json needs at least one event"));
+
     FWorldCalendarConfig NewCalendar;
     NewCalendar.SecondsPerDay = NumberField(CalendarJson, TEXT("seconds_per_day"), NewCalendar.SecondsPerDay);
     NewCalendar.DaysPerMonth = static_cast<int32>(NumberField(CalendarJson, TEXT("days_per_month"), NewCalendar.DaysPerMonth));
@@ -368,6 +409,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Fuels = MoveTemp(NewFuels);
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
+    WorldEvents = MoveTemp(NewWorldEvents);
     Calendar = NewCalendar;
     ClimateMonths = MoveTemp(NewMonths);
     Layers = MoveTemp(NewLayers);
