@@ -28,9 +28,16 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Infrastructure")
     bool bInfrastructureUsable = false;
 
+    /** If this is attached to a structural graph node, threshold damage disables the route and repair re-enables it. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Infrastructure")
+    bool bStructuralDamageControlsUsability = true;
+
     /** Updates all directional route edges sharing InfrastructureId. */
     UFUNCTION(BlueprintCallable, Category="World|Infrastructure")
     bool SetInfrastructureUsable(bool bUsable);
+
+    /** Called by WorldStructuralGraphSubsystem after damage or repair changes this actor's node. */
+    bool HandleStructuralDamageChanged(float Damage, float DamageThreshold);
 
     UFUNCTION(BlueprintPure, Category="World|Infrastructure")
     bool IsInfrastructureUsable() const { return bInfrastructureUsable; }
