@@ -39,6 +39,12 @@ public:
  UFUNCTION(BlueprintPure, Category="Crafting") bool CanCraft(FName RecipeId, TArray<FInventoryStack>& OutMissing) const;
  UFUNCTION(BlueprintCallable, Category="Crafting") bool TryCraft(FName RecipeId);
  UFUNCTION(BlueprintCallable, Category="Crafting") bool RegisterRecipe(const FCraftingRecipe& Recipe);
+ /** Optional player profile used to enforce discovery-gated recipes and seed items. Unlinked storage/helper inventories remain ungated. */
+ UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly, Category="Inventory|Progression")
+ FGuid ProgressionEntityId;
+ UFUNCTION(BlueprintCallable, Category="Inventory|Progression") void SetProgressionEntityId(const FGuid& EntityId);
+ UFUNCTION(BlueprintPure, Category="Inventory|Progression") bool IsDefinitionAvailableForProgression(FName DefinitionId) const;
+
  void ExportSnapshot(FGuid& OutOwnerActorId, FGuid& OutInventoryOwnerId,
   TArray<FInventoryStack>& OutItems, FName& OutQuickAccessItemId) const;
  bool RestoreSnapshot(const FGuid& InInventoryOwnerId, const TArray<FInventoryStack>& Snapshot,
