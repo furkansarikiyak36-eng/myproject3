@@ -1,4 +1,5 @@
 #include "WorldSurvivalSubsystem.h"
+#include "WorldGameDataSubsystem.h"
 
 #include "HeatSourceComponent.h"
 #include "WorldItemOwnershipSubsystem.h"
@@ -155,7 +156,7 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
     {
         if (!Receipt.OperationId.IsValid() || SeenOperations.Contains(Receipt.OperationId) ||
             Receipt.EntityId != Profile.EntityId ||
-            static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::FillWaterFromCreek) ||
+            static_cast<uint8>(Receipt.Action) > static_cast<uint8>(EWorldSurvivalActionKind::BoilWater) ||
             Receipt.ExpectedProfileRevision <= 0 ||
             Receipt.ResultingProfileRevision != Receipt.ExpectedProfileRevision + 1 ||
             Receipt.ResultingProfileRevision > Profile.Revision)
@@ -224,6 +225,29 @@ bool UWorldSurvivalSubsystem::IsValidProfile(const FWorldSurvivalProfile& Profil
                 Receipt.RequestedLocation.ContainsNaN())
                 return false;
             break;
+        case EWorldSurvivalActionKind::BoilWater:
+        {
+            const bool bStartingBoil =
+                Receipt.ItemDefinitionId == FName(TEXT("Water.Dirty")) &&
+                Receipt.ResultingItemDefinitionId == FName(TEXT("Water.Boiling"));
+            const bool bFinishingBoil =
+                Receipt.ItemDefinitionId == FName(TEXT("Water.Boiling")) &&
+                Receipt.ResultingItemDefinitionId == FName(TEXT("Water.Boiled"));
+            if (!Receipt.ItemId.IsValid() || !Receipt.RelatedItemId.IsValid() ||
+                Receipt.ItemId == Receipt.RelatedItemId ||
+                !Receipt.ExpectedItemOwnerId.IsValid() ||
+                Receipt.ExpectedItemRevision <= 0 ||
+                Receipt.ResultingItemRevision != Receipt.ExpectedItemRevision + 1 ||
+                Receipt.ExpectedRelatedItemRevision <= 0 ||
+                (!bStartingBoil && !bFinishingBoil) ||
+                !FMath::IsFinite(Receipt.RequestedStartTimeSeconds) ||
+                Receipt.RequestedStartTimeSeconds < 0.0 ||
+                !FMath::IsFinite(Receipt.RequestedDurationSeconds) ||
+                Receipt.RequestedDurationSeconds <= 0.0 ||
+                Receipt.RequestedDurationSeconds > 86400.0)
+                return false;
+            break;
+        }
         default:
             return false;
         }
@@ -675,6 +699,229 @@ bool UWorldSurvivalSubsystem::TryFillWaterFromCreek(
     Receipt.RequestedLocation = CreekLocation;
     Profile->ActionReceipts.Add(Receipt);
     OutWaterItemId = WaterItem.ItemId;
+    return true;
+}
+
+bool UWorldSurvivalSubsystem::TryBoilWaterAtFire(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    const FGuid& WaterItemId, int64 ExpectedWaterItemRevision,
+    const FGuid& ContainerItemId, int64 ExpectedContainerRevision,
+    const FGuid& ExpectedInventoryOwnerId, bool& bOutStarted)
+{
+    bOutStarted = false;
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        !WaterItemId.IsValid() || ExpectedWaterItemRevision <= 0 ||
+        ExpectedWaterItemRevision >= MAX_int64 - 1 ||
+        !ContainerItemId.IsValid() || ExpectedContainerRevision <= 0 ||
+        ExpectedContainerRevision >= MAX_int64 - 1 ||
+        !ExpectedInventoryOwnerId.IsValid())
+        return false;
+
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+    {
+        const bool bMatches = Existing->Action == EWorldSurvivalActionKind::BoilWater &&
+            Existing->EntityId == EntityId && Existing->ItemId == WaterItemId &&
+            Existing->RelatedItemId == ContainerItemId &&
+            Existing->ExpectedItemOwnerId == ExpectedInventoryOwnerId &&
+            Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->ExpectedItemRevision == ExpectedWaterItemRevision &&
+            Existing->ExpectedRelatedItemRevision == ExpectedContainerRevision;
+        bOutStarted = bMatches &&
+            Existing->ResultingItemDefinitionId == FName(TEXT("Water.Boiling"));
+        return bMatches;
+    }
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    UWorld* World = GetWorld();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!Profile || !World || !Ownership || !Clock || !Clock->IsClockInitialized() ||
+        !GameData || !GameData->IsApplied() ||
+        Profile->Revision != ExpectedProfileRevision || Profile->Revision >= MAX_int64 - 1 ||
+        MaxActionReceiptsPerProfile <= 0 ||
+        Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
+        !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
+        !GameData->GetItems().Contains(FName(TEXT("Water.Boiling"))))
+        return false;
+
+    const FGameDataTransformation* BoilRecipe =
+        GameData->FindTransformation(FName(TEXT("boil_water")));
+    const FGameDataItem* DirtyItemDefinition =
+        GameData->GetItems().Find(FName(TEXT("Water.Dirty")));
+    const FGameDataItem* BoiledItemDefinition =
+        GameData->GetItems().Find(FName(TEXT("Water.Boiled")));
+    if (!BoilRecipe || !FMath::IsFinite(BoilRecipe->DurationSeconds) ||
+        BoilRecipe->DurationSeconds <= 0.0 || BoilRecipe->DurationSeconds > 86400.0 ||
+        !DirtyItemDefinition || !BoiledItemDefinition ||
+        !FindConsumableDefinition(FName(TEXT("Water.Dirty"))) ||
+        !FindConsumableDefinition(FName(TEXT("Water.Boiled"))))
+        return false;
+
+    const double Now = Clock->GetSimulationTimeSeconds();
+    if (!FMath::IsFinite(Now) || Now < 0.0)
+        return false;
+
+    FWorldOwnedItemRecord Water;
+    FWorldOwnedItemRecord Container;
+    if (!Ownership->TryGetItem(WaterItemId, Water) ||
+        Water.Revision != ExpectedWaterItemRevision ||
+        Water.Revision >= MAX_int64 - 1 ||
+        Water.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Water.OwnerId != ExpectedInventoryOwnerId || Water.Quantity != 1 ||
+        !Ownership->TryGetItem(ContainerItemId, Container) ||
+        Container.Revision != ExpectedContainerRevision ||
+        Container.Revision >= MAX_int64 - 1 ||
+        Container.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Container.OwnerId != ExpectedInventoryOwnerId || Container.Quantity != 1 ||
+        Container.DefinitionId != FName(TEXT("Pot.Fired")))
+        return false;
+
+    int32 WaterStackIndex = INDEX_NONE;
+    int32 ContainerStackIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < Inventory->Items.Num(); ++Index)
+    {
+        const FInventoryStack& Stack = Inventory->Items[Index];
+        if (Stack.OwnedWorldItemId == WaterItemId)
+        {
+            if (WaterStackIndex != INDEX_NONE || Stack.ItemId != Water.DefinitionId ||
+                Stack.Quantity != 1 || Stack.MaxStack != 1)
+                return false;
+            WaterStackIndex = Index;
+        }
+        if (Stack.OwnedWorldItemId == ContainerItemId)
+        {
+            if (ContainerStackIndex != INDEX_NONE || Stack.ItemId != FName(TEXT("Pot.Fired")) ||
+                Stack.Quantity != 1 || Stack.MaxStack != 1)
+                return false;
+            ContainerStackIndex = Index;
+        }
+    }
+    if (WaterStackIndex == INDEX_NONE || ContainerStackIndex == INDEX_NONE)
+        return false;
+
+    bool bAtHotFire = false;
+    for (TActorIterator<AActor> It(World); It && !bAtHotFire; ++It)
+    {
+        if (!IsValid(*It))
+            continue;
+        TInlineComponentArray<UHeatSourceComponent*> Sources(*It);
+        for (const UHeatSourceComponent* Source : Sources)
+        {
+            if (IsValid(Source) && Source->IsLit() &&
+                Source->GetHeatAt(Profile->Location) >= 12.0f)
+            {
+                bAtHotFire = true;
+                break;
+            }
+        }
+    }
+    if (!bAtHotFire)
+        return false;
+
+    FName ResultDefinitionId = NAME_None;
+    double BoilStartTime = Now;
+    double BoilDuration = BoilRecipe->DurationSeconds;
+    if (Water.DefinitionId == FName(TEXT("Water.Dirty")))
+    {
+        // This is the beginning of the authored transformation interval.
+        ResultDefinitionId = FName(TEXT("Water.Boiling"));
+        bOutStarted = true;
+    }
+    else if (Water.DefinitionId == FName(TEXT("Water.Boiling")))
+    {
+        const FWorldSurvivalActionReceipt* StartReceipt =
+            Profile->ActionReceipts.FindByPredicate(
+                [&WaterItemId, &ExpectedInventoryOwnerId, &ContainerItemId](
+                    const FWorldSurvivalActionReceipt& Receipt)
+                {
+                    return Receipt.Action == EWorldSurvivalActionKind::BoilWater &&
+                        Receipt.ItemId == WaterItemId &&
+                        Receipt.RelatedItemId == ContainerItemId &&
+                        Receipt.ExpectedItemOwnerId == ExpectedInventoryOwnerId &&
+                        Receipt.ItemDefinitionId == FName(TEXT("Water.Dirty")) &&
+                        Receipt.ResultingItemDefinitionId == FName(TEXT("Water.Boiling"));
+                });
+        if (!StartReceipt)
+            return false; // A transient boiling item without its start receipt is invalid.
+        BoilStartTime = StartReceipt->RequestedStartTimeSeconds;
+        BoilDuration = StartReceipt->RequestedDurationSeconds;
+        if (Now + 0.001 < BoilStartTime + BoilDuration)
+            return false;
+        ResultDefinitionId = FName(TEXT("Water.Boiled"));
+    }
+    else
+    {
+        return false; // Already boiled or not a water state supported by this action.
+    }
+
+    FGuid OwnerActorId;
+    FGuid InventoryOwnerBefore;
+    TArray<FInventoryStack> InventoryItemsBefore;
+    FName QuickAccessBefore = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+    if (InventoryOwnerBefore != ExpectedInventoryOwnerId)
+        return false;
+
+    TArray<FWorldOwnedItemRecord> OwnershipItemsBefore;
+    TArray<FWorldItemTransferReceipt> OwnershipReceiptsBefore;
+    TArray<FWorldItemSplitReceipt> OwnershipSplitReceiptsBefore;
+    Ownership->ExportSnapshot(OwnershipItemsBefore, OwnershipReceiptsBefore, OwnershipSplitReceiptsBefore);
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bInventoryRestored =
+            Inventory->RestoreSnapshot(InventoryOwnerBefore, InventoryItemsBefore, QuickAccessBefore);
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(OwnershipItemsBefore, OwnershipReceiptsBefore, OwnershipSplitReceiptsBefore);
+        if (!bInventoryRestored || !bOwnershipRestored)
+        {
+            UE_LOG(LogTemp, Error, TEXT("Water-boiling rollback failed for item %s."), *WaterItemId.ToString());
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Water boiling rollback failed; stop simulation and recover/reset the world."));
+            return false;
+        }
+        return true;
+    };
+
+    FWorldOwnedItemRecord UpdatedWater;
+    if (!Ownership->TryUpdateItemDefinition(OperationId, WaterItemId, ExpectedWaterItemRevision,
+        EWorldItemOwnerKind::Inventory, ResultDefinitionId, UpdatedWater))
+        return false;
+
+    if (!Inventory->Items.IsValidIndex(WaterStackIndex) ||
+        Inventory->Items[WaterStackIndex].OwnedWorldItemId != WaterItemId ||
+        Inventory->Items[WaterStackIndex].ItemId != Water.DefinitionId)
+    {
+        Rollback();
+        return false;
+    }
+    Inventory->Items[WaterStackIndex].ItemId = ResultDefinitionId;
+
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::BoilWater;
+    Receipt.ItemId = WaterItemId;
+    Receipt.RelatedItemId = ContainerItemId;
+    Receipt.ExpectedItemOwnerId = ExpectedInventoryOwnerId;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ExpectedItemRevision = ExpectedWaterItemRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.ResultingItemRevision = UpdatedWater.Revision;
+    Receipt.ItemDefinitionId = Water.DefinitionId;
+    Receipt.ResultingItemDefinitionId = ResultDefinitionId;
+    Receipt.ExpectedRelatedItemRevision = ExpectedContainerRevision;
+    Receipt.RequestedStartTimeSeconds = BoilStartTime;
+    Receipt.RequestedDurationSeconds = BoilDuration;
+    Profile->ActionReceipts.Add(Receipt);
     return true;
 }
 
