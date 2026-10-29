@@ -1277,6 +1277,128 @@ namespace
     }
 }
 
+bool ULogCarryComponent::GetHeldItemForSnapshot(AActor*& OutItem, bool& bOutIsMaterial) const
+{
+    const bool bHasLog = IsValid(HeldPiece);
+    const bool bHasMaterial = IsValid(HeldMaterialPiece);
+    OutItem = nullptr;
+    bOutIsMaterial = false;
+    if (bHasLog && bHasMaterial)
+        return false;
+    if (!bHasLog && !bHasMaterial)
+        return true;
+    OutItem = bHasLog ? static_cast<AActor*>(HeldPiece.Get()) : HeldMaterialPiece.Get();
+    bOutIsMaterial = bHasMaterial;
+    return IsValid(OutItem) && IsValid(GetOwner()) && CarryOwnerId.IsValid();
+}
+
+void ULogCarryComponent::ClearHeldStateForSnapshotRestore()
+{
+    ReleaseHeldFromLoad();
+    if (UCarryLoadComponent* Load = GetOwner()
+        ? GetOwner()->FindComponentByClass<UCarryLoadComponent>() : nullptr)
+    {
+        if (IsValid(HeldMaterialPiece))
+            Load->UnregisterCarried(HeldMaterialPiece);
+    }
+
+    HeldPiece = nullptr;
+    HeldMaterialPiece = nullptr;
+    CurrentSnapTarget = nullptr;
+    CurrentSourceSnapPointIndex = INDEX_NONE;
+    CurrentTargetSnapPointIndex = INDEX_NONE;
+    CurrentSnapActorTransform = FTransform::Identity;
+    bHasValidSnap = false;
+    bHasPlacementSurface = false;
+    bHasStackPlacement = false;
+    StackTarget.Reset();
+    PlacementSurfaceActor.Reset();
+    MaterialSnapTarget = nullptr;
+    MaterialSnapAnchor = NAME_None;
+    bMaterialGroundPreview = false;
+    DraggedPiece.Reset();
+    bIsDraggingLog = false;
+    HeldLifts.Reset();
+}
+
+bool ULogCarryComponent::RestoreHeldItemFromSnapshot(
+    const FGuid& InCarryOwnerId,
+    AActor* Item,
+    bool bIsMaterial,
+    const FTransform& ItemRelativeTransform)
+{
+    if (!IsValid(GetOwner()) || !IsValid(Item) || !InCarryOwnerId.IsValid() ||
+        !ItemRelativeTransform.IsValid() || IsValid(HeldPiece) || IsValid(HeldMaterialPiece))
+        return false;
+
+    UWorldObjectIdentityComponent* Identity =
+        Item->FindComponentByClass<UWorldObjectIdentityComponent>();
+    UWorldItemOwnershipSubsystem* Ownership = GetWorld()
+        ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    FWorldOwnedItemRecord ItemRecord;
+    if (!Identity || !Identity->HasValidIdentity() ||
+        Identity->GetLifecycleState() != EWorldObjectLifecycleState::Held ||
+        !Ownership || !Ownership->TryGetItem(Identity->GetInstanceId(), ItemRecord) ||
+        ItemRecord.OwnerKind != EWorldItemOwnerKind::Held ||
+        ItemRecord.OwnerId != InCarryOwnerId || ItemRecord.Quantity != 1)
+        return false;
+
+    ALogBuildPiece* Log = Cast<ALogBuildPiece>(Item);
+    if (bIsMaterial)
+    {
+        if (Log || (!Cast<AStoneBuildingPiece>(Item) && !Cast<AStickPrimitivePiece>(Item)))
+            return false;
+    }
+    else if (!Log)
+    {
+        return false;
+    }
+
+    const FTransform RestoredWorldTransform =
+        ItemRelativeTransform * GetOwner()->GetActorTransform();
+    if (!RestoredWorldTransform.IsValid() ||
+        !Item->SetActorTransform(RestoredWorldTransform, false, nullptr, ETeleportType::TeleportPhysics))
+        return false;
+
+    UPrimitiveComponent* RootPrimitive =
+        Cast<UPrimitiveComponent>(Item->GetRootComponent());
+    if (RootPrimitive)
+    {
+        RootPrimitive->SetSimulatePhysics(false);
+        RootPrimitive->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    }
+    Item->SetActorEnableCollision(false);
+
+    if (Log)
+    {
+        Log->SetHeldState(true);
+        Log->SetPlacedState(false);
+        if (UStaticMeshComponent* Mesh = Log->GetLogMesh())
+        {
+            Mesh->SetSimulatePhysics(false);
+            Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
+        HeldPiece = Log;
+    }
+    else
+    {
+        if (!SetMaterialHeld(Item, true))
+            return false;
+        EnsureMaterialAnchors(Item);
+        if (UStaticMeshComponent* Mesh = Item->FindComponentByClass<UStaticMeshComponent>())
+        {
+            Mesh->SetSimulatePhysics(false);
+            Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        }
+        HeldMaterialPiece = Item;
+    }
+
+    CarryOwnerId = InCarryOwnerId;
+    if (UCarryLoadComponent* Load = GetOwner()->FindComponentByClass<UCarryLoadComponent>())
+        Load->RegisterCarried(Item);
+    return true;
+}
+
 bool ULogCarryComponent::TransferMaterialOwnership(
     AActor* Piece, EWorldItemOwnerKind From, EWorldItemOwnerKind To, const FVector& Location) const
 {
