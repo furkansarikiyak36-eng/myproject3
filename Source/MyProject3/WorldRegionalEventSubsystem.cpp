@@ -351,6 +351,17 @@ TArray<FName> UWorldRegionalEventSubsystem::GetRegionIds() const
     return Result;
 }
 
+bool UWorldRegionalEventSubsystem::GetEventDefinition(
+    FName EventId, FWorldRegionalEventDefinition& OutDefinition) const
+{
+    OutDefinition = FWorldRegionalEventDefinition();
+    const int32* Index = EventIndexById.Find(EventId);
+    if (!Index || !EventDefinitions.IsValidIndex(*Index))
+        return false;
+    OutDefinition = EventDefinitions[*Index];
+    return true;
+}
+
 float UWorldRegionalEventSubsystem::GetSnowLoadUnitsPerCmM2(FName RegionId) const
 {
     const FWorldRegionProfile* Found = bDefinitionsLoaded ? Regions.Find(RegionId) : nullptr;
