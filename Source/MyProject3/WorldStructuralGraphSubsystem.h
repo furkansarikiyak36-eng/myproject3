@@ -97,6 +97,8 @@ struct FStructuralNodeRecord
     /** Effective defense contribution of this placed node while supported and not collapsed. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure|Environment")
     float RaidDefenseRating = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure|Environment")
+    FName RaidDefenseDefinitionId = NAME_None;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
     FGuid NodeId;
