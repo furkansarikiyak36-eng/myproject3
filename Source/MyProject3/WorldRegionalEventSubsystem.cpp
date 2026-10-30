@@ -199,7 +199,7 @@ bool UWorldRegionalEventSubsystem::LoadDefinitionsFromDirectory(const FString& D
             EventType == TEXT("Wildfire") || EventType == TEXT("ToxicRain") ||
             EventType == TEXT("Epidemic") || EventType == TEXT("Snowstorm") ||
             EventType == TEXT("Avalanche") || EventType == TEXT("Fog") ||
-            EventType == TEXT("WindStorm");
+            EventType == TEXT("WindStorm") || EventType == TEXT("Lightning");
         if (!Entry.IsValid() || Definition.Id.IsNone() || Definition.Type.IsNone() || !bSupportedType ||
             NewIndexById.Contains(Definition.Id) ||
             !FMath::IsFinite(Definition.MinTemperatureCelsius) ||
