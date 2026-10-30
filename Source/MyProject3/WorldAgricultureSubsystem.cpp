@@ -8,6 +8,9 @@
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldCalendar.h"
 #include "WorldGameDataSubsystem.h"
+#include "ProductionStationActor.h"
+#include "WorldOperationLedgerSubsystem.h"
+#include "WorldProductionSubsystem.h"
 
 const FWorldCropDefinition* UWorldAgricultureSubsystem::FindCropDefinition(FName CropDefinitionId) const
 {
@@ -490,6 +493,141 @@ bool UWorldAgricultureSubsystem::TryPlantCropWithFieldAction(
     return TryPlantCropOnField(OperationId, CropDefinitionId, SeedItemId,
         ExpectedSeedItemRevision, InventoryOwnerId, PlotCell, ExpectedFieldRevision,
         InitialMoisture, OutCropId);
+}
+
+bool UWorldAgricultureSubsystem::TryExecuteFieldProcessingAction(
+    const FGuid& OperationId, FName FieldActionId, FName TransformationId,
+    const FGuid& InventoryOwnerId, AProductionStationActor* Station, FGuid& OutJobId)
+{
+    OutJobId.Invalidate();
+    if (!OperationId.IsValid() || FieldActionId.IsNone() || TransformationId.IsNone() ||
+        !InventoryOwnerId.IsValid())
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldOperationLedgerSubsystem* Ledger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!World || !GameData || !GameData->IsLoaded() || !Ledger ||
+        !FindInventoryForOwner(InventoryOwnerId, Inventory))
+        return false;
+
+    const FGameDataFieldAction* Action = GameData->FindFieldAction(FieldActionId);
+    const FGameDataTransformation* Transformation = GameData->FindTransformation(TransformationId);
+    if (!Action || !Transformation ||
+        (Action->Operation != TEXT("Dry") && Action->Operation != TEXT("Thresh") &&
+         Action->Operation != TEXT("Winnow") && Action->Operation != TEXT("Grind") &&
+         Action->Operation != TEXT("SeparateSeeds")) ||
+        !Action->TransformationIds.Contains(TransformationId))
+        return false;
+
+    const bool bUsesStation = !Action->StationId.IsNone();
+    if (bUsesStation)
+    {
+        if (!IsValid(Station) || Station->StationDataId != Action->StationId ||
+            Transformation->Where != Action->StationId)
+            return false;
+    }
+    else if (IsValid(Station) || Transformation->Where != TEXT("hand"))
+    {
+        return false;
+    }
+
+    const FString ReceiptText = FString::Printf(TEXT("FieldProcess|%s|%s|%s|%s"),
+        *FieldActionId.ToString(), *TransformationId.ToString(),
+        *InventoryOwnerId.ToString(),
+        bUsesStation ? *Action->StationId.ToString() : TEXT("hand"));
+    FWorldOperationResult Existing;
+    if (Ledger->TryGetCompletedResult(OperationId, Existing))
+    {
+        if (!Existing.IsSuccess() || Existing.Message.ToString() != ReceiptText ||
+            (bUsesStation != (Existing.AffectedObjectIds.Num() == 1)))
+            return false;
+        if (bUsesStation)
+            OutJobId = Existing.AffectedObjectIds[0];
+        return true;
+    }
+
+    // Hand processing keeps all action and recipe tools with the player.
+    // Station processing requires recipe tools to be in station stock; production
+    // consumes and returns them with the recipe's normal input/output contract.
+    if (!bUsesStation)
+    {
+        TSet<FName> RequiredTools;
+        for (const FName ToolId : Action->Tools)
+            RequiredTools.Add(ToolId);
+        for (const FName ToolId : Transformation->Tools)
+            RequiredTools.Add(ToolId);
+        for (const FName ToolId : RequiredTools)
+            if (ToolId.IsNone() || Inventory->GetItemCount(ToolId) <= 0)
+                return false;
+    }
+    else
+    {
+        if (!Station->EnsureRegistered() || !Station->HasRequiredFire())
+            return false;
+        UWorldProductionSubsystem* Production =
+            World->GetSubsystem<UWorldProductionSubsystem>();
+        FWorldProductionStation StationState;
+        if (!Production || !Production->GetStation(Station->GetStationId(), StationState) ||
+            StationState.StationTag != Action->StationId)
+            return false;
+    }
+
+    if (!Ledger->TryBeginOperation(OperationId))
+        return false;
+
+    bool bCommitted = false;
+    if (bUsesStation)
+    {
+        UWorldProductionSubsystem* Production =
+            World->GetSubsystem<UWorldProductionSubsystem>();
+        FWorldProductionStation StationState;
+        if (Production && Production->GetStation(Station->GetStationId(), StationState))
+            bCommitted = Production->TryEnqueueJob(OperationId, Station->GetStationId(),
+                TransformationId, StationState.Revision, OutJobId);
+    }
+    else
+    {
+        bCommitted = Inventory->TryCraft(TransformationId);
+    }
+
+    if (!bCommitted)
+    {
+        if (!Ledger->CancelUncommittedOperation(OperationId))
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Field-processing operation could not be cancelled after a rejected craft/enqueue; stop simulation and recover/reset the world."));
+        return false;
+    }
+
+    TArray<FGuid> AffectedIds;
+    if (bUsesStation)
+    {
+        if (!OutJobId.IsValid())
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Station recipe committed without a job identity; stop simulation and recover/reset the world."));
+            return false;
+        }
+        AffectedIds.Add(OutJobId);
+    }
+    const FWorldOperationResult Result = FWorldOperationResult::Success(
+        OperationId, FText::FromString(ReceiptText), AffectedIds);
+    if (!Ledger->CompleteOperation(Result))
+    {
+        if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+            World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            Coordinator->MarkSimulationFaulted(
+                TEXT("Field-processing mutation committed but its operation receipt could not be completed; stop simulation and recover/reset the world."));
+        return false;
+    }
+    return true;
 }
 
 bool UWorldAgricultureSubsystem::TryStoreHarvestItemWithFieldAction(
