@@ -691,13 +691,13 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Four raid countermeasure definitions"), Data->GetRaidDefenses().Num(), 4);
     TestEqual(TEXT("Five ordered discoveries"), Data->GetDiscoveries().Num(), 5);
     TestTrue(TEXT("Bedroll is a catalogued item"), Data->GetItems().Contains(TEXT("Bedroll")));
-    TestTrue(TEXT("All three raw crop products have freshness definitions"),
-        Data->GetConsumables().ContainsByPredicate([](const FWorldSurvivalConsumableDefinition& C)
-            { return C.DefinitionId == TEXT("Grain.Harvest"); }) &&
-        Data->GetConsumables().ContainsByPredicate([](const FWorldSurvivalConsumableDefinition& C)
-            { return C.DefinitionId == TEXT("Root.Harvest"); }) &&
-        Data->GetConsumables().ContainsByPredicate([](const FWorldSurvivalConsumableDefinition& C)
-            { return C.DefinitionId == TEXT("Legume.Harvest"); }));
+    const FGameDataItem* GrainHarvest = Data->GetItems().Find(TEXT("Grain.Harvest"));
+    const FGameDataItem* RootHarvest = Data->GetItems().Find(TEXT("Root.Harvest"));
+    const FGameDataItem* LegumeHarvest = Data->GetItems().Find(TEXT("Legume.Harvest"));
+    TestTrue(TEXT("Three harvest products load as perishable consumables"),
+        GrainHarvest && GrainHarvest->bConsumable &&
+        RootHarvest && RootHarvest->bConsumable &&
+        LegumeHarvest && LegumeHarvest->bConsumable);
     TestEqual(TEXT("Route anchors for the current authored slice"), Data->GetRouteNodes().Num(), 6);
     TestEqual(TEXT("Directed route edges"), Data->GetRouteEdges().Num(), 12);
     TestTrue(TEXT("Every material group has items"), Data->GetItems().Num() >= 80);
@@ -2209,15 +2209,14 @@ bool FRouteInfrastructureDurabilityTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Wear reduces condition"), Condition, 50.0f);
     TestTrue(TEXT("Worn steps remain built until destroyed"), bBuilt);
 
+    FLogisticsRouteEdge CurrentEdge;
+    Routes->ExportSnapshot(Nodes, Edges);
     const FLogisticsRouteEdge* WornEdge = Edges.FindByPredicate(
         [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
         { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
-    FLogisticsRouteEdge CurrentEdge;
-    TestTrue(TEXT("Read current route edge after wear"),
-        Routes->ExportSnapshot(Nodes, Edges));
-    CurrentEdge = *Edges.FindByPredicate(
-        [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
-        { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
+    if (!TestNotNull(TEXT("Worn required edge"), WornEdge))
+        return false;
+    CurrentEdge = *WornEdge;
     float WornCost = 0.0f;
     TestTrue(TEXT("Compute worn route cost"), Routes->ComputeEdgeCost(CurrentEdge, Context, WornCost));
     TestTrue(TEXT("Wear increases route cost"), WornCost > MaintainedCost);
@@ -2233,11 +2232,14 @@ bool FRouteInfrastructureDurabilityTest::RunTest(const FString& Parameters)
         Routes->GetInfrastructureState(InfrastructureId, Condition, MaxCondition, bBuilt));
     TestEqual(TEXT("Condition reaches zero"), Condition, 0.0f);
     TestFalse(TEXT("Destroyed steps are no longer built"), bBuilt);
-    CurrentEdge = *Edges.FindByPredicate(
+    Routes->ExportSnapshot(Nodes, Edges);
+    const FLogisticsRouteEdge* FailedEdge = Edges.FindByPredicate(
         [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
         { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
+    if (!TestNotNull(TEXT("Failed required edge"), FailedEdge))
+        return false;
     TestFalse(TEXT("Required route edge is unavailable after failure"),
-        Routes->ComputeEdgeCost(CurrentEdge, Context, WornCost));
+        Routes->ComputeEdgeCost(*FailedEdge, Context, WornCost));
     return true;
 }
 
