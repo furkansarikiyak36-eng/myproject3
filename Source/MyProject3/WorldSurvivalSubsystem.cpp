@@ -1108,6 +1108,85 @@ bool UWorldSurvivalSubsystem::RegisterDiscoveryDefinition(
     return true;
 }
 
+bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscoveryInRegion(
+    const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
+    FName DiscoveryId, FName RegionId, FVector Location, double LogicalTimeSeconds)
+{
+    if (!OperationId.IsValid() || !EntityId.IsValid() || ExpectedProfileRevision <= 0 ||
+        DiscoveryId.IsNone() || RegionId.IsNone() || Location.ContainsNaN() ||
+        !FMath::IsFinite(LogicalTimeSeconds) || LogicalTimeSeconds < 0.0)
+        return false;
+
+    if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
+        return Existing->Action == EWorldSurvivalActionKind::RecordDiscovery &&
+            Existing->EntityId == EntityId &&
+            Existing->DiscoveryId == DiscoveryId &&
+            Existing->RequestedRegionId == RegionId &&
+            Existing->RequestedLocation.Equals(Location, 0.001f) &&
+            FMath::IsNearlyEqual(Existing->RequestedDiscoveryTimeSeconds, LogicalTimeSeconds, 0.001);
+
+    FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+    const FWorldDiscoveryDefinition* Definition = FindDiscoveryDefinition(DiscoveryId);
+    UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Profile || !Definition || !Clock || !Clock->IsClockInitialized() ||
+        !FMath::IsNearlyEqual(Clock->GetSimulationTimeSeconds(), LogicalTimeSeconds, 0.001) ||
+        Profile->Revision != ExpectedProfileRevision ||
+        Profile->Revision >= MAX_int64 - 1 || Profile->ActionReceipts.Num() >= MaxActionReceiptsPerProfile ||
+        MaxDiscoveryRecords <= 0 || MaxDiscoveryRecords > 16384)
+        return false;
+
+    for (const FName RequiredDiscovery : Definition->PrerequisiteDiscoveryIds)
+        if (!Discoveries.ContainsByPredicate([RequiredDiscovery](const FWorldDiscoveryRecord& Record)
+            { return Record.DiscoveryId == RequiredDiscovery; }))
+            return false;
+
+    for (const FName RequiredEquipment : Definition->RequiredEquipmentDefinitionIds)
+        if (!Profile->EquippedItems.ContainsByPredicate([RequiredEquipment](const FWorldEquippedItemState& Equipped)
+            { return Equipped.ItemDefinitionId == RequiredEquipment; }))
+            return false;
+
+    FWorldDiscoveryRecord* ExistingRecord = Discoveries.FindByPredicate(
+        [DiscoveryId](const FWorldDiscoveryRecord& Record) { return Record.DiscoveryId == DiscoveryId; });
+    if (!ExistingRecord && Discoveries.Num() >= MaxDiscoveryRecords)
+        return false;
+
+    if (ExistingRecord)
+    {
+        for (const FName Unlock : Definition->UnlockedDefinitionIds)
+            if (!ExistingRecord->UnlockedDefinitionIds.Contains(Unlock))
+                ExistingRecord->UnlockedDefinitionIds.Add(Unlock);
+    }
+    else
+    {
+        FWorldDiscoveryRecord& Record = Discoveries.AddDefaulted_GetRef();
+        Record.DiscoveryId = DiscoveryId;
+        Record.Location = Location;
+        Record.DiscoveredAtTime = LogicalTimeSeconds;
+        Record.EntityId = EntityId;
+        Record.OperationId = OperationId;
+        Record.UnlockedDefinitionIds = Definition->UnlockedDefinitionIds;
+    }
+
+    // The region and discovery are one profile mutation: no half-entered region
+    // is visible if the discovery prerequisites or operation identity are rejected.
+    Profile->RegionId = RegionId;
+    Profile->Location = Location;
+    ++Profile->Revision;
+    FWorldSurvivalActionReceipt Receipt;
+    Receipt.OperationId = OperationId;
+    Receipt.EntityId = EntityId;
+    Receipt.Action = EWorldSurvivalActionKind::RecordDiscovery;
+    Receipt.ExpectedProfileRevision = ExpectedProfileRevision;
+    Receipt.ResultingProfileRevision = Profile->Revision;
+    Receipt.DiscoveryId = DiscoveryId;
+    Receipt.RequestedRegionId = RegionId;
+    Receipt.RequestedLocation = Location;
+    Receipt.RequestedDiscoveryTimeSeconds = LogicalTimeSeconds;
+    Profile->ActionReceipts.Add(Receipt);
+    return true;
+}
+
 bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
     const FGuid& OperationId, const FGuid& EntityId, int64 ExpectedProfileRevision,
     FName DiscoveryId, FVector Location, double LogicalTimeSeconds)
@@ -1119,7 +1198,8 @@ bool UWorldSurvivalSubsystem::TryRecordConfiguredDiscovery(
 
     if (const FWorldSurvivalActionReceipt* Existing = FindActionReceipt(OperationId))
         return Existing->Action == EWorldSurvivalActionKind::RecordDiscovery &&
-            Existing->EntityId == EntityId && Existing->ExpectedProfileRevision == ExpectedProfileRevision &&
+            Existing->EntityId == EntityId &&
+            Existing->RequestedRegionId.IsNone() &&
             Existing->DiscoveryId == DiscoveryId &&
             Existing->RequestedLocation.Equals(Location, 0.001f) &&
             FMath::IsNearlyEqual(Existing->RequestedDiscoveryTimeSeconds, LogicalTimeSeconds, 0.001);
