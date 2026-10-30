@@ -585,6 +585,10 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
         float Smell = 0.0f;
         float Light = 0.0f;
         float Smoke = 0.0f;
+        float StorageSuppression = 0.0f;
+        float SmellSuppression = 0.0f;
+        float LightSuppression = 0.0f;
+        float SmokeSuppression = 0.0f;
     };
     TMap<FName, FRegionSignals> SignalsByRegion;
 
@@ -599,9 +603,9 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
         return true;
     };
 
-    // Sensor convention: add Region:<id> and one or more RaidSignal.<kind>:<0..1>
-    // tags to storage, food/scent, light and smoke source actors. Contributions
-    // from multiple sources are summed and saturated at one per signal family.
+    // Sensor convention: add Region:<id>, RaidSignal.<kind>:<0..1>, direct
+    // RaidSignalSuppress.<kind>:<0..1>, or RaidDefenseType:<definition-id> tags.
+    // Defense definitions contribute both regional structural rating and signal suppression.
     for (TActorIterator<AActor> It(World); It; ++It)
     {
         AActor* Actor = *It;
@@ -646,6 +650,45 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
                 if (!AddSignal(Signals.Smoke, Value.RightChop(17)))
                     return false;
             }
+            else if (Value.StartsWith(TEXT("RaidSignalSuppress.Storage:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.StorageSuppression, Value.RightChop(27)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignalSuppress.Smell:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.SmellSuppression, Value.RightChop(25)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignalSuppress.Light:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.LightSuppression, Value.RightChop(25)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignalSuppress.Smoke:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.SmokeSuppression, Value.RightChop(25)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidDefenseType:"), ESearchCase::CaseSensitive))
+            {
+                const FName DefinitionId(*Value.RightChop(16));
+                const UWorldGameDataSubsystem* GameData =
+                    World->GetSubsystem<UWorldGameDataSubsystem>();
+                const FGameDataRaidDefense* Definition =
+                    GameData && GameData->IsLoaded()
+                        ? GameData->FindRaidDefense(DefinitionId) : nullptr;
+                if (!Definition)
+                    return false;
+                Signals.StorageSuppression = FMath::Clamp(
+                    Signals.StorageSuppression + Definition->StorageSuppression, 0.0f, 1.0f);
+                Signals.SmellSuppression = FMath::Clamp(
+                    Signals.SmellSuppression + Definition->SmellSuppression, 0.0f, 1.0f);
+                Signals.LightSuppression = FMath::Clamp(
+                    Signals.LightSuppression + Definition->LightSuppression, 0.0f, 1.0f);
+                Signals.SmokeSuppression = FMath::Clamp(
+                    Signals.SmokeSuppression + Definition->SmokeSuppression, 0.0f, 1.0f);
+            }
         }
     }
 
@@ -669,9 +712,12 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
             OperationId = FGuid(1, static_cast<int32>(RegionHash), static_cast<int32>(TickLow), static_cast<int32>(TickHigh));
 
         bool bRaidStarted = false;
+        const float Storage = Signals->StorageValue * (1.0f - Signals->StorageSuppression);
+        const float Smell = Signals->Smell * (1.0f - Signals->SmellSuppression);
+        const float Light = Signals->Light * (1.0f - Signals->LightSuppression);
+        const float Smoke = Signals->Smoke * (1.0f - Signals->SmokeSuppression);
         if (!Threat->TryStartRaidFromSignals(OperationId, RegionId,
-            Signals->StorageValue, Signals->Smell, Signals->Light, Signals->Smoke,
-            bRaidStarted))
+            Storage, Smell, Light, Smoke, bRaidStarted))
         {
             return false;
         }
