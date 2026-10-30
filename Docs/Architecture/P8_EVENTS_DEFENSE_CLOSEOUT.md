@@ -14,7 +14,8 @@ Status: **code-written / unbuilt** on `game/p08-events-defense`. The P6/P7 ances
 ### P8.2 — Region-targeted, signal-driven raids
 
 - Normal scheduled raids choose a configured region deterministically and use its authored `raid_target`; the legacy random-square target remains only as a fallback if regional data is unavailable.
-- `TryStartRaidFromSignals` accepts normalized `[0,1]` storage-value, smell, light and smoke observations. It applies weighted pressure, a configurable threshold and cooldown, assigns the region target, and rejects repeated operation IDs.
+- `UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals` scans region-tagged actors on each committed fixed step and aggregates tags `RaidSignal.Storage:<0..1>`, `RaidSignal.Smell:<0..1>`, `RaidSignal.Light:<0..1>`, and `RaidSignal.Smoke:<0..1>`. Contributions are summed and saturated per region/signal family.
+- The adapter sends one immutable sample per region and logical tick to `TryStartRaidFromSignals`. The director applies weighted pressure, threshold and cooldown, assigns the region target, and persists an operation receipt. Repeating the same tick sample returns success without creating another raid.
 - Threat snapshot schema v2 persists signal-operation receipts and cooldown time. Restore accepts v1 snapshots as legacy state with no signal receipts.
 - Raid damage now reads regional defensive rating and the event's visibility/coordination modifier. The configured minimum damage fraction prevents defense from making raids mathematically harmless.
 
@@ -38,11 +39,11 @@ Placed structural actors can declare metadata with actor tags:
 ## Deliberate integration boundaries / still open
 
 This is not a claim of full P8 gameplay acceptance. The following still need world/gameplay integration:
-- A world sensor or station caller must sample storage value/smell/light/smoke and call `TryStartRaidFromSignals`; the new API is not automatically polled from all stations.
+- Scene actors still need `Region:<id>` and `RaidSignal.*` tags, or a real sensor component that updates equivalent values. The adapter samples tagged actors automatically, but it does not calculate live values from every storage container, light component, smoke emitter or food source.
 - Regional route cost and structural damage are now consumed automatically; survival-condition triggers, water/crop contamination and hazard transition notifications are not yet connected. Fire spread/ignition propagation is not implemented.
 - Material-backed repair is source-written, but player/helper interaction, repair animations/visual feedback and material balance are not integrated. Fire spread/ignition actors, player warning/HUD feedback and committed start/end hazard notifications remain open.
 - Region tags and `DefenseTargetNodeIds` must be authored on the placed level actors/configuration. The existing demo has not been repopulated with these tags/targets.
-- Five P8 automation tests were added as source only. UHT/UBT, automation tests, save/load in Unreal and PIE have **not** been run.
+- Six P8 automation tests were added as source only. UHT/UBT, automation tests, save/load in Unreal and PIE have **not** been run.
 
 ## Source-level tests added
 
@@ -51,5 +52,6 @@ This is not a claim of full P8 gameplay acceptance. The following still need wor
 - `MyProject3.World.Events.SnowLoadCanOverloadExposedStructure`
 - `MyProject3.World.Events.RegionalHazardsIncreaseRouteCost`
 - `MyProject3.World.Events.StructuralRepairConsumesOwnedMaterialOnce`
+- `MyProject3.World.Events.RegionTaggedSensorsCanTriggerRaid`
 
 The next required proof gate is the agreed batch Unreal build/test pass, then scene tagging and PIE/save-load acceptance.
