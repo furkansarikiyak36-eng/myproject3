@@ -1759,6 +1759,51 @@ bool FRegionalEventDefinitionsDeterminismTest::RunTest(const FString& Parameters
     return true;
 }
 
+/** P8.1: the avalanche definition carries explicit mountain, slope, elevation and snow gates. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAvalancheTerrainFilterContractTest,
+    "MyProject3.World.Events.AvalancheRequiresMountainSlopeElevationAndSnow", Flags)
+bool FAvalancheTerrainFilterContractTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Regional events"), Events))
+        return false;
+    TestTrue(TEXT("Load regional event definitions"), Events->LoadDefaultDefinitions());
+
+    FWorldRegionalEventDefinition Avalanche;
+    TestTrue(TEXT("Read avalanche definition"),
+        Events->GetEventDefinition(TEXT("Event.Avalanche"), Avalanche));
+    TestTrue(TEXT("Avalanche is limited to two mountain regions"),
+        Avalanche.RegionIds.Num() == 2 &&
+        Avalanche.RegionIds.Contains(TEXT("Zone.2")) &&
+        Avalanche.RegionIds.Contains(TEXT("Zone.4")));
+    TestEqual(TEXT("Avalanche minimum slope ratio"), Avalanche.MinSlopeRatio, 0.6f);
+    TestEqual(TEXT("Avalanche minimum elevation metres"), Avalanche.MinElevationMeters, 400.0f);
+    TestEqual(TEXT("Avalanche minimum snow depth centimetres"), Avalanche.MinSnowDepthCm, 55.0f);
+
+    FWorldRegionProfile Lowland;
+    FWorldRegionProfile HighForest;
+    FWorldRegionProfile MountainPass;
+    TestTrue(TEXT("Load lowland profile"), Events->GetRegionProfile(TEXT("Zone.1"), Lowland));
+    TestTrue(TEXT("Load high forest profile"), Events->GetRegionProfile(TEXT("Zone.2"), HighForest));
+    TestTrue(TEXT("Load mountain pass profile"), Events->GetRegionProfile(TEXT("Zone.4"), MountainPass));
+    TestFalse(TEXT("Lowland fails avalanche region, slope and elevation requirements"),
+        Avalanche.RegionIds.Contains(Lowland.Id) &&
+        Lowland.SlopeRatio >= Avalanche.MinSlopeRatio &&
+        Lowland.ElevationMeters >= Avalanche.MinElevationMeters);
+    TestTrue(TEXT("High forest meets region slope and elevation gate"),
+        Avalanche.RegionIds.Contains(HighForest.Id) &&
+        HighForest.SlopeRatio >= Avalanche.MinSlopeRatio &&
+        HighForest.ElevationMeters >= Avalanche.MinElevationMeters);
+    TestTrue(TEXT("Mountain pass meets region slope and elevation gate"),
+        Avalanche.RegionIds.Contains(MountainPass.Id) &&
+        MountainPass.SlopeRatio >= Avalanche.MinSlopeRatio &&
+        MountainPass.ElevationMeters >= Avalanche.MinElevationMeters);
+    return true;
+}
+
 /** P8.2: store/smell/light/smoke inputs can trigger a region-specific, receipt-protected raid. */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSignalDrivenRaidAndPersistenceTest,
     "MyProject3.World.Events.SignalRaidIsRegionTargetedAndIdempotent", Flags)
@@ -2429,7 +2474,7 @@ bool FWorldInfrastructureActorLifecycleTest::RunTest(const FString& Parameters)
 
 // Faz 8 — recipe repair consumes the correct wood materials, keeps tools and deduplicates retries.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWoodStoneRecipeRepairTest,
-    "MyProject3.World.Structures.TypedWoodRepairConsumesRecipeOnce", Flags)
+    "MyProject3.World.Structures.TypedWoodAndStoneRepairRecipesConsumeMaterialsOnce", Flags)
 bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
 {
     FTestWorld TestWorld;
