@@ -126,13 +126,17 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, ZonesJson, RoutesJson, DiscoveriesJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, FieldActionsJson, InfrastructuresJson, StructureRepairsJson, RaidDefensesJson, ZonesJson, RoutesJson, DiscoveriesJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
         !ReadJson(Directory, TEXT("conditions.json"), ConditionsJson, Error) ||
         !ReadJson(Directory, TEXT("crops.json"), CropsJson, Error) ||
         !ReadJson(Directory, TEXT("animals.json"), AnimalsJson, Error) ||
+        !ReadJson(Directory, TEXT("field_actions.json"), FieldActionsJson, Error) ||
+        !ReadJson(Directory, TEXT("infrastructure.json"), InfrastructuresJson, Error) ||
+        !ReadJson(Directory, TEXT("structure_repairs.json"), StructureRepairsJson, Error) ||
+        !ReadJson(Directory, TEXT("raid_defenses.json"), RaidDefensesJson, Error) ||
         !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
         !ReadJson(Directory, TEXT("routes.json"), RoutesJson, Error) ||
         !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
@@ -264,6 +268,8 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         TransformationIds.Add(T.Id);
         NewTransformations.Add(T);
     }
+
+    TSet<FName> TransformationIdsSet = TransformationIds;
 
     TArray<FCondition> NewConditions;
     TSet<FName> ConditionIds;
@@ -435,6 +441,208 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 
         SeenAnimalIds.Add(Animal.Id);
         NewAnimals.Add(Animal);
+    }
+
+    TArray<FGameDataFieldAction> NewFieldActions;
+    const TArray<TSharedPtr<FJsonValue>>* FieldActionValues = ArrayField(FieldActionsJson, TEXT("actions"));
+    if (!FieldActionValues || FieldActionValues->Num() != 15)
+        return Fail(TEXT("field_actions.json must define exactly 15 field actions"));
+    TSet<FName> SeenFieldActionIds;
+    const TSet<FName> SupportedFieldOperations = {
+        TEXT("Clear"), TEXT("Till"), TEXT("Fertilize"), TEXT("Plant"), TEXT("Water"),
+        TEXT("Weed"), TEXT("Mulch"), TEXT("Harvest"), TEXT("Dry"), TEXT("Thresh"),
+        TEXT("Winnow"), TEXT("Grind"), TEXT("Store"), TEXT("SeparateSeeds"), TEXT("Fallow")
+    };
+    for (const TSharedPtr<FJsonValue>& Value : *FieldActionValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataFieldAction Action;
+        Action.Id = NameField(Entry, TEXT("id"));
+        Action.Operation = NameField(Entry, TEXT("operation"));
+        Action.WorkSeconds = NumberField(Entry, TEXT("work_seconds"));
+        Action.WorkAmount = static_cast<float>(NumberField(Entry, TEXT("work_amount"), 1.0));
+        Action.StationId = NameField(Entry, TEXT("station"));
+        Action.StoragePolicy = NameField(Entry, TEXT("storage_policy"));
+        if (const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, TEXT("tools")))
+        {
+            TSet<FName> SeenTools;
+            for (const TSharedPtr<FJsonValue>& Tool : *Tools)
+            {
+                const FName ToolId(*Tool->AsString());
+                if (ToolId.IsNone() || !HasItem(ToolId) || SeenTools.Contains(ToolId))
+                    return Fail(FString::Printf(TEXT("Field action %s has an invalid/repeated tool"),
+                        *Action.Id.ToString()));
+                SeenTools.Add(ToolId);
+                Action.Tools.Add(ToolId);
+            }
+        }
+        Action.Inputs = Amounts(Entry, TEXT("inputs"));
+        for (const FGameDataItemAmount& Input : Action.Inputs)
+            if (!HasItem(Input.ItemId) || Input.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Field action %s has an unknown/invalid input %s"),
+                    *Action.Id.ToString(), *Input.ItemId.ToString()));
+        if (const TArray<TSharedPtr<FJsonValue>>* TransformationIds = ArrayField(Entry, TEXT("transformation_ids")))
+            for (const TSharedPtr<FJsonValue>& TransformationValue : *TransformationIds)
+            {
+                const FName TransformationId(*TransformationValue->AsString());
+                if (TransformationId.IsNone() || !TransformationIdsSet.Contains(TransformationId))
+                    return Fail(FString::Printf(TEXT("Field action %s references unknown transformation %s"),
+                        *Action.Id.ToString(), *TransformationId.ToString()));
+                Action.TransformationIds.Add(TransformationId);
+            }
+        if (Action.Id.IsNone() || SeenFieldActionIds.Contains(Action.Id) ||
+            !SupportedFieldOperations.Contains(Action.Operation) ||
+            !FMath::IsFinite(Action.WorkSeconds) || Action.WorkSeconds <= 0.0 || Action.WorkSeconds > 31536000.0 ||
+            !FMath::IsFinite(Action.WorkAmount) || Action.WorkAmount <= 0.0f || Action.WorkAmount > 100.0f ||
+            (!Action.StationId.IsNone() && !NewStations.Contains(Action.StationId)) ||
+            (Action.Operation == TEXT("Store") && Action.StoragePolicy.IsNone()))
+            return Fail(FString::Printf(TEXT("Bad field action %s"), *Action.Id.ToString()));
+        SeenFieldActionIds.Add(Action.Id);
+        NewFieldActions.Add(Action);
+    }
+
+    TArray<FGameDataInfrastructure> NewInfrastructures;
+    const TArray<TSharedPtr<FJsonValue>>* InfrastructureValues = ArrayField(InfrastructuresJson, TEXT("infrastructures"));
+    if (!InfrastructureValues || InfrastructureValues->IsEmpty())
+        return Fail(TEXT("infrastructure.json has no infrastructure definitions"));
+    TSet<FName> SeenInfrastructureIds;
+    for (const TSharedPtr<FJsonValue>& Value : *InfrastructureValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataInfrastructure Definition;
+        Definition.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Definition.Name);
+        Definition.BuildWorkSeconds = NumberField(Entry, TEXT("build_work_seconds"));
+        Definition.MaxCondition = static_cast<float>(NumberField(Entry, TEXT("max_condition"), 100.0));
+        Definition.BuiltRouteCostMultiplier = static_cast<float>(NumberField(Entry, TEXT("route_cost_multiplier_built"), 1.0));
+        Definition.BuildMaterials = Amounts(Entry, TEXT("build_materials"));
+        Definition.RepairMaterials = Amounts(Entry, TEXT("repair_materials"));
+        auto ParseTools = [&Entry, &HasItem](const TCHAR* Field, TArray<FName>& OutTools) -> bool
+        {
+            if (const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, Field))
+            {
+                TSet<FName> Seen;
+                for (const TSharedPtr<FJsonValue>& Tool : *Tools)
+                {
+                    const FName ToolId(*Tool->AsString());
+                    if (ToolId.IsNone() || !HasItem(ToolId) || Seen.Contains(ToolId))
+                        return false;
+                    Seen.Add(ToolId);
+                    OutTools.Add(ToolId);
+                }
+            }
+            return true;
+        };
+        if (!ParseTools(TEXT("tools"), Definition.Tools))
+            return Fail(FString::Printf(TEXT("Infrastructure %s has an invalid tool"), *Definition.Id.ToString()));
+        for (const FGameDataItemAmount& Amount : Definition.BuildMaterials)
+            if (!HasItem(Amount.ItemId) || Amount.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Infrastructure %s has invalid build material"), *Definition.Id.ToString()));
+        for (const FGameDataItemAmount& Amount : Definition.RepairMaterials)
+            if (!HasItem(Amount.ItemId) || Amount.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Infrastructure %s has invalid repair material"), *Definition.Id.ToString()));
+        if (const TArray<TSharedPtr<FJsonValue>>* WearValues = ArrayField(Entry, TEXT("wear_events")))
+            for (const TSharedPtr<FJsonValue>& WearValue : *WearValues)
+            {
+                const FJson Wear = WearValue->AsObject();
+                FGameDataInfrastructureWearRule& Rule = Definition.WearRules.AddDefaulted_GetRef();
+                Rule.EventId = NameField(Wear, TEXT("event_id"));
+                Rule.WearPerHour = static_cast<float>(NumberField(Wear, TEXT("wear_per_hour")));
+                if (Rule.EventId.IsNone() || !FMath::IsFinite(Rule.WearPerHour) ||
+                    Rule.WearPerHour <= 0.0f || Rule.WearPerHour > 100000.0f)
+                    return Fail(FString::Printf(TEXT("Infrastructure %s has invalid wear rule"), *Definition.Id.ToString()));
+            }
+        if (Definition.Id.IsNone() || SeenInfrastructureIds.Contains(Definition.Id) ||
+            Definition.BuildMaterials.IsEmpty() || Definition.RepairMaterials.IsEmpty() ||
+            !FMath::IsFinite(Definition.BuildWorkSeconds) || Definition.BuildWorkSeconds <= 0.0 ||
+            !FMath::IsFinite(Definition.MaxCondition) || Definition.MaxCondition <= 0.0f ||
+            !FMath::IsFinite(Definition.BuiltRouteCostMultiplier) ||
+            Definition.BuiltRouteCostMultiplier <= 0.0f || Definition.BuiltRouteCostMultiplier > 100.0f)
+            return Fail(FString::Printf(TEXT("Bad infrastructure definition %s"), *Definition.Id.ToString()));
+        SeenInfrastructureIds.Add(Definition.Id);
+        NewInfrastructures.Add(Definition);
+    }
+
+    TArray<FGameDataStructureRepair> NewStructureRepairs;
+    const TArray<TSharedPtr<FJsonValue>>* RepairValues = ArrayField(StructureRepairsJson, TEXT("repairs"));
+    if (!RepairValues || RepairValues->IsEmpty())
+        return Fail(TEXT("structure_repairs.json has no repair recipes"));
+    TSet<FName> SeenRepairIds;
+    for (const TSharedPtr<FJsonValue>& Value : *RepairValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataStructureRepair Repair;
+        Repair.Id = NameField(Entry, TEXT("id"));
+        Repair.StructureKind = NameField(Entry, TEXT("structure_kind"));
+        Repair.Materials = Amounts(Entry, TEXT("materials"));
+        Repair.RepairAmount = static_cast<float>(NumberField(Entry, TEXT("repair_amount")));
+        Repair.WorkSeconds = NumberField(Entry, TEXT("work_seconds"));
+        if (const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, TEXT("tools")))
+            for (const TSharedPtr<FJsonValue>& Tool : *Tools)
+            {
+                const FName ToolId(*Tool->AsString());
+                if (ToolId.IsNone() || !HasItem(ToolId) || Repair.Tools.Contains(ToolId))
+                    return Fail(FString::Printf(TEXT("Repair %s has an invalid/repeated tool"), *Repair.Id.ToString()));
+                Repair.Tools.Add(ToolId);
+            }
+        for (const FGameDataItemAmount& Amount : Repair.Materials)
+            if (!HasItem(Amount.ItemId) || Amount.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Repair %s has invalid material"), *Repair.Id.ToString()));
+        if (Repair.Id.IsNone() || SeenRepairIds.Contains(Repair.Id) ||
+            (Repair.StructureKind != TEXT("Wood") && Repair.StructureKind != TEXT("Stone")) ||
+            Repair.Materials.IsEmpty() || Repair.Tools.IsEmpty() ||
+            !FMath::IsFinite(Repair.RepairAmount) || Repair.RepairAmount <= 0.0f ||
+            !FMath::IsFinite(Repair.WorkSeconds) || Repair.WorkSeconds <= 0.0)
+            return Fail(FString::Printf(TEXT("Bad structure repair %s"), *Repair.Id.ToString()));
+        SeenRepairIds.Add(Repair.Id);
+        NewStructureRepairs.Add(Repair);
+    }
+
+    TArray<FGameDataRaidDefense> NewRaidDefenses;
+    const TArray<TSharedPtr<FJsonValue>>* DefenseValues = ArrayField(RaidDefensesJson, TEXT("defenses"));
+    if (!DefenseValues || DefenseValues->IsEmpty())
+        return Fail(TEXT("raid_defenses.json has no countermeasures"));
+    TSet<FName> SeenDefenseIds;
+    for (const TSharedPtr<FJsonValue>& Value : *DefenseValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataRaidDefense Defense;
+        Defense.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), Defense.Name);
+        Defense.BuildMaterials = Amounts(Entry, TEXT("build_materials"));
+        Defense.DefenseRating = static_cast<float>(NumberField(Entry, TEXT("defense_rating")));
+        Defense.WorkSeconds = NumberField(Entry, TEXT("work_seconds"));
+        if (const TArray<TSharedPtr<FJsonValue>>* Tools = ArrayField(Entry, TEXT("tools")))
+            for (const TSharedPtr<FJsonValue>& Tool : *Tools)
+            {
+                const FName ToolId(*Tool->AsString());
+                if (ToolId.IsNone() || !HasItem(ToolId) || Defense.Tools.Contains(ToolId))
+                    return Fail(FString::Printf(TEXT("Defense %s has invalid/repeated tool"), *Defense.Id.ToString()));
+                Defense.Tools.Add(ToolId);
+            }
+        for (const FGameDataItemAmount& Amount : Defense.BuildMaterials)
+            if (!HasItem(Amount.ItemId) || Amount.Quantity <= 0)
+                return Fail(FString::Printf(TEXT("Defense %s has invalid material"), *Defense.Id.ToString()));
+        const TSharedPtr<FJsonObject>* Suppression = nullptr;
+        if (Entry->TryGetObjectField(TEXT("signal_suppression"), Suppression))
+        {
+            Defense.StorageSuppression = static_cast<float>(NumberField(*Suppression, TEXT("Storage")));
+            Defense.SmellSuppression = static_cast<float>(NumberField(*Suppression, TEXT("Smell")));
+            Defense.LightSuppression = static_cast<float>(NumberField(*Suppression, TEXT("Light")));
+            Defense.SmokeSuppression = static_cast<float>(NumberField(*Suppression, TEXT("Smoke")));
+        }
+        if (Defense.Id.IsNone() || SeenDefenseIds.Contains(Defense.Id) ||
+            Defense.BuildMaterials.IsEmpty() ||
+            !FMath::IsFinite(Defense.DefenseRating) || Defense.DefenseRating < 0.0f ||
+            Defense.DefenseRating > 100.0f ||
+            !IsFiniteRange(Defense.StorageSuppression, 0.0f, 1.0f) ||
+            !IsFiniteRange(Defense.SmellSuppression, 0.0f, 1.0f) ||
+            !IsFiniteRange(Defense.LightSuppression, 0.0f, 1.0f) ||
+            !IsFiniteRange(Defense.SmokeSuppression, 0.0f, 1.0f) ||
+            !FMath::IsFinite(Defense.WorkSeconds) || Defense.WorkSeconds <= 0.0)
+            return Fail(FString::Printf(TEXT("Bad raid defense definition %s"), *Defense.Id.ToString()));
+        SeenDefenseIds.Add(Defense.Id);
+        NewRaidDefenses.Add(Defense);
     }
 
     TArray<FGameDataZone> NewZones;
@@ -780,6 +988,10 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     Equipment = MoveTemp(NewEquipment);
     Crops = MoveTemp(NewCrops);
     Animals = MoveTemp(NewAnimals);
+    FieldActions = MoveTemp(NewFieldActions);
+    Infrastructures = MoveTemp(NewInfrastructures);
+    StructureRepairs = MoveTemp(NewStructureRepairs);
+    RaidDefenses = MoveTemp(NewRaidDefenses);
     Zones = MoveTemp(NewZones);
     Discoveries = MoveTemp(NewDiscoveries);
     RouteNodes = MoveTemp(NewRouteNodes);
@@ -791,6 +1003,26 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     bLoaded = true;
     bApplied = false;
     return true;
+}
+
+const FGameDataFieldAction* UWorldGameDataSubsystem::FindFieldAction(FName Id) const
+{
+    return FieldActions.FindByPredicate([Id](const FGameDataFieldAction& Action) { return Action.Id == Id; });
+}
+
+const FGameDataInfrastructure* UWorldGameDataSubsystem::FindInfrastructure(FName Id) const
+{
+    return Infrastructures.FindByPredicate([Id](const FGameDataInfrastructure& Definition) { return Definition.Id == Id; });
+}
+
+const FGameDataStructureRepair* UWorldGameDataSubsystem::FindStructureRepair(FName Id) const
+{
+    return StructureRepairs.FindByPredicate([Id](const FGameDataStructureRepair& Repair) { return Repair.Id == Id; });
+}
+
+const FGameDataRaidDefense* UWorldGameDataSubsystem::FindRaidDefense(FName Id) const
+{
+    return RaidDefenses.FindByPredicate([Id](const FGameDataRaidDefense& Defense) { return Defense.Id == Id; });
 }
 
 const FGameDataTransformation* UWorldGameDataSubsystem::FindTransformation(FName Id) const
