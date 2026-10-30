@@ -50,6 +50,8 @@ Editor closed. Then, in order, without fixing anything in between:
 
 P6/P8 source-test inventory on `game/p06-p08-blind-code-closure` (2026-10-30): `GameWorldTests.cpp` has 41 automation tests total; 15 named tests cover Farming/Events. These are source definitions only, not executed evidence.
 
+P6/P8 source-test inventory on `game/p06-p08-blind-code-closure` (2026-10-30): `GameWorldTests.cpp` has 41 automation tests total; 15 named tests cover Farming/Events. These are source definitions only, not executed evidence.
+
 ## Status vocabulary (honest levels)
 
 | Status | Meaning | Who can set it |
@@ -228,7 +230,7 @@ Existing: `VoxelTerrainChunkComponent`, `UWorldTerrainStateSubsystem`, decision 
 
 Existing: `UWorldAgricultureSubsystem` (stage by time + moisture only).
 - **P6.1** Field cell state: cleared, tilled, fertility, weeds, mulch, moisture.
-- **P6.2** The 15 steps of design §6.1, each with its hand tool; transformations 31–38.
+- **P6.2** The 15 steps of design §6.1, each with its hand tool; transformations 31–38. Current source covers field fencing, basket/capacity-aware harvest storage, and a guarded processing router for Dry/Thresh/Winnow/Grind/SeparateSeeds. Remaining: verify each catalogue action maps to the intended data recipe, wire physical player tools/animations/stations, then build and test.
 - **P6.3** Seeds as items, seed saving, soil exhaustion, 3 crops (question Q2).
 - **P6.4** Animal chain: trap, pen (stakes + rope), feeding, products, slaughter.
 
