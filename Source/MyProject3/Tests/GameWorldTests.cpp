@@ -2203,6 +2203,84 @@ bool FDataDrivenFieldActionTransactionTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Faz 6 — Field.Store transfers harvested ledger items into a real storage owner and replays by operation receipt.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHarvestStorageActionTest,
+    "MyProject3.World.Farming.HarvestStorageUsesBasketCapacityAndIdempotentOwnershipTransfer", Flags)
+bool FHarvestStorageActionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldStorageSubsystem* Storage = World ? World->GetSubsystem<UWorldStorageSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Ownership"), Ownership) ||
+        !TestNotNull(TEXT("Storage"), Storage) || !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner"), Owner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item definitions"), Data->ApplyToInventory(Inventory));
+
+    FInventoryStack Basket;
+    Basket.ItemId = TEXT("Basket");
+    Basket.Quantity = 1;
+    Basket.MaxStack = 1;
+    Basket.bIsTool = true;
+    Basket.Category = EInventoryItemCategory::Tool;
+    TestTrue(TEXT("Add required store basket"), Inventory->TryAddItem(Basket));
+
+    const FGuid StorageId(1001, 1002, 1003, 1004);
+    TestTrue(TEXT("Register destination storage"), Storage->RegisterStorage(StorageId, 4));
+
+    FWorldOwnedItemRecord HarvestItem;
+    HarvestItem.ItemId = FGuid(1005, 1006, 1007, 1008);
+    HarvestItem.DefinitionId = TEXT("Root.Harvest");
+    HarvestItem.BaseDefinitionId = HarvestItem.DefinitionId;
+    HarvestItem.Quantity = 1;
+    HarvestItem.OwnerKind = EWorldItemOwnerKind::Inventory;
+    HarvestItem.OwnerId = Inventory->GetInventoryOwnerId();
+    HarvestItem.Revision = 1;
+    TestTrue(TEXT("Register harvested unique ledger item"), Ownership->RegisterItem(HarvestItem));
+
+    FInventoryStack HarvestStack;
+    HarvestStack.ItemId = HarvestItem.DefinitionId;
+    HarvestStack.Quantity = 1;
+    HarvestStack.MaxStack = 1;
+    HarvestStack.Category = EInventoryItemCategory::Consumable;
+    HarvestStack.OwnedWorldItemId = HarvestItem.ItemId;
+    TestTrue(TEXT("Add harvest reference to inventory"), Inventory->TryAddItem(HarvestStack));
+
+    const FGuid StoreOperation(1011, 1012, 1013, 1014);
+    TestTrue(TEXT("Store harvest through Field.Store action"),
+        Agriculture->TryStoreHarvestItemWithFieldAction(StoreOperation, HarvestItem.ItemId,
+            HarvestItem.Revision, Inventory->GetInventoryOwnerId(), StorageId));
+    FWorldOwnedItemRecord Stored;
+    TestTrue(TEXT("Read stored harvest record"), Ownership->TryGetItem(HarvestItem.ItemId, Stored));
+    TestTrue(TEXT("Harvest ownership now belongs to destination storage"),
+        Stored.OwnerKind == EWorldItemOwnerKind::Storage && Stored.OwnerId == StorageId);
+    TestEqual(TEXT("Harvest reference leaves inventory"), Inventory->GetItemCount(TEXT("Root.Harvest")), 0);
+    TArray<FGuid> StoredIds;
+    TestTrue(TEXT("Read storage ledger contents"), Storage->GetStoredItemIds(StorageId, StoredIds));
+    TestTrue(TEXT("Storage contains the harvested item"), StoredIds.Contains(HarvestItem.ItemId));
+
+    TestTrue(TEXT("Remove basket after completed transfer"), Inventory->TryRemoveItem(TEXT("Basket"), 1));
+    TestTrue(TEXT("Exact store retry replays without mutable basket requirement"),
+        Agriculture->TryStoreHarvestItemWithFieldAction(StoreOperation, HarvestItem.ItemId,
+            HarvestItem.Revision, Inventory->GetInventoryOwnerId(), StorageId));
+    TestTrue(TEXT("Read stored harvest after retry"), Ownership->TryGetItem(HarvestItem.ItemId, Stored));
+    TestTrue(TEXT("Retry does not transfer item out of storage"),
+        Stored.OwnerKind == EWorldItemOwnerKind::Storage && Stored.OwnerId == StorageId);
+    TestTrue(TEXT("Storage still contains exactly one item"),
+        Storage->GetStoredItemIds(StorageId, StoredIds) && StoredIds.Num() == 1);
+    return true;
+}
+
 // Faz 7 — infrastructure condition affects route cost and zero condition closes required edges.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRouteInfrastructureDurabilityTest,
     "MyProject3.Logistics.InfrastructureWearRepairAndFailureAffectRouteCost", Flags)
