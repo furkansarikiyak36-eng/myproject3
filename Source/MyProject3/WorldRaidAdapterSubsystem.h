@@ -29,6 +29,12 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter")
     TArray<FGuid> DefenseTargetNodeIds;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter", meta=(ClampMin="0.0", ClampMax="1.0"))
+    float DamageReductionPerDefenseRating = 0.15f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Adapter", meta=(ClampMin="0.01", ClampMax="1.0"))
+    float MinimumRaidDamageFraction = 0.10f;
+
     UFUNCTION(BlueprintCallable, Category="Threat|Adapter")
     bool AdvanceRaidWorldAdapter();
 
