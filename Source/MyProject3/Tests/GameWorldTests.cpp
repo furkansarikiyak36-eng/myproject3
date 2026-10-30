@@ -2161,6 +2161,80 @@ bool FRegionalRaidSignalSensorScanTest::RunTest(const FString& Parameters)
 }
 
 
+// P7.3 — discovered transformation recipes stay locked until the player's profile records the unlock.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDiscoveryRecipeUnlockGateTest,
+    "MyProject3.World.Exploration.DiscoveredRecipesRequirePlayerUnlock", Flags)
+bool FDiscoveryRecipeUnlockGateTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Survival"), Survival) ||
+        !TestNotNull(TEXT("Clock"), Clock))
+        return false;
+    TestTrue(TEXT("Load data"), Data->LoadDefault());
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(337));
+    TestTrue(TEXT("Apply discovery definitions"), Data->ApplyToWorld());
+
+    FWorldSurvivalProfile Profile;
+    Profile.EntityId = FGuid(1201, 1202, 1203, 1204);
+    TestTrue(TEXT("Register player profile"), Survival->RegisterProfile(Profile));
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Player inventory owner"), Owner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    Inventory->SetCraftingEntityId(Profile.EntityId);
+    TestTrue(TEXT("Load recipes and item weights"), Data->ApplyToInventory(Inventory));
+
+    auto Add = [&](FName ItemId, int32 Quantity, bool bTool)
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = ItemId;
+        Stack.Quantity = Quantity;
+        Stack.MaxStack = bTool ? 1 : 99;
+        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
+        Stack.bIsTool = bTool;
+        return Inventory->TryAddItem(Stack);
+    };
+    TestTrue(TEXT("Add hide"), Add(TEXT("Hide.Scraped"), 2, false));
+    TestTrue(TEXT("Add grass"), Add(TEXT("Grass"), 6, false));
+    TestTrue(TEXT("Add rope"), Add(TEXT("Rope"), 1, false));
+    TestTrue(TEXT("Add needle"), Add(TEXT("Tool.Needle"), 1, true));
+
+    TArray<FInventoryStack> Missing;
+    TestFalse(TEXT("Bedroll recipe is locked before discovery"),
+        Inventory->CanCraft(TEXT("make_bedroll"), Missing));
+
+    FString Reason;
+    TestTrue(TEXT("Discover starting camp"),
+        Data->TryRecordZoneEntry(FGuid(1211, 1212, 1213, 1214), Profile.EntityId,
+            TEXT("Zone.0"), FVector::ZeroVector, Reason));
+    TestTrue(TEXT("Discover creek"),
+        Data->TryRecordZoneEntry(FGuid(1221, 1222, 1223, 1224), Profile.EntityId,
+            TEXT("Zone.1"), FVector(100.0f, 0.0f, 0.0f), Reason));
+    TestTrue(TEXT("Discover high forest and bed knowledge"),
+        Data->TryRecordZoneEntry(FGuid(1231, 1232, 1233, 1234), Profile.EntityId,
+            TEXT("Zone.2"), FVector(200.0f, 0.0f, 0.0f), Reason));
+
+    TestTrue(TEXT("Recipe unlock is now visible to inventory crafting"),
+        Survival->IsDefinitionUnlocked(Profile.EntityId, TEXT("make_bedroll")));
+    TestTrue(TEXT("Bedroll recipe can now be crafted"),
+        Inventory->CanCraft(TEXT("make_bedroll"), Missing));
+    TestTrue(TEXT("Craft bedroll after the matching zone discovery"),
+        Inventory->TryCraft(TEXT("make_bedroll")));
+    TestEqual(TEXT("Bedroll output is produced"), Inventory->GetItemCount(TEXT("Bedroll")), 1);
+    TestEqual(TEXT("Hide is consumed"), Inventory->GetItemCount(TEXT("Hide.Scraped")), 0);
+    TestEqual(TEXT("Grass is consumed"), Inventory->GetItemCount(TEXT("Grass")), 0);
+    TestEqual(TEXT("Rope is consumed"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestEqual(TEXT("Needle remains available"), Inventory->GetItemCount(TEXT("Tool.Needle")), 1);
+    return true;
+}
+
 // Faz 6 — the 15-step field catalogue applies tool/material gates to transactional field work.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDataDrivenFieldActionTransactionTest,
     "MyProject3.World.Farming.DataDrivenFieldActionsConsumeCostsAndKeepTools", Flags)
