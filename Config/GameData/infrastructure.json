@@ -1,0 +1,335 @@
+{
+  "_about": "P7 infrastructure catalog. Build/repair material stacks are consumed by WorldInfrastructureActor. Wear is evaluated from active regional event IDs and persisted on route edges.",
+  "infrastructures": [
+    {
+      "id": "Infrastructure.CreekBridge",
+      "name": "Dere köprüsü",
+      "build_materials": [
+        {
+          "item": "Log",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 2
+        },
+        {
+          "item": "Stick",
+          "qty": 4
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Log",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Axe",
+        "Tool.Chisel"
+      ],
+      "build_work_seconds": 7200,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.65,
+      "wear_events": [
+        {
+          "event_id": "Event.Flood",
+          "wear_per_hour": 18
+        },
+        {
+          "event_id": "Event.Wildfire",
+          "wear_per_hour": 2
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.SteppingStones",
+      "name": "Geçiş taşları",
+      "build_materials": [
+        {
+          "item": "Stone",
+          "qty": 8
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Stone",
+          "qty": 3
+        }
+      ],
+      "tools": [
+        "HammerStone"
+      ],
+      "build_work_seconds": 1800,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.8,
+      "wear_events": [
+        {
+          "event_id": "Event.Flood",
+          "wear_per_hour": 12
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.ForestTrail",
+      "name": "Orman patikası",
+      "build_materials": [
+        {
+          "item": "Stick",
+          "qty": 8
+        },
+        {
+          "item": "Stone",
+          "qty": 4
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Stick",
+          "qty": 3
+        },
+        {
+          "item": "Stone",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "build_work_seconds": 3600,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.75,
+      "wear_events": [
+        {
+          "event_id": "Event.Flood",
+          "wear_per_hour": 5
+        },
+        {
+          "event_id": "Event.WindStorm",
+          "wear_per_hour": 3
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.HillSteps",
+      "name": "Yamaç merdiveni",
+      "build_materials": [
+        {
+          "item": "Log",
+          "qty": 2
+        },
+        {
+          "item": "Stick",
+          "qty": 6
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Log",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Axe",
+        "Tool.Chisel"
+      ],
+      "build_work_seconds": 5400,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.7,
+      "wear_events": [
+        {
+          "event_id": "Event.Snowstorm",
+          "wear_per_hour": 8
+        },
+        {
+          "event_id": "Event.Avalanche",
+          "wear_per_hour": 45
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.RopeLine",
+      "name": "Halat hattı",
+      "build_materials": [
+        {
+          "item": "Rope",
+          "qty": 4
+        },
+        {
+          "item": "Stake",
+          "qty": 2
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Rope",
+          "qty": 2
+        },
+        {
+          "item": "Stake",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Chisel"
+      ],
+      "build_work_seconds": 3600,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.65,
+      "wear_events": [
+        {
+          "event_id": "Event.WindStorm",
+          "wear_per_hour": 22
+        },
+        {
+          "event_id": "Event.Snowstorm",
+          "wear_per_hour": 6
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.Boardwalk",
+      "name": "Bataklık yürüyüş yolu",
+      "build_materials": [
+        {
+          "item": "Log",
+          "qty": 6
+        },
+        {
+          "item": "Stick",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 2
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Log",
+          "qty": 1
+        },
+        {
+          "item": "Stick",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "build_work_seconds": 7200,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.6,
+      "wear_events": [
+        {
+          "event_id": "Event.Flood",
+          "wear_per_hour": 15
+        },
+        {
+          "event_id": "Event.WindStorm",
+          "wear_per_hour": 4
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.Raft",
+      "name": "Sal",
+      "build_materials": [
+        {
+          "item": "Log",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 3
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Log",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "build_work_seconds": 5400,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.7,
+      "wear_events": [
+        {
+          "event_id": "Event.Flood",
+          "wear_per_hour": 3
+        },
+        {
+          "event_id": "Event.WindStorm",
+          "wear_per_hour": 8
+        }
+      ]
+    },
+    {
+      "id": "Infrastructure.ForwardCamp",
+      "name": "İleri kamp",
+      "build_materials": [
+        {
+          "item": "Log",
+          "qty": 4
+        },
+        {
+          "item": "ThatchBundle",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 2
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Log",
+          "qty": 1
+        },
+        {
+          "item": "ThatchBundle",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "build_work_seconds": 10800,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.85,
+      "wear_events": [
+        {
+          "event_id": "Event.WindStorm",
+          "wear_per_hour": 5
+        },
+        {
+          "event_id": "Event.Snowstorm",
+          "wear_per_hour": 5
+        },
+        {
+          "event_id": "Event.Avalanche",
+          "wear_per_hour": 35
+        }
+      ]
+    }
+  ]
+}
