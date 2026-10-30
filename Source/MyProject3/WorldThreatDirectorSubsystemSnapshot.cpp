@@ -5,22 +5,26 @@
 FWorldThreatDirectorSnapshot UWorldThreatDirectorSubsystem::ExportSnapshot() const
 {
     FWorldThreatDirectorSnapshot Snapshot;
-    Snapshot.SchemaVersion = 1;
+    Snapshot.SchemaVersion = 2;
     Snapshot.CurrentRaid = CurrentRaid;
     Snapshot.RaidHistory = RaidHistory;
     Snapshot.NextRaidTimeSeconds = NextRaidTimeSeconds;
     Snapshot.RaidSerial = RaidSerial;
     Snapshot.bInitialized = bInitialized;
+    Snapshot.SeenSignalOperationIds = SeenSignalOperationIds;
+    Snapshot.LastSignalRaidTimeSeconds = LastSignalRaidTimeSeconds;
     return Snapshot;
 }
 
 bool UWorldThreatDirectorSubsystem::RestoreSnapshot(const FWorldThreatDirectorSnapshot& Snapshot)
 {
     const UWorldSimulationClockSubsystem* Clock = GetClock();
-    if (!Clock || !Clock->IsClockInitialized() || Snapshot.SchemaVersion != 1 ||
+    if (!Clock || !Clock->IsClockInitialized() || (Snapshot.SchemaVersion != 1 && Snapshot.SchemaVersion != 2) ||
         !FMath::IsFinite(Snapshot.NextRaidTimeSeconds) || Snapshot.NextRaidTimeSeconds < 0.0 ||
         Snapshot.RaidSerial < 0 || Snapshot.RaidHistory.Num() > MaxHistoryEntries ||
-        Snapshot.RaidHistory.Num() < 0)
+        Snapshot.RaidHistory.Num() < 0 ||
+        (Snapshot.SchemaVersion >= 2 && (!FMath::IsFinite(Snapshot.LastSignalRaidTimeSeconds) ||
+            Snapshot.LastSignalRaidTimeSeconds < -1.0 || Snapshot.SeenSignalOperationIds.Num() > 256)))
         return false;
 
     auto IsValidRaid = [](const FThreatRaidRecord& Raid, bool bMayBeEmpty)
@@ -44,11 +48,24 @@ bool UWorldThreatDirectorSubsystem::RestoreSnapshot(const FWorldThreatDirectorSn
     for (const FThreatRaidRecord& Raid : Snapshot.RaidHistory)
         if (!IsValidRaid(Raid, false) || Raid.State == EThreatRaidState::Warning ||
             Raid.State == EThreatRaidState::Active) return false;
+    if (Snapshot.SchemaVersion >= 2)
+    {
+        TSet<FGuid> SeenIds;
+        for (const FGuid& Id : Snapshot.SeenSignalOperationIds)
+        {
+            if (!Id.IsValid() || SeenIds.Contains(Id)) return false;
+            SeenIds.Add(Id);
+        }
+    }
 
     CurrentRaid = Snapshot.CurrentRaid;
     RaidHistory = Snapshot.RaidHistory;
     NextRaidTimeSeconds = Snapshot.NextRaidTimeSeconds;
     RaidSerial = Snapshot.RaidSerial;
     bInitialized = Snapshot.bInitialized;
+    SeenSignalOperationIds = Snapshot.SchemaVersion >= 2
+        ? Snapshot.SeenSignalOperationIds : TArray<FGuid>();
+    LastSignalRaidTimeSeconds = Snapshot.SchemaVersion >= 2
+        ? Snapshot.LastSignalRaidTimeSeconds : -1.0;
     return true;
 }
