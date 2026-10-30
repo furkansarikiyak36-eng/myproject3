@@ -42,6 +42,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Events")
     bool AdvanceRegionalHazardDamage(double DeltaSeconds);
 
+    /** Sample region-tagged actors and submit their storage/smell/light/smoke signals. */
+    UFUNCTION(BlueprintCallable, Category="Threat|Signals")
+    bool AdvanceRegionalRaidSignals();
+
     /** Consume one unique resource/building-part item to repair a graph node once. */
     UFUNCTION(BlueprintCallable, Category="Structure|Maintenance")
     bool TryRepairStructureWithMaterial(const FGuid& OperationId, const FGuid& NodeId,
