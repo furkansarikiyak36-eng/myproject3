@@ -68,6 +68,21 @@ struct FLogisticsRouteEdge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Cost")
     FName InfrastructureId = NAME_None;
 
+    /** Durable condition is persisted with route edges; 0 means the infrastructure has failed. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Infrastructure", meta=(ClampMin="0.0"))
+    float InfrastructureCondition = 100.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Infrastructure", meta=(ClampMin="0.01"))
+    float InfrastructureMaxCondition = 100.0f;
+
+    /** Route penalty at zero condition, multiplied linearly by missing condition fraction. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Infrastructure", meta=(ClampMin="0.0", ClampMax="100.0"))
+    float InfrastructureDegradationPenalty = 1.0f;
+
+    /** Authored travel multiplier while the infrastructure is built and fully maintained. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Infrastructure", meta=(ClampMin="0.01", ClampMax="100.0"))
+    float InfrastructureBuiltCostMultiplier = 1.0f;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics")
     bool bEnabled = true;
 };
@@ -116,6 +131,22 @@ public:
     /** Update matching authored edges after an infrastructure item is built, repaired or lost. */
     UFUNCTION(BlueprintCallable, Category="Logistics")
     bool SetInfrastructureBuilt(FName InfrastructureId, bool bBuilt);
+    UFUNCTION(BlueprintCallable, Category="Logistics|Infrastructure")
+    bool SetInfrastructureBuiltCostMultiplier(FName InfrastructureId, float CostMultiplier);
+
+    UFUNCTION(BlueprintCallable, Category="Logistics|Infrastructure")
+    bool ApplyInfrastructureWear(FName InfrastructureId, float WearAmount);
+
+    UFUNCTION(BlueprintCallable, Category="Logistics|Infrastructure")
+    bool RepairInfrastructure(FName InfrastructureId, float RepairAmount);
+
+    UFUNCTION(BlueprintPure, Category="Logistics|Infrastructure")
+    bool GetInfrastructureState(FName InfrastructureId, float& OutCondition,
+        float& OutMaxCondition, bool& bOutBuilt) const;
+
+    /** Apply configured active event wear once per committed fixed step. */
+    UFUNCTION(BlueprintCallable, Category="Logistics|Infrastructure")
+    bool AdvanceRegionalInfrastructureWear(double DeltaSeconds);
 
     UFUNCTION(BlueprintCallable, Category="Logistics")
     bool RemoveNode(FName NodeId);
