@@ -11,6 +11,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldStorageSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
+#include "WorldRaidAdapterSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -213,6 +214,17 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         !Clock->AdvanceSimulation(DeltaSeconds))
     {
         RollbackStep();
+        return false;
+    }
+
+    // Regional structural hazards commit after the logical tick. Actor collapse
+    // cannot be restored by logical snapshots, so fail closed on an adapter error.
+    UWorld* HazardWorld = GetWorld();
+    UWorldRaidAdapterSubsystem* HazardAdapter = HazardWorld
+        ? HazardWorld->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    if (HazardAdapter && !HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds))
+    {
+        MarkSimulationFaulted(TEXT("Regional hazard damage failed after a committed fixed step; stop simulation and recover/reset the world."));
         return false;
     }
 
