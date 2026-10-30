@@ -1,9 +1,9 @@
 # Current task (checkpoint)
 
-Status: open — P8.1 regional hazards + route effects, P8.2 signal-driven region raids + defense, and P8.3 fixed-step structural damage/snow collapse/material repair source-written; Unreal verification and final gameplay consumers pending
+Status: open — P6 field processing/storage additions and P8 regional survival exposure + wildfire propagation are source-written on `game/p06-p08-blind-code-closure`; Unreal verification and final player/scene consumers pending
 Overall goal: Finish partial tasks in memory/PLAN_STATUS.md in dependency order, including player input/HUD where required.
-Current source-written work: P6/P7 logical/data contracts from ancestor branches plus 12 P8 regional hazards/chains, per-edge hazard route costs, fixed-step structural damage and snow-overload collapse, material-backed repair, signal-triggered region raids with snapshot receipts, regional defense mitigation and five P8 automation-test cases. P6/P7/P8 are all unbuilt on this work branch.
-Branch: game/p08-events-defense (follow-up from game/p07-zone-entry-progression; P6/P7/P8 remain unbuilt on this work branch).
+Current source-written work: P6 field state/actions, fence cells, basket-capacity-aware harvest storage, and operation-ID guarded hand/station processing for Dry/Thresh/Winnow/Grind/SeparateSeeds; P7 route/zone/discovery contracts; P8 twelve regional events/chains, route and survival exposure modifiers, entered-region profile persistence, fixed-step protected player exposure, signal raids, snow/collapse/repair and deterministic combustible-surface wildfire with structural damage and fire light/smoke tags. `GameWorldTests.cpp` contains 41 source automation tests total, including 15 P6/P8 Farming/Events tests. All work on this branch remains unbuilt and unrun in Unreal.
+Branch: game/p06-p08-blind-code-closure (P6/P7/P8 source continuation; no Unreal build/test evidence).
 
 ## Fixed constraints
 - Backend first; no per-task Unreal build. Add automation tests as source and perform one batch build/test/fix pass at the end.
@@ -28,10 +28,10 @@ Branch: game/p08-events-defense (follow-up from game/p07-zone-entry-progression;
 13. [ ] Batch Unreal UHT/UBT build and automation tests, then fix all errors. No build/test has run on this branch.
 14. [x] Add `TryRecordZoneEntry`: validate `CanEnterZone`, resolve the zone discovery ID, fetch the current profile revision and record the discovery at shared world time with an idempotent operation ID. Extend test source for zone progression and retry.
 15. [ ] Wire a real overlap/interaction trigger to `TryRecordZoneEntry`; connect route graph to actual movement speed/time and player input/HUD; connect infrastructure build/repair/weather-damage events to route state. Keep Zones 3/4 physical placement for the final scene phase.
-16. [ ] Finish remaining field/animal player inputs and the full 15-step farm processing chain; add headless whole-world year simulation.
-17. [x] Add P8 regional event data/evaluator, region-specific signal raids and snapshot receipts, snow-load support checks, regional defense mitigation, and source automation tests.
+16. [~] Backend field action chain, harvest storage and hand/station processing router now source-written; still wire field/animal player inputs, WildlifeActor/stick-trap and station interactions, field rainfall and headless whole-world year simulation.
+17. [x] Add P8 regional event definitions/evaluator, route modifiers, region-aware player survival exposure, signal raids, snow-load/collapse/material repair, fire propagation/combustible surfaces and source automation tests.
 18. [ ] Batch UHT/UBT build and run the full automation suite; collect/fix errors before marking any task built/tested.
-19. [ ] Wire real world signal samplers, event-driven route/survival/structural damage consumers, material-based repair and HUD/scene tags; then PIE/save-load acceptance.
+19. [ ] Wire live storage/smell/light/smoke samplers, illness/contamination and event-transition consumers, authored region/combustible/firebreak/structural tags, player repair/field/animal UI and warning HUD; then PIE/save-load acceptance.
 
 ## Files read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
