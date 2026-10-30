@@ -177,7 +177,10 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
     {
         TSet<FGuid> Visiting;
         bool bLoadValid = true;
-        const float AggregateLoad = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid);
+        // Dynamic weather can overload a valid save at runtime; structural snapshot
+        // validation must check authored loads only, then let the current climate
+        // determine support validity after restore.
+        const float AggregateLoad = ComputeAggregateLoad(Pair.Key, Visiting, bLoadValid, false);
         if (!bLoadValid || !FMath::IsFinite(AggregateLoad))
         {
             Nodes = MoveTemp(Previous);
@@ -766,7 +769,7 @@ float UWorldStructuralGraphSubsystem::GetAggregateLoad(FGuid NodeId) const
 }
 
 float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
-    FGuid NodeId, TSet<FGuid>& Visiting, bool& bOutValid) const
+    FGuid NodeId, TSet<FGuid>& Visiting, bool& bOutValid, bool bIncludeEnvironmentalLoad) const
 {
     const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
     if (!Node || Visiting.Contains(NodeId))
@@ -776,7 +779,9 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
     }
 
     Visiting.Add(NodeId);
-    float Total = Node->LocalLoad + CalculateNodeSnowLoad(*Node);
+    float Total = Node->LocalLoad;
+    if (bIncludeEnvironmentalLoad)
+        Total += CalculateNodeSnowLoad(*Node);
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
         bool bSupportsChild = Pair.Value.ParentNodeId == NodeId;
@@ -785,7 +790,7 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
         if (bSupportsChild)
         {
             // A piece resting on several supports shares its load equally.
-            const float ChildLoad = ComputeAggregateLoad(Pair.Key, Visiting, bOutValid);
+            const float ChildLoad = ComputeAggregateLoad(Pair.Key, Visiting, bOutValid, bIncludeEnvironmentalLoad);
             Total += ChildLoad / static_cast<float>(1 + Pair.Value.SecondarySupports.Num());
             if (!bOutValid)
             {
