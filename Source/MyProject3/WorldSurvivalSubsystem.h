@@ -141,6 +141,8 @@ struct FWorldSurvivalActionReceipt
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FGuid RelatedConditionId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName ConditionDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") FName DiscoveryId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts")
+    FName RequestedRegionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") EWorldEquipmentSlot EquipmentSlot = EWorldEquipmentSlot::Body;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts") double ConditionEndTimeSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Receipts", meta=(ClampMin="0", ClampMax="1")) float ConditionSeverity = 0.0f;
@@ -153,6 +155,9 @@ struct FWorldSurvivalProfile
 {
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Survival") FGuid EntityId;
+    /** Region entered through the exploration gate; None means no regional hazard assignment yet. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Exposure")
+    FName RegionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Survival", meta=(ClampMin="0", ClampMax="100")) float Health = 100.0f;
     /** Derived from Calories each step: 0 = full, 100 = empty store. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Survival", meta=(ClampMin="0", ClampMax="100")) float Hunger = 0.0f;
@@ -288,6 +293,12 @@ public:
     bool TryRecordConfiguredDiscovery(const FGuid& OperationId, const FGuid& EntityId,
         int64 ExpectedProfileRevision, FName DiscoveryId, FVector Location,
         double LogicalTimeSeconds);
+    UFUNCTION(BlueprintCallable, Category="World|Exploration")
+    bool TryRecordConfiguredDiscoveryInRegion(const FGuid& OperationId, const FGuid& EntityId,
+        int64 ExpectedProfileRevision, FName DiscoveryId, FName RegionId,
+        FVector Location, double LogicalTimeSeconds);
+    /** Applies event exposure to profiles in their last entered region. Call after the logical clock commits. */
+    bool ApplyRegionalEventExposure(double DeltaSeconds);
     UFUNCTION(BlueprintPure, Category="World|Exploration")
     bool IsDefinitionUnlocked(const FGuid& EntityId, FName DefinitionId) const;
     UFUNCTION(BlueprintPure, Category="World|Survival|Equipment")
