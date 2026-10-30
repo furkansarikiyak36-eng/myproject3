@@ -12,6 +12,7 @@
 #include "WorldStorageSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "WorldRaidAdapterSubsystem.h"
+#include "WorldLogisticsRouteSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
 {
@@ -222,10 +223,14 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorld* HazardWorld = GetWorld();
     UWorldRaidAdapterSubsystem* HazardAdapter = HazardWorld
         ? HazardWorld->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
-    if (HazardAdapter && (!HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds) ||
-        !HazardAdapter->AdvanceRegionalRaidSignals()))
+    UWorldLogisticsRouteSubsystem* Routes = HazardWorld
+        ? HazardWorld->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!HazardAdapter || !Routes ||
+        !HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds) ||
+        !HazardAdapter->AdvanceRegionalRaidSignals() ||
+        !Routes->AdvanceRegionalInfrastructureWear(DeltaSeconds))
     {
-        MarkSimulationFaulted(TEXT("Regional hazard or raid-signal processing failed after a committed fixed step; stop simulation and recover/reset the world."));
+        MarkSimulationFaulted(TEXT("Regional hazard, raid-signal or infrastructure-wear processing failed after a committed fixed step; stop simulation and recover/reset the world."));
         return false;
     }
 
