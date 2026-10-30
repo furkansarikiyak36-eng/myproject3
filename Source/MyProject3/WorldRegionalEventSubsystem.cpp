@@ -192,7 +192,13 @@ bool UWorldRegionalEventSubsystem::LoadDefinitionsFromDirectory(const FString& D
         Definition.SnowLoadMultiplier = static_cast<float>(NumberField(Entry, TEXT("snow_load_multiplier"), 1.0));
         Definition.SurvivalSeverityMultiplier = static_cast<float>(NumberField(Entry, TEXT("survival_severity_multiplier"), 1.0));
 
-        if (!Entry.IsValid() || Definition.Id.IsNone() || Definition.Type.IsNone() ||
+        const bool bSupportedType =
+            Definition.Type == TEXT("Flood") || Definition.Type == TEXT("Frost") ||
+            Definition.Type == TEXT("Hail") || Definition.Type == TEXT("Drought") ||
+            Definition.Type == TEXT("Wildfire") || Definition.Type == TEXT("ToxicRain") ||
+            Definition.Type == TEXT("Epidemic") || Definition.Type == TEXT("Snowstorm") ||
+            Definition.Type == TEXT("Avalanche") || Definition.Type == TEXT("Fog");
+        if (!Entry.IsValid() || Definition.Id.IsNone() || Definition.Type.IsNone() || !bSupportedType ||
             NewIndexById.Contains(Definition.Id) ||
             !FMath::IsFinite(Definition.MinTemperatureCelsius) ||
             !FMath::IsFinite(Definition.MaxTemperatureCelsius) ||
