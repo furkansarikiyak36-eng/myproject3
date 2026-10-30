@@ -2570,8 +2570,9 @@ bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
     UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
     UWorldRaidAdapterSubsystem* Adapter = World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Structural graph"), Graph) ||
-        !TestNotNull(TEXT("Raid adapter"), Adapter))
+        !TestNotNull(TEXT("Raid adapter"), Adapter) || !TestNotNull(TEXT("Item ownership"), Ownership))
         return false;
     TestTrue(TEXT("Load recipes and catalogues"), Data->LoadDefault());
 
@@ -2593,8 +2594,29 @@ bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
         Stack.bIsTool = bTool;
         return Inventory->TryAddItem(Stack);
     };
-    TestTrue(TEXT("Add wood repair log"), AddStack(TEXT("Log"), 1, false));
-    TestTrue(TEXT("Add rope"), AddStack(TEXT("Rope"), 1, false));
+    auto AddOwnedPhysicalItem = [&](FName DefinitionId, const FGuid& ItemId)
+    {
+        FWorldOwnedItemRecord Record;
+        Record.ItemId = ItemId;
+        Record.DefinitionId = DefinitionId;
+        Record.BaseDefinitionId = DefinitionId;
+        Record.Quantity = 1;
+        Record.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Record.OwnerId = Inventory->GetInventoryOwnerId();
+        if (!Ownership->RegisterItem(Record))
+            return false;
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.MaxStack = 1;
+        Stack.Category = EInventoryItemCategory::Resource;
+        Stack.OwnedWorldItemId = ItemId;
+        return Inventory->TryAddItem(Stack);
+    };
+    const FGuid UniqueLogId(731, 732, 733, 734);
+    const FGuid UniqueRopeId(735, 736, 737, 738);
+    TestTrue(TEXT("Add physical log through item ownership"), AddOwnedPhysicalItem(TEXT("Log"), UniqueLogId));
+    TestTrue(TEXT("Add physical rope through item ownership"), AddOwnedPhysicalItem(TEXT("Rope"), UniqueRopeId));
     TestTrue(TEXT("Add axe tool"), AddStack(TEXT("Tool.Axe"), 1, true));
     TestTrue(TEXT("Add stone repair material"), AddStack(TEXT("Stone"), 2, false));
     TestTrue(TEXT("Add crushed stone"), AddStack(TEXT("CrushedStone"), 1, false));
@@ -2620,8 +2642,14 @@ bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
     FStructuralNodeRecord Repaired;
     TestTrue(TEXT("Read repaired wall"), Graph->GetNode(NodeId, Repaired));
     TestEqual(TEXT("Wood recipe repairs thirty damage"), Repaired.Damage, 10.0f);
-    TestEqual(TEXT("Log is consumed"), Inventory->GetItemCount(TEXT("Log")), 0);
-    TestEqual(TEXT("Rope is consumed"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestEqual(TEXT("Physical log reference is consumed"), Inventory->GetItemCount(TEXT("Log")), 0);
+    TestEqual(TEXT("Physical rope reference is consumed"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    FWorldOwnedItemRecord ConsumedLog;
+    FWorldOwnedItemRecord ConsumedRope;
+    TestTrue(TEXT("Read consumed log ledger record"), Ownership->TryGetItem(UniqueLogId, ConsumedLog));
+    TestTrue(TEXT("Read consumed rope ledger record"), Ownership->TryGetItem(UniqueRopeId, ConsumedRope));
+    TestTrue(TEXT("Log leaves inventory ownership"), ConsumedLog.OwnerKind == EWorldItemOwnerKind::Consumed);
+    TestTrue(TEXT("Rope leaves inventory ownership"), ConsumedRope.OwnerKind == EWorldItemOwnerKind::Consumed);
     TestEqual(TEXT("Axe tool remains"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
 
     TestTrue(TEXT("Retry is a successful no-op"),
