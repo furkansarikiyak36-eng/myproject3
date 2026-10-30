@@ -234,7 +234,7 @@ bool UWorldThreatDirectorSubsystem::TryStartRaidFromSignals(
         // The observation has already been committed. A retry is a successful
         // no-op and reports a fresh start only when this operation created the
         // current raid; it cannot spend another warning/raid slot.
-        bOutRaidStarted = CurrentRaid.RaidId == OperationId;
+        bOutRaidStarted = false;
         return true;
     }
 
