@@ -457,7 +457,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     const TSet<FName> SupportedFieldOperations = {
         TEXT("Clear"), TEXT("Till"), TEXT("Fertilize"), TEXT("Plant"), TEXT("Water"),
         TEXT("Weed"), TEXT("Mulch"), TEXT("Harvest"), TEXT("Dry"), TEXT("Thresh"),
-        TEXT("Winnow"), TEXT("Grind"), TEXT("Store"), TEXT("SeparateSeeds"), TEXT("Fallow")
+        TEXT("Winnow"), TEXT("Grind"), TEXT("Store"), TEXT("SeparateSeeds"), TEXT("Fence")
     };
     for (const TSharedPtr<FJsonValue>& Value : *FieldActionValues)
     {
