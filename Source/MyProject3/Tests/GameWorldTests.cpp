@@ -2414,6 +2414,100 @@ bool FHarvestStorageActionTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Faz 6 — the processing router enforces hand recipes, station identity and durable retry receipts.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFieldProcessingActionRouterTest,
+    "MyProject3.World.Farming.HandAndStationProcessingActionsAreIdempotent", Flags)
+bool FFieldProcessingActionRouterTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    UWorldProductionSubsystem* Production = World ? World->GetSubsystem<UWorldProductionSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Agriculture"), Agriculture) ||
+        !TestNotNull(TEXT("Production"), Production))
+        return false;
+    TestTrue(TEXT("Load processing definitions"), Data->LoadDefault());
+    TestTrue(FString::Printf(TEXT("Apply station recipes: %s"), *Data->GetLastError()), Data->ApplyToWorld());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Processing inventory owner"), Owner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply hand recipes and item weights"), Data->ApplyToInventory(Inventory));
+
+    FInventoryStack Kernels;
+    Kernels.ItemId = TEXT("Grain.Kernels");
+    Kernels.Quantity = 1;
+    Kernels.MaxStack = 99;
+    Kernels.Category = EInventoryItemCategory::Resource;
+    TestTrue(TEXT("Add grain kernels"), Inventory->TryAddItem(Kernels));
+
+    FInventoryStack WinnowingBasket;
+    WinnowingBasket.ItemId = TEXT("Tool.WinnowingBasket");
+    WinnowingBasket.Quantity = 1;
+    WinnowingBasket.MaxStack = 1;
+    WinnowingBasket.Category = EInventoryItemCategory::Tool;
+    WinnowingBasket.bIsTool = true;
+    TestTrue(TEXT("Add reusable winnowing basket"), Inventory->TryAddItem(WinnowingBasket));
+
+    FGuid HandJob;
+    const FGuid WinnowOperation(1101, 1102, 1103, 1104);
+    TestTrue(TEXT("Winnow uses the existing hand recipe"),
+        Agriculture->TryExecuteFieldProcessingAction(WinnowOperation, TEXT("Field.Winnow"),
+            TEXT("winnow_grain"), Inventory->GetInventoryOwnerId(), nullptr, HandJob));
+    TestFalse(TEXT("Hand processing does not invent a station job ID"), HandJob.IsValid());
+    TestEqual(TEXT("Kernels are consumed once"), Inventory->GetItemCount(TEXT("Grain.Kernels")), 0);
+    TestEqual(TEXT("Clean grain is produced once"), Inventory->GetItemCount(TEXT("Grain.Clean")), 1);
+    TestEqual(TEXT("Winnowing basket is not consumed"), Inventory->GetItemCount(TEXT("Tool.WinnowingBasket")), 1);
+    TestTrue(TEXT("Exact hand-processing retry returns its committed receipt"),
+        Agriculture->TryExecuteFieldProcessingAction(WinnowOperation, TEXT("Field.Winnow"),
+            TEXT("winnow_grain"), Inventory->GetInventoryOwnerId(), nullptr, HandJob));
+    TestEqual(TEXT("Hand retry does not create a second output"), Inventory->GetItemCount(TEXT("Grain.Clean")), 1);
+    TestFalse(TEXT("Hand action rejects an unrelated transformation"),
+        Agriculture->TryExecuteFieldProcessingAction(FGuid::NewGuid(), TEXT("Field.Winnow"),
+            TEXT("separate_grain_seed"), Inventory->GetInventoryOwnerId(), nullptr, HandJob));
+    TestFalse(TEXT("A station-only drying action cannot run without its station"),
+        Agriculture->TryExecuteFieldProcessingAction(FGuid::NewGuid(), TEXT("Field.Dry"),
+            TEXT("dry_grain"), Inventory->GetInventoryOwnerId(), nullptr, HandJob));
+
+    FInventoryStack RawGrain;
+    RawGrain.ItemId = TEXT("Grain.Harvest");
+    RawGrain.Quantity = 1;
+    RawGrain.MaxStack = 99;
+    RawGrain.Category = EInventoryItemCategory::Consumable;
+    TestTrue(TEXT("Add raw grain for drying"), Inventory->TryAddItem(RawGrain));
+
+    AProductionStationActor* DryingRack = World->SpawnActor<AProductionStationActor>();
+    if (!TestNotNull(TEXT("Drying rack actor"), DryingRack))
+        return false;
+    DryingRack->StationDataId = TEXT("drying_rack");
+    TestTrue(TEXT("Register authored drying rack"), DryingRack->EnsureRegistered());
+    TestTrue(TEXT("Deposit raw harvest into rack"), DryingRack->TryDeposit(
+        Inventory, TEXT("Grain.Harvest"), 1));
+    TestEqual(TEXT("Raw harvest is moved into the station"), Inventory->GetItemCount(TEXT("Grain.Harvest")), 0);
+    const FGuid DryOperation(1111, 1112, 1113, 1114);
+    FGuid DryJob;
+    TestTrue(TEXT("Start drying through the matching station"),
+        Agriculture->TryExecuteFieldProcessingAction(DryOperation, TEXT("Field.Dry"),
+            TEXT("dry_grain"), Inventory->GetInventoryOwnerId(), DryingRack, DryJob));
+    TestTrue(TEXT("Station job receives a stable job ID"), DryJob.IsValid());
+    TestEqual(TEXT("Drying recipe consumes raw harvest from station stock"),
+        DryingRack->GetStockCount(TEXT("Grain.Harvest")), 0);
+
+    FGuid DryRetryJob;
+    TestTrue(TEXT("Exact station-processing retry replays without re-enqueue"),
+        Agriculture->TryExecuteFieldProcessingAction(DryOperation, TEXT("Field.Dry"),
+            TEXT("dry_grain"), Inventory->GetInventoryOwnerId(), DryingRack, DryRetryJob));
+    TestTrue(TEXT("Retry returns the original job ID"), DryRetryJob == DryJob);
+    TestFalse(TEXT("Same operation ID cannot be reused for another recipe"),
+        Agriculture->TryExecuteFieldProcessingAction(DryOperation, TEXT("Field.Dry"),
+            TEXT("dry_legume"), Inventory->GetInventoryOwnerId(), DryingRack, DryRetryJob));
+    return true;
+}
+
 // Faz 7 — infrastructure condition affects route cost and zero condition closes required edges.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRouteInfrastructureDurabilityTest,
     "MyProject3.Logistics.InfrastructureWearRepairAndFailureAffectRouteCost", Flags)
