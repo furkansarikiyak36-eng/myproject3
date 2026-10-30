@@ -689,6 +689,7 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Eight infrastructure definitions"), Data->GetInfrastructures().Num(), 8);
     TestEqual(TEXT("Two typed structural repair recipes"), Data->GetStructureRepairs().Num(), 2);
     TestEqual(TEXT("Four raid countermeasure definitions"), Data->GetRaidDefenses().Num(), 4);
+    TestEqual(TEXT("Three typed knowledge rewards"), Data->GetKnowledge().Num(), 3);
     TestEqual(TEXT("Five ordered discoveries"), Data->GetDiscoveries().Num(), 5);
     TestTrue(TEXT("Bedroll is a catalogued item"), Data->GetItems().Contains(TEXT("Bedroll")));
     const FGameDataItem* GrainHarvest = Data->GetItems().Find(TEXT("Grain.Harvest"));
