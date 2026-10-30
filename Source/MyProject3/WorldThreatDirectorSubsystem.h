@@ -46,6 +46,10 @@ struct FThreatRaidRecord
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
     FVector TargetLocation = FVector::ZeroVector;
 
+    /** Authored region selected for this encounter; NAME_None is allowed for legacy saves. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat|Region")
+    FName TargetRegionId = NAME_None;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Threat")
     int64 Revision = 0;
 
@@ -63,12 +67,14 @@ USTRUCT(BlueprintType)
 struct FWorldThreatDirectorSnapshot
 {
     GENERATED_BODY()
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int32 SchemaVersion = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int32 SchemaVersion = 2;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") FThreatRaidRecord CurrentRaid;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") TArray<FThreatRaidRecord> RaidHistory;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") double NextRaidTimeSeconds = 0.0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") int64 RaidSerial = 0;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") bool bInitialized = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") TArray<FGuid> SeenSignalOperationIds;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Threat|Save") double LastSignalRaidTimeSeconds = -1.0;
 };
 
 UCLASS()
@@ -92,6 +98,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Tuning", meta=(ClampMin="1"))
     int32 MaxHistoryEntries = 64;
 
+    /** Weighted normalized storage-value, smell, light and smoke score needed to provoke a raid. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.1"))
+    float SignalRaidThreshold = 1.3f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Threat|Signals", meta=(ClampMin="0.0"))
+    double SignalRaidCooldownSeconds = 3600.0;
+
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool InitializeDirector(double FirstRaidDelaySeconds = 900.0);
 
@@ -109,6 +122,12 @@ public:
     /** Call from the fixed-step world simulation driver, not every render frame. */
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool AdvanceDirector();
+
+    /** Accepts normalized 0..1 signals from world-owned store/smell/light/smoke sensors. */
+    UFUNCTION(BlueprintCallable, Category="Threat|Signals")
+    bool TryStartRaidFromSignals(const FGuid& OperationId, FName RegionId,
+        float StorageValueSignal, float SmellSignal, float LightSignal, float SmokeSignal,
+        bool& bOutRaidStarted);
 
     UFUNCTION(BlueprintCallable, Category="Threat")
     bool ResolveCurrentRaid(bool bRepelled);
@@ -145,7 +164,10 @@ private:
     int64 RaidSerial = 0;
 
     bool bInitialized = false;
+    TArray<FGuid> SeenSignalOperationIds;
+    double LastSignalRaidTimeSeconds = -1.0;
 
+    void RememberSignalOperation(const FGuid& OperationId);
     UWorldSimulationClockSubsystem* GetClock() const;
     bool IsTerminal(EThreatRaidState State) const;
     double MakeNextInterval(int64 Serial) const;
