@@ -65,6 +65,7 @@ struct FWorldCropDefinition
 {
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName CropDefinitionId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName RequiredUnlockDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName SeedDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions") FName HarvestDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Definitions", meta=(ClampMin="1", ClampMax="64")) int32 HarvestUnits = 3;
@@ -120,6 +121,8 @@ struct FWorldFieldCellState
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float WeedPressure = 0.25f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float MulchCoverage = 0.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float Moisture = 0.5f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") double EnvironmentProgressSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") double FertilityRecoveryProgressSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") FGuid PlantedCropId;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") FName LastHarvestedCropDefinitionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Farm|Field") int32 ConsecutiveSameCropHarvests = 0;
@@ -204,6 +207,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxFieldCells = 10000;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals|Limits", meta=(ClampMin="1", ClampMax="10000")) int32 MaxAnimals = 512;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm") float MinimumGrowthMoisture = 0.15f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Balance", meta=(ClampMin="0", ClampMax="10")) float SoilRecoveryPerDay = 0.20f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Balance", meta=(ClampMin="0", ClampMax="1")) float RainMoisturePerHour = 0.12f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Balance", meta=(ClampMin="0", ClampMax="1")) float SnowMeltMoisturePerHour = 0.08f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Balance", meta=(ClampMin="0", ClampMax="1")) float EvaporationPerHour = 0.02f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Balance", meta=(ClampMin="0", ClampMax="100")) float RotationFertilityBonus = 5.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float HungerPerHour = 5.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Animals") float ProductHungerLimit = 55.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="World|Farm|Limits", meta=(ClampMin="1", ClampMax="4096")) int32 MaxCropDefinitions = 256;

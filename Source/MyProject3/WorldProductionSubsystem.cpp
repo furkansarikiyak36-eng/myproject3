@@ -7,6 +7,7 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 
 int32 UWorldProductionSubsystem::FindRecipe(FName RecipeId) const
 {
@@ -677,6 +678,18 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
     int64 ExpectedStationRevision,
     FGuid& OutJobId)
 {
+    return TryEnqueueJobForEntity(OperationId, StationId, RecipeId,
+        ExpectedStationRevision, FGuid(), OutJobId);
+}
+
+bool UWorldProductionSubsystem::TryEnqueueJobForEntity(
+    FGuid OperationId,
+    FGuid StationId,
+    FName RecipeId,
+    int64 ExpectedStationRevision,
+    FGuid RequestingEntityId,
+    FGuid& OutJobId)
+{
     OutJobId.Invalidate();
     if (!OperationId.IsValid() || !StationId.IsValid() || RecipeId.IsNone() ||
         ExpectedStationRevision <= 0 || ExpectedStationRevision == MAX_int64)
@@ -733,6 +746,14 @@ bool UWorldProductionSubsystem::TryEnqueueJob(
         Recipe.RequiredStationTag != Station->StationTag)
     {
         return false;
+    }
+    if (!Recipe.RequiredUnlockDefinitionId.IsNone())
+    {
+        const UWorldSurvivalSubsystem* Survival =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+        if (!RequestingEntityId.IsValid() || !Survival ||
+            !Survival->IsDefinitionUnlocked(RequestingEntityId, Recipe.RequiredUnlockDefinitionId))
+            return false;
     }
 
     TMap<FName, int64> Required;

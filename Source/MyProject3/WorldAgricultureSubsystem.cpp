@@ -6,6 +6,8 @@
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldClimateSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 #include "WorldCalendar.h"
 #include "WorldGameDataSubsystem.h"
 #include "ProductionStationActor.h"
@@ -379,8 +381,17 @@ bool UWorldAgricultureSubsystem::TryPlantCropOnField(
         World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UInventoryCraftingComponent* Inventory = nullptr;
     FWorldOwnedItemRecord Seed;
-    if (!Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory) ||
-        !Ownership->TryGetItem(SeedItemId, Seed) ||
+    if (!Ownership || !FindInventoryForOwner(ExpectedInventoryOwnerId, Inventory))
+        return false;
+    if (!Definition->RequiredUnlockDefinitionId.IsNone())
+    {
+        const UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+        const FGuid PlayerEntityId = Inventory->GetCraftingEntityId();
+        if (!Survival || !PlayerEntityId.IsValid() ||
+            !Survival->IsDefinitionUnlocked(PlayerEntityId, Definition->RequiredUnlockDefinitionId))
+            return false;
+    }
+    if (!Ownership->TryGetItem(SeedItemId, Seed) ||
         Seed.Revision != ExpectedSeedItemRevision ||
         Seed.OwnerKind != EWorldItemOwnerKind::Inventory ||
         Seed.OwnerId != ExpectedInventoryOwnerId || Seed.DefinitionId != Definition->SeedDefinitionId ||
@@ -586,8 +597,8 @@ bool UWorldAgricultureSubsystem::TryExecuteFieldProcessingAction(
             World->GetSubsystem<UWorldProductionSubsystem>();
         FWorldProductionStation StationState;
         if (Production && Production->GetStation(Station->GetStationId(), StationState))
-            bCommitted = Production->TryEnqueueJob(OperationId, Station->GetStationId(),
-                TransformationId, StationState.Revision, OutJobId);
+            bCommitted = Production->TryEnqueueJobForEntity(OperationId, Station->GetStationId(),
+                TransformationId, StationState.Revision, Inventory->GetCraftingEntityId(), OutJobId);
     }
     else
     {
@@ -702,8 +713,16 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
         (Crop->SeedReturnUnits > 0 && Crop->SeedOutputDefinitionId.IsNone()))
         return false;
 
-    const int32 HarvestUnits = Crop->HarvestUnits;
+    int32 HarvestUnits = Crop->HarvestUnits;
     const int32 SeedUnits = Crop->SeedReturnUnits;
+    if (FieldCell)
+    {
+        const float FertilityFactor = 0.75f + FieldCell->Fertility * 0.005f;
+        const float WeedFactor = 1.0f - FieldCell->WeedPressure * 0.25f;
+        const float MulchFactor = 1.0f + FieldCell->MulchCoverage * 0.1f;
+        const float YieldMultiplier = FMath::Clamp(FertilityFactor * WeedFactor * MulchFactor, 0.5f, 1.25f);
+        HarvestUnits = FMath::Clamp(FMath::RoundToInt(Crop->HarvestUnits * YieldMultiplier), 1, 64);
+    }
     TArray<FName> Definitions;
     TArray<FVector> Locations;
     Definitions.Reserve(HarvestUnits + SeedUnits);
@@ -744,6 +763,7 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     Receipt.RequestedOutputUnits = HarvestUnits;
     Receipt.OutputItemIds = CreatedItems;
 
+    Crop->HarvestUnits = HarvestUnits;
     Crop->Stage = ECropGrowthStage::Harvested;
     Crop->HarvestOperationId = OperationId;
     Crop->HarvestExpectedRevision = ExpectedCropRevision;
@@ -755,17 +775,20 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
     if (FieldCell)
     {
         FieldCell->PlantedCropId.Invalidate();
-        if (FieldCell->LastHarvestedCropDefinitionId == Crop->CropDefinitionId)
-            ++FieldCell->ConsecutiveSameCropHarvests;
-        else
-        {
-            FieldCell->LastHarvestedCropDefinitionId = Crop->CropDefinitionId;
+        const bool bRotatedCrop = !FieldCell->LastHarvestedCropDefinitionId.IsNone() &&
+            FieldCell->LastHarvestedCropDefinitionId != Crop->CropDefinitionId;
+        if (bRotatedCrop)
             FieldCell->ConsecutiveSameCropHarvests = 1;
-        }
+        else
+            ++FieldCell->ConsecutiveSameCropHarvests;
+        FieldCell->LastHarvestedCropDefinitionId = Crop->CropDefinitionId;
         const float ExhaustionMultiplier = 1.0f +
             0.25f * static_cast<float>(FMath::Max(0, FieldCell->ConsecutiveSameCropHarvests - 1));
+        const float RotationBonus = bRotatedCrop ? RotationFertilityBonus : 0.0f;
         FieldCell->Fertility = FMath::Clamp(
-            FieldCell->Fertility - Crop->SoilExhaustionPerHarvest * ExhaustionMultiplier, 0.0f, 100.0f);
+            FieldCell->Fertility - Crop->SoilExhaustionPerHarvest * ExhaustionMultiplier +
+            RotationBonus, 0.0f, 100.0f);
+        FieldCell->FertilityRecoveryProgressSeconds = 0.0;
         ++FieldCell->Revision;
     }
 
@@ -1305,6 +1328,8 @@ bool UWorldAgricultureSubsystem::RegisterFieldCell(const FWorldFieldCellState& F
         !FMath::IsFinite(FieldCell.WeedPressure) || FieldCell.WeedPressure < 0.0f || FieldCell.WeedPressure > 1.0f ||
         !FMath::IsFinite(FieldCell.MulchCoverage) || FieldCell.MulchCoverage < 0.0f || FieldCell.MulchCoverage > 1.0f ||
         !FMath::IsFinite(FieldCell.Moisture) || FieldCell.Moisture < 0.0f || FieldCell.Moisture > 1.0f ||
+        !FMath::IsFinite(FieldCell.EnvironmentProgressSeconds) || FieldCell.EnvironmentProgressSeconds < 0.0 || FieldCell.EnvironmentProgressSeconds >= 3600.0 ||
+        !FMath::IsFinite(FieldCell.FertilityRecoveryProgressSeconds) || FieldCell.FertilityRecoveryProgressSeconds < 0.0 || FieldCell.FertilityRecoveryProgressSeconds >= 86400.0 ||
         FieldCell.Revision <= 0 || FieldCell.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
         MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256 ||
         MaxFieldCells <= 0 || MaxFieldCells > 100000 || FieldCells.Num() >= MaxFieldCells ||
@@ -1789,6 +1814,34 @@ bool UWorldAgricultureSubsystem::CanAdvanceAgricultureStep(double DeltaSeconds) 
         MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
         return false;
 
+
+    const UWorldClimateSubsystem* Climate = GetWorld() ? GetWorld()->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    const bool bClimateReady = Climate && Climate->IsClimateInitialized();
+    if (!FMath::IsFinite(SoilRecoveryPerDay) || SoilRecoveryPerDay < 0.0f || SoilRecoveryPerDay > 10.0f ||
+        !FMath::IsFinite(RainMoisturePerHour) || RainMoisturePerHour < 0.0f || RainMoisturePerHour > 1.0f ||
+        !FMath::IsFinite(SnowMeltMoisturePerHour) || SnowMeltMoisturePerHour < 0.0f || SnowMeltMoisturePerHour > 1.0f ||
+        !FMath::IsFinite(EvaporationPerHour) || EvaporationPerHour < 0.0f || EvaporationPerHour > 1.0f ||
+        !FMath::IsFinite(RotationFertilityBonus) || RotationFertilityBonus < 0.0f || RotationFertilityBonus > 100.0f)
+        return false;
+
+    for (const TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        const FWorldFieldCellState& Field = Pair.Value;
+        const bool bFallow = !Field.PlantedCropId.IsValid() && !Field.bTilled;
+        if (!FMath::IsFinite(Field.EnvironmentProgressSeconds) ||
+            Field.EnvironmentProgressSeconds < 0.0 || Field.EnvironmentProgressSeconds >= 3600.0 ||
+            !FMath::IsFinite(Field.FertilityRecoveryProgressSeconds) ||
+            Field.FertilityRecoveryProgressSeconds < 0.0 || Field.FertilityRecoveryProgressSeconds >= 86400.0 ||
+            !FMath::IsFinite(Field.Moisture) || Field.Moisture < 0.0f || Field.Moisture > 1.0f ||
+            !FMath::IsFinite(Field.Fertility) || Field.Fertility < 0.0f || Field.Fertility > 100.0f)
+            return false;
+        const bool bHourlyChange = bClimateReady && Field.EnvironmentProgressSeconds + DeltaSeconds >= 3600.0;
+        const bool bDailyRecovery = bFallow && SoilRecoveryPerDay > 0.0f &&
+            Field.FertilityRecoveryProgressSeconds + DeltaSeconds >= 86400.0 && Field.Fertility < 100.0f;
+        if ((bHourlyChange || bDailyRecovery) && Field.Revision >= MAX_int64 - 1)
+            return false;
+    }
+
     for (const TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         const FWorldCropState& Crop = Pair.Value;
@@ -1851,6 +1904,74 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
 {
     if (!CanAdvanceAgricultureStep(DeltaSeconds)) return false;
 
+    const UWorldClimateSubsystem* Climate = GetWorld() ? GetWorld()->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    const bool bClimateReady = Climate && Climate->IsClimateInitialized();
+    for (TPair<FIntVector, FWorldFieldCellState>& Pair : FieldCells)
+    {
+        FWorldFieldCellState& Field = Pair.Value;
+        bool bFieldStateChanged = false;
+        if (bClimateReady)
+        {
+            const double EnvironmentTotal = Field.EnvironmentProgressSeconds + DeltaSeconds;
+            const int32 WholeHours = static_cast<int32>(FMath::FloorToDouble(EnvironmentTotal / 3600.0));
+            Field.EnvironmentProgressSeconds = EnvironmentTotal - static_cast<double>(WholeHours) * 3600.0;
+            if (WholeHours > 0)
+            {
+                const float Severity = FMath::Clamp(Climate->GetWeatherSeverity(), 0.0f, 1.0f);
+                const float Temperature = Climate->GetTemperatureCelsius();
+                float MoistureDelta = 0.0f;
+                switch (Climate->GetWeather())
+                {
+                case EWorldWeatherState::Rain:
+                    MoistureDelta = RainMoisturePerHour * Severity * WholeHours;
+                    break;
+                case EWorldWeatherState::Storm:
+                    MoistureDelta = RainMoisturePerHour * Severity * 1.25f * WholeHours;
+                    break;
+                case EWorldWeatherState::Snow:
+                    if (Temperature > 0.0f && Climate->GetSnowDepthCm() > 0.0f)
+                        MoistureDelta = SnowMeltMoisturePerHour * FMath::Clamp(Temperature / 5.0f, 0.0f, 1.0f) * WholeHours;
+                    break;
+                case EWorldWeatherState::Heatwave:
+                case EWorldWeatherState::Wind:
+                case EWorldWeatherState::Clear:
+                default:
+                {
+                    const float HeatFactor = 0.5f + FMath::Clamp(Temperature, 0.0f, 35.0f) / 35.0f;
+                    const float WeatherFactor = Climate->GetWeather() == EWorldWeatherState::Heatwave ? 2.0f : 1.0f;
+                    MoistureDelta = -EvaporationPerHour * HeatFactor * WeatherFactor * WholeHours;
+                    break;
+                }
+                }
+                const float NewMoisture = FMath::Clamp(Field.Moisture + MoistureDelta, 0.0f, 1.0f);
+                if (!FMath::IsNearlyEqual(NewMoisture, Field.Moisture, 0.0001f))
+                {
+                    Field.Moisture = NewMoisture;
+                    bFieldStateChanged = true;
+                }
+            }
+        }
+        const bool bFallow = !Field.PlantedCropId.IsValid() && !Field.bTilled;
+        if (bFallow && SoilRecoveryPerDay > 0.0f)
+        {
+            const double RecoveryTotal = Field.FertilityRecoveryProgressSeconds + DeltaSeconds;
+            const int32 WholeDays = static_cast<int32>(FMath::FloorToDouble(RecoveryTotal / 86400.0));
+            Field.FertilityRecoveryProgressSeconds = RecoveryTotal - static_cast<double>(WholeDays) * 86400.0;
+            if (WholeDays > 0)
+            {
+                const float NewFertility = FMath::Clamp(Field.Fertility + SoilRecoveryPerDay * WholeDays, 0.0f, 100.0f);
+                if (!FMath::IsNearlyEqual(NewFertility, Field.Fertility, 0.0001f))
+                {
+                    Field.Fertility = NewFertility;
+                    bFieldStateChanged = true;
+                }
+            }
+        }
+        else Field.FertilityRecoveryProgressSeconds = 0.0;
+        if (bFieldStateChanged)
+            ++Field.Revision;
+    }
+
     for (TPair<FGuid, FWorldCropState>& Pair : Crops)
     {
         FWorldCropState& Crop = Pair.Value;
@@ -1879,6 +2000,7 @@ bool UWorldAgricultureSubsystem::AdvanceAgricultureStep(double DeltaSeconds)
         {
             GrowthMultiplier *= FMath::Clamp(1.0f - FieldCell->WeedPressure * 0.25f, 0.5f, 1.0f);
             GrowthMultiplier *= 1.0f + FieldCell->MulchCoverage * 0.1f;
+            GrowthMultiplier *= FMath::Clamp(0.65f + FieldCell->Fertility * 0.005f, 0.65f, 1.15f);
         }
         Crop.GrowthProgressSeconds += DeltaSeconds * GrowthMultiplier;
         while (Crop.GrowthProgressSeconds >= Crop.SecondsPerStage &&
@@ -2168,6 +2290,8 @@ bool UWorldAgricultureSubsystem::RestoreSnapshot(
             !FMath::IsFinite(F.WeedPressure) || F.WeedPressure < 0.0f || F.WeedPressure > 1.0f ||
             !FMath::IsFinite(F.MulchCoverage) || F.MulchCoverage < 0.0f || F.MulchCoverage > 1.0f ||
             !FMath::IsFinite(F.Moisture) || F.Moisture < 0.0f || F.Moisture > 1.0f ||
+            !FMath::IsFinite(F.EnvironmentProgressSeconds) || F.EnvironmentProgressSeconds < 0.0 || F.EnvironmentProgressSeconds >= 3600.0 ||
+            !FMath::IsFinite(F.FertilityRecoveryProgressSeconds) || F.FertilityRecoveryProgressSeconds < 0.0 || F.FertilityRecoveryProgressSeconds >= 86400.0 ||
             F.Revision <= 0 || F.ActionReceipts.Num() > MaxOperationReceiptsPerEntity ||
             F.ConsecutiveSameCropHarvests < 0 ||
             (F.LastHarvestedCropDefinitionId.IsNone() && F.ConsecutiveSameCropHarvests != 0) ||

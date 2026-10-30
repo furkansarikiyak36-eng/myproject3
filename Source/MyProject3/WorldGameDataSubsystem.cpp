@@ -1359,6 +1359,14 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         Definition.SoilExhaustionPerHarvest = Crop.SoilExhaustionPerHarvest;
         Definition.MinimumFertility = Crop.MinimumFertility;
         Definition.MaximumPlantWeedPressure = Crop.MaximumPlantWeedPressure;
+        for (const FGameDataDiscovery& Discovery : Discoveries)
+        {
+            if (Discovery.UnlockedDefinitionIds.Contains(Crop.SeedItemId))
+            {
+                Definition.RequiredUnlockDefinitionId = Crop.SeedItemId;
+                break;
+            }
+        }
         if (!Agriculture->RegisterCropDefinition(Definition))
             return Fail(FString::Printf(TEXT("Agriculture refused crop %s"), *Crop.Id.ToString()));
     }
@@ -1393,6 +1401,14 @@ bool UWorldGameDataSubsystem::ApplyToInventory(UInventoryCraftingComponent* Inve
             continue;
         FCraftingRecipe Recipe;
         Recipe.RecipeId = T.Id;
+        for (const FGameDataDiscovery& Discovery : Discoveries)
+        {
+            if (Discovery.UnlockedDefinitionIds.Contains(T.Id))
+            {
+                Recipe.RequiredUnlockDefinitionId = T.Id;
+                break;
+            }
+        }
         for (const FGameDataItemAmount& Amount : T.Inputs)
         {
             FRecipeIngredient Ingredient;

@@ -19,6 +19,7 @@ struct FWorldProductionRecipe
 {
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") FName RecipeId = NAME_None;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") FName RequiredUnlockDefinitionId = NAME_None;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") TArray<FProductionIngredient> Inputs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production") TArray<FProductionIngredient> Outputs;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Production", meta=(ClampMin="0.01")) double DurationSeconds = 10.0;
@@ -155,6 +156,7 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryMaterializeStockAsWorldLog(FGuid StationId, FGuid OperationId, FName StockItemId, FName DefinitionId, FName BaseDefinitionId, FName MeshVariantSetId, int64 ExpectedStationRevision, const FTransform& SpawnTransform, TSubclassOf<ALogBuildPiece> LogActorClass, FGuid& OutWorldItemId);
     /** Retry-safe enqueue; caller must reuse OperationId when retrying the same request. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool TryEnqueueJob(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid& OutJobId);
+    UFUNCTION(BlueprintCallable, Category="World|Production") bool TryEnqueueJobForEntity(FGuid OperationId, FGuid StationId, FName RecipeId, int64 ExpectedStationRevision, FGuid RequestingEntityId, FGuid& OutJobId);
     /** Legacy convenience wrapper. Use TryEnqueueJob for retry-safe callers. */
     UFUNCTION(BlueprintCallable, Category="World|Production") bool EnqueueJob(const FGuid& StationId, FName RecipeId, FGuid& OutJobId);
     UFUNCTION(BlueprintPure, Category="World|Production") bool CanAdvanceProductionStep(double DeltaSeconds) const;

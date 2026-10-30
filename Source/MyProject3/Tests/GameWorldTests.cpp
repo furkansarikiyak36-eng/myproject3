@@ -1298,6 +1298,43 @@ bool FFarmFieldWorkReceiptsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFarmAnnualSoilRecoveryTest,
+    "MyProject3.World.Farming.AnnualFallowRecoveryIsDeterministic", Flags)
+bool FFarmAnnualSoilRecoveryTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorldAgricultureSubsystem* Agriculture = TestWorld.World
+        ? TestWorld.World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Agriculture subsystem"), Agriculture))
+        return false;
+
+    FWorldFieldCellState FallowField;
+    FallowField.Cell = FIntVector(20, 2, 0);
+    FallowField.bCleared = true;
+    FallowField.bTilled = false;
+    FallowField.Fertility = 40.0f;
+    TestTrue(TEXT("Register fallow field"), Agriculture->RegisterFieldCell(FallowField));
+
+    FWorldFieldCellState TilledField;
+    TilledField.Cell = FIntVector(21, 2, 0);
+    TilledField.bCleared = true;
+    TilledField.bTilled = true;
+    TilledField.Fertility = 40.0f;
+    TestTrue(TEXT("Register actively tilled field"), Agriculture->RegisterFieldCell(TilledField));
+
+    for (int32 Hour = 0; Hour < 24; ++Hour)
+        TestTrue(FString::Printf(TEXT("Advance annual farm hour %d"), Hour),
+            Agriculture->AdvanceAgricultureStep(3600.0));
+
+    TestTrue(TEXT("Read recovered fallow field"), Agriculture->GetFieldCell(FallowField.Cell, FallowField));
+    TestTrue(TEXT("One fallow day restores configured soil fertility"),
+        FMath::IsNearlyEqual(FallowField.Fertility, 40.2f, 0.001f));
+    TestTrue(TEXT("Read tilled field"), Agriculture->GetFieldCell(TilledField.Cell, TilledField));
+    TestTrue(TEXT("Tilled soil does not receive fallow recovery"),
+        FMath::IsNearlyEqual(TilledField.Fertility, 40.0f, 0.001f));
+    return true;
+}
+
 // P6.2/P6.3: planting consumes one real owned seed only in season, and harvest returns seed items once.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FFarmSeasonSeedReturnAndPersistenceTest,
     "MyProject3.World.Farming.SeasonalPlantHarvestReturnsSeedsAndPersistsField", Flags)
@@ -1309,12 +1346,18 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
     UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
     UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Agriculture"), Agriculture) ||
-        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership))
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Ownership"), Ownership) ||
+        !TestNotNull(TEXT("Survival"), Survival))
         return false;
     TestTrue(TEXT("Load primitive-era data"), Data->LoadDefault());
     TestTrue(FString::Printf(TEXT("Apply game data: %s"), *Data->GetLastError()), Data->ApplyToWorld());
     TestTrue(TEXT("Start clock before planting"), Clock->InitializeClock(31415, 0.0));
+    const FGuid PlayerEntityId = FGuid::NewGuid();
+    FWorldSurvivalProfile PlayerProfile;
+    PlayerProfile.EntityId = PlayerEntityId;
+    TestTrue(TEXT("Register player survival profile for unlock checks"), Survival->RegisterProfile(PlayerProfile));
 
     FWorldCropDefinition FastCrop;
     FastCrop.CropDefinitionId = TEXT("Crop.FastTest");
@@ -1328,6 +1371,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     FastCrop.SoilExhaustionPerHarvest = 8.0f;
     FastCrop.MinimumFertility = 10.0f;
     FastCrop.MaximumPlantWeedPressure = 0.7f;
+    FastCrop.RequiredUnlockDefinitionId = TEXT("Seed.Grain");
     TestTrue(TEXT("Register fast test crop"), Agriculture->RegisterCropDefinition(FastCrop));
 
     AActor* InventoryOwnerActor = World->SpawnActor<AActor>();
@@ -1336,6 +1380,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryOwnerActor);
     InventoryOwnerActor->AddInstanceComponent(Inventory);
     Inventory->RegisterComponent();
+    Inventory->SetCraftingEntityId(PlayerEntityId);
     Inventory->ItemWeightGrams.Add(TEXT("Seed.Grain"), 50);
     Inventory->ItemWeightGrams.Add(TEXT("Tool.Hoe"), 1200);
     Inventory->ItemWeightGrams.Add(TEXT("Tool.Sickle"), 900);
@@ -1408,6 +1453,17 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     FWorldCalendarDate Date;
     TestTrue(TEXT("April date is available"), Clock->GetCalendarDate(Date));
     TestEqual(TEXT("Current month is April"), Date.Month, 4);
+    TestFalse(TEXT("Seed remains locked until camp discovery is recorded"),
+        Agriculture->TryPlantCropWithFieldAction(FGuid::NewGuid(), FastCrop.CropDefinitionId,
+            SeedRecord.ItemId, SeedRecord.Revision, Inventory->GetInventoryOwnerId(),
+            Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
+    FWorldSurvivalProfile BeforeDiscoveryProfile;
+    TestTrue(TEXT("Read player profile before camp discovery"),
+        Survival->GetProfile(PlayerEntityId, BeforeDiscoveryProfile));
+    TestTrue(TEXT("Record camp discovery and unlock grain seed"),
+        Survival->TryRecordConfiguredDiscoveryInRegion(FGuid::NewGuid(), PlayerEntityId,
+            BeforeDiscoveryProfile.Revision, TEXT("Discovery.Zone0.Camp"), TEXT("Zone.0"),
+            FVector::ZeroVector, Clock->GetSimulationTimeSeconds()));
     TestTrue(TEXT("Seasonal planting succeeds through the tool-gated action"),
         Agriculture->TryPlantCropWithFieldAction(PlantOperation, FastCrop.CropDefinitionId,
             SeedRecord.ItemId, SeedRecord.Revision, Inventory->GetInventoryOwnerId(),

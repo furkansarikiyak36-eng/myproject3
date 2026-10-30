@@ -9,6 +9,10 @@
 #include "Serialization/JsonSerializer.h"
 #include "WorldCalendar.h"
 #include "WorldSimulationClockSubsystem.h"
+#include "WorldSimulationClockSubsystem.h"
+#include "VoxelTerrainChunkComponent.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 
 namespace
 {
@@ -387,6 +391,173 @@ float UWorldRegionalEventSubsystem::GetSnowLoadUnitsPerCmM2(FName RegionId) cons
     return Found ? Found->SnowLoadUnitsPerCmM2 : 0.0f;
 }
 
+
+bool UWorldRegionalEventSubsystem::GetRegionTerrainMetrics(
+    FName RegionId, float& OutElevationMeters, float& OutSlopeRatio) const
+{
+    OutElevationMeters = 0.0f;
+    OutSlopeRatio = 0.0f;
+    UWorld* World = GetWorld();
+    if (RegionId.IsNone() || !World)
+        return false;
+
+    const FName RegionTag(*FString::Printf(TEXT("Region:%s"), *RegionId.ToString()));
+    uint32 Signature = GetTypeHash(RegionId);
+    TArray<UVoxelTerrainChunkComponent*> Chunks;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!IsValid(Actor) || !Actor->Tags.Contains(RegionTag))
+            continue;
+        UVoxelTerrainChunkComponent* Voxel =
+            Actor->FindComponentByClass<UVoxelTerrainChunkComponent>();
+        if (!IsValid(Voxel) || !Voxel->HasInitializedDensity())
+            continue;
+        Chunks.Add(Voxel);
+        Signature = HashCombine(Signature, GetTypeHash(Actor->GetFName()));
+        Signature = HashCombine(Signature, GetTypeHash(Voxel->GetDensityRevision()));
+        const FTransform Transform = Voxel->GetComponentTransform();
+        Signature = HashCombine(Signature, GetTypeHash(Transform.GetLocation()));
+        Signature = HashCombine(Signature, GetTypeHash(Transform.Rotator()));
+        Signature = HashCombine(Signature, GetTypeHash(Transform.GetScale3D()));
+    }
+
+    if (const FWorldRegionTerrainMetricsCache* Cached = TerrainMetricsCache.Find(RegionId))
+    {
+        if (Cached->Signature == Signature)
+        {
+            OutElevationMeters = Cached->ElevationMeters;
+            OutSlopeRatio = Cached->SlopeRatio;
+            return Cached->bHasMetrics;
+        }
+    }
+
+    double ElevationTotal = 0.0;
+    int32 ElevationSamples = 0;
+    double SlopeTotal = 0.0;
+    int32 SlopeSamples = 0;
+    for (UVoxelTerrainChunkComponent* Voxel : Chunks)
+    {
+        if (!IsValid(Voxel))
+            continue;
+        const float Extent = static_cast<float>(Voxel->CellsPerAxis) * Voxel->VoxelSizeCm;
+        if (!FMath::IsFinite(Extent) || Extent <= 0.0f)
+            continue;
+
+        struct FSurfaceSample
+        {
+            bool bValid = false;
+            FVector WorldPosition = FVector::ZeroVector;
+        };
+        FSurfaceSample Surface[5][5];
+        for (int32 YIndex = 0; YIndex < 5; ++YIndex)
+        {
+            for (int32 XIndex = 0; XIndex < 5; ++XIndex)
+            {
+                const float X = Extent * (0.1f + 0.2f * XIndex);
+                const float Y = Extent * (0.1f + 0.2f * YIndex);
+                float PreviousZ = 0.0f;
+                float PreviousDensity = Voxel->SampleDensity(FVector(X, Y, PreviousZ));
+                bool bFoundSurface = false;
+                float LowZ = 0.0f;
+                float HighZ = 0.0f;
+                for (int32 Slice = 1; Slice <= 32; ++Slice)
+                {
+                    const float Z = Extent * static_cast<float>(Slice) / 32.0f;
+                    const float Density = Voxel->SampleDensity(FVector(X, Y, Z));
+                    if (PreviousDensity <= 0.0f && Density > 0.0f)
+                    {
+                        LowZ = PreviousZ;
+                        HighZ = Z;
+                        bFoundSurface = true;
+                        break;
+                    }
+                    PreviousZ = Z;
+                    PreviousDensity = Density;
+                }
+                if (!bFoundSurface)
+                    continue;
+
+                for (int32 Iteration = 0; Iteration < 10; ++Iteration)
+                {
+                    const float MidZ = (LowZ + HighZ) * 0.5f;
+                    if (Voxel->SampleDensity(FVector(X, Y, MidZ)) <= 0.0f)
+                        LowZ = MidZ;
+                    else
+                        HighZ = MidZ;
+                }
+
+                const FVector WorldPosition = Voxel->GetComponentTransform().TransformPosition(
+                    FVector(X, Y, (LowZ + HighZ) * 0.5f));
+                Surface[YIndex][XIndex].bValid = true;
+                Surface[YIndex][XIndex].WorldPosition = WorldPosition;
+                ElevationTotal += WorldPosition.Z / 100.0;
+                ++ElevationSamples;
+            }
+        }
+
+        for (int32 YIndex = 0; YIndex < 5; ++YIndex)
+        {
+            for (int32 XIndex = 0; XIndex < 5; ++XIndex)
+            {
+                if (!Surface[YIndex][XIndex].bValid)
+                    continue;
+                if (XIndex < 4 && Surface[YIndex][XIndex + 1].bValid)
+                {
+                    const FVector& A = Surface[YIndex][XIndex].WorldPosition;
+                    const FVector& B = Surface[YIndex][XIndex + 1].WorldPosition;
+                    const float Run = FVector::Dist2D(A, B);
+                    if (Run > KINDA_SMALL_NUMBER)
+                    {
+                        SlopeTotal += FMath::Abs(B.Z - A.Z) / Run;
+                        ++SlopeSamples;
+                    }
+                }
+                if (YIndex < 4 && Surface[YIndex + 1][XIndex].bValid)
+                {
+                    const FVector& A = Surface[YIndex][XIndex].WorldPosition;
+                    const FVector& B = Surface[YIndex + 1][XIndex].WorldPosition;
+                    const float Run = FVector::Dist2D(A, B);
+                    if (Run > KINDA_SMALL_NUMBER)
+                    {
+                        SlopeTotal += FMath::Abs(B.Z - A.Z) / Run;
+                        ++SlopeSamples;
+                    }
+                }
+            }
+        }
+    }
+
+    FWorldRegionTerrainMetricsCache Updated;
+    Updated.Signature = Signature;
+    Updated.bHasMetrics = ElevationSamples > 0 && SlopeSamples > 0;
+    if (Updated.bHasMetrics)
+    {
+        Updated.ElevationMeters = static_cast<float>(ElevationTotal / ElevationSamples);
+        Updated.SlopeRatio = static_cast<float>(SlopeTotal / SlopeSamples);
+        Updated.bHasMetrics =
+            FMath::IsFinite(Updated.ElevationMeters) && FMath::IsFinite(Updated.SlopeRatio);
+    }
+    TerrainMetricsCache.Add(RegionId, Updated);
+    OutElevationMeters = Updated.ElevationMeters;
+    OutSlopeRatio = Updated.SlopeRatio;
+    return Updated.bHasMetrics;
+}
+
+bool UWorldRegionalEventSubsystem::RefreshRegionTerrainProfile(FName RegionId)
+{
+    if (!bDefinitionsLoaded || !Regions.Contains(RegionId))
+        return false;
+    float ElevationMeters = 0.0f;
+    float SlopeRatio = 0.0f;
+    if (!GetRegionTerrainMetrics(RegionId, ElevationMeters, SlopeRatio))
+        return false;
+    FWorldRegionProfile& Profile = Regions.FindChecked(RegionId);
+    Profile.ElevationMeters = ElevationMeters;
+    Profile.SlopeRatio = SlopeRatio;
+    return true;
+}
+
 bool UWorldRegionalEventSubsystem::EvaluateRegion(
     FName RegionId, FWorldRegionalEventEvaluation& OutEvaluation) const
 {
@@ -405,7 +576,14 @@ bool UWorldRegionalEventSubsystem::EvaluateRegion(
         !Climate->IsClimateInitialized() || !Clock->GetCalendarDate(Date))
         return false;
 
-    const FWorldRegionProfile& Region = Regions.FindChecked(RegionId);
+    FWorldRegionProfile Region = Regions.FindChecked(RegionId);
+    float TerrainElevationMeters = 0.0f;
+    float TerrainSlopeRatio = 0.0f;
+    if (GetRegionTerrainMetrics(RegionId, TerrainElevationMeters, TerrainSlopeRatio))
+    {
+        Region.ElevationMeters = TerrainElevationMeters;
+        Region.SlopeRatio = TerrainSlopeRatio;
+    }
     TMap<FName, bool> Memo;
     TSet<FName> Visiting;
     for (const FWorldRegionalEventDefinition& Definition : EventDefinitions)

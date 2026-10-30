@@ -14,6 +14,8 @@
 #include "EngineUtils.h"
 #include "Misc/Crc.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldStorageComponent.h"
+#include "Components/LightComponent.h"
 
 UWorldThreatDirectorSubsystem* UWorldRaidAdapterSubsystem::GetThreatDirector() const
 {
@@ -624,6 +626,10 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
         float SmokeSuppression = 0.0f;
     };
     TMap<FName, FRegionSignals> SignalsByRegion;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    UWorldGameDataSubsystem* GameData =
+        World->GetSubsystem<UWorldGameDataSubsystem>();
 
     auto AddSignal = [](float& Total, const FString& RawValue) -> bool
     {
@@ -636,9 +642,10 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
         return true;
     };
 
-    // Sensor convention: add Region:<id>, RaidSignal.<kind>:<0..1>, direct
-    // RaidSignalSuppress.<kind>:<0..1>, or RaidDefenseType:<definition-id> tags.
-    // Defense definitions contribute both regional structural rating and signal suppression.
+    // Region tags locate objects. Registered storage contents and food mass supply
+    // storage/scent pressure; actual light components supply light pressure.
+    // Burning combustible components publish active fire-light and smoke tags.
+    // Numeric tags remain supported for explicit emitters and authored countermeasures.
     for (TActorIterator<AActor> It(World); It; ++It)
     {
         AActor* Actor = *It;
@@ -660,6 +667,50 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
             continue;
 
         FRegionSignals& Signals = SignalsByRegion.FindOrAdd(RegionId);
+
+        if (const UWorldStorageComponent* StorageComponent =
+            Actor->FindComponentByClass<UWorldStorageComponent>())
+        {
+            TArray<FGuid> StoredItemIds;
+            if (!StorageComponent->GetStoredItemIds(StoredItemIds) ||
+                !Ownership || !GameData || !GameData->IsLoaded())
+                return false;
+
+            for (const FGuid& StoredItemId : StoredItemIds)
+            {
+                FWorldOwnedItemRecord StoredItem;
+                if (!Ownership->TryGetItem(StoredItemId, StoredItem) ||
+                    StoredItem.OwnerKind != EWorldItemOwnerKind::Storage ||
+                    StoredItem.OwnerId != StorageComponent->GetStorageId() ||
+                    StoredItem.Quantity <= 0)
+                    return false;
+
+                const FGameDataItem* ItemDefinition =
+                    GameData->GetItems().Find(StoredItem.DefinitionId);
+                if (!ItemDefinition || ItemDefinition->WeightGrams <= 0)
+                    return false;
+
+                const double WeightGrams =
+                    static_cast<double>(ItemDefinition->WeightGrams) * StoredItem.Quantity;
+                Signals.StorageValue = FMath::Clamp(
+                    Signals.StorageValue + static_cast<float>(WeightGrams / 100000.0), 0.0f, 1.0f);
+                if (ItemDefinition->Group == FName(TEXT("food")) && ItemDefinition->bConsumable)
+                {
+                    Signals.Smell = FMath::Clamp(
+                        Signals.Smell + static_cast<float>(WeightGrams / 25000.0), 0.0f, 1.0f);
+                }
+            }
+        }
+
+        if (const ULightComponent* Light = Actor->FindComponentByClass<ULightComponent>())
+        {
+            if (Light->Intensity > 0.0f)
+            {
+                const float LightSignal = FMath::Clamp(Light->Intensity / 5000.0f, 0.0f, 1.0f);
+                Signals.Light = FMath::Clamp(Signals.Light + LightSignal, 0.0f, 1.0f);
+            }
+        }
+
         for (const FName& Tag : Actor->Tags)
         {
             const FString Value = Tag.ToString();

@@ -86,6 +86,15 @@ struct FWorldRegionalEventEvaluation
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float SurvivalSeverityMultiplier = 1.0f;
 };
 
+/** Transient regional surface metrics, invalidated by tagged voxel density/transform changes. */
+struct FWorldRegionTerrainMetricsCache
+{
+    uint32 Signature = 0;
+    bool bHasMetrics = false;
+    float ElevationMeters = 0.0f;
+    float SlopeRatio = 0.0f;
+};
+
 /**
  * Data-driven, deterministic evaluator for regional natural hazards.
  * The active event set is derived from the shared clock/seed instead of a second
@@ -110,6 +119,8 @@ public:
         FName EventId, FWorldRegionalEventDefinition& OutDefinition) const;
     UFUNCTION(BlueprintPure, Category="World|Events") TArray<FName> GetRegionIds() const;
     UFUNCTION(BlueprintPure, Category="World|Events") float GetSnowLoadUnitsPerCmM2(FName RegionId) const;
+    UFUNCTION(BlueprintCallable, Category="World|Events")
+    bool RefreshRegionTerrainProfile(FName RegionId);
 
     /** Evaluates region conditions using current shared time, climate and deterministic daily rolls. */
     UFUNCTION(BlueprintCallable, Category="World|Events") bool EvaluateRegion(FName RegionId, FWorldRegionalEventEvaluation& OutEvaluation) const;
@@ -120,6 +131,8 @@ private:
     TMap<FName, FWorldRegionProfile> Regions;
     TArray<FWorldRegionalEventDefinition> EventDefinitions;
     TMap<FName, int32> EventIndexById;
+    mutable TMap<FName, FWorldRegionTerrainMetricsCache> TerrainMetricsCache;
+    bool GetRegionTerrainMetrics(FName RegionId, float& OutElevationMeters, float& OutSlopeRatio) const;
 
     bool IsDefinitionActive(const FWorldRegionalEventDefinition& Definition,
         const FWorldRegionProfile& Region, int32 Month, float HourOfDay,

@@ -972,6 +972,18 @@ bool UWorldSaveCoordinatorSubsystem::LoadWorldState(const FString& SlotName, int
         Candidate->SchemaVersion = 25;
     }
 
+    if (Candidate->SchemaVersion == 25)
+    {
+        // Schema v26 adds fractional environment-hour and fallow-day accumulators.
+        // Older field records resume at zero because historical partial time is unknowable.
+        for (FWorldFieldCellState& Field : Candidate->FieldCells)
+        {
+            Field.EnvironmentProgressSeconds = 0.0;
+            Field.FertilityRecoveryProgressSeconds = 0.0;
+        }
+        Candidate->SchemaVersion = 26;
+    }
+
     if (Candidate->SchemaVersion != UWorldSimulationSaveGame::CurrentSchemaVersion)
         return false;
 

@@ -9,6 +9,7 @@
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldItemOwnershipSubsystem.h"
 #include "WorldRegionalEventSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 
 AWorldInfrastructureActor::AWorldInfrastructureActor()
 {
@@ -154,6 +155,17 @@ bool AWorldInfrastructureActor::BuildFromInventory(
         return false;
     if (IsInfrastructureBuilt())
         return false;
+    const bool bHasDiscoveryGate = GameData->GetDiscoveries().ContainsByPredicate(
+        [this](const FGameDataDiscovery& Discovery)
+        { return Discovery.UnlockedDefinitionIds.Contains(InfrastructureId); });
+    if (bHasDiscoveryGate)
+    {
+        const UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+        const FGuid PlayerEntityId = Inventory->GetCraftingEntityId();
+        if (!Survival || !PlayerEntityId.IsValid() ||
+            !Survival->IsDefinitionUnlocked(PlayerEntityId, InfrastructureId))
+            return false;
+    }
 
     TArray<FLogisticsRouteNode> PreviousNodes;
     TArray<FLogisticsRouteEdge> PreviousEdges;
@@ -229,6 +241,17 @@ bool AWorldInfrastructureActor::RepairFromInventory(
         return false;
     if (CurrentCondition >= MaxCondition || Definition->RepairConditionPerJob <= 0.0f)
         return false;
+    const bool bHasDiscoveryGate = GameData->GetDiscoveries().ContainsByPredicate(
+        [this](const FGameDataDiscovery& Discovery)
+        { return Discovery.UnlockedDefinitionIds.Contains(InfrastructureId); });
+    if (bHasDiscoveryGate)
+    {
+        const UWorldSurvivalSubsystem* Survival = World->GetSubsystem<UWorldSurvivalSubsystem>();
+        const FGuid PlayerEntityId = Inventory->GetCraftingEntityId();
+        if (!Survival || !PlayerEntityId.IsValid() ||
+            !Survival->IsDefinitionUnlocked(PlayerEntityId, InfrastructureId))
+            return false;
+    }
 
     TArray<FLogisticsRouteNode> PreviousNodes;
     TArray<FLogisticsRouteEdge> PreviousEdges;
