@@ -1,0 +1,178 @@
+{
+  "_about": "Faz 6 field-work contract. Costs are consumable stack items; tools are required but not consumed. Plant/harvest use crop-specific transactional APIs. Dry/thresh/winnow/grind/seed separation reference transformations.",
+  "actions": [
+    {
+      "id": "Field.Clear",
+      "operation": "Clear",
+      "tools": [
+        "Tool.DiggingStick"
+      ],
+      "inputs": [],
+      "work_seconds": 30,
+      "work_amount": 1
+    },
+    {
+      "id": "Field.Till",
+      "operation": "Till",
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "inputs": [],
+      "work_seconds": 90,
+      "work_amount": 1
+    },
+    {
+      "id": "Field.Fertilize",
+      "operation": "Fertilize",
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "inputs": [
+        {
+          "item": "Compost",
+          "qty": 1
+        }
+      ],
+      "work_seconds": 60,
+      "work_amount": 15
+    },
+    {
+      "id": "Field.Plant",
+      "operation": "Plant",
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "inputs": [],
+      "work_seconds": 45,
+      "work_amount": 1
+    },
+    {
+      "id": "Field.Water",
+      "operation": "Water",
+      "tools": [],
+      "inputs": [
+        {
+          "item": "Water.Dirty",
+          "qty": 1
+        }
+      ],
+      "work_seconds": 20,
+      "work_amount": 0.25
+    },
+    {
+      "id": "Field.Weed",
+      "operation": "Weed",
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "inputs": [],
+      "work_seconds": 45,
+      "work_amount": 0.35
+    },
+    {
+      "id": "Field.Mulch",
+      "operation": "Mulch",
+      "tools": [],
+      "inputs": [
+        {
+          "item": "Grass",
+          "qty": 3
+        }
+      ],
+      "work_seconds": 60,
+      "work_amount": 0.25
+    },
+    {
+      "id": "Field.Harvest",
+      "operation": "Harvest",
+      "tools": [
+        "Tool.Sickle"
+      ],
+      "inputs": [],
+      "work_seconds": 60,
+      "work_amount": 1
+    },
+    {
+      "id": "Field.Dry",
+      "operation": "Dry",
+      "tools": [],
+      "inputs": [],
+      "work_seconds": 86400,
+      "transformation_ids": [
+        "dry_grain",
+        "dry_legume"
+      ],
+      "station": "drying_rack"
+    },
+    {
+      "id": "Field.Thresh",
+      "operation": "Thresh",
+      "tools": [
+        "Tool.Flail"
+      ],
+      "inputs": [],
+      "work_seconds": 3600,
+      "transformation_ids": [
+        "thresh_grain"
+      ],
+      "station": "threshing_floor"
+    },
+    {
+      "id": "Field.Winnow",
+      "operation": "Winnow",
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "inputs": [],
+      "work_seconds": 1800,
+      "transformation_ids": [
+        "winnow_grain"
+      ]
+    },
+    {
+      "id": "Field.Grind",
+      "operation": "Grind",
+      "tools": [],
+      "inputs": [],
+      "work_seconds": 3600,
+      "transformation_ids": [
+        "grind_flour"
+      ],
+      "station": "grinding_stone"
+    },
+    {
+      "id": "Field.Store",
+      "operation": "Store",
+      "tools": [
+        "Basket"
+      ],
+      "inputs": [],
+      "work_seconds": 30,
+      "storage_policy": "StoreDryFirst"
+    },
+    {
+      "id": "Field.SeparateSeeds",
+      "operation": "SeparateSeeds",
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "inputs": [],
+      "work_seconds": 1800,
+      "transformation_ids": [
+        "separate_grain_seed",
+        "separate_legume_seed",
+        "separate_root_seed"
+      ]
+    },
+    {
+      "id": "Field.Fallow",
+      "operation": "Fallow",
+      "tools": [
+        "Tool.Hoe"
+      ],
+      "inputs": [],
+      "work_seconds": 3600,
+      "work_amount": 5
+    }
+  ]
+}
