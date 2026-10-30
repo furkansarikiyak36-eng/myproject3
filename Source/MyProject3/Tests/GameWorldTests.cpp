@@ -25,6 +25,7 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldRaidAdapterSubsystem.h"
+#include "WorldInfrastructureActor.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -2276,6 +2277,78 @@ bool FRouteInfrastructureDurabilityTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Faz 7 — the generic infrastructure actor spends materials, updates route state and repairs it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWorldInfrastructureActorLifecycleTest,
+    "MyProject3.Logistics.InfrastructureActorBuildWearRepairLifecycle", Flags)
+bool FWorldInfrastructureActorLifecycleTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Routes"), Routes))
+        return false;
+    TestTrue(TEXT("Load infrastructure data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply route catalog"), Data->ApplyToWorld());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner"), Owner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item definitions"), Data->ApplyToInventory(Inventory));
+
+    auto AddStack = [&](FName Id, int32 Count, bool bTool)
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = Id;
+        Stack.Quantity = Count;
+        Stack.MaxStack = 99;
+        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
+        Stack.bIsTool = bTool;
+        return Inventory->TryAddItem(Stack);
+    };
+    TestTrue(TEXT("Add logs"), AddStack(TEXT("Log"), 3, false));
+    TestTrue(TEXT("Add sticks"), AddStack(TEXT("Stick"), 6, false));
+    TestTrue(TEXT("Add rope"), AddStack(TEXT("Rope"), 2, false));
+    TestTrue(TEXT("Add axe"), AddStack(TEXT("Tool.Axe"), 1, true));
+    TestTrue(TEXT("Add chisel"), AddStack(TEXT("Tool.Chisel"), 1, true));
+
+    AWorldInfrastructureActor* Steps = World->SpawnActor<AWorldInfrastructureActor>();
+    if (!TestNotNull(TEXT("Infrastructure actor"), Steps))
+        return false;
+    Steps->InfrastructureId = TEXT("Infrastructure.HillSteps");
+    const FGuid BuildOperation(901, 902, 903, 904);
+    TestTrue(TEXT("Construct hill steps from data recipe"),
+        Steps->BuildFromInventory(BuildOperation, Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Route sees constructed hill steps"), Steps->IsInfrastructureBuilt());
+    TestEqual(TEXT("Build consumes two logs"), Inventory->GetItemCount(TEXT("Log")), 1);
+    TestEqual(TEXT("Build consumes six sticks"), Inventory->GetItemCount(TEXT("Stick")), 0);
+    TestEqual(TEXT("Build consumes one rope"), Inventory->GetItemCount(TEXT("Rope")), 1);
+    TestEqual(TEXT("Build keeps axe"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+    TestEqual(TEXT("Build keeps chisel"), Inventory->GetItemCount(TEXT("Tool.Chisel")), 1);
+
+    TestTrue(TEXT("Build retry is idempotent"),
+        Steps->BuildFromInventory(BuildOperation, Inventory->GetInventoryOwnerId()));
+    TestEqual(TEXT("Build retry does not charge another log"), Inventory->GetItemCount(TEXT("Log")), 1);
+
+    TestTrue(TEXT("Apply severe weather wear"), Routes->ApplyInfrastructureWear(
+        TEXT("Infrastructure.HillSteps"), 50.0f));
+    TestEqual(TEXT("Actor reads route durability"), Steps->GetInfrastructureCondition(), 50.0f);
+    const FGuid RepairOperation(905, 906, 907, 908);
+    TestTrue(TEXT("Repair from data materials and tools"),
+        Steps->RepairFromInventory(RepairOperation, Inventory->GetInventoryOwnerId()));
+    TestEqual(TEXT("Repair raises route condition by configured amount"),
+        Steps->GetInfrastructureCondition(), 75.0f);
+    TestEqual(TEXT("Repair consumes final log"), Inventory->GetItemCount(TEXT("Log")), 0);
+    TestEqual(TEXT("Repair consumes final rope"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestTrue(TEXT("Repair retry is idempotent"),
+        Steps->RepairFromInventory(RepairOperation, Inventory->GetInventoryOwnerId()));
+    TestEqual(TEXT("Repair retry does not consume more materials"), Inventory->GetItemCount(TEXT("Log")), 0);
+    return true;
+}
+
 // Faz 8 — recipe repair consumes the correct wood materials, keeps tools and deduplicates retries.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWoodStoneRecipeRepairTest,
     "MyProject3.World.Structures.TypedWoodRepairConsumesRecipeOnce", Flags)
@@ -2414,7 +2487,9 @@ bool FRaidCountermeasureDefinitionTest::RunTest(const FString& Parameters)
         return false;
     Store->Tags.Add(TEXT("Region:Zone.2"));
     Store->Tags.Add(TEXT("RaidSignal.Storage:1.0"));
-    Store->Tags.Add(TEXT("RaidSignalSuppress.Storage:1.0"));
+    Store->Tags.Add(TEXT("RaidSignal.Smell:1.0"));
+    Store->Tags.Add(TEXT("RaidSignalSuppress.Storage:0.75"));
+    Store->Tags.Add(TEXT("RaidDefenseType:RaidDefense.ScentSeal"));
     TestTrue(TEXT("Suppressed signal scan succeeds"), Adapter->AdvanceRegionalRaidSignals());
     FThreatRaidRecord Raid;
     TestFalse(TEXT("Fully suppressed storage alone does not create a raid"),
