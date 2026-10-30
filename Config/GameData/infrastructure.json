@@ -338,6 +338,43 @@
         }
       ],
       "repair_condition_per_job": 25
+    },
+    {
+      "id": "Infrastructure.TrailMarker",
+      "name": "Yol işaret taşı",
+      "build_materials": [
+        {
+          "item": "Stone",
+          "qty": 1
+        },
+        {
+          "item": "Resin",
+          "qty": 1
+        }
+      ],
+      "repair_materials": [
+        {
+          "item": "Stone",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Chisel"
+      ],
+      "build_work_seconds": 600,
+      "max_condition": 100,
+      "route_cost_multiplier_built": 0.98,
+      "repair_condition_per_job": 25,
+      "wear_events": [
+        {
+          "event_id": "Event.WindStorm",
+          "wear_per_hour": 0.5
+        },
+        {
+          "event_id": "Event.Wildfire",
+          "wear_per_hour": 1
+        }
+      ]
     }
   ]
 }
