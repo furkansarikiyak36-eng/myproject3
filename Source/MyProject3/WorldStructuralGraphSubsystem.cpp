@@ -978,7 +978,8 @@ float UWorldStructuralGraphSubsystem::GetRegionDefenseRating(FName RegionId) con
     for (const FGuid& NodeId : SortedIds)
     {
         const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
-        if (!Node || Node->RegionId != RegionId || Node->RaidDefenseRating <= 0.0f ||
+        if (!Node || Node->RegionId != RegionId ||
+            (Node->RaidDefenseRating <= 0.0f && Node->RaidDefenseDefinitionId.IsNone()) ||
             !Node->Actor.IsValid() || Node->Damage >= Node->DamageThreshold)
         {
             continue;
