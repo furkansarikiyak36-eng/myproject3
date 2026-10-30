@@ -242,8 +242,12 @@ bool UWorldLogisticsRouteSubsystem::AdvanceRegionalInfrastructureWear(double Del
     // camp or a raft not mapped to a traversable edge) owns its local condition.
     if (UWorld* World = GetWorld())
         for (TActorIterator<AWorldInfrastructureActor> It(World); It; ++It)
-            if (IsValid(*It) && !It->AdvanceLocalWeatherWear(DeltaSeconds))
+        {
+            AWorldInfrastructureActor* InfrastructureActor = *It;
+            if (IsValid(InfrastructureActor) &&
+                !InfrastructureActor->AdvanceLocalWeatherWear(DeltaSeconds))
                 return false;
+        }
 
     return true;
 }
