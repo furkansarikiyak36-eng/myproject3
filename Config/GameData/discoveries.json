@@ -19,7 +19,8 @@
       "required_equipment": [],
       "unlocks": [
         "Infrastructure.CreekBridge",
-        "Tool.Filter"
+        "Tool.Filter",
+        "Infrastructure.SteppingStones"
       ]
     },
     {
@@ -35,7 +36,9 @@
         "Infrastructure.HillSteps",
         "make_bedroll",
         "Knowledge.BedConstruction",
-        "separate_grain_seed"
+        "separate_grain_seed",
+        "Infrastructure.ForestTrail",
+        "Infrastructure.RopeLine"
       ]
     },
     {
