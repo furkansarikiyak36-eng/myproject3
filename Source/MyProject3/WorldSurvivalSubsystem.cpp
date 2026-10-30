@@ -1622,7 +1622,12 @@ bool UWorldSurvivalSubsystem::ApplyRegionalEventExposure(double DeltaSeconds)
     UWorld* World = GetWorld();
     UWorldRegionalEventSubsystem* Events =
         World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
-    if (!Events || !Events->AreDefinitionsLoaded())
+    const UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    if (!Events || !Events->AreDefinitionsLoaded() || !Clock || !Clock->IsClockInitialized())
+        return false;
+    const int64 CurrentTickIndex = Clock->GetTickIndex();
+    if (CurrentTickIndex < 0)
         return false;
 
     // Resolve every region and revision before mutating any profile. A missing
@@ -1631,7 +1636,8 @@ bool UWorldSurvivalSubsystem::ApplyRegionalEventExposure(double DeltaSeconds)
     for (const FGuid& EntityId : EntityIds)
     {
         const FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
-        if (!Profile || Profile->RegionId.IsNone())
+        if (!Profile || Profile->RegionId.IsNone() ||
+            Profile->LastRegionalExposureTickIndex == CurrentTickIndex)
             continue;
         if (Profile->Revision >= MAX_int64 - 1)
             return false;
@@ -1662,7 +1668,8 @@ bool UWorldSurvivalSubsystem::ApplyRegionalEventExposure(double DeltaSeconds)
     for (const FGuid& EntityId : EntityIds)
     {
         FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
-        if (!Profile || Profile->RegionId.IsNone())
+        if (!Profile || Profile->RegionId.IsNone() ||
+            Profile->LastRegionalExposureTickIndex == CurrentTickIndex)
             continue;
         const FWorldRegionalEventEvaluation* Evaluation =
             EvaluationsByRegion.Find(Profile->RegionId);
@@ -1707,6 +1714,7 @@ bool UWorldSurvivalSubsystem::ApplyRegionalEventExposure(double DeltaSeconds)
         Profile->CoreTemperatureCelsius = FMath::Clamp(
             Profile->CoreTemperatureCelsius + CoreTemperatureDelta, 20.0f, 42.0f);
         Profile->FeltTemperatureCelsius = ComputeFeltTemperature(*Profile);
+        Profile->LastRegionalExposureTickIndex = CurrentTickIndex;
         ++Profile->Revision;
     }
     return true;
