@@ -158,6 +158,9 @@ struct FWorldSurvivalProfile
     /** Region entered through the exploration gate; None means no regional hazard assignment yet. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Exposure")
     FName RegionId = NAME_None;
+    /** The logical tick already charged regional event exposure; saved to prevent same-tick duplicate application. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Survival|Exposure")
+    int64 LastRegionalExposureTickIndex = INDEX_NONE;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Survival", meta=(ClampMin="0", ClampMax="100")) float Health = 100.0f;
     /** Derived from Calories each step: 0 = full, 100 = empty store. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Survival", meta=(ClampMin="0", ClampMax="100")) float Hunger = 0.0f;
