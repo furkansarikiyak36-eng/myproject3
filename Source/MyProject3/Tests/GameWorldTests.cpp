@@ -1807,10 +1807,13 @@ bool FStructuralSnowLoadAffectsSupportTest::RunTest(const FString& Parameters)
         World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
     UWorldStructuralGraphSubsystem* Graph =
         World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* HazardAdapter =
+        World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Clock"), Clock) ||
         !TestNotNull(TEXT("Climate"), Climate) ||
         !TestNotNull(TEXT("Regional events"), Events) ||
-        !TestNotNull(TEXT("Structural graph"), Graph))
+        !TestNotNull(TEXT("Structural graph"), Graph) ||
+        !TestNotNull(TEXT("Hazard adapter"), HazardAdapter))
         return false;
 
     const double WinterStart = 16.0 * 3600.0 + 45.0 * Day;
@@ -1833,6 +1836,11 @@ bool FStructuralSnowLoadAffectsSupportTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Aggregate load includes environmental snow"), Graph->GetAggregateLoad(NodeId) > 50.0f);
     TestFalse(TEXT("Overloaded exposed member cannot claim a valid support path"),
         Graph->HasValidSupportPath(NodeId));
+    TestTrue(TEXT("Fixed-step hazard pass resolves the snow overload"),
+        HazardAdapter->AdvanceRegionalHazardDamage(60.0));
+    FStructuralNodeRecord CollapsedRoof;
+    TestFalse(TEXT("Snow-overloaded member is removed by the collapse resolver"),
+        Graph->GetNode(NodeId, CollapsedRoof));
     return true;
 }
 
