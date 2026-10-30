@@ -519,6 +519,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         Entry->TryGetStringField(TEXT("name"), Definition.Name);
         Definition.BuildWorkSeconds = NumberField(Entry, TEXT("build_work_seconds"));
         Definition.MaxCondition = static_cast<float>(NumberField(Entry, TEXT("max_condition"), 100.0));
+        Definition.RepairConditionPerJob = static_cast<float>(NumberField(Entry, TEXT("repair_condition_per_job"), 25.0));
         Definition.BuiltRouteCostMultiplier = static_cast<float>(NumberField(Entry, TEXT("route_cost_multiplier_built"), 1.0));
         Definition.BuildMaterials = Amounts(Entry, TEXT("build_materials"));
         Definition.RepairMaterials = Amounts(Entry, TEXT("repair_materials"));
@@ -561,6 +562,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             Definition.BuildMaterials.IsEmpty() || Definition.RepairMaterials.IsEmpty() ||
             !FMath::IsFinite(Definition.BuildWorkSeconds) || Definition.BuildWorkSeconds <= 0.0 ||
             !FMath::IsFinite(Definition.MaxCondition) || Definition.MaxCondition <= 0.0f ||
+            !FMath::IsFinite(Definition.RepairConditionPerJob) || Definition.RepairConditionPerJob <= 0.0f || Definition.RepairConditionPerJob > Definition.MaxCondition ||
             !FMath::IsFinite(Definition.BuiltRouteCostMultiplier) ||
             Definition.BuiltRouteCostMultiplier <= 0.0f || Definition.BuiltRouteCostMultiplier > 100.0f)
             return Fail(FString::Printf(TEXT("Bad infrastructure definition %s"), *Definition.Id.ToString()));
