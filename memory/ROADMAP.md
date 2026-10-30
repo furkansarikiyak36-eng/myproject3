@@ -6,7 +6,7 @@ this GitHub repo can continue from here: Claude Code, Claude web, another accoun
 
 ## One working branch only (from 2026-10-29 evening)
 
-All assistants commit to `game/p00-adopt-group-a` only. **Never create a branch** (2026-10-30: 64 stray branches had to be deleted): parallel lines
+All assistants commit to `game/p00-adopt-group-a` only. **Never create a branch** (2026-10-30: 64 stray branches had to be deleted). The only other branch is `analysis` (documents only: what exists now; update its "Son kontrol" line when the code changes, never merge it): parallel lines
 (p06, p07, phase-3-4) built the same systems twice with different APIs and both claimed save schema 29.
 Before starting: `git pull`; before pushing: `git pull --rebase`. A save schema number is taken only by the
 commit that pushes it first; rebase and renumber yours if it is taken.

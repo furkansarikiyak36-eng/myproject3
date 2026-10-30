@@ -5,6 +5,10 @@ ChatGPT, Antigravity IDE. Read this folder instead of analysing the whole repo.
 
 ## At the start of a session
 
+What the project has now (facts, checked against the code): branch `analysis` → `ELIMIZDE_NE_VAR.md`.
+Which documents are current and which are history: `analysis` → `BELGE_HARITASI.md`. Plans/wishes go only to
+`Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`.
+
 0. Read `CURRENT_TASK.md`. If a task is `open`, continue it from "Next step" and save
    after every step (its rules). Skip the rest of this list unless the task needs it.
 1. Read `STATE.md` (one page: where the project is now).

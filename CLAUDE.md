@@ -4,6 +4,8 @@ Unreal Engine 5.8 C++ survival/building game (Sons of the Forest style log build
 
 ## Read this first, then only the files the task needs
 
+What exists now (facts, not plans): branch `analysis`, file `ELIMIZDE_NE_VAR.md`; which documents are current: `BELGE_HARITASI.md` there.
+
 First read `memory/CURRENT_TASK.md`: if a task is open, resume it and save after every step.
 
 Shared memory for every assistant: `memory/` (start with `memory/README.md` and `memory/STATE.md`; write a session file at the end).
