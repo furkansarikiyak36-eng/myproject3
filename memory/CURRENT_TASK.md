@@ -1,9 +1,9 @@
 # Current task (checkpoint)
 
-Status: open — P6 and P7.1–P7.4 logical/data contracts plus idempotent zone-entry discovery API source-written; Unreal verification pending
+Status: open — P8.1 regional hazard evaluator, P8.2 signal-driven region raids and P8.3 snow-load/defense mechanics source-written; Unreal verification and several gameplay-consumer integrations pending
 Overall goal: Finish partial tasks in memory/PLAN_STATUS.md in dependency order, including player input/HUD where required.
 Current source-written work: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter, and P7.1–P7.4 route context, five-zone catalog, discovery definitions, infrastructure edge updates and route-state persistence.
-Branch: game/p07-zone-entry-progression (follow-up branch from game/p06-farming-seed-cycle, based on game/p00-adopt-group-a).
+Branch: game/p08-events-defense (follow-up from game/p07-zone-entry-progression; P6/P7/P8 remain unbuilt on this work branch).
 
 ## Fixed constraints
 - Backend first; no per-task Unreal build. Add automation tests as source and perform one batch build/test/fix pass at the end.
@@ -29,7 +29,9 @@ Branch: game/p07-zone-entry-progression (follow-up branch from game/p06-farming-
 14. [x] Add `TryRecordZoneEntry`: validate `CanEnterZone`, resolve the zone discovery ID, fetch the current profile revision and record the discovery at shared world time with an idempotent operation ID. Extend test source for zone progression and retry.
 15. [ ] Wire a real overlap/interaction trigger to `TryRecordZoneEntry`; connect route graph to actual movement speed/time and player input/HUD; connect infrastructure build/repair/weather-damage events to route state. Keep Zones 3/4 physical placement for the final scene phase.
 16. [ ] Finish remaining field/animal player inputs and the full 15-step farm processing chain; add headless whole-world year simulation.
-17. [ ] Continue P8/P9.2 in dependency order; New Valley scene and PIE acceptance remain last.
+17. [x] Add P8 regional event data/evaluator, region-specific signal raids and snapshot receipts, snow-load support checks, regional defense mitigation, and source automation tests.
+18. [ ] Batch UHT/UBT build and run the full automation suite; collect/fix errors before marking any task built/tested.
+19. [ ] Wire real world signal samplers, event-driven route/survival/structural damage consumers, material-based repair and HUD/scene tags; then PIE/save-load acceptance.
 
 ## Files read
 - memory/README.md, memory/STATE.md, memory/CODEBASE.md, memory/sessions/2026-10-29_claude-code_game-plan.md
@@ -56,4 +58,4 @@ Branch: game/p07-zone-entry-progression (follow-up branch from game/p06-farming-
 - No Unreal build, automation test or PIE run has been executed for this branch.
 
 ## Next step
-Next, wire a real zone-overlap/player interaction to `TryRecordZoneEntry`, connect route costs to real movement and build/repair/weather-damage events, and enforce `IsDefinitionUnlocked` at recipe/seed/action execution. Then continue P7/P8/P9.2 in dependency order. No build/test has been run on either work branch; defer to the agreed batch gate. Re-audit P6/P7 snapshot invariants and regenerate CODE_INDEX.md locally before that batch gate.
+Run the agreed batch Unreal UHT/UBT build and automation tests for P6/P7/P8 together; this branch is source-written only. After fixing source/build/test failures, wire event consumers (route costs, survival conditions, periodic hazard damage/fire spread), real storage/smell/light/smoke samplers, material-based repair, HUD feedback, and authored region/defense/snow tags. P6/P7 player interactions, route-to-movement integration, unlock enforcement and the P9.2 station helper remain separate follow-ups. Regenerate `memory/CODE_INDEX.md` locally before the batch gate..
