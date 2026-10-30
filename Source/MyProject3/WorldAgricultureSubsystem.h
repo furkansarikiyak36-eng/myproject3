@@ -26,11 +26,12 @@ enum class EWorldAgricultureActionKind : uint8
     BuildAnimalPen,
     AssignAnimalToPen,
     SetAnimalPenGate,
-    SlaughterAnimal
+    SlaughterAnimal,
+    FallowFieldCell
 };
 
 UENUM(BlueprintType)
-enum class EWorldFieldWorkKind : uint8 { Clear, Till, Fertilize, Weed, Mulch, Water };
+enum class EWorldFieldWorkKind : uint8 { Clear, Till, Fertilize, Weed, Mulch, Water, Fallow };
 
 /** Immutable retry result for an item-backed farming operation or a field-state operation. */
 USTRUCT(BlueprintType)
@@ -256,6 +257,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Field") bool TryApplyFieldWork(
         const FGuid& OperationId, const FIntVector& Cell, int64 ExpectedFieldRevision,
         EWorldFieldWorkKind WorkKind, float WorkAmount, FWorldFieldCellState& OutFieldCell);
+    /** Data-driven, inventory-gated wrapper for the six field-state actions plus fallow. */
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Field") bool TryApplyFieldAction(
+        const FGuid& OperationId, FName FieldActionId, const FIntVector& Cell,
+        int64 ExpectedFieldRevision, const FGuid& InventoryOwnerId,
+        FWorldFieldCellState& OutFieldCell);
 
     UFUNCTION(BlueprintCallable, Category="World|Farm") bool RegisterCrop(const FWorldCropState& Crop);
     UFUNCTION(BlueprintCallable, Category="World|Animals") bool RegisterAnimal(const FWorldAnimalState& Animal);
