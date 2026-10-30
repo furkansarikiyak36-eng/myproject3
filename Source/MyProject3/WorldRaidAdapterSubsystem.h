@@ -42,6 +42,9 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Events")
     bool AdvanceRegionalHazardDamage(double DeltaSeconds);
 
+    UFUNCTION(BlueprintCallable, Category="World|Fire")
+    bool ApplyFireDamageToStructure(const FGuid& NodeId, float DamageAmount);
+
     /** Sample region-tagged actors and submit their storage/smell/light/smoke signals. */
     UFUNCTION(BlueprintCallable, Category="Threat|Signals")
     bool AdvanceRegionalRaidSignals();
