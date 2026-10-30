@@ -136,6 +136,15 @@ struct FGameDataStation
 };
 
 USTRUCT(BlueprintType)
+struct FGameDataKnowledge
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Knowledge") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Knowledge") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Knowledge") FString Description;
+};
+
+USTRUCT(BlueprintType)
 struct FGameDataDiscovery
 {
     GENERATED_BODY()
@@ -265,6 +274,8 @@ public:
     const FGameDataRaidDefense* FindRaidDefense(FName Id) const;
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
+    const TArray<FGameDataKnowledge>& GetKnowledge() const { return Knowledge; }
+    const FGameDataKnowledge* FindKnowledge(FName Id) const;
     const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
     const TArray<FGameDataRouteEdge>& GetRouteEdges() const { return RouteEdges; }
     /** Evaluates season, required clothing capabilities and prerequisite discoveries for a zone. */
@@ -291,6 +302,7 @@ private:
     TArray<FGameDataRaidDefense> RaidDefenses;
     TArray<FGameDataZone> Zones;
     TArray<FGameDataDiscovery> Discoveries;
+    TArray<FGameDataKnowledge> Knowledge;
     TArray<FGameDataRouteNode> RouteNodes;
     TArray<FGameDataRouteEdge> RouteEdges;
     FWorldCalendarConfig Calendar;
