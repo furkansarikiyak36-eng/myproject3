@@ -28,6 +28,9 @@ public:
  bool TryRemoveOwnedItemReference(const FGuid& ItemId, FInventoryStack& OutRemovedStack);
  /** Transfers a unique owned item from inventory into a storage ledger owner. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryMoveOwnedItemToStorage(FGuid ItemId, FGuid StorageId);
+ /** Operation-id/revision guarded overload used by transactional harvest storage. */
+ UFUNCTION(BlueprintCallable, Category="Inventory") bool TryMoveOwnedItemToStorageWithOperation(
+  const FGuid& OperationId, FGuid ItemId, int64 ExpectedItemRevision, FGuid StorageId);
  /** Moves a stored unique item to this inventory without duplicating the ledger record. */
  UFUNCTION(BlueprintCallable, Category="Inventory") bool TryWithdrawStoredItem(FGuid ItemId, FGuid StorageId);
  /** Spawns a configured physical actor and atomically transfers its unique item to world ownership. */
