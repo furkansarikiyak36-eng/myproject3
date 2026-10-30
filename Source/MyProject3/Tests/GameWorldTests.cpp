@@ -25,6 +25,7 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldRaidAdapterSubsystem.h"
+#include "WorldOperationLedgerSubsystem.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -684,7 +685,19 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Physical parts are marked"), PhysicalParts >= 8);
     TestEqual(TEXT("Stations"), Data->GetStations().Num(), 10);
     TestEqual(TEXT("Three crops"), Data->GetCrops().Num(), 3);
+    TestEqual(TEXT("Fifteen field action definitions"), Data->GetFieldActions().Num(), 15);
+    TestEqual(TEXT("Eight infrastructure definitions"), Data->GetInfrastructures().Num(), 8);
+    TestEqual(TEXT("Two typed structural repair recipes"), Data->GetStructureRepairs().Num(), 2);
+    TestEqual(TEXT("Four raid countermeasure definitions"), Data->GetRaidDefenses().Num(), 4);
     TestEqual(TEXT("Five ordered discoveries"), Data->GetDiscoveries().Num(), 5);
+    TestTrue(TEXT("Bedroll is a catalogued item"), Data->GetItems().Contains(TEXT("Bedroll")));
+    TestTrue(TEXT("All three raw crop products have freshness definitions"),
+        Data->GetConsumables().ContainsByPredicate([](const FWorldSurvivalConsumableDefinition& C)
+            { return C.DefinitionId == TEXT("Grain.Harvest"); }) &&
+        Data->GetConsumables().ContainsByPredicate([](const FWorldSurvivalConsumableDefinition& C)
+            { return C.DefinitionId == TEXT("Root.Harvest"); }) &&
+        Data->GetConsumables().ContainsByPredicate([](const FWorldSurvivalConsumableDefinition& C)
+            { return C.DefinitionId == TEXT("Legume.Harvest"); }));
     TestEqual(TEXT("Route anchors for the current authored slice"), Data->GetRouteNodes().Num(), 6);
     TestEqual(TEXT("Directed route edges"), Data->GetRouteEdges().Num(), 12);
     TestTrue(TEXT("Every material group has items"), Data->GetItems().Num() >= 80);
@@ -2026,7 +2039,7 @@ bool FMaterialBackedStructuralRepairIsIdempotent::RunTest(const FString& Paramet
     return true;
 }
 
-#endif
+
 
 
 /** P8.2: region-tagged world actors feed immutable per-tick raid sensor samples. */
@@ -2081,3 +2094,265 @@ bool FRegionalRaidSignalSensorScanTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Retry does not replace the existing raid"), Raid.RaidId == FirstRaidId);
     return true;
 }
+
+
+// Faz 6 — the 15-step field catalogue applies tool/material gates to transactional field work.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDataDrivenFieldActionTransactionTest,
+    "MyProject3.World.Farming.DataDrivenFieldActionsConsumeCostsAndKeepTools", Flags)
+bool FDataDrivenFieldActionTransactionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldAgricultureSubsystem* Agriculture = World ? World->GetSubsystem<UWorldAgricultureSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Agriculture"), Agriculture))
+        return false;
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory owner"), Owner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item definitions and weights"), Data->ApplyToInventory(Inventory));
+
+    auto AddStack = [&](FName Id, int32 Quantity, bool bTool)
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = Id;
+        Stack.Quantity = Quantity;
+        Stack.MaxStack = 99;
+        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
+        Stack.bIsTool = bTool;
+        return Inventory->TryAddItem(Stack);
+    };
+    TestTrue(TEXT("Add digging stick"), AddStack(TEXT("Tool.DiggingStick"), 1, true));
+    TestTrue(TEXT("Add hoe"), AddStack(TEXT("Tool.Hoe"), 1, true));
+    TestTrue(TEXT("Add compost"), AddStack(TEXT("Compost"), 1, false));
+
+    FWorldFieldCellState Cell;
+    Cell.Cell = FIntVector(29, 7, 0);
+    Cell.Fertility = 40.0f;
+    Cell.WeedPressure = 0.7f;
+    Cell.Moisture = 0.2f;
+    TestTrue(TEXT("Register field"), Agriculture->RegisterFieldCell(Cell));
+    TestTrue(TEXT("Read field"), Agriculture->GetFieldCell(Cell.Cell, Cell));
+
+    TestTrue(TEXT("Clear requires the digging stick"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), TEXT("Field.Clear"),
+            Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
+    TestTrue(TEXT("Field becomes clear"), Cell.bCleared);
+    TestTrue(TEXT("Till requires the hoe"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), TEXT("Field.Till"),
+            Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
+    TestTrue(TEXT("Field becomes tilled"), Cell.bTilled);
+
+    const FGuid FertilizeOperation = FGuid::NewGuid();
+    const int64 FertilizeRevision = Cell.Revision;
+    const float BeforeFertilize = Cell.Fertility;
+    TestTrue(TEXT("Fertilize requires hoe and compost"),
+        Agriculture->TryApplyFieldAction(FertilizeOperation, TEXT("Field.Fertilize"),
+            Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
+    TestTrue(TEXT("Fertilizer raises field fertility"), Cell.Fertility > BeforeFertilize);
+    TestEqual(TEXT("Compost is consumed once"), Inventory->GetItemCount(TEXT("Compost")), 0);
+    TestEqual(TEXT("Tools are not consumed"), Inventory->GetItemCount(TEXT("Tool.Hoe")), 1);
+    TestEqual(TEXT("Digging tool remains"), Inventory->GetItemCount(TEXT("Tool.DiggingStick")), 1);
+
+    const float AfterFertilize = Cell.Fertility;
+    FWorldFieldCellState Retry;
+    TestTrue(TEXT("Fertilize retry returns committed result"),
+        Agriculture->TryApplyFieldAction(FertilizeOperation, TEXT("Field.Fertilize"),
+            Cell.Cell, FertilizeRevision, Inventory->GetInventoryOwnerId(), Retry));
+    TestEqual(TEXT("Retry does not apply fertilizer twice"), Retry.Fertility, AfterFertilize);
+    TestEqual(TEXT("Retry does not consume a second compost"), Inventory->GetItemCount(TEXT("Compost")), 0);
+    return true;
+}
+
+// Faz 7 — infrastructure condition affects route cost and zero condition closes required edges.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRouteInfrastructureDurabilityTest,
+    "MyProject3.Logistics.InfrastructureWearRepairAndFailureAffectRouteCost", Flags)
+bool FRouteInfrastructureDurabilityTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Routes"), Routes))
+        return false;
+    TestTrue(TEXT("Load game data"), Data->LoadDefault());
+    TestTrue(TEXT("Apply route graph"), Data->ApplyToWorld());
+    const FName InfrastructureId(TEXT("Infrastructure.HillSteps"));
+    TestTrue(TEXT("Mark hill steps built"), Routes->SetInfrastructureBuilt(InfrastructureId, true));
+    TestTrue(TEXT("Apply configured built route multiplier"),
+        Routes->SetInfrastructureBuiltCostMultiplier(InfrastructureId, 0.7f));
+
+    TArray<FLogisticsRouteNode> Nodes;
+    TArray<FLogisticsRouteEdge> Edges;
+    Routes->ExportSnapshot(Nodes, Edges);
+    FLogisticsRouteEdge* Edge = Edges.FindByPredicate(
+        [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
+        { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
+    if (!TestNotNull(TEXT("Required hill-step route edge"), Edge))
+        return false;
+
+    FLogisticsRouteCostContext Context;
+    float MaintainedCost = 0.0f;
+    TestTrue(TEXT("Compute maintained route cost"), Routes->ComputeEdgeCost(*Edge, Context, MaintainedCost));
+    TestTrue(TEXT("Apply storm wear to the infrastructure"),
+        Routes->ApplyInfrastructureWear(InfrastructureId, 50.0f));
+    float Condition = 0.0f;
+    float MaxCondition = 0.0f;
+    bool bBuilt = false;
+    TestTrue(TEXT("Read worn infrastructure state"),
+        Routes->GetInfrastructureState(InfrastructureId, Condition, MaxCondition, bBuilt));
+    TestEqual(TEXT("Wear reduces condition"), Condition, 50.0f);
+    TestTrue(TEXT("Worn steps remain built until destroyed"), bBuilt);
+
+    const FLogisticsRouteEdge* WornEdge = Edges.FindByPredicate(
+        [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
+        { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
+    FLogisticsRouteEdge CurrentEdge;
+    TestTrue(TEXT("Read current route edge after wear"),
+        Routes->ExportSnapshot(Nodes, Edges));
+    CurrentEdge = *Edges.FindByPredicate(
+        [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
+        { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
+    float WornCost = 0.0f;
+    TestTrue(TEXT("Compute worn route cost"), Routes->ComputeEdgeCost(CurrentEdge, Context, WornCost));
+    TestTrue(TEXT("Wear increases route cost"), WornCost > MaintainedCost);
+
+    TestTrue(TEXT("Repair with condition points"), Routes->RepairInfrastructure(InfrastructureId, 25.0f));
+    TestTrue(TEXT("Read repaired infrastructure"),
+        Routes->GetInfrastructureState(InfrastructureId, Condition, MaxCondition, bBuilt));
+    TestEqual(TEXT("Repair restores twenty-five condition"), Condition, 75.0f);
+
+    TestTrue(TEXT("Further weather wear destroys the route infrastructure"),
+        Routes->ApplyInfrastructureWear(InfrastructureId, 100.0f));
+    TestTrue(TEXT("Read destroyed infrastructure"),
+        Routes->GetInfrastructureState(InfrastructureId, Condition, MaxCondition, bBuilt));
+    TestEqual(TEXT("Condition reaches zero"), Condition, 0.0f);
+    TestFalse(TEXT("Destroyed steps are no longer built"), bBuilt);
+    CurrentEdge = *Edges.FindByPredicate(
+        [&InfrastructureId](const FLogisticsRouteEdge& Candidate)
+        { return Candidate.InfrastructureId == InfrastructureId && Candidate.bRequiresInfrastructure; });
+    TestFalse(TEXT("Required route edge is unavailable after failure"),
+        Routes->ComputeEdgeCost(CurrentEdge, Context, WornCost));
+    return true;
+}
+
+// Faz 8 — recipe repair consumes the correct wood materials, keeps tools and deduplicates retries.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FWoodStoneRecipeRepairTest,
+    "MyProject3.World.Structures.TypedWoodRepairConsumesRecipeOnce", Flags)
+bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* Adapter = World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Structural graph"), Graph) ||
+        !TestNotNull(TEXT("Raid adapter"), Adapter))
+        return false;
+    TestTrue(TEXT("Load recipes and catalogues"), Data->LoadDefault());
+
+    AActor* Owner = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Repair inventory owner"), Owner))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(Owner);
+    Owner->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply item weights"), Data->ApplyToInventory(Inventory));
+
+    auto AddStack = [&](FName Id, int32 Count, bool bTool)
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = Id;
+        Stack.Quantity = Count;
+        Stack.MaxStack = 99;
+        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
+        Stack.bIsTool = bTool;
+        return Inventory->TryAddItem(Stack);
+    };
+    TestTrue(TEXT("Add wood repair log"), AddStack(TEXT("Log"), 1, false));
+    TestTrue(TEXT("Add rope"), AddStack(TEXT("Rope"), 1, false));
+    TestTrue(TEXT("Add axe tool"), AddStack(TEXT("Tool.Axe"), 1, true));
+
+    AActor* Wall = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Wood wall"), Wall))
+        return false;
+    Wall->Tags.Add(TEXT("Region:Zone.0"));
+    const FGuid NodeId(701, 702, 703, 704);
+    TestTrue(TEXT("Register wood node"),
+        Graph->RegisterNode(Wall, NodeId, EStructuralNodeKind::Wood, true, 1.0f, 100.0f, 100.0f));
+    bool bThresholdExceeded = false;
+    TestTrue(TEXT("Damage wall"), Graph->ApplyDamage(NodeId, 40.0f, bThresholdExceeded));
+    FStructuralNodeRecord Before;
+    TestTrue(TEXT("Read damaged wall"), Graph->GetNode(NodeId, Before));
+    const FGuid RepairOperation(705, 706, 707, 708);
+
+    TestTrue(TEXT("Apply typed wood repair recipe"),
+        Adapter->TryRepairStructureWithRecipe(RepairOperation, NodeId, Before.Revision,
+            TEXT("Repair.Wood"), Inventory->GetInventoryOwnerId()));
+    FStructuralNodeRecord Repaired;
+    TestTrue(TEXT("Read repaired wall"), Graph->GetNode(NodeId, Repaired));
+    TestEqual(TEXT("Wood recipe repairs thirty damage"), Repaired.Damage, 10.0f);
+    TestEqual(TEXT("Log is consumed"), Inventory->GetItemCount(TEXT("Log")), 0);
+    TestEqual(TEXT("Rope is consumed"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestEqual(TEXT("Axe tool remains"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+
+    TestTrue(TEXT("Retry is a successful no-op"),
+        Adapter->TryRepairStructureWithRecipe(RepairOperation, NodeId, Before.Revision,
+            TEXT("Repair.Wood"), Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Read wall after retry"), Graph->GetNode(NodeId, Repaired));
+    TestEqual(TEXT("Retry does not repair again"), Repaired.Damage, 10.0f);
+    return true;
+}
+
+// Faz 8 — defense type definitions feed structure rating and signal suppression.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRaidCountermeasureDefinitionTest,
+    "MyProject3.World.Events.CountermeasureDefinitionsReduceRaidPressure", Flags)
+bool FRaidCountermeasureDefinitionTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldThreatDirectorSubsystem* Threat = World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* Adapter = World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Graph"), Graph) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Events"), Events) ||
+        !TestNotNull(TEXT("Threat"), Threat) || !TestNotNull(TEXT("Adapter"), Adapter))
+        return false;
+    TestTrue(TEXT("Load data"), Data->LoadDefault());
+    TestTrue(TEXT("Load event profiles"), Events->LoadDefaultDefinitions());
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(913));
+    TestTrue(TEXT("Initialize threat director"), Threat->InitializeDirector(3600.0));
+
+    AActor* Defense = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Fence defense actor"), Defense))
+        return false;
+    Defense->Tags.Add(TEXT("Region:Zone.1"));
+    Defense->Tags.Add(TEXT("RaidDefenseType:RaidDefense.Fence"));
+    const FGuid NodeId(811, 812, 813, 814);
+    TestTrue(TEXT("Register typed fence defense"),
+        Graph->RegisterNode(Defense, NodeId, EStructuralNodeKind::Wood, true, 1.0f, 100.0f, 100.0f));
+    TestEqual(TEXT("Fence contributes configured defense rating"),
+        Graph->GetRegionDefenseRating(TEXT("Zone.1")), 1.5f);
+
+    AActor* Store = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Store signal actor"), Store))
+        return false;
+    Store->Tags.Add(TEXT("Region:Zone.2"));
+    Store->Tags.Add(TEXT("RaidSignal.Storage:1.0"));
+    Store->Tags.Add(TEXT("RaidSignalSuppress.Storage:1.0"));
+    TestTrue(TEXT("Suppressed signal scan succeeds"), Adapter->AdvanceRegionalRaidSignals());
+    FThreatRaidRecord Raid;
+    TestFalse(TEXT("Fully suppressed storage alone does not create a raid"),
+        Threat->GetCurrentRaid(Raid));
+    return true;
+}
+
+#endif
