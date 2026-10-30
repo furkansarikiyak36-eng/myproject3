@@ -1319,6 +1319,22 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     InventoryOwnerActor->AddInstanceComponent(Inventory);
     Inventory->RegisterComponent();
     Inventory->ItemWeightGrams.Add(TEXT("Seed.Grain"), 50);
+    Inventory->ItemWeightGrams.Add(TEXT("Tool.Hoe"), 1200);
+    Inventory->ItemWeightGrams.Add(TEXT("Tool.Sickle"), 900);
+    FInventoryStack Hoe;
+    Hoe.ItemId = TEXT("Tool.Hoe");
+    Hoe.Quantity = 1;
+    Hoe.MaxStack = 1;
+    Hoe.bIsTool = true;
+    Hoe.Category = EInventoryItemCategory::Tool;
+    TestTrue(TEXT("Add hoe required by planting action"), Inventory->TryAddItem(Hoe));
+    FInventoryStack Sickle;
+    Sickle.ItemId = TEXT("Tool.Sickle");
+    Sickle.Quantity = 1;
+    Sickle.MaxStack = 1;
+    Sickle.bIsTool = true;
+    Sickle.Category = EInventoryItemCategory::Tool;
+    TestTrue(TEXT("Add sickle required by harvesting action"), Inventory->TryAddItem(Sickle));
 
     FWorldOwnedItemRecord SeedRecord;
     SeedRecord.ItemId = FGuid::NewGuid();
@@ -1362,7 +1378,7 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     FGuid CropId;
     const FGuid PlantOperation = FGuid::NewGuid();
     const int64 BeforePlantFieldRevision = Field.Revision;
-    TestFalse(TEXT("Out-of-season planting is rejected"), Agriculture->TryPlantCropOnField(
+    TestFalse(TEXT("Out-of-season planting is rejected"), Agriculture->TryPlantCropWithFieldAction(
         PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
         Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
     TestEqual(TEXT("Rejected planting keeps seed in inventory"), Inventory->GetItemCount(TEXT("Seed.Grain")), 1);
@@ -1395,8 +1411,8 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     TArray<FGuid> HarvestedItemIds;
     const FGuid HarvestOperation = FGuid::NewGuid();
     const int32 BeforeHarvestItemCount = Ownership->GetTrackedItemCount();
-    TestTrue(TEXT("Harvest mature crop"), Agriculture->TryHarvestCrop(
-        HarvestOperation, CropId, MatureCrop.Revision, HarvestedItemIds));
+    TestTrue(TEXT("Harvest mature crop"), Agriculture->TryHarvestCropWithFieldAction(
+        HarvestOperation, CropId, MatureCrop.Revision, Inventory->GetInventoryOwnerId(), HarvestedItemIds));
     TestEqual(TEXT("Harvest includes two crops plus one seed return"), HarvestedItemIds.Num(), 3);
     FWorldCropState HarvestedCrop;
     TestTrue(TEXT("Harvested crop state exists"), Agriculture->GetCrop(CropId, HarvestedCrop));
@@ -1411,8 +1427,8 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Soil fertility loses the configured harvest cost"), Field.Fertility, 62.0f);
 
     TArray<FGuid> RetryOutputs;
-    TestTrue(TEXT("Harvest retry replays recorded outputs"), Agriculture->TryHarvestCrop(
-        HarvestOperation, CropId, MatureCrop.Revision, RetryOutputs));
+    TestTrue(TEXT("Harvest retry replays recorded outputs"), Agriculture->TryHarvestCropWithFieldAction(
+        HarvestOperation, CropId, MatureCrop.Revision, Inventory->GetInventoryOwnerId(), RetryOutputs));
     TestTrue(TEXT("Retry output IDs match"), RetryOutputs == HarvestedItemIds);
     TestEqual(TEXT("Retry creates no additional item"), Ownership->GetTrackedItemCount(), BeforeHarvestItemCount + 3);
 
