@@ -18,7 +18,7 @@ Status: `code-written` only; no Unreal build or automation tests were run.
 - `memory/PLAN_STATUS.md`, `memory/CURRENT_TASK.md`, `memory/ROADMAP.md`, `memory/CODEBASE.md`
 
 ## Known gaps / proof gate
-- Signal inputs are accepted by API but not sampled automatically from live storage, smoke, smell or light sources.
+- Signal tags are sampled automatically each fixed step, but they still need authored region/signal tags or a component that feeds live storage, smoke, smell and light values.
 - Route-cost multipliers and fixed-step structural damage/snow collapse are connected. Survival-condition, water/crop pollution, hazard transition notifications and fire-spread consumers remain.
 - Item-backed material repair is source-written; helper/player repair integration and repair UI remain open.
 - Actor tags (`Region:<id>`, `SnowExposed`, `SnowAreaM2:<area>`, `RaidDefense:<rating>`) and `DefenseTargetNodeIds` require level authoring; the existing demo scene has not been tagged/re-targeted.
