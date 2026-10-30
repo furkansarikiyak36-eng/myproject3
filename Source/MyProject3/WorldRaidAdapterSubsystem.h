@@ -38,6 +38,10 @@ public:
     UFUNCTION(BlueprintCallable, Category="Threat|Adapter")
     bool AdvanceRaidWorldAdapter();
 
+    /** Apply regional event structural damage for one committed fixed simulation step. */
+    UFUNCTION(BlueprintCallable, Category="World|Events")
+    bool AdvanceRegionalHazardDamage(double DeltaSeconds);
+
     UFUNCTION(BlueprintPure, Category="Threat|Adapter")
     FGuid GetMaterializedRaidId() const { return MaterializedRaidId; }
 
