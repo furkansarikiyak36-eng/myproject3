@@ -1,4 +1,5 @@
 #include "WorldThreatDirectorSubsystem.h"
+#include "WorldRegionalEventSubsystem.h"
 
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/World.h"
@@ -27,6 +28,8 @@ bool UWorldThreatDirectorSubsystem::InitializeDirector(double FirstRaidDelaySeco
     CurrentRaid = FThreatRaidRecord();
     RaidHistory.Reset();
     RaidSerial = 0;
+    SeenSignalOperationIds.Reset();
+    LastSignalRaidTimeSeconds = -1.0;
     NextRaidTimeSeconds = Clock->GetSimulationTimeSeconds() + FirstRaidDelaySeconds;
     bInitialized = FMath::IsFinite(NextRaidTimeSeconds);
     return bInitialized;
@@ -132,9 +135,24 @@ bool UWorldThreatDirectorSubsystem::AdvanceDirectorAtTime(
         CurrentRaid.ActiveStartTime = Now + WarningDurationSeconds;
         CurrentRaid.PlannedEndTime = CurrentRaid.ActiveStartTime + RaidDurationSeconds;
         CurrentRaid.Pressure = Stream.FRandRange(1.0f, 3.0f);
-        CurrentRaid.TargetLocation = FVector(
-            Stream.FRandRange(-5000.0f, 5000.0f),
-            Stream.FRandRange(-5000.0f, 5000.0f), 0.0f);
+        UWorldRegionalEventSubsystem* RegionalEvents = GetWorld()
+            ? GetWorld()->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+        const TArray<FName> AvailableRegions = RegionalEvents && RegionalEvents->AreDefinitionsLoaded()
+            ? RegionalEvents->GetRegionIds() : TArray<FName>();
+        if (!AvailableRegions.IsEmpty())
+        {
+            const int32 RegionIndex = Stream.RandRange(0, AvailableRegions.Num() - 1);
+            CurrentRaid.TargetRegionId = AvailableRegions[RegionIndex];
+            FWorldRegionProfile RegionProfile;
+            if (RegionalEvents->GetRegionProfile(CurrentRaid.TargetRegionId, RegionProfile))
+                CurrentRaid.TargetLocation = RegionProfile.RaidTargetLocation;
+        }
+        else
+        {
+            CurrentRaid.TargetLocation = FVector(
+                Stream.FRandRange(-5000.0f, 5000.0f),
+                Stream.FRandRange(-5000.0f, 5000.0f), 0.0f);
+        }
         CurrentRaid.Revision = 1;
         NextRaidTimeSeconds = CurrentRaid.PlannedEndTime + MakeNextInterval(RaidSerial);
         if (!FMath::IsFinite(NextRaidTimeSeconds))
@@ -169,6 +187,97 @@ bool UWorldThreatDirectorSubsystem::TryClaimDamagePulse(const FGuid& RaidId, int
     // materialization/collapse may block the result, but must not replay damage.
     CurrentRaid.LastAppliedDamagePulseIndex = PulseIndex;
     ++CurrentRaid.Revision;
+    return true;
+}
+
+
+void UWorldThreatDirectorSubsystem::RememberSignalOperation(const FGuid& OperationId)
+{
+    if (!OperationId.IsValid() || SeenSignalOperationIds.Contains(OperationId))
+        return;
+    SeenSignalOperationIds.Add(OperationId);
+    constexpr int32 MaxSignalReceipts = 256;
+    while (SeenSignalOperationIds.Num() > MaxSignalReceipts)
+        SeenSignalOperationIds.RemoveAt(0, 1, EAllowShrinking::No);
+}
+
+bool UWorldThreatDirectorSubsystem::TryStartRaidFromSignals(
+    const FGuid& OperationId, FName RegionId,
+    float StorageValueSignal, float SmellSignal, float LightSignal, float SmokeSignal,
+    bool& bOutRaidStarted)
+{
+    bOutRaidStarted = false;
+    UWorld* World = GetWorld();
+    UWorldSimulationClockSubsystem* Clock = GetClock();
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    const auto ValidSignal = [](float Value)
+    {
+        return FMath::IsFinite(Value) && Value >= 0.0f && Value <= 1.0f;
+    };
+    if (!bInitialized || !Clock || !Clock->IsClockInitialized() || !Events ||
+        !Events->AreDefinitionsLoaded() || !OperationId.IsValid() || RegionId.IsNone() ||
+        SeenSignalOperationIds.Contains(OperationId) ||
+        !ValidSignal(StorageValueSignal) || !ValidSignal(SmellSignal) ||
+        !ValidSignal(LightSignal) || !ValidSignal(SmokeSignal) ||
+        !FMath::IsFinite(SignalRaidThreshold) || SignalRaidThreshold <= 0.0f ||
+        !FMath::IsFinite(SignalRaidCooldownSeconds) || SignalRaidCooldownSeconds < 0.0 ||
+        !FMath::IsFinite(WarningDurationSeconds) || WarningDurationSeconds <= 0.0 ||
+        !FMath::IsFinite(RaidDurationSeconds) || RaidDurationSeconds <= 0.0 ||
+        !FMath::IsFinite(MinimumIntervalSeconds) || MinimumIntervalSeconds < 1.0 ||
+        !FMath::IsFinite(MaximumIntervalSeconds) || MaximumIntervalSeconds < MinimumIntervalSeconds)
+    {
+        return false;
+    }
+
+    FWorldRegionProfile RegionProfile;
+    if (!Events->GetRegionProfile(RegionId, RegionProfile))
+        return false;
+
+    const float Pressure = StorageValueSignal * 0.65f + SmellSignal * 0.80f +
+        LightSignal * 0.65f + SmokeSignal * 0.90f;
+    const double Now = Clock->GetSimulationTimeSeconds();
+    const bool bRaidAlreadyActive =
+        CurrentRaid.State == EThreatRaidState::Warning || CurrentRaid.State == EThreatRaidState::Active;
+    const bool bOnCooldown = LastSignalRaidTimeSeconds >= 0.0 &&
+        Now - LastSignalRaidTimeSeconds < SignalRaidCooldownSeconds;
+
+    if (Pressure < SignalRaidThreshold || bRaidAlreadyActive || bOnCooldown)
+    {
+        RememberSignalOperation(OperationId);
+        return true;
+    }
+
+    if (RaidSerial == MAX_int64 ||
+        !FMath::IsFinite(Now + WarningDurationSeconds) ||
+        !FMath::IsFinite(Now + WarningDurationSeconds + RaidDurationSeconds))
+    {
+        return false;
+    }
+
+    const int64 ProposedSerial = RaidSerial + 1;
+    FThreatRaidRecord ProposedRaid;
+    ProposedRaid.RaidId = OperationId;
+    ProposedRaid.Serial = ProposedSerial;
+    ProposedRaid.State = EThreatRaidState::Warning;
+    ProposedRaid.WarningStartTime = Now;
+    ProposedRaid.ActiveStartTime = Now + WarningDurationSeconds;
+    ProposedRaid.PlannedEndTime = ProposedRaid.ActiveStartTime + RaidDurationSeconds;
+    ProposedRaid.Pressure = FMath::Clamp(Pressure, 0.0f, 4.0f);
+    ProposedRaid.TargetRegionId = RegionId;
+    ProposedRaid.TargetLocation = RegionProfile.RaidTargetLocation;
+    ProposedRaid.Revision = 1;
+
+    const double ProposedNextRaidTime = ProposedRaid.PlannedEndTime + MakeNextInterval(ProposedSerial);
+    if (!ProposedRaid.RaidId.IsValid() || !FMath::IsFinite(ProposedNextRaidTime))
+        return false;
+
+    RememberSignalOperation(OperationId);
+    CurrentRaid = ProposedRaid;
+    RaidSerial = ProposedSerial;
+    NextRaidTimeSeconds = ProposedNextRaidTime;
+    LastSignalRaidTimeSeconds = Now;
+    bOutRaidStarted = true;
     return true;
 }
 
