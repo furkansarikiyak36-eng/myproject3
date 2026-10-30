@@ -1,5 +1,7 @@
 #include "WorldLogisticsRouteSubsystem.h"
 #include "Algo/Reverse.h"
+#include "Engine/World.h"
+#include "WorldRegionalEventSubsystem.h"
 
 bool UWorldLogisticsRouteSubsystem::UpsertNode(const FLogisticsRouteNode& Node)
 {
@@ -141,8 +143,27 @@ bool UWorldLogisticsRouteSubsystem::ComputeEdgeCost(
         static_cast<double>(Edge.LoadSensitivity) * LoadRatio;
     const double InfrastructureFactor = Edge.bHasBuiltInfrastructure
         ? 1.0 : 1.0 + static_cast<double>(Edge.MissingInfrastructurePenalty);
+    double RegionalHazardFactor = 1.0;
+    if (!Edge.RegionId.IsNone())
+    {
+        const UWorldRegionalEventSubsystem* Events =
+            GetWorld() ? GetWorld()->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+        FWorldRegionalEventEvaluation Evaluation;
+        if (Events && Events->AreDefinitionsLoaded() &&
+            Events->EvaluateRegion(Edge.RegionId, Evaluation))
+        {
+            RegionalHazardFactor = Evaluation.RouteCostMultiplier;
+        }
+    }
+    if (!FMath::IsFinite(RegionalHazardFactor) || RegionalHazardFactor <= 0.0 ||
+        RegionalHazardFactor > 100000.0)
+    {
+        return false;
+    }
+
     const double Cost = static_cast<double>(Edge.Cost) * SlopeFactor *
-        SurfaceFactor * WeatherFactor * LoadFactor * InfrastructureFactor;
+        SurfaceFactor * WeatherFactor * LoadFactor * InfrastructureFactor *
+        RegionalHazardFactor;
     if (!FMath::IsFinite(Cost) || Cost < 0.0 ||
         Cost > static_cast<double>(TNumericLimits<float>::Max()))
     {
