@@ -12,6 +12,7 @@
 #include "WorldStorageSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "WorldRaidAdapterSubsystem.h"
+#include "WorldFirePropagationSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
 
 UWorldSimulationClockSubsystem* UWorldSimulationCoordinatorSubsystem::GetClock() const
@@ -227,8 +228,11 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         ? HazardWorld->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
     UWorldSurvivalSubsystem* SurvivalAfterClock = HazardWorld
         ? HazardWorld->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
-    if (!HazardAdapter || !Routes || !SurvivalAfterClock ||
+    UWorldFirePropagationSubsystem* Fire = HazardWorld
+        ? HazardWorld->GetSubsystem<UWorldFirePropagationSubsystem>() : nullptr;
+    if (!HazardAdapter || !Routes || !SurvivalAfterClock || !Fire ||
         !SurvivalAfterClock->ApplyRegionalEventExposure(DeltaSeconds) ||
+        !Fire->AdvanceRegionalFireSpread(DeltaSeconds) ||
         !HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds) ||
         !HazardAdapter->AdvanceRegionalRaidSignals() ||
         !Routes->AdvanceRegionalInfrastructureWear(DeltaSeconds))
