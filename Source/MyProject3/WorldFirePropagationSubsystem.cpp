@@ -249,8 +249,7 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
             UWorldCombustibleComponent* Target = TargetEntry.Component;
             if (TargetEntry.bBurningAtStart || Target->bBurning ||
                 TargetEntry.Id == SourceEntry.Id || TargetEntry.RegionId != SourceEntry.RegionId ||
-                Target->bFirebreak || Target->FuelUnitsRemaining <= 0.0f ||
-                FGuid::NewGuid() == FGuid()) // inert, keeps this branch independent of pointer ordering
+                Target->bFirebreak || Target->FuelUnitsRemaining <= 0.0f)
                 continue;
             if (FVector::DistSquared(SourceEntry.Location, TargetEntry.Location) >
                 FMath::Square(Source->SpreadRadiusCm))
