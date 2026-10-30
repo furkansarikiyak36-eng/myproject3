@@ -87,6 +87,8 @@ public:
     UFUNCTION(BlueprintPure, Category="World|Events") FString GetLastError() const { return LastError; }
 
     UFUNCTION(BlueprintPure, Category="World|Events") bool GetRegionProfile(FName RegionId, FWorldRegionProfile& OutProfile) const;
+    UFUNCTION(BlueprintPure, Category="World|Events") bool GetEventDefinition(
+        FName EventId, FWorldRegionalEventDefinition& OutDefinition) const;
     UFUNCTION(BlueprintPure, Category="World|Events") TArray<FName> GetRegionIds() const;
     UFUNCTION(BlueprintPure, Category="World|Events") float GetSnowLoadUnitsPerCmM2(FName RegionId) const;
 
