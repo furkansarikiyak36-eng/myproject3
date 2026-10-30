@@ -58,7 +58,7 @@ Branch: game/p08-events-defense (follow-up from game/p07-zone-entry-progression;
 - No Unreal build, automation test or PIE run has been executed for this branch.
 
 ## Next step
-Run the agreed batch Unreal UHT/UBT build and automation tests for P6/P7/P8 together; this branch is source-written only. After fixing source/build/test failures, wire event consumers (route costs, survival conditions, periodic hazard damage/fire spread), real storage/smell/light/smoke samplers, material-based repair, HUD feedback, and authored region/defense/snow tags. P6/P7 player interactions, route-to-movement integration, unlock enforcement and the P9.2 station helper remain separate follow-ups. Regenerate `memory/CODE_INDEX.md` locally before the batch gate..
+Run the agreed batch Unreal UHT/UBT build and automation tests for P6/P7/P8 together; this branch is source-written only. After fixing source/build/test failures, wire event consumers (route costs, survival conditions, periodic hazard damage/fire spread), real storage/smell/light/smoke samplers, material-based repair, HUD feedback, and authored region/defense/snow tags. P6/P7 player interactions, route-to-movement integration, unlock enforcement and the P9.2 station helper remain separate follow-ups. Regenerate `memory/CODE_INDEX.md` locally before the batch gate.
 
 
 ## P8 source-written changes (2026-10-30)
