@@ -7,6 +7,7 @@
 #include "WorldRegionalEventSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldSurvivalSubsystem.h"
+#include "WorldRaidAdapterSubsystem.h"
 
 namespace
 {
@@ -17,6 +18,9 @@ namespace
         FName RegionId = NAME_None;
         FVector Location = FVector::ZeroVector;
         bool bBurningAtStart = false;
+        float FireIntensityAtStart = 0.0f;
+        FGuid StructuralNodeId;
+        float StructuralDamagePerHour = 0.0f;
     };
 
     struct FProposedIgnition
@@ -150,7 +154,10 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
             !FMath::IsFinite(Component->SpreadRadiusCm) || Component->SpreadRadiusCm < 0.0f ||
             !FMath::IsFinite(Component->SpreadChanceMultiplier) ||
             Component->SpreadChanceMultiplier < 0.0f || Component->SpreadChanceMultiplier > 4.0f ||
-            !FMath::IsFinite(Component->BurnUnitsPerHour) || Component->BurnUnitsPerHour < 0.0f)
+            !FMath::IsFinite(Component->BurnUnitsPerHour) || Component->BurnUnitsPerHour < 0.0f ||
+            !FMath::IsFinite(Component->StructuralDamagePerHour) ||
+            Component->StructuralDamagePerHour < 0.0f || Component->StructuralDamagePerHour > 100000.0f ||
+            (Component->StructuralDamagePerHour > 0.0f && !Component->StructuralNodeId.IsValid()))
             return false;
         SeenIds.Add(Id);
 
@@ -160,6 +167,9 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
         Entry.RegionId = Component->ResolveRegionId();
         Entry.Location = Component->GetOwner()->GetActorLocation();
         Entry.bBurningAtStart = Component->IsBurning();
+        Entry.FireIntensityAtStart = Component->FireIntensity;
+        Entry.StructuralNodeId = Component->StructuralNodeId;
+        Entry.StructuralDamagePerHour = Component->StructuralDamagePerHour;
     }
     Entries.Sort([](const FCombustibleEntry& A, const FCombustibleEntry& B)
         { return A.Id.ToString() < B.Id.ToString(); });
@@ -275,6 +285,7 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
     }
 
     // Burning material consumes its fuel once for this logical tick.
+    TMap<FGuid, float> StructuralFireDamage;
     for (const FCombustibleEntry& Entry : Entries)
     {
         if (!Entry.bBurningAtStart)
@@ -285,6 +296,28 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
         float BurnedUnits = 0.0f;
         if (!Entry.Component->AdvanceBurn(DeltaSeconds, TickIndex, BurnMultiplier, BurnedUnits))
             return false;
+        if (Entry.StructuralNodeId.IsValid() && Entry.StructuralDamagePerHour > 0.0f &&
+            Entry.FireIntensityAtStart > 0.0f)
+        {
+            float& Damage = StructuralFireDamage.FindOrAdd(Entry.StructuralNodeId);
+            Damage += Entry.StructuralDamagePerHour * Entry.FireIntensityAtStart *
+                BurnMultiplier * static_cast<float>(Hours);
+        }
+    }
+
+    if (!StructuralFireDamage.IsEmpty())
+    {
+        UWorldRaidAdapterSubsystem* Adapter =
+            World->GetSubsystem<UWorldRaidAdapterSubsystem>();
+        if (!Adapter)
+            return false;
+        TArray<FGuid> NodeIds;
+        StructuralFireDamage.GetKeys(NodeIds);
+        NodeIds.Sort([](const FGuid& A, const FGuid& B)
+            { return A.ToString() < B.ToString(); });
+        for (const FGuid& NodeId : NodeIds)
+            if (!Adapter->ApplyFireDamageToStructure(NodeId, StructuralFireDamage.FindRef(NodeId)))
+                return false;
     }
 
     // New flames begin burning next fixed step; they cannot spend a full hour of
