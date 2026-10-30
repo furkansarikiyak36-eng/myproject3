@@ -420,6 +420,153 @@ bool UWorldRaidAdapterSubsystem::TryRepairStructureWithMaterial(
 }
 
 
+bool UWorldRaidAdapterSubsystem::TryRepairStructureWithRecipe(
+    const FGuid& OperationId, const FGuid& NodeId, int64 ExpectedNodeRevision,
+    FName RepairRecipeId, const FGuid& InventoryOwnerId)
+{
+    if (!OperationId.IsValid() || !NodeId.IsValid() || ExpectedNodeRevision <= 0 ||
+        RepairRecipeId.IsNone() || !InventoryOwnerId.IsValid())
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    UWorldOperationLedgerSubsystem* Ledger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !Graph || !Ledger || !GameData || !GameData->IsLoaded())
+        return false;
+
+    const FGameDataStructureRepair* Recipe = GameData->FindStructureRepair(RepairRecipeId);
+    if (!Recipe)
+        return false;
+
+    const FString ReceiptText = FString::Printf(
+        TEXT("StructureRepairRecipe|%s|%s|%lld|%s"),
+        *NodeId.ToString(), *RepairRecipeId.ToString(),
+        static_cast<long long>(ExpectedNodeRevision), *InventoryOwnerId.ToString());
+    FWorldOperationResult ExistingResult;
+    if (Ledger->TryGetCompletedResult(OperationId, ExistingResult))
+        return ExistingResult.IsSuccess() &&
+            ExistingResult.Message.ToString() == ReceiptText &&
+            ExistingResult.AffectedObjectIds.Contains(NodeId);
+
+    FStructuralNodeRecord Node;
+    if (!Graph->GetNode(NodeId, Node) || Node.Revision != ExpectedNodeRevision ||
+        Node.Revision >= MAX_int64 - 1 || Node.Damage <= 0.0f)
+        return false;
+    const bool bKindMatches =
+        (Recipe->StructureKind == TEXT("Wood") && Node.Kind == EStructuralNodeKind::Wood) ||
+        (Recipe->StructureKind == TEXT("Stone") && Node.Kind == EStructuralNodeKind::Stone);
+    if (!bKindMatches)
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        UInventoryCraftingComponent* Candidate =
+            IsValid(*It) ? (*It)->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+        if (!IsValid(Candidate) || Candidate->GetInventoryOwnerId() != InventoryOwnerId)
+            continue;
+        if (Inventory)
+            return false;
+        Inventory = Candidate;
+    }
+    if (!Inventory)
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid PreviousInventoryOwnerId;
+    TArray<FInventoryStack> PreviousInventory;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousInventoryOwnerId,
+        PreviousInventory, PreviousQuickAccess);
+    if (PreviousInventoryOwnerId != InventoryOwnerId)
+        return false;
+
+    for (const FName ToolId : Recipe->Tools)
+        if (ToolId.IsNone() || Inventory->GetItemCount(ToolId) <= 0)
+            return false;
+
+    for (const FGameDataItemAmount& Cost : Recipe->Materials)
+    {
+        int32 Available = 0;
+        if (Cost.ItemId.IsNone() || Cost.Quantity <= 0)
+            return false;
+        const FGameDataItem* ItemDefinition = GameData->GetItems().Find(Cost.ItemId);
+        if (!ItemDefinition ||
+            (ItemDefinition->Category != TEXT("Resource") &&
+             ItemDefinition->Category != TEXT("BuildingPart")))
+            return false;
+        for (const FInventoryStack& Stack : PreviousInventory)
+        {
+            if (Stack.ItemId != Cost.ItemId)
+                continue;
+            if (Stack.OwnedWorldItemId.IsValid())
+                return false;
+            Available += Stack.Quantity;
+        }
+        if (Available < Cost.Quantity)
+            return false;
+    }
+
+    const float AppliedRepair = FMath::Min(Node.Damage, Recipe->RepairAmount);
+    if (!FMath::IsFinite(AppliedRepair) || AppliedRepair <= 0.0f ||
+        !Ledger->TryBeginOperation(OperationId))
+        return false;
+
+    auto RollbackInventoryAndLedger = [&]() -> bool
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        const bool bLedgerCancelled = Ledger->CancelUncommittedOperation(OperationId);
+        const bool bSucceeded = bInventoryRestored && bLedgerCancelled;
+        if (!bSucceeded)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Recipe structural repair rollback failed; stop simulation and recover/reset the world."));
+        }
+        return bSucceeded;
+    };
+
+    for (const FGameDataItemAmount& Cost : Recipe->Materials)
+        if (!Inventory->TryRemoveItem(Cost.ItemId, Cost.Quantity))
+        {
+            RollbackInventoryAndLedger();
+            return false;
+        }
+
+    if (!Graph->RepairDamage(NodeId, Recipe->RepairAmount))
+    {
+        RollbackInventoryAndLedger();
+        return false;
+    }
+
+    FWorldOperationResult Result;
+    Result.bSucceeded = true;
+    Result.Code = EWorldOperationResultCode::Success;
+    Result.OperationId = OperationId;
+    Result.Message = FText::FromString(ReceiptText);
+    Result.AffectedObjectIds.Add(NodeId);
+    if (!Ledger->CompleteOperation(Result))
+    {
+        bool bThresholdExceeded = false;
+        const bool bNodeRestored = Graph->ApplyDamage(NodeId, AppliedRepair, bThresholdExceeded);
+        const bool bOtherStateRestored = RollbackInventoryAndLedger();
+        if (!bNodeRestored || !bOtherStateRestored)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Recipe structural repair completion rollback failed; stop simulation and recover/reset the world."));
+        }
+        return false;
+    }
+    return true;
+}
+
 bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
 {
     UWorld* World = GetWorld();
