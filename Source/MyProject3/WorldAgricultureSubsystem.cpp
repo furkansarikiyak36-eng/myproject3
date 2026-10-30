@@ -1228,7 +1228,7 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
 {
     OutFieldCell = FWorldFieldCellState();
     if (!OperationId.IsValid() || ExpectedFieldRevision <= 0 ||
-        static_cast<uint8>(WorkKind) > static_cast<uint8>(EWorldFieldWorkKind::Fallow) ||
+        static_cast<uint8>(WorkKind) > static_cast<uint8>(EWorldFieldWorkKind::Fence) ||
         !FMath::IsFinite(WorkAmount) || WorkAmount <= 0.0f ||
         MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
         return false;
@@ -1271,6 +1271,11 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
         Action = EWorldAgricultureActionKind::FallowFieldCell;
         WorkId = TEXT("Fallow");
         if (WorkAmount > 25.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Fence:
+        Action = EWorldAgricultureActionKind::FenceFieldCell;
+        WorkId = TEXT("Fence");
+        if (WorkAmount > 1.0f) return false;
         break;
     default:
         return false;
@@ -1327,6 +1332,11 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
         FieldCell->WeedPressure = FMath::Clamp(FieldCell->WeedPressure - 0.05f, 0.0f, 1.0f);
         FieldCell->bTilled = false;
         break;
+    case EWorldFieldWorkKind::Fence:
+        if (FieldCell->bFenced)
+            return false;
+        FieldCell->bFenced = true;
+        break;
     default:
         return false;
     }
@@ -1371,7 +1381,7 @@ bool UWorldAgricultureSubsystem::TryApplyFieldAction(
     else if (Definition->Operation == TEXT("Water")) WorkKind = EWorldFieldWorkKind::Water;
     else if (Definition->Operation == TEXT("Weed")) WorkKind = EWorldFieldWorkKind::Weed;
     else if (Definition->Operation == TEXT("Mulch")) WorkKind = EWorldFieldWorkKind::Mulch;
-    else if (Definition->Operation == TEXT("Fallow")) WorkKind = EWorldFieldWorkKind::Fallow;
+    else if (Definition->Operation == TEXT("Fence")) WorkKind = EWorldFieldWorkKind::Fence;
     else
     {
         // Plant/harvest have crop-specific ownership transactions. Drying,
