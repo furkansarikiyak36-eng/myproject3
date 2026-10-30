@@ -1382,6 +1382,118 @@
       ],
       "tools": [],
       "duration_s": 432000
+    },
+    {
+      "n": 38,
+      "id": "separate_grain_seed",
+      "name": "Tahıl tanesi → ekim tohumu + temiz tahıl",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Grain.Kernels",
+          "qty": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Seed.Grain",
+          "qty": 1
+        },
+        {
+          "item": "Grain.Clean",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "duration_s": 1800
+    },
+    {
+      "n": 38,
+      "id": "separate_legume_seed",
+      "name": "Kuru baklagil → ekim tohumu + kuru baklagil",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Legume.Dried",
+          "qty": 3
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Seed.Legume",
+          "qty": 1
+        },
+        {
+          "item": "Legume.Dried",
+          "qty": 2
+        }
+      ],
+      "tools": [
+        "Tool.WinnowingBasket"
+      ],
+      "duration_s": 1800
+    },
+    {
+      "n": 38,
+      "id": "separate_root_seed",
+      "name": "Kök bitki → dikimlik parça + ürün",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Root.Harvest",
+          "qty": 2
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Seed.Root",
+          "qty": 1
+        },
+        {
+          "item": "Root.Harvest",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Scraper"
+      ],
+      "duration_s": 900
+    },
+    {
+      "n": 38,
+      "id": "make_bedroll",
+      "name": "Deri + ot + ip → yatak rulosu",
+      "kind": "E",
+      "where": "hand",
+      "inputs": [
+        {
+          "item": "Hide.Scraped",
+          "qty": 2
+        },
+        {
+          "item": "Grass",
+          "qty": 6
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "outputs": [
+        {
+          "item": "Bedroll",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Needle"
+      ],
+      "duration_s": 3600
     }
   ]
 }
