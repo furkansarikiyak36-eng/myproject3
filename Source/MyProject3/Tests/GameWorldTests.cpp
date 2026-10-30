@@ -1780,7 +1780,7 @@ bool FSignalDrivenRaidAndPersistenceTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Signal receipts use snapshot schema 2"), Saved.SchemaVersion, 2);
     TestTrue(TEXT("Restore raid and signal receipts"), Threat->RestoreSnapshot(Saved));
     bStarted = true;
-    TestFalse(TEXT("Retry does not create or start a duplicate raid"),
+    TestTrue(TEXT("Retry is an idempotent successful no-op"),
         Threat->TryStartRaidFromSignals(OperationId, TEXT("Zone.1"), 1.0f, 1.0f, 1.0f, 1.0f, bStarted));
     TestFalse(TEXT("Duplicate operation does not report a fresh start"), bStarted);
 
@@ -2027,3 +2027,57 @@ bool FMaterialBackedStructuralRepairIsIdempotent::RunTest(const FString& Paramet
 }
 
 #endif
+
+
+/** P8.2: region-tagged world actors feed immutable per-tick raid sensor samples. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRegionalRaidSignalSensorScanTest,
+    "MyProject3.World.Events.RegionTaggedSensorsCanTriggerRaid", Flags)
+bool FRegionalRaidSignalSensorScanTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldThreatDirectorSubsystem* Threat =
+        World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* Adapter =
+        World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Regional events"), Events) ||
+        !TestNotNull(TEXT("Threat director"), Threat) ||
+        !TestNotNull(TEXT("Raid adapter"), Adapter))
+        return false;
+
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(77));
+    TestTrue(TEXT("Load region profiles"), Events->LoadDefaultDefinitions());
+    TestTrue(TEXT("Initialize threat director"), Threat->InitializeDirector(3600.0));
+
+    AActor* Store = World->SpawnActor<AActor>();
+    AActor* FoodRack = World->SpawnActor<AActor>();
+    AActor* Fire = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Store sensor actor"), Store) ||
+        !TestNotNull(TEXT("Food rack sensor actor"), FoodRack) ||
+        !TestNotNull(TEXT("Fire sensor actor"), Fire))
+        return false;
+
+    Store->Tags.Add(FName(TEXT("Region:Zone.2")));
+    Store->Tags.Add(FName(TEXT("RaidSignal.Storage:0.8")));
+    FoodRack->Tags.Add(FName(TEXT("Region:Zone.2")));
+    FoodRack->Tags.Add(FName(TEXT("RaidSignal.Smell:0.8")));
+    Fire->Tags.Add(FName(TEXT("Region:Zone.2")));
+    Fire->Tags.Add(FName(TEXT("RaidSignal.Light:0.5")));
+    Fire->Tags.Add(FName(TEXT("RaidSignal.Smoke:0.5")));
+
+    TestTrue(TEXT("Scan region-tagged sensor contributions"), Adapter->AdvanceRegionalRaidSignals());
+    FThreatRaidRecord Raid;
+    TestTrue(TEXT("Sensor sample triggers a warning"), Threat->GetCurrentRaid(Raid));
+    TestTrue(TEXT("Raid targets the sensor region"), Raid.TargetRegionId == FName(TEXT("Zone.2")));
+    const FGuid FirstRaidId = Raid.RaidId;
+
+    TestTrue(TEXT("Repeated same tick scan is a no-op"), Adapter->AdvanceRegionalRaidSignals());
+    TestTrue(TEXT("Read raid after retry"), Threat->GetCurrentRaid(Raid));
+    TestTrue(TEXT("Retry does not replace the existing raid"), Raid.RaidId == FirstRaidId);
+    return true;
+}
