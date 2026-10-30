@@ -1949,7 +1949,7 @@ bool FRegionalSurvivalExposureTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Read exposed profile after duplicate pass"), Survival->GetProfile(Exposed.EntityId, Result));
     TestEqual(TEXT("Same-tick retry does not repeat health damage"), Result.Health, 90.0f, 0.001f);
     TestEqual(TEXT("Same-tick retry does not change profile revision"), Result.Revision,
-        ExposedRevision + 1);
+        ExposedRevision);
     TestEqual(TEXT("Last exposure tick is persisted on profile"),
         Result.LastRegionalExposureTickIndex, Clock->GetTickIndex());
 
