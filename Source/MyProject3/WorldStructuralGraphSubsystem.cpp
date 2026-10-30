@@ -913,10 +913,10 @@ TArray<FGuid> UWorldStructuralGraphSubsystem::GetNodeIds() const
 float UWorldStructuralGraphSubsystem::GetNodeSnowLoad(FGuid NodeId) const
 {
     const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
-    return Node ? GetNodeSnowLoad(*Node) : 0.0f;
+    return Node ? CalculateNodeSnowLoad(*Node) : 0.0f;
 }
 
-float UWorldStructuralGraphSubsystem::GetNodeSnowLoad(const FStructuralNodeRecord& Node) const
+float UWorldStructuralGraphSubsystem::CalculateNodeSnowLoad(const FStructuralNodeRecord& Node) const
 {
     if (!Node.bSnowExposed || Node.SnowCatchmentAreaM2 <= 0.0f || Node.RegionId.IsNone())
         return 0.0f;
