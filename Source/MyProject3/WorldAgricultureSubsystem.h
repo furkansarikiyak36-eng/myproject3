@@ -27,11 +27,12 @@ enum class EWorldAgricultureActionKind : uint8
     AssignAnimalToPen,
     SetAnimalPenGate,
     SlaughterAnimal,
-    FallowFieldCell
+    FallowFieldCell,
+    FenceFieldCell
 };
 
 UENUM(BlueprintType)
-enum class EWorldFieldWorkKind : uint8 { Clear, Till, Fertilize, Weed, Mulch, Water, Fallow };
+enum class EWorldFieldWorkKind : uint8 { Clear, Till, Fertilize, Weed, Mulch, Water, Fallow, Fence };
 
 /** Immutable retry result for an item-backed farming operation or a field-state operation. */
 USTRUCT(BlueprintType)
@@ -113,6 +114,7 @@ struct FWorldFieldCellState
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") FIntVector Cell = FIntVector::ZeroValue;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") bool bCleared = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") bool bTilled = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field") bool bFenced = false;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="100")) float Fertility = 50.0f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float WeedPressure = 0.25f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Farm|Field", meta=(ClampMin="0", ClampMax="1")) float MulchCoverage = 0.0f;
