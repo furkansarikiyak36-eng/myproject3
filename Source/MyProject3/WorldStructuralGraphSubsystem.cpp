@@ -776,7 +776,7 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
     }
 
     Visiting.Add(NodeId);
-    float Total = Node->LocalLoad + GetNodeSnowLoad(*Node);
+    float Total = Node->LocalLoad + CalculateNodeSnowLoad(*Node);
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
         bool bSupportsChild = Pair.Value.ParentNodeId == NodeId;
