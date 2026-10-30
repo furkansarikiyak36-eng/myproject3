@@ -47,10 +47,13 @@ public:
  bool RestoreSnapshot(const FGuid& InInventoryOwnerId, const TArray<FInventoryStack>& Snapshot,
   FName InQuickAccessItemId);
  FGuid GetInventoryOwnerId() const { return InventoryOwnerId; }
+ UFUNCTION(BlueprintCallable, Category="Crafting") void SetCraftingEntityId(const FGuid& EntityId);
+ UFUNCTION(BlueprintPure, Category="Crafting") FGuid GetCraftingEntityId() const { return CraftingEntityId; }
  /** True if all these stacks fit (weight and slots). */
  bool CanAddItems(const TArray<FInventoryStack>& Additions) const { return HasCapacityFor(Additions); }
 private:
  int32 FindRecipeIndex(FName RecipeId) const;
  bool HasCapacityFor(const TArray<FInventoryStack>& Additions) const;
  UPROPERTY(VisibleAnywhere, SaveGame, Category="Inventory") FGuid InventoryOwnerId;
+ UPROPERTY(VisibleAnywhere, SaveGame, Category="Crafting") FGuid CraftingEntityId;
 };
