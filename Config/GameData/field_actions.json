@@ -49,7 +49,9 @@
     {
       "id": "Field.Water",
       "operation": "Water",
-      "tools": [],
+      "tools": [
+        "Pot.Fired"
+      ],
       "inputs": [
         {
           "item": "Water.Dirty",
@@ -72,7 +74,9 @@
     {
       "id": "Field.Mulch",
       "operation": "Mulch",
-      "tools": [],
+      "tools": [
+        "Tool.Hoe"
+      ],
       "inputs": [
         {
           "item": "Grass",
@@ -81,6 +85,25 @@
       ],
       "work_seconds": 60,
       "work_amount": 0.25
+    },
+    {
+      "id": "Field.Fence",
+      "operation": "Fence",
+      "tools": [
+        "Tool.Axe"
+      ],
+      "inputs": [
+        {
+          "item": "Stick",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "work_seconds": 1800,
+      "work_amount": 1
     },
     {
       "id": "Field.Harvest",
@@ -163,16 +186,6 @@
         "separate_legume_seed",
         "separate_root_seed"
       ]
-    },
-    {
-      "id": "Field.Fallow",
-      "operation": "Fallow",
-      "tools": [
-        "Tool.Hoe"
-      ],
-      "inputs": [],
-      "work_seconds": 3600,
-      "work_amount": 5
     }
   ]
 }
