@@ -1996,8 +1996,8 @@ bool FRegionalWildfirePropagationTest::RunTest(const FString& Parameters)
         !TestNotNull(TEXT("Structural graph"), Graph) || !TestNotNull(TEXT("Raid adapter"), Adapter))
         return false;
 
-    TestTrue(TEXT("Initialize on day three so the 72-hour event window is active"),
-        Clock->InitializeClock(55117, 3.0 * Day));
+    TestTrue(TEXT("Initialize on day four so the guaranteed 72-hour wildfire event is active"),
+        Clock->InitializeClock(55117, 4.0 * Day));
     TestTrue(TEXT("Initialize weather state"), Climate->InitializeClimate());
 
     const FString FixtureDirectory = FPaths::Combine(
@@ -2121,6 +2121,8 @@ bool FRegionalWildfirePropagationTest::RunTest(const FString& Parameters)
     Source->StructuralDamagePerHour = 20.0f;
 
     const FGuid IgnitionOperation(1511, 1512, 1513, 1514);
+    TestFalse(TEXT("An authored firebreak cannot be ignited"),
+        Firebreak->TryIgnite(FGuid(1515, 1516, 1517, 1518), 1.0f));
     TestTrue(TEXT("Ignite the source before the next tick"),
         Source->TryIgnite(IgnitionOperation, 1.0f));
     TestTrue(TEXT("Source is burning"), Source->IsBurning());
