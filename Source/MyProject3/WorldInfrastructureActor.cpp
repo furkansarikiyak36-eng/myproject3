@@ -243,6 +243,63 @@ bool AWorldInfrastructureActor::IsInfrastructureBuilt() const
     return bConstructed;
 }
 
+bool AWorldInfrastructureActor::AdvanceLocalWeatherWear(double DeltaSeconds)
+{
+    if (bAffectsRouteGraph || !bConstructed || !FMath::IsFinite(DeltaSeconds) ||
+        DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+        return !bAffectsRouteGraph || !bConstructed;
+
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    const FGameDataInfrastructure* Definition =
+        GameData && GameData->IsLoaded()
+            ? GameData->FindInfrastructure(InfrastructureId) : nullptr;
+    if (!World || !Definition || !Events || !Events->AreDefinitionsLoaded())
+        return false;
+
+    FName RegionId = NAME_None;
+    for (const FName& Tag : Tags)
+    {
+        const FString Value = Tag.ToString();
+        if (Value.StartsWith(TEXT("Region:"), ESearchCase::CaseSensitive))
+        {
+            const FString RegionText = Value.RightChop(7);
+            if (!RegionText.IsEmpty())
+                RegionId = FName(*RegionText);
+        }
+    }
+    if (RegionId.IsNone())
+        return true; // Non-regional local infrastructure has no authored regional exposure.
+
+    FWorldRegionalEventEvaluation Evaluation;
+    if (!Events->EvaluateRegion(RegionId, Evaluation))
+        return false;
+    float WearPerHour = 0.0f;
+    for (const FGameDataInfrastructureWearRule& Rule : Definition->WearRules)
+        if (Evaluation.ActiveEventIds.Contains(Rule.EventId))
+            WearPerHour += Rule.WearPerHour;
+    if (!FMath::IsFinite(WearPerHour) || WearPerHour < 0.0f)
+        return false;
+    if (WearPerHour <= 0.0f)
+        return true;
+
+    if (!FMath::IsFinite(LocalCondition) || LocalCondition < 0.0f ||
+        !FMath::IsFinite(Definition->MaxCondition) || Definition->MaxCondition <= 0.0f)
+        return false;
+    LocalCondition = FMath::Clamp(
+        LocalCondition - WearPerHour * static_cast<float>(DeltaSeconds / 3600.0),
+        0.0f, Definition->MaxCondition);
+    if (LocalCondition <= 0.0f)
+    {
+        LocalCondition = 0.0f;
+        bConstructed = false;
+    }
+    return true;
+}
+
 float AWorldInfrastructureActor::GetInfrastructureCondition() const
 {
     if (bAffectsRouteGraph)
