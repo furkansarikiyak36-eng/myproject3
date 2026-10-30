@@ -4,6 +4,7 @@
 #include "PhysicalHealthComponent.h"
 #include "ShelterSensorComponent.h"
 #include "TerrainDigToolComponent.h"
+#include "InventoryCraftingComponent.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
@@ -190,6 +191,9 @@ void ALogSnapCharacter::ApplyBlockoutMaterials()
 void ALogSnapCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    if (UInventoryCraftingComponent* Inventory =
+        FindComponentByClass<UInventoryCraftingComponent>())
+        Inventory->SetCraftingEntityId(SurvivalEntityId);
     ApplyBlockoutMaterials();
 
     const FString Controls =
@@ -199,6 +203,14 @@ void ALogSnapCharacter::BeginPlay()
         GEngine->AddOnScreenDebugMessage(
             -1, 8.0f, FColor::White, Controls);
     }
+}
+
+void ALogSnapCharacter::SetSurvivalEntityId(const FGuid& EntityId)
+{
+    SurvivalEntityId = EntityId;
+    if (UInventoryCraftingComponent* Inventory =
+        FindComponentByClass<UInventoryCraftingComponent>())
+        Inventory->SetCraftingEntityId(EntityId);
 }
 
 void ALogSnapCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
