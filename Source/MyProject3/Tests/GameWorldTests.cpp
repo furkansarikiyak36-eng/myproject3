@@ -1738,14 +1738,30 @@ bool FSignalDrivenRaidAndPersistenceTest::RunTest(const FString& Parameters)
         World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
     UWorldThreatDirectorSubsystem* Threat =
         World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Clock"), Clock) ||
         !TestNotNull(TEXT("Regional events"), Events) ||
-        !TestNotNull(TEXT("Threat director"), Threat))
+        !TestNotNull(TEXT("Threat director"), Threat) ||
+        !TestNotNull(TEXT("Structural graph"), Graph))
         return false;
 
     TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(57));
     TestTrue(TEXT("Load regional event profiles"), Events->LoadDefaultDefinitions());
     TestTrue(TEXT("Initialize threat director"), Threat->InitializeDirector(1800.0));
+
+    AActor* DefenseActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Defense actor"), DefenseActor))
+        return false;
+    DefenseActor->Tags.Add(FName(TEXT("Region:Zone.1")));
+    DefenseActor->Tags.Add(FName(TEXT("RaidDefense:1.0")));
+    const FGuid DefenseNodeId(21, 22, 23, 24);
+    TestTrue(TEXT("Register supported regional defense"),
+        Graph->RegisterNode(DefenseActor, DefenseNodeId, EStructuralNodeKind::Wood, true, 1.0f, 100.0f, 100.0f));
+    TestEqual(TEXT("Only the matching region receives defense rating"),
+        Graph->GetRegionDefenseRating(TEXT("Zone.1")), 1.0f);
+    TestEqual(TEXT("Other regions do not inherit the defense rating"),
+        Graph->GetRegionDefenseRating(TEXT("Zone.0")), 0.0f);
 
     const FGuid OperationId(11, 22, 33, 44);
     bool bStarted = false;
