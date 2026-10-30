@@ -54,7 +54,7 @@
       "weather_sensitivity": 0.2,
       "load_sensitivity": 0.1,
       "missing_infrastructure_penalty": 0,
-      "infrastructure_id": "",
+      "infrastructure_id": "Infrastructure.ForestTrail",
       "built": false,
       "requires_infrastructure": false,
       "region_id": "Zone.1"
@@ -68,7 +68,7 @@
       "weather_sensitivity": 0.2,
       "load_sensitivity": 0.1,
       "missing_infrastructure_penalty": 0,
-      "infrastructure_id": "",
+      "infrastructure_id": "Infrastructure.ForestTrail",
       "built": false,
       "requires_infrastructure": false,
       "region_id": "Zone.1"
@@ -138,7 +138,7 @@
       "weather_sensitivity": 3,
       "load_sensitivity": 0.8,
       "missing_infrastructure_penalty": 0,
-      "infrastructure_id": "",
+      "infrastructure_id": "Infrastructure.SteppingStones",
       "built": false,
       "requires_infrastructure": false,
       "region_id": "Zone.1"
@@ -152,7 +152,7 @@
       "weather_sensitivity": 3,
       "load_sensitivity": 0.8,
       "missing_infrastructure_penalty": 0,
-      "infrastructure_id": "",
+      "infrastructure_id": "Infrastructure.SteppingStones",
       "built": false,
       "requires_infrastructure": false,
       "region_id": "Zone.1"
