@@ -26,6 +26,8 @@
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldRaidAdapterSubsystem.h"
 #include "WorldInfrastructureActor.h"
+#include "WorldCombustibleComponent.h"
+#include "WorldFirePropagationSubsystem.h"
 #include "WorldOperationLedgerSubsystem.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -1964,6 +1966,196 @@ bool FRegionalSurvivalExposureTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Region survives profile snapshot restore"), Result.RegionId, FName(TEXT("Zone.1")));
     TestEqual(TEXT("Regional exposure tick survives profile snapshot restore"),
         Result.LastRegionalExposureTickIndex, Clock->GetTickIndex());
+
+    IFileManager::Get().DeleteDirectory(*FixtureDirectory, false, true);
+    return true;
+}
+
+// P8.3 — wildfire ignition, spread, firebreaks, moisture, fuel and structure damage share one deterministic tick.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRegionalWildfirePropagationTest,
+    "MyProject3.World.Events.WildfireSpreadsDeterministicallyAndDamagesStructuresOnce",
+    Flags)
+bool FRegionalWildfirePropagationTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldFirePropagationSubsystem* Fire =
+        World ? World->GetSubsystem<UWorldFirePropagationSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* Adapter =
+        World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Regional events"), Events) || !TestNotNull(TEXT("Fire propagation"), Fire) ||
+        !TestNotNull(TEXT("Structural graph"), Graph) || !TestNotNull(TEXT("Raid adapter"), Adapter))
+        return false;
+
+    TestTrue(TEXT("Initialize on day three so the 72-hour event window is active"),
+        Clock->InitializeClock(55117, 3.0 * Day));
+    TestTrue(TEXT("Initialize weather state"), Climate->InitializeClimate());
+
+    const FString FixtureDirectory = FPaths::Combine(
+        FPaths::ProjectSavedDir(), TEXT("Automation"), TEXT("RegionalWildfire"));
+    IFileManager::Get().DeleteDirectory(*FixtureDirectory, false, true);
+    TestTrue(TEXT("Create wildfire fixture directory"),
+        IFileManager::Get().MakeDirectory(*FixtureDirectory, true));
+    const FString EventFixture = TEXT(R"json(
+{
+  "regions": [
+    {
+      "id": "Zone.2",
+      "elevation_m": 550,
+      "slope_ratio": 0.72,
+      "flood_exposure": 0.08,
+      "vegetation_fuel_load": 0.95,
+      "snow_load_units_per_cm_m2": 0.2,
+      "raid_target": [0, 0, 0]
+    }
+  ],
+  "events": [
+    {
+      "id": "Event.TestWildfire",
+      "type": "Wildfire",
+      "regions": ["Zone.2"],
+      "months": [],
+      "required_weather": [],
+      "chain_parent_id": "",
+      "min_temperature_c": -100,
+      "max_temperature_c": 100,
+      "min_snow_depth_cm": 0,
+      "min_ground_wetness": 0,
+      "max_ground_wetness": 1,
+      "min_slope_ratio": 0,
+      "min_elevation_m": -10000,
+      "min_flood_exposure": 0,
+      "min_vegetation_fuel_load": 0,
+      "chance_per_day": 1,
+      "duration_hours": 72,
+      "structure_damage_per_hour": 0,
+      "health_damage_per_hour": 0,
+      "fatigue_per_hour": 0,
+      "stamina_loss_per_hour": 0,
+      "thirst_per_hour": 0,
+      "wetness_per_hour": 0,
+      "core_temperature_delta_c_per_hour": 0,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 1,
+      "fire_burn_rate_multiplier": 1,
+      "route_cost_multiplier": 1,
+      "raid_defense_multiplier": 1,
+      "snow_load_multiplier": 1,
+      "survival_severity_multiplier": 1
+    }
+  ]
+}
+)json");
+    TestTrue(TEXT("Write deterministic wildfire fixture"),
+        FFileHelper::SaveStringToFile(EventFixture,
+            *FPaths::Combine(FixtureDirectory, TEXT("events.json"))));
+    TestTrue(FString::Printf(TEXT("Load wildfire event definition: %s"), *Events->GetLastError()),
+        Events->LoadDefinitionsFromDirectory(FixtureDirectory));
+    FWorldRegionalEventEvaluation Evaluation;
+    TestTrue(TEXT("Evaluate wildfire in authored region"), Events->EvaluateRegion(TEXT("Zone.2"), Evaluation));
+    TestTrue(TEXT("Wildfire event is active"), Evaluation.ActiveEventIds.Contains(TEXT("Event.TestWildfire")));
+    TestEqual(TEXT("Wildfire spread rate is guaranteed for this fixture"),
+        Evaluation.FireSpreadChancePerHour, 1.0f);
+
+    auto AddCombustible = [&](const TCHAR* Label, const FVector& Location,
+        bool bFirebreak, float Moisture, float SpreadRadius, UWorldCombustibleComponent*& OutComponent)
+    {
+        AActor* Actor = World->SpawnActor<AActor>();
+        if (!TestNotNull(FString::Printf(TEXT("%s actor"), Label), Actor))
+            return false;
+        Actor->SetActorLocation(Location);
+        Actor->Tags.Add(TEXT("Region:Zone.2"));
+        OutComponent = NewObject<UWorldCombustibleComponent>(Actor);
+        Actor->AddInstanceComponent(OutComponent);
+        OutComponent->RegisterComponent();
+        OutComponent->RegionId = TEXT("Zone.2");
+        OutComponent->FuelUnitsRemaining = 100.0f;
+        OutComponent->Moisture = Moisture;
+        OutComponent->IgnitionMoistureThreshold = 0.8f;
+        OutComponent->IgnitionSusceptibility = 1.0f;
+        OutComponent->SpreadRadiusCm = SpreadRadius;
+        OutComponent->SpreadChanceMultiplier = 1.0f;
+        OutComponent->BurnUnitsPerHour = 10.0f;
+        OutComponent->StructuralDamagePerHour = 0.0f;
+        OutComponent->bFirebreak = bFirebreak;
+        return OutComponent->EnsureCombustibleIdentity();
+    };
+
+    UWorldCombustibleComponent* Source = nullptr;
+    UWorldCombustibleComponent* Firebreak = nullptr;
+    UWorldCombustibleComponent* BlockedTarget = nullptr;
+    UWorldCombustibleComponent* OpenTarget = nullptr;
+    UWorldCombustibleComponent* WetTarget = nullptr;
+    UWorldCombustibleComponent* FarTarget = nullptr;
+    TestTrue(TEXT("Create dry burning source"), AddCombustible(TEXT("Source"), FVector::ZeroVector,
+        false, 0.0f, 500.0f, Source));
+    TestTrue(TEXT("Create non-flammable firebreak"), AddCombustible(TEXT("Firebreak"),
+        FVector(150.0f, 0.0f, 0.0f), true, 0.0f, 0.0f, Firebreak));
+    TestTrue(TEXT("Create target behind firebreak"), AddCombustible(TEXT("BlockedTarget"),
+        FVector(300.0f, 0.0f, 0.0f), false, 0.0f, 0.0f, BlockedTarget));
+    TestTrue(TEXT("Create open dry target"), AddCombustible(TEXT("OpenTarget"),
+        FVector(0.0f, 300.0f, 0.0f), false, 0.0f, 0.0f, OpenTarget));
+    TestTrue(TEXT("Create saturated target"), AddCombustible(TEXT("WetTarget"),
+        FVector(0.0f, -300.0f, 0.0f), false, 0.95f, 0.0f, WetTarget));
+    TestTrue(TEXT("Create target outside spread radius"), AddCombustible(TEXT("FarTarget"),
+        FVector(700.0f, 0.0f, 0.0f), false, 0.0f, 0.0f, FarTarget));
+
+    AActor* Wall = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Structure wall actor"), Wall))
+        return false;
+    Wall->SetActorLocation(FVector::ZeroVector);
+    Wall->Tags.Add(TEXT("Region:Zone.2"));
+    const FGuid WallNodeId(1501, 1502, 1503, 1504);
+    TestTrue(TEXT("Register structural wall node"),
+        Graph->RegisterNode(Wall, WallNodeId, EStructuralNodeKind::Wood, true, 1.0f, 1000.0f, 100.0f));
+    Source->StructuralNodeId = WallNodeId;
+    Source->StructuralDamagePerHour = 20.0f;
+
+    const FGuid IgnitionOperation(1511, 1512, 1513, 1514);
+    TestTrue(TEXT("Ignite the source before the next tick"),
+        Source->TryIgnite(IgnitionOperation, 1.0f));
+    TestTrue(TEXT("Source is burning"), Source->IsBurning());
+
+    TestTrue(TEXT("Advance to the fire propagation tick"), Clock->AdvanceSimulation(3600.0));
+    TestTrue(TEXT("Advance one deterministic wildfire step"),
+        Fire->AdvanceRegionalFireSpread(3600.0));
+    TestTrue(TEXT("Open dry target catches fire"), OpenTarget->IsBurning());
+    TestFalse(TEXT("Firebreak blocks the target behind it"), BlockedTarget->IsBurning());
+    TestFalse(TEXT("Saturated target resists ignition"), WetTarget->IsBurning());
+    TestFalse(TEXT("Target outside spread radius remains safe"), FarTarget->IsBurning());
+    TestFalse(TEXT("Firebreak itself remains non-flammable"), Firebreak->IsBurning());
+    TestEqual(TEXT("Source consumes ten units of fuel"), Source->GetFuelUnitsRemaining(), 90.0f);
+    TestTrue(TEXT("Burning actor contributes dynamic light to raid signals"),
+        Source->GetOwner()->Tags.Contains(TEXT("RaidSignal.FireLight:0.35")));
+    TestTrue(TEXT("Burning actor contributes dynamic smoke to raid signals"),
+        Source->GetOwner()->Tags.Contains(TEXT("RaidSignal.FireSmoke:0.65")));
+
+    FStructuralNodeRecord DamagedWall;
+    TestTrue(TEXT("Read wall after fire damage"), Graph->GetNode(WallNodeId, DamagedWall));
+    TestEqual(TEXT("Fire damages the structural node by its configured rate"),
+        DamagedWall.Damage, 20.0f, 0.001f);
+    const int64 WallRevisionAfterFire = DamagedWall.Revision;
+
+    TestTrue(TEXT("Repeat the same wildfire tick is a successful no-op"),
+        Fire->AdvanceRegionalFireSpread(3600.0));
+    TestEqual(TEXT("Same-tick retry does not consume source fuel again"),
+        Source->GetFuelUnitsRemaining(), 90.0f);
+    TestTrue(TEXT("Read wall after wildfire retry"), Graph->GetNode(WallNodeId, DamagedWall));
+    TestEqual(TEXT("Same-tick retry does not apply structural damage twice"),
+        DamagedWall.Damage, 20.0f, 0.001f);
+    TestEqual(TEXT("Same-tick retry does not bump structural revision"),
+        DamagedWall.Revision, WallRevisionAfterFire);
+    TestFalse(TEXT("Newly ignited target cannot relay fire within the same tick"),
+        BlockedTarget->IsBurning());
 
     IFileManager::Get().DeleteDirectory(*FixtureDirectory, false, true);
     return true;
