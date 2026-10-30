@@ -188,15 +188,21 @@ bool UWorldLogisticsRouteSubsystem::AdvanceRegionalInfrastructureWear(double Del
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
         return false;
+    TArray<FLogisticsRouteNode> NodeSnapshot;
+    TArray<FLogisticsRouteEdge> EdgeSnapshot;
+    ExportSnapshot(NodeSnapshot, EdgeSnapshot);
+    const bool bHasBuiltInfrastructure = EdgeSnapshot.ContainsByPredicate(
+        [](const FLogisticsRouteEdge& Edge)
+        { return Edge.bHasBuiltInfrastructure && !Edge.InfrastructureId.IsNone(); });
+    if (!bHasBuiltInfrastructure)
+        return true;
+
     UWorld* World = GetWorld();
     UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
     if (!GameData || !GameData->IsLoaded() || !Events || !Events->AreDefinitionsLoaded())
         return false;
 
-    TArray<FLogisticsRouteNode> NodeSnapshot;
-    TArray<FLogisticsRouteEdge> EdgeSnapshot;
-    ExportSnapshot(NodeSnapshot, EdgeSnapshot);
     TMap<FName, float> WearByInfrastructure;
     for (const FLogisticsRouteEdge& Edge : EdgeSnapshot)
     {
