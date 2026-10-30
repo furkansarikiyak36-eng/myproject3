@@ -46,6 +46,13 @@ struct FWorldRegionalEventDefinition
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float DurationHours = 1.0f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float StructureDamagePerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float HealthDamagePerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float FatiguePerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float StaminaLossPerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float ThirstPerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float WetnessPerHour = 0.0f;
+    /** Signed core-temperature drift in Celsius per hour during the event. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float CoreTemperatureDeltaCelsiusPerHour = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float RouteCostMultiplier = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float RaidDefenseMultiplier = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float SnowLoadMultiplier = 1.0f;
@@ -64,6 +71,12 @@ struct FWorldRegionalEventEvaluation
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float RaidDefenseMultiplier = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float SnowLoadMultiplier = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float StructureDamagePerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float HealthDamagePerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float FatiguePerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float StaminaLossPerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float ThirstPerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float WetnessPerHour = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float CoreTemperatureDeltaCelsiusPerHour = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="World|Events") float SurvivalSeverityMultiplier = 1.0f;
 };
 
