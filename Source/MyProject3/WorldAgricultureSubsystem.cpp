@@ -7,6 +7,7 @@
 #include "WorldSimulationCoordinatorSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldCalendar.h"
+#include "WorldGameDataSubsystem.h"
 
 const FWorldCropDefinition* UWorldAgricultureSubsystem::FindCropDefinition(FName CropDefinitionId) const
 {
@@ -1127,7 +1128,7 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
 {
     OutFieldCell = FWorldFieldCellState();
     if (!OperationId.IsValid() || ExpectedFieldRevision <= 0 ||
-        static_cast<uint8>(WorkKind) > static_cast<uint8>(EWorldFieldWorkKind::Water) ||
+        static_cast<uint8>(WorkKind) > static_cast<uint8>(EWorldFieldWorkKind::Fallow) ||
         !FMath::IsFinite(WorkAmount) || WorkAmount <= 0.0f ||
         MaxOperationReceiptsPerEntity <= 0 || MaxOperationReceiptsPerEntity > 256)
         return false;
@@ -1165,6 +1166,11 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
         Action = EWorldAgricultureActionKind::WaterFieldCell;
         WorkId = TEXT("Water");
         if (WorkAmount > 1.0f) return false;
+        break;
+    case EWorldFieldWorkKind::Fallow:
+        Action = EWorldAgricultureActionKind::FallowFieldCell;
+        WorkId = TEXT("Fallow");
+        if (WorkAmount > 25.0f) return false;
         break;
     default:
         return false;
@@ -1214,6 +1220,13 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
     case EWorldFieldWorkKind::Water:
         FieldCell->Moisture = FMath::Clamp(FieldCell->Moisture + WorkAmount, 0.0f, 1.0f);
         break;
+    case EWorldFieldWorkKind::Fallow:
+        if (FieldCell->PlantedCropId.IsValid())
+            return false;
+        FieldCell->Fertility = FMath::Clamp(FieldCell->Fertility + WorkAmount, 0.0f, 100.0f);
+        FieldCell->WeedPressure = FMath::Clamp(FieldCell->WeedPressure - 0.05f, 0.0f, 1.0f);
+        FieldCell->bTilled = false;
+        break;
     default:
         return false;
     }
@@ -1229,6 +1242,113 @@ bool UWorldAgricultureSubsystem::TryApplyFieldWork(
     FieldCell->ActionReceipts.Add(Receipt);
     ++FieldCell->Revision;
     OutFieldCell = *FieldCell;
+    return true;
+}
+
+bool UWorldAgricultureSubsystem::TryApplyFieldAction(
+    const FGuid& OperationId, FName FieldActionId, const FIntVector& Cell,
+    int64 ExpectedFieldRevision, const FGuid& InventoryOwnerId,
+    FWorldFieldCellState& OutFieldCell)
+{
+    OutFieldCell = FWorldFieldCellState();
+    if (!OperationId.IsValid() || FieldActionId.IsNone() ||
+        ExpectedFieldRevision <= 0 || !InventoryOwnerId.IsValid())
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!GameData || !GameData->IsLoaded())
+        return false;
+    const FGameDataFieldAction* Definition = GameData->FindFieldAction(FieldActionId);
+    if (!Definition)
+        return false;
+
+    EWorldFieldWorkKind WorkKind;
+    if (Definition->Operation == TEXT("Clear")) WorkKind = EWorldFieldWorkKind::Clear;
+    else if (Definition->Operation == TEXT("Till")) WorkKind = EWorldFieldWorkKind::Till;
+    else if (Definition->Operation == TEXT("Fertilize")) WorkKind = EWorldFieldWorkKind::Fertilize;
+    else if (Definition->Operation == TEXT("Water")) WorkKind = EWorldFieldWorkKind::Water;
+    else if (Definition->Operation == TEXT("Weed")) WorkKind = EWorldFieldWorkKind::Weed;
+    else if (Definition->Operation == TEXT("Mulch")) WorkKind = EWorldFieldWorkKind::Mulch;
+    else if (Definition->Operation == TEXT("Fallow")) WorkKind = EWorldFieldWorkKind::Fallow;
+    else
+    {
+        // Plant/harvest have crop-specific ownership transactions. Drying,
+        // threshing, winnowing, grinding and seed sorting use transformations;
+        // Store is committed by the storage subsystem, not by a field cell.
+        return false;
+    }
+
+    // Do not charge a retry twice. The existing field receipt is the authority.
+    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+        return TryApplyFieldWork(OperationId, Cell, ExpectedFieldRevision,
+            WorkKind, Definition->WorkAmount, OutFieldCell);
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    if (!FindInventoryForOwner(InventoryOwnerId, Inventory))
+        return false;
+
+    for (const FName ToolId : Definition->Tools)
+        if (Inventory->GetItemCount(ToolId) <= 0)
+            return false;
+
+    FGuid OwnerActorId;
+    FGuid PreviousOwnerId;
+    TArray<FInventoryStack> PreviousStacks;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousOwnerId, PreviousStacks, PreviousQuickAccess);
+    if (PreviousOwnerId != InventoryOwnerId)
+        return false;
+
+    // These costs are fungible inventory stacks. Unique world-ledger items must
+    // be consumed through the ownership transaction APIs, never by stack count.
+    for (const FGameDataItemAmount& Cost : Definition->Inputs)
+    {
+        int32 Available = 0;
+        for (const FInventoryStack& Stack : PreviousStacks)
+        {
+            if (Stack.ItemId != Cost.ItemId)
+                continue;
+            if (Stack.OwnedWorldItemId.IsValid())
+                return false;
+            Available += Stack.Quantity;
+        }
+        if (Available < Cost.Quantity)
+            return false;
+    }
+
+    auto RollbackInventory = [&]() -> bool
+    {
+        const bool bRestored = Inventory->RestoreSnapshot(
+            InventoryOwnerId, PreviousStacks, PreviousQuickAccess);
+        if (!bRestored)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Field-action inventory rollback failed; stop simulation and recover/reset the world."));
+            }
+        }
+        return bRestored;
+    };
+
+    for (const FGameDataItemAmount& Cost : Definition->Inputs)
+    {
+        if (!Inventory->TryRemoveItem(Cost.ItemId, Cost.Quantity))
+        {
+            RollbackInventory();
+            return false;
+        }
+    }
+
+    if (!TryApplyFieldWork(OperationId, Cell, ExpectedFieldRevision,
+        WorkKind, Definition->WorkAmount, OutFieldCell))
+    {
+        RollbackInventory();
+        return false;
+    }
     return true;
 }
 
