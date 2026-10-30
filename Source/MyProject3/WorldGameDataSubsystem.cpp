@@ -863,7 +863,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 
     TSet<FName> SeenDiscoveryIds;
     auto IsKnownUnlockId = [&NewItems, &NewStations, &NewTransformations, &NewCrops,
-        &NewAnimals, &NewKnowledge, &NewZones, &NewRouteEdges](FName Id)
+        &NewAnimals, &NewKnowledge, &NewInfrastructures, &NewZones, &NewRouteEdges](FName Id)
     {
         if (Id.IsNone())
             return false;
@@ -872,6 +872,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             NewCrops.ContainsByPredicate([Id](const FGameDataCrop& C) { return C.Id == Id; }) ||
             NewAnimals.ContainsByPredicate([Id](const FGameDataAnimal& A) { return A.Id == Id; }) ||
             NewKnowledge.ContainsByPredicate([Id](const FGameDataKnowledge& K) { return K.Id == Id; }) ||
+            NewInfrastructures.ContainsByPredicate([Id](const FGameDataInfrastructure& I) { return I.Id == Id; }) ||
             NewZones.ContainsByPredicate([Id](const FGameDataZone& Z) { return Z.Id == Id; }) ||
             NewZones.ContainsByPredicate([Id](const FGameDataZone& Z) { return Z.PermanentSolutionIds.Contains(Id); }) ||
             NewRouteEdges.ContainsByPredicate([Id](const FGameDataRouteEdge& E) { return E.InfrastructureId == Id; }))
