@@ -1,6 +1,7 @@
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldClimateSubsystem.h"
 #include "WorldRegionalEventSubsystem.h"
+#include "WorldGameDataSubsystem.h"
 
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
@@ -877,6 +878,7 @@ void UWorldStructuralGraphSubsystem::RefreshEnvironmentMetadata(FStructuralNodeR
     Node.bSnowExposed = false;
     Node.SnowCatchmentAreaM2 = 0.0f;
     Node.RaidDefenseRating = 0.0f;
+    Node.RaidDefenseDefinitionId = NAME_None;
 
     AActor* Actor = Node.Actor.Get();
     if (!IsValid(Actor))
@@ -908,6 +910,12 @@ void UWorldStructuralGraphSubsystem::RefreshEnvironmentMetadata(FStructuralNodeR
             const float Parsed = FCString::Atof(*Number);
             if (FMath::IsFinite(Parsed) && Parsed >= 0.0f)
                 Node.RaidDefenseRating = FMath::Min(Parsed, 1000.0f);
+        }
+        else if (Value.StartsWith(TEXT("RaidDefenseType:"), ESearchCase::CaseSensitive))
+        {
+            const FString DefinitionText = Value.RightChop(16);
+            if (!DefinitionText.IsEmpty())
+                Node.RaidDefenseDefinitionId = FName(*DefinitionText);
         }
     }
 
@@ -976,7 +984,20 @@ float UWorldStructuralGraphSubsystem::GetRegionDefenseRating(FName RegionId) con
             continue;
         }
         if (HasValidSupportPath(NodeId))
-            Total += static_cast<double>(Node->RaidDefenseRating);
+        {
+            double Rating = static_cast<double>(Node->RaidDefenseRating);
+            if (!Node->RaidDefenseDefinitionId.IsNone())
+            {
+                const UWorldGameDataSubsystem* GameData =
+                    GetWorld() ? GetWorld()->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+                const FGameDataRaidDefense* Definition =
+                    GameData && GameData->IsLoaded()
+                        ? GameData->FindRaidDefense(Node->RaidDefenseDefinitionId) : nullptr;
+                if (Definition)
+                    Rating += static_cast<double>(Definition->DefenseRating);
+            }
+            Total += Rating;
+        }
     }
     return FMath::Clamp(static_cast<float>(Total), 0.0f, 10000.0f);
 }
