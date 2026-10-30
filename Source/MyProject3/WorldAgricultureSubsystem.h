@@ -229,6 +229,10 @@ public:
         int64 ExpectedSeedItemRevision, const FGuid& InventoryOwnerId,
         const FIntVector& PlotCell, int64 ExpectedFieldRevision, float InitialMoisture,
         FGuid& OutCropId);
+    /** Moves one harvested unique item into a registered storage container using the Field.Store tool gate. */
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryStoreHarvestItemWithFieldAction(
+        const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedItemRevision,
+        const FGuid& InventoryOwnerId, const FGuid& StorageId);
     UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryFeedAnimal(
         const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
         const FGuid& FeedItemId, int64 ExpectedFeedItemRevision,
