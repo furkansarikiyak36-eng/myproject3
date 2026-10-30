@@ -871,6 +871,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             NewTransformations.ContainsByPredicate([Id](const FGameDataTransformation& T) { return T.Id == Id; }) ||
             NewCrops.ContainsByPredicate([Id](const FGameDataCrop& C) { return C.Id == Id; }) ||
             NewAnimals.ContainsByPredicate([Id](const FGameDataAnimal& A) { return A.Id == Id; }) ||
+            NewKnowledge.ContainsByPredicate([Id](const FGameDataKnowledge& K) { return K.Id == Id; }) ||
             NewZones.ContainsByPredicate([Id](const FGameDataZone& Z) { return Z.Id == Id; }) ||
             NewZones.ContainsByPredicate([Id](const FGameDataZone& Z) { return Z.PermanentSolutionIds.Contains(Id); }) ||
             NewRouteEdges.ContainsByPredicate([Id](const FGameDataRouteEdge& E) { return E.InfrastructureId == Id; }))
