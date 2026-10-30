@@ -187,6 +187,13 @@ bool UWorldRegionalEventSubsystem::LoadDefinitionsFromDirectory(const FString& D
         Definition.ChancePerDay = static_cast<float>(NumberField(Entry, TEXT("chance_per_day")));
         Definition.DurationHours = static_cast<float>(NumberField(Entry, TEXT("duration_hours"), 1.0));
         Definition.StructureDamagePerHour = static_cast<float>(NumberField(Entry, TEXT("structure_damage_per_hour")));
+        Definition.HealthDamagePerHour = static_cast<float>(NumberField(Entry, TEXT("health_damage_per_hour")));
+        Definition.FatiguePerHour = static_cast<float>(NumberField(Entry, TEXT("fatigue_per_hour")));
+        Definition.StaminaLossPerHour = static_cast<float>(NumberField(Entry, TEXT("stamina_loss_per_hour")));
+        Definition.ThirstPerHour = static_cast<float>(NumberField(Entry, TEXT("thirst_per_hour")));
+        Definition.WetnessPerHour = static_cast<float>(NumberField(Entry, TEXT("wetness_per_hour")));
+        Definition.CoreTemperatureDeltaCelsiusPerHour =
+            static_cast<float>(NumberField(Entry, TEXT("core_temperature_delta_c_per_hour")));
         Definition.RouteCostMultiplier = static_cast<float>(NumberField(Entry, TEXT("route_cost_multiplier"), 1.0));
         Definition.RaidDefenseMultiplier = static_cast<float>(NumberField(Entry, TEXT("raid_defense_multiplier"), 1.0));
         Definition.SnowLoadMultiplier = static_cast<float>(NumberField(Entry, TEXT("snow_load_multiplier"), 1.0));
@@ -216,6 +223,12 @@ bool UWorldRegionalEventSubsystem::LoadDefinitionsFromDirectory(const FString& D
             !IsFiniteRange(Definition.ChancePerDay, 0.0f, 1.0f) ||
             !IsFiniteRange(Definition.DurationHours, 0.01f, 72.0f) ||
             !IsFiniteRange(Definition.StructureDamagePerHour, 0.0f, 1000000.0f) ||
+            !IsFiniteRange(Definition.HealthDamagePerHour, 0.0f, 1000.0f) ||
+            !IsFiniteRange(Definition.FatiguePerHour, 0.0f, 1000.0f) ||
+            !IsFiniteRange(Definition.StaminaLossPerHour, 0.0f, 1000.0f) ||
+            !IsFiniteRange(Definition.ThirstPerHour, 0.0f, 1000.0f) ||
+            !IsFiniteRange(Definition.WetnessPerHour, 0.0f, 4.0f) ||
+            !IsFiniteRange(Definition.CoreTemperatureDeltaCelsiusPerHour, -100.0f, 100.0f) ||
             !IsFiniteRange(Definition.RouteCostMultiplier, 0.01f, 1000.0f) ||
             !IsFiniteRange(Definition.RaidDefenseMultiplier, 0.01f, 100.0f) ||
             !IsFiniteRange(Definition.SnowLoadMultiplier, 0.01f, 100.0f) ||
@@ -408,6 +421,19 @@ bool UWorldRegionalEventSubsystem::EvaluateRegion(
             OutEvaluation.SnowLoadMultiplier * Definition.SnowLoadMultiplier, 0.01f, 100000.0f);
         OutEvaluation.StructureDamagePerHour = FMath::Clamp(
             OutEvaluation.StructureDamagePerHour + Definition.StructureDamagePerHour, 0.0f, 1000000.0f);
+        OutEvaluation.HealthDamagePerHour = FMath::Clamp(
+            OutEvaluation.HealthDamagePerHour + Definition.HealthDamagePerHour, 0.0f, 10000.0f);
+        OutEvaluation.FatiguePerHour = FMath::Clamp(
+            OutEvaluation.FatiguePerHour + Definition.FatiguePerHour, 0.0f, 10000.0f);
+        OutEvaluation.StaminaLossPerHour = FMath::Clamp(
+            OutEvaluation.StaminaLossPerHour + Definition.StaminaLossPerHour, 0.0f, 10000.0f);
+        OutEvaluation.ThirstPerHour = FMath::Clamp(
+            OutEvaluation.ThirstPerHour + Definition.ThirstPerHour, 0.0f, 10000.0f);
+        OutEvaluation.WetnessPerHour = FMath::Clamp(
+            OutEvaluation.WetnessPerHour + Definition.WetnessPerHour, 0.0f, 10000.0f);
+        OutEvaluation.CoreTemperatureDeltaCelsiusPerHour = FMath::Clamp(
+            OutEvaluation.CoreTemperatureDeltaCelsiusPerHour + Definition.CoreTemperatureDeltaCelsiusPerHour,
+            -10000.0f, 10000.0f);
         OutEvaluation.SurvivalSeverityMultiplier = FMath::Clamp(
             OutEvaluation.SurvivalSeverityMultiplier * Definition.SurvivalSeverityMultiplier, 0.01f, 100000.0f);
     }
