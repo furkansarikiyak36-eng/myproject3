@@ -1930,3 +1930,92 @@ bool FRegionalHazardChangesRouteCostTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+/** P8.3: a repair consumes one owned material item and replays the same committed result only once. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMaterialBackedStructuralRepairIsIdempotent,
+    "MyProject3.World.Events.StructuralRepairConsumesOwnedMaterialOnce", Flags)
+bool FMaterialBackedStructuralRepairIsIdempotent::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph = World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* HazardAdapter = World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), GameData) ||
+        !TestNotNull(TEXT("Ownership"), Ownership) ||
+        !TestNotNull(TEXT("Structural graph"), Graph) ||
+        !TestNotNull(TEXT("Hazard adapter"), HazardAdapter))
+        return false;
+
+    TestTrue(TEXT("Load game data for material category validation"), GameData->LoadDefault());
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory =
+        NewObject<UInventoryCraftingComponent>(InventoryActor);
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    const FGuid InventoryOwnerId = Inventory->GetInventoryOwnerId();
+    TestTrue(TEXT("Inventory owner identity"), InventoryOwnerId.IsValid());
+
+    FWorldOwnedItemRecord Stone;
+    Stone.ItemId = FGuid(101, 102, 103, 104);
+    Stone.DefinitionId = TEXT("Stone");
+    Stone.BaseDefinitionId = Stone.DefinitionId;
+    Stone.OwnerKind = EWorldItemOwnerKind::Inventory;
+    Stone.OwnerId = InventoryOwnerId;
+    Stone.Quantity = 1;
+    TestTrue(TEXT("Register owned repair stone"), Ownership->RegisterItem(Stone));
+
+    Inventory->ItemWeightGrams.Add(TEXT("Stone"), 500);
+    FInventoryStack StoneStack;
+    StoneStack.ItemId = TEXT("Stone");
+    StoneStack.Quantity = 1;
+    StoneStack.MaxStack = 1;
+    StoneStack.OwnedWorldItemId = Stone.ItemId;
+    TArray<FInventoryStack> InventoryStacks;
+    InventoryStacks.Add(StoneStack);
+    TestTrue(TEXT("Put unique stone into inventory"),
+        Inventory->RestoreSnapshot(InventoryOwnerId, InventoryStacks, NAME_None));
+
+    AActor* Wall = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Wall actor"), Wall))
+        return false;
+    Wall->Tags.Add(FName(TEXT("Region:Zone.0")));
+    const FGuid WallNodeId(111, 112, 113, 114);
+    TestTrue(TEXT("Register wall node"),
+        Graph->RegisterNode(Wall, WallNodeId, EStructuralNodeKind::Wood, true, 1.0f, 100.0f, 100.0f));
+
+    bool bThresholdExceeded = false;
+    TestTrue(TEXT("Damage wall before repair"), Graph->ApplyDamage(WallNodeId, 40.0f, bThresholdExceeded));
+    FStructuralNodeRecord DamagedWall;
+    TestTrue(TEXT("Read damaged wall"), Graph->GetNode(WallNodeId, DamagedWall));
+    FWorldOwnedItemRecord OwnedStone;
+    TestTrue(TEXT("Read owned material record"), Ownership->TryGetItem(Stone.ItemId, OwnedStone));
+
+    const FGuid RepairOperation(121, 122, 123, 124);
+    TestTrue(TEXT("Repair wall with one owned stone"), HazardAdapter->TryRepairStructureWithMaterial(
+        RepairOperation, WallNodeId, DamagedWall.Revision, Stone.ItemId,
+        OwnedStone.Revision, InventoryOwnerId, 25.0f));
+
+    FStructuralNodeRecord RepairedWall;
+    TestTrue(TEXT("Read repaired wall"), Graph->GetNode(WallNodeId, RepairedWall));
+    TestEqual(TEXT("Repair reduces structural damage by configured amount"), RepairedWall.Damage, 15.0f, 0.001f);
+    FWorldOwnedItemRecord ConsumedStone;
+    TestTrue(TEXT("Read consumed repair stone"), Ownership->TryGetItem(Stone.ItemId, ConsumedStone));
+    TestTrue(TEXT("Repair material leaves inventory ownership"),
+        ConsumedStone.OwnerKind == EWorldItemOwnerKind::Consumed);
+    TestEqual(TEXT("Repair material stack is removed"), Inventory->GetItemCount(TEXT("Stone")), 0);
+
+    TestTrue(TEXT("Retry returns original repair receipt"),
+        HazardAdapter->TryRepairStructureWithMaterial(RepairOperation, WallNodeId,
+            DamagedWall.Revision, Stone.ItemId, OwnedStone.Revision, InventoryOwnerId, 25.0f));
+    FStructuralNodeRecord AfterRetry;
+    TestTrue(TEXT("Read wall after repair retry"), Graph->GetNode(WallNodeId, AfterRetry));
+    TestEqual(TEXT("Retry does not repair twice"), AfterRetry.Damage, 15.0f, 0.001f);
+    return true;
+}
+
+#endif
