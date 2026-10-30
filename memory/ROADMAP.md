@@ -6,7 +6,7 @@ this GitHub repo can continue from here: Claude Code, Claude web, another accoun
 
 ## One working branch only (from 2026-10-29 evening)
 
-All assistants commit to `game/p00-adopt-group-a` only. Do not open new feature branches: parallel lines
+All assistants commit to `game/p00-adopt-group-a` only. **Never create a branch** (2026-10-30: 64 stray branches had to be deleted): parallel lines
 (p06, p07, phase-3-4) built the same systems twice with different APIs and both claimed save schema 29.
 Before starting: `git pull`; before pushing: `git pull --rebase`. A save schema number is taken only by the
 commit that pushes it first; rebase and renumber yours if it is taken.
@@ -295,6 +295,7 @@ Sound, UI, performance, full save/load, a 60–90 minute Steam demo.
 
 Newest first, one line each: `date · task · status · evidence (commit, test count, user words)`.
 
+- 2026-10-30 · repo cleanup · 64 branches deleted (13 unique ones kept as archive/* tags); 3 branches left
 - 2026-10-30 · batch test of ChatGPT P6-P8 commits · tested · 136/136 (log placement regression fixed, revision-0 dismantle bug fixed)
 - 2026-10-30 · Phase 5 closed · tested · 130/130 (earthworks: cellar, cistern, trench, embankment, collapse; save v31); Tick check unbuilt
 - 2026-10-30 · Phase 4 closed · tested · 129/129 (crafted/station/gathered food becomes ledger items)

@@ -10,19 +10,17 @@ builds, **126/126 automation tests pass**. Not played in PIE (the new scene come
 Plan: `Docs/GameDesign/MYPROJECT3_OYUN_PLANI_TR.md`; tasks `ROADMAP.md`; per-task status `PLAN_STATUS.md`.
 Current work: closing phases 1-9 in order (`CURRENT_TASK.md`).
 
-## Branches
+## Branches (cleaned 2026-10-30)
 
 | Branch | State |
 |---|---|
-| `main` | Behind; the snap work is not merged yet. |
-| `feature/global-snap-kernel` | Pushed. One placement kernel for all materials. |
-| `feature/contextual-interaction-resolver` | Another assistant's work on top of the kernel (contextual targets, aim cuts). |
-| `feature/simple-intent` | Newest. Contextual placement without modes, symmetric diagonals, bent end joints. |
-| `group-a-code-closure` | ChatGPT, +182 commits on simple-intent@321e55a: survival items, conditions, equipment, farming items, excavation yield, routes. Did not compile as pushed; fixed on `game/p00-adopt-group-a` (250ce13). |
-| `fix/vertical-slice-b-core-loop`, `phase-03…14-*-sequential` | Older separate lines without the placement kernel. Not merged anywhere. |
-| `work/phase-3-4-closure` | Merged into p00 on 2026-10-30. Do not use. |
-| `game/p06-farming-seed-cycle`, `game/p07-zone-entry-progression` | Obsolete: a second farming API. Not merged; do not use. |
-| PR #34 `architecture/global-snap-variation-library` | Has a second, conflicting kernel. Recommended: close it. |
+| `game/p00-adopt-group-a` | **The only working branch.** Builds, 136/136 tests (`4717fee`). |
+| `main` | Behind; merge of the working branch waits for the user (ROADMAP Q0). |
+| `game/p06-p08-blind-code-closure` | ChatGPT line on an old base; kept only until its useful parts (infrastructure actor, combustible component, infrastructure/knowledge/raid_defenses/routes data) are ported. Do not commit to it. |
+
+64 other branches were deleted on 2026-10-30. 37 were fully inside the working branch, 13 inside another branch;
+13 unique ones are kept as tags `archive/<old branch name>` (e.g. `archive/phase-14-world-integration-demo-sequential`,
+`archive/architecture/global-snap-variation-library`). Restore one with `git switch -c <name> archive/<name>`.
 
 ## Works (build + 85 automation tests on game/p00-adopt-group-a)
 
