@@ -7,6 +7,7 @@
 #include "WorldGameDataSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
 #include "WorldRegionalEventSubsystem.h"
 
 AWorldInfrastructureActor::AWorldInfrastructureActor()
@@ -94,7 +95,13 @@ bool AWorldInfrastructureActor::ConsumeMaterialsAtomically(
             Inventory->RestoreSnapshot(OwnerId, PreviousStacks, PreviousQuickAccess);
         const bool bOwnershipRestored =
             Ownership->RestoreSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
-        return bInventoryRestored && bOwnershipRestored;
+        const bool bSucceeded = bInventoryRestored && bOwnershipRestored;
+        if (!bSucceeded)
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr)
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Infrastructure inventory/ownership rollback failed; stop simulation and recover/reset the world."));
+        return bSucceeded;
     };
     for (const FGameDataItemAmount& Cost : Materials)
         if (!Inventory->TryRemoveItem(Cost.ItemId, Cost.Quantity))
@@ -135,13 +142,15 @@ bool AWorldInfrastructureActor::BuildFromInventory(
     UWorld* World = GetWorld();
     UWorldGameDataSubsystem* GameData =
         World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes =
         World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
     const FGameDataInfrastructure* Definition =
         GameData ? GameData->FindInfrastructure(InfrastructureId) : nullptr;
     UInventoryCraftingComponent* Inventory = nullptr;
     if (!World || !GameData || !GameData->IsLoaded() || !Definition ||
-        (bAffectsRouteGraph && !Routes) || !FindInventory(InventoryOwnerId, Inventory))
+        (bAffectsRouteGraph && !Routes) || !Ownership || !FindInventory(InventoryOwnerId, Inventory))
         return false;
     if (IsInfrastructureBuilt())
         return false;
@@ -156,6 +165,10 @@ bool AWorldInfrastructureActor::BuildFromInventory(
     TArray<FInventoryStack> PreviousStacks;
     FName PreviousQuickAccess = NAME_None;
     Inventory->ExportSnapshot(OwnerActorId, PreviousOwnerId, PreviousStacks, PreviousQuickAccess);
+    TArray<FWorldOwnedItemRecord> PreviousOwnedItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
     if (PreviousOwnerId != InventoryOwnerId ||
         !ConsumeMaterialsAtomically(Inventory, InventoryOwnerId,
             Definition->BuildMaterials, Definition->Tools))
@@ -168,8 +181,10 @@ bool AWorldInfrastructureActor::BuildFromInventory(
     {
         const bool bInventoryRestored =
             Inventory->RestoreSnapshot(InventoryOwnerId, PreviousStacks, PreviousQuickAccess);
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
         const bool bRoutesRestored = Routes->RestoreSnapshot(PreviousNodes, PreviousEdges);
-        if (!bInventoryRestored || !bRoutesRestored)
+        if (!bInventoryRestored || !bOwnershipRestored || !bRoutesRestored)
             if (UWorldSimulationCoordinatorSubsystem* Coordinator =
                 World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
                 Coordinator->MarkSimulationFaulted(
@@ -195,13 +210,15 @@ bool AWorldInfrastructureActor::RepairFromInventory(
     UWorld* World = GetWorld();
     UWorldGameDataSubsystem* GameData =
         World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes =
         World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
     const FGameDataInfrastructure* Definition =
         GameData ? GameData->FindInfrastructure(InfrastructureId) : nullptr;
     UInventoryCraftingComponent* Inventory = nullptr;
     if (!World || !GameData || !GameData->IsLoaded() || !Definition ||
-        (bAffectsRouteGraph && !Routes) || !FindInventory(InventoryOwnerId, Inventory))
+        (bAffectsRouteGraph && !Routes) || !Ownership || !FindInventory(InventoryOwnerId, Inventory))
         return false;
 
     float CurrentCondition = LocalCondition;
@@ -223,6 +240,10 @@ bool AWorldInfrastructureActor::RepairFromInventory(
     TArray<FInventoryStack> PreviousStacks;
     FName PreviousQuickAccess = NAME_None;
     Inventory->ExportSnapshot(OwnerActorId, PreviousOwnerId, PreviousStacks, PreviousQuickAccess);
+    TArray<FWorldOwnedItemRecord> PreviousOwnedItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
     if (PreviousOwnerId != InventoryOwnerId ||
         !ConsumeMaterialsAtomically(Inventory, InventoryOwnerId,
             Definition->RepairMaterials, Definition->Tools))
@@ -233,8 +254,10 @@ bool AWorldInfrastructureActor::RepairFromInventory(
     {
         const bool bInventoryRestored =
             Inventory->RestoreSnapshot(InventoryOwnerId, PreviousStacks, PreviousQuickAccess);
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
         const bool bRoutesRestored = Routes->RestoreSnapshot(PreviousNodes, PreviousEdges);
-        if (!bInventoryRestored || !bRoutesRestored)
+        if (!bInventoryRestored || !bOwnershipRestored || !bRoutesRestored)
             if (UWorldSimulationCoordinatorSubsystem* Coordinator =
                 World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
                 Coordinator->MarkSimulationFaulted(
