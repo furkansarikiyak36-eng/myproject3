@@ -687,7 +687,7 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Stations"), Data->GetStations().Num(), 10);
     TestEqual(TEXT("Three crops"), Data->GetCrops().Num(), 3);
     TestEqual(TEXT("Fifteen field action definitions"), Data->GetFieldActions().Num(), 15);
-    TestEqual(TEXT("Eight infrastructure definitions"), Data->GetInfrastructures().Num(), 8);
+    TestEqual(TEXT("Nine infrastructure definitions"), Data->GetInfrastructures().Num(), 9);
     TestEqual(TEXT("Two typed structural repair recipes"), Data->GetStructureRepairs().Num(), 2);
     TestEqual(TEXT("Four raid countermeasure definitions"), Data->GetRaidDefenses().Num(), 4);
     TestEqual(TEXT("Three typed knowledge rewards"), Data->GetKnowledge().Num(), 3);
@@ -2268,6 +2268,9 @@ bool FDataDrivenFieldActionTransactionTest::RunTest(const FString& Parameters)
     };
     TestTrue(TEXT("Add digging stick"), AddStack(TEXT("Tool.DiggingStick"), 1, true));
     TestTrue(TEXT("Add hoe"), AddStack(TEXT("Tool.Hoe"), 1, true));
+    TestTrue(TEXT("Add axe"), AddStack(TEXT("Tool.Axe"), 1, true));
+    TestTrue(TEXT("Add four fence sticks"), AddStack(TEXT("Stick"), 4, false));
+    TestTrue(TEXT("Add fence rope"), AddStack(TEXT("Rope"), 1, false));
     TestTrue(TEXT("Add compost"), AddStack(TEXT("Compost"), 1, false));
 
     FWorldFieldCellState Cell;
@@ -2319,6 +2322,15 @@ bool FDataDrivenFieldActionTransactionTest::RunTest(const FString& Parameters)
             Cell.Cell, FertilizeRevision, Inventory->GetInventoryOwnerId(), Retry));
     TestEqual(TEXT("Retry does not apply fertilizer twice"), Retry.Fertility, AfterFertilize);
     TestEqual(TEXT("Retry does not consume a second compost"), Inventory->GetItemCount(TEXT("Compost")), 0);
+    TestTrue(TEXT("Field fence requires axe, sticks and rope"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), TEXT("Field.Fence"),
+            Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
+    TestTrue(TEXT("Field state records fence installation"), Cell.bFenced);
+    TestEqual(TEXT("Fence consumes sticks"), Inventory->GetItemCount(TEXT("Stick")), 0);
+    TestEqual(TEXT("Fence consumes rope"), Inventory->GetItemCount(TEXT("Rope")), 0);
+    TestEqual(TEXT("Axe is a reusable tool"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
+    const FGameDataFieldAction* FenceAction = Data->FindFieldAction(TEXT("Field.Fence"));
+    TestTrue(TEXT("Fence has a configured work time"), FenceAction && FenceAction->WorkSeconds == 1800.0);
     return true;
 }
 
