@@ -210,7 +210,7 @@
         9
       ],
       "required_weather": [],
-      "chain_parent_id": "Event.Drought",
+      "chain_parent_id": "Event.Lightning",
       "min_temperature_c": 20,
       "max_temperature_c": 100,
       "min_snow_depth_cm": 0,
@@ -346,7 +346,7 @@
         "Wind"
       ],
       "chain_parent_id": "Event.Snowstorm",
-      "min_temperature_c": -100,
+      "min_temperature_c": -1,
       "max_temperature_c": 2,
       "min_snow_depth_cm": 55,
       "min_ground_wetness": 0,
@@ -425,6 +425,39 @@
       "structure_damage_per_hour": 0.6,
       "route_cost_multiplier": 1.3,
       "raid_defense_multiplier": 0.75,
+      "snow_load_multiplier": 1,
+      "survival_severity_multiplier": 1.1
+    },
+    {
+      "id": "Event.Lightning",
+      "type": "Lightning",
+      "regions": [
+        "Zone.2"
+      ],
+      "months": [
+        7,
+        8,
+        9
+      ],
+      "required_weather": [
+        "Storm",
+        "Wind"
+      ],
+      "chain_parent_id": "Event.Drought",
+      "min_temperature_c": 15,
+      "max_temperature_c": 100,
+      "min_snow_depth_cm": 0,
+      "min_ground_wetness": 0,
+      "max_ground_wetness": 0.4,
+      "min_slope_ratio": 0.3,
+      "min_elevation_m": 200,
+      "min_flood_exposure": 0,
+      "min_vegetation_fuel_load": 0.55,
+      "chance_per_day": 0.35,
+      "duration_hours": 3,
+      "structure_damage_per_hour": 0.2,
+      "route_cost_multiplier": 1.2,
+      "raid_defense_multiplier": 0.8,
       "snow_load_multiplier": 1,
       "survival_severity_multiplier": 1.1
     }
