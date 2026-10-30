@@ -56,6 +56,72 @@ struct FGameDataTransformation
 };
 
 USTRUCT(BlueprintType)
+struct FGameDataFieldAction
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") FName Operation = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FName> Tools;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FGameDataItemAmount> Inputs;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") TArray<FName> TransformationIds;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") FName StationId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") FName StoragePolicy = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") double WorkSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Farm") float WorkAmount = 1.0f;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataInfrastructureWearRule
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") FName EventId = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") float WearPerHour = 0.0f;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataInfrastructure
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") TArray<FGameDataItemAmount> BuildMaterials;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") TArray<FGameDataItemAmount> RepairMaterials;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") TArray<FName> Tools;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") TArray<FGameDataInfrastructureWearRule> WearRules;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") double BuildWorkSeconds = 0.0;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") float MaxCondition = 100.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") float BuiltRouteCostMultiplier = 1.0f;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataStructureRepair
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Repairs") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Repairs") FName StructureKind = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Repairs") TArray<FGameDataItemAmount> Materials;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Repairs") TArray<FName> Tools;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Repairs") float RepairAmount = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Repairs") double WorkSeconds = 0.0;
+};
+
+USTRUCT(BlueprintType)
+struct FGameDataRaidDefense
+{
+    GENERATED_BODY()
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") FName Id = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") FString Name;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") TArray<FGameDataItemAmount> BuildMaterials;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") TArray<FName> Tools;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") float DefenseRating = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") float StorageSuppression = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") float SmellSuppression = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") float LightSuppression = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") float SmokeSuppression = 0.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Defense") double WorkSeconds = 0.0;
+};
+
+USTRUCT(BlueprintType)
 struct FGameDataStation
 {
     GENERATED_BODY()
@@ -188,6 +254,14 @@ public:
     const TMap<FName, FGameDataStation>& GetStations() const { return Stations; }
     const TArray<FGameDataCrop>& GetCrops() const { return Crops; }
     const TArray<FGameDataAnimal>& GetAnimals() const { return Animals; }
+    const TArray<FGameDataFieldAction>& GetFieldActions() const { return FieldActions; }
+    const TArray<FGameDataInfrastructure>& GetInfrastructures() const { return Infrastructures; }
+    const TArray<FGameDataStructureRepair>& GetStructureRepairs() const { return StructureRepairs; }
+    const TArray<FGameDataRaidDefense>& GetRaidDefenses() const { return RaidDefenses; }
+    const FGameDataFieldAction* FindFieldAction(FName Id) const;
+    const FGameDataInfrastructure* FindInfrastructure(FName Id) const;
+    const FGameDataStructureRepair* FindStructureRepair(FName Id) const;
+    const FGameDataRaidDefense* FindRaidDefense(FName Id) const;
     const TArray<FGameDataZone>& GetZones() const { return Zones; }
     const TArray<FGameDataDiscovery>& GetDiscoveries() const { return Discoveries; }
     const TArray<FGameDataRouteNode>& GetRouteNodes() const { return RouteNodes; }
@@ -210,6 +284,10 @@ private:
     TMap<FName, FGameDataStation> Stations;
     TArray<FGameDataCrop> Crops;
     TArray<FGameDataAnimal> Animals;
+    TArray<FGameDataFieldAction> FieldActions;
+    TArray<FGameDataInfrastructure> Infrastructures;
+    TArray<FGameDataStructureRepair> StructureRepairs;
+    TArray<FGameDataRaidDefense> RaidDefenses;
     TArray<FGameDataZone> Zones;
     TArray<FGameDataDiscovery> Discoveries;
     TArray<FGameDataRouteNode> RouteNodes;
