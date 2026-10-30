@@ -99,7 +99,10 @@
       "survival_severity_multiplier": 1.15,
       "wetness_per_hour": 0.35,
       "fatigue_per_hour": 0.5,
-      "thirst_per_hour": 0.2
+      "thirst_per_hour": 0.2,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Frost",
@@ -133,7 +136,10 @@
       "snow_load_multiplier": 1,
       "survival_severity_multiplier": 1.25,
       "core_temperature_delta_c_per_hour": -0.35,
-      "fatigue_per_hour": 0.3
+      "fatigue_per_hour": 0.3,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Hail",
@@ -174,7 +180,10 @@
       "snow_load_multiplier": 1,
       "survival_severity_multiplier": 1.15,
       "health_damage_per_hour": 0.1,
-      "stamina_loss_per_hour": 0.3
+      "stamina_loss_per_hour": 0.3,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Drought",
@@ -205,7 +214,10 @@
       "survival_severity_multiplier": 1.25,
       "core_temperature_delta_c_per_hour": 0.18,
       "thirst_per_hour": 0.9,
-      "fatigue_per_hour": 0.8
+      "fatigue_per_hour": 0.8,
+      "fire_ignition_chance_per_hour": 0.05,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Wildfire",
@@ -240,7 +252,10 @@
       "health_damage_per_hour": 0.15,
       "core_temperature_delta_c_per_hour": 0.25,
       "fatigue_per_hour": 0.6,
-      "thirst_per_hour": 0.5
+      "thirst_per_hour": 0.5,
+      "fire_ignition_chance_per_hour": 0.35,
+      "fire_spread_chance_per_hour": 0.75,
+      "fire_burn_rate_multiplier": 1.25
     },
     {
       "id": "Event.ToxicRain",
@@ -274,7 +289,10 @@
       "survival_severity_multiplier": 1.6,
       "health_damage_per_hour": 0.25,
       "wetness_per_hour": 0.2,
-      "fatigue_per_hour": 0.4
+      "fatigue_per_hour": 0.4,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Epidemic",
@@ -305,7 +323,10 @@
       "survival_severity_multiplier": 1.5,
       "health_damage_per_hour": 0.15,
       "fatigue_per_hour": 1,
-      "stamina_loss_per_hour": 0.5
+      "stamina_loss_per_hour": 0.5,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Snowstorm",
@@ -347,7 +368,10 @@
       "core_temperature_delta_c_per_hour": -0.55,
       "wetness_per_hour": 0.12,
       "fatigue_per_hour": 0.5,
-      "stamina_loss_per_hour": 0.3
+      "stamina_loss_per_hour": 0.3,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Avalanche",
@@ -389,7 +413,10 @@
       "health_damage_per_hour": 5,
       "fatigue_per_hour": 2,
       "stamina_loss_per_hour": 1.5,
-      "core_temperature_delta_c_per_hour": -0.3
+      "core_temperature_delta_c_per_hour": -0.3,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Fog",
@@ -414,7 +441,10 @@
       "raid_defense_multiplier": 0.7,
       "snow_load_multiplier": 1,
       "survival_severity_multiplier": 1.05,
-      "fatigue_per_hour": 0.15
+      "fatigue_per_hour": 0.15,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.WindStorm",
@@ -459,7 +489,10 @@
       "health_damage_per_hour": 0.05,
       "core_temperature_delta_c_per_hour": -0.2,
       "wetness_per_hour": 0.08,
-      "stamina_loss_per_hour": 0.3
+      "stamina_loss_per_hour": 0.3,
+      "fire_ignition_chance_per_hour": 0,
+      "fire_spread_chance_per_hour": 0,
+      "fire_burn_rate_multiplier": 1
     },
     {
       "id": "Event.Lightning",
@@ -495,7 +528,10 @@
       "survival_severity_multiplier": 1.1,
       "health_damage_per_hour": 0.25,
       "core_temperature_delta_c_per_hour": 0.2,
-      "fatigue_per_hour": 0.2
+      "fatigue_per_hour": 0.2,
+      "fire_ignition_chance_per_hour": 0.55,
+      "fire_spread_chance_per_hour": 0.1,
+      "fire_burn_rate_multiplier": 1
     }
   ]
 }
