@@ -1835,4 +1835,77 @@ bool FStructuralSnowLoadAffectsSupportTest::RunTest(const FString& Parameters)
     return true;
 }
 
+
+/** P8.1: route edges with a region ID consume that region's live event cost multiplier. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRegionalHazardChangesRouteCostTest,
+    "MyProject3.World.Events.RegionalHazardsIncreaseRouteCost", Flags)
+bool FRegionalHazardChangesRouteCostTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldLogisticsRouteSubsystem* Routes =
+        World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Regional events"), Events) ||
+        !TestNotNull(TEXT("Route graph"), Routes))
+        return false;
+
+    // The event always occurs during day 3: chance=1, and the event window
+    // begins at a deterministic time in that day and lasts for 72 hours.
+    const double LateInThirdDay = 16.0 * 3600.0 + 2.0 * Day + 23.9 * 3600.0;
+    TestTrue(TEXT("Initialize clock inside the event window"), Clock->InitializeClock(321, LateInThirdDay));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+
+    const FString TestDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("P8RouteEventTest"));
+    IFileManager::Get().MakeDirectory(*TestDirectory, true);
+    const FString EventJson = TEXT(
+        "{\"regions\":[{\"id\":\"Zone.0\",\"elevation_m\":0,\"slope_ratio\":0,"
+        "\"flood_exposure\":0,\"vegetation_fuel_load\":0,\"snow_load_units_per_cm_m2\":0.1,"
+        "\"raid_target\":[0,0,0]}],"
+        "\"events\":[{\"id\":\"Event.RouteTest\",\"type\":\"Flood\","
+        "\"regions\":[\"Zone.0\"],\"months\":[],\"required_weather\":[],"
+        "\"chance_per_day\":1,\"duration_hours\":72,\"route_cost_multiplier\":2,"
+        "\"raid_defense_multiplier\":1,\"snow_load_multiplier\":1,"
+        "\"survival_severity_multiplier\":1}]}");
+    const FString EventPath = FPaths::Combine(TestDirectory, TEXT("events.json"));
+    TestTrue(TEXT("Write temporary deterministic event fixture"),
+        FFileHelper::SaveStringToFile(EventJson, *EventPath));
+    TestTrue(FString::Printf(TEXT("Load event fixture: %s"), *Events->GetLastError()),
+        Events->LoadDefinitionsFromDirectory(TestDirectory));
+
+    FWorldRegionalEventEvaluation Evaluation;
+    TestTrue(TEXT("Evaluate the test region"), Events->EvaluateRegion(TEXT("Zone.0"), Evaluation));
+    TestTrue(TEXT("Test event is active"), Evaluation.ActiveEventIds.Contains(TEXT("Event.RouteTest")));
+    TestEqual(TEXT("Regional event doubles route costs"), Evaluation.RouteCostMultiplier, 2.0f);
+
+    FLogisticsRouteNode Start;
+    Start.NodeId = TEXT("Route.Test.Start");
+    FLogisticsRouteNode End;
+    End.NodeId = TEXT("Route.Test.End");
+    TestTrue(TEXT("Add start node"), Routes->UpsertNode(Start));
+    TestTrue(TEXT("Add end node"), Routes->UpsertNode(End));
+    FLogisticsRouteEdge Edge;
+    Edge.FromNode = Start.NodeId;
+    Edge.ToNode = End.NodeId;
+    Edge.RegionId = TEXT("Zone.0");
+    Edge.Cost = 10.0f;
+    TestTrue(TEXT("Add region-tagged edge"), Routes->UpsertEdge(Edge));
+
+    float Cost = 0.0f;
+    TestTrue(TEXT("Compute event-adjusted edge cost"), Routes->ComputeEdgeCost(
+        Edge, FLogisticsRouteCostContext(), Cost));
+    TestEqual(TEXT("Route cost applies regional event multiplier"), Cost, 20.0f, 0.001f);
+
+    IFileManager::Get().Delete(*EventPath, false, true);
+    IFileManager::Get().DeleteDirectory(*TestDirectory, false, true);
+    return true;
+}
+
 #endif
