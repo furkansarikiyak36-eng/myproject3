@@ -3,6 +3,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
+#include "WorldSimulationClockSubsystem.h"
 
 UWorldCombustibleComponent::UWorldCombustibleComponent()
 {
@@ -76,7 +77,7 @@ bool UWorldCombustibleComponent::TryIgnite(const FGuid& OperationId, float Inten
         !FMath::IsFinite(FuelUnitsRemaining) || FuelUnitsRemaining < 0.0f ||
         !FMath::IsFinite(Moisture) || Moisture < 0.0f || Moisture > 1.0f ||
         !FMath::IsFinite(IgnitionMoistureThreshold) ||
-        IgnitionMoistureThreshold < 0.0f || IgnitionMoistureThreshold > 1.0f)
+        IgnitionMoistureThreshold < 0.0f || IgnitionMoistureThreshold > 1.0f || bFirebreak)
         return false;
 
     if (HasIgnitionReceipt(OperationId))
@@ -91,6 +92,10 @@ bool UWorldCombustibleComponent::TryIgnite(const FGuid& OperationId, float Inten
 
     bBurning = true;
     FireIntensity = FMath::Clamp(FMath::Max(FireIntensity, Intensity), 0.01f, 1.0f);
+    const UWorldSimulationClockSubsystem* Clock =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    LastIgnitedTickIndex = Clock && Clock->IsClockInitialized()
+        ? Clock->GetTickIndex() : INDEX_NONE;
     RecordIgnitionReceipt(OperationId);
     SynchronizeRaidSignalTags();
     return true;
