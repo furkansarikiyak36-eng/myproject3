@@ -7,6 +7,7 @@
 #include "WorldGameDataSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
+#include "WorldRegionalEventSubsystem.h"
 
 AWorldInfrastructureActor::AWorldInfrastructureActor()
 {
@@ -245,9 +246,10 @@ bool AWorldInfrastructureActor::IsInfrastructureBuilt() const
 
 bool AWorldInfrastructureActor::AdvanceLocalWeatherWear(double DeltaSeconds)
 {
-    if (bAffectsRouteGraph || !bConstructed || !FMath::IsFinite(DeltaSeconds) ||
-        DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
-        return !bAffectsRouteGraph || !bConstructed;
+    if (bAffectsRouteGraph || !bConstructed)
+        return true;
+    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+        return false;
 
     UWorld* World = GetWorld();
     UWorldGameDataSubsystem* GameData =
