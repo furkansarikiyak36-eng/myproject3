@@ -237,7 +237,8 @@ private:
 
     bool WouldCreateCycle(FGuid ParentNodeId, FGuid ChildNodeId) const;
     /** Support search over primary and secondary links, optionally ignoring one node. */
-    bool HasValidSupportPathInternal(FGuid NodeId, FGuid ExcludedNodeId, TSet<FGuid>& Visiting) const;
+    bool HasValidSupportPathInternal(FGuid NodeId, FGuid ExcludedNodeId,
+        TSet<FGuid>& Visiting, bool bIncludeEnvironmentalLoad = true) const;
     bool IsAnchorInUse(FGuid SupportNodeId, FName SupportAnchorId) const;
     bool CollectDependentsDepthFirst(FGuid NodeId, TSet<FGuid>& Visited,
         TArray<FGuid>& OutOrder) const;
