@@ -44,7 +44,8 @@
           "event_id": "Event.Wildfire",
           "wear_per_hour": 2
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.SteppingStones",
@@ -72,7 +73,8 @@
           "event_id": "Event.Flood",
           "wear_per_hour": 12
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.ForestTrail",
@@ -112,7 +114,8 @@
           "event_id": "Event.WindStorm",
           "wear_per_hour": 3
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.HillSteps",
@@ -157,7 +160,8 @@
           "event_id": "Event.Avalanche",
           "wear_per_hour": 45
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.RopeLine",
@@ -197,7 +201,8 @@
           "event_id": "Event.Snowstorm",
           "wear_per_hour": 6
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.Boardwalk",
@@ -241,7 +246,8 @@
           "event_id": "Event.WindStorm",
           "wear_per_hour": 4
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.Raft",
@@ -281,7 +287,8 @@
           "event_id": "Event.WindStorm",
           "wear_per_hour": 8
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     },
     {
       "id": "Infrastructure.ForwardCamp",
@@ -329,7 +336,8 @@
           "event_id": "Event.Avalanche",
           "wear_per_hour": 35
         }
-      ]
+      ],
+      "repair_condition_per_job": 25
     }
   ]
 }
