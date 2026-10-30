@@ -221,6 +221,14 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCrop(
         const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
         TArray<FGuid>& OutItemIds);
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryHarvestCropWithFieldAction(
+        const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
+        const FGuid& InventoryOwnerId, TArray<FGuid>& OutItemIds);
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryPlantCropWithFieldAction(
+        const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
+        int64 ExpectedSeedItemRevision, const FGuid& InventoryOwnerId,
+        const FIntVector& PlotCell, int64 ExpectedFieldRevision, float InitialMoisture,
+        FGuid& OutCropId);
     UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryFeedAnimal(
         const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
         const FGuid& FeedItemId, int64 ExpectedFeedItemRevision,
