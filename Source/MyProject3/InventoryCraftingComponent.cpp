@@ -5,6 +5,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Actor.h"
 #include "WorldItemOwnershipSubsystem.h"
+#include "WorldSurvivalSubsystem.h"
 #include "WorldObjectIdentityComponent.h"
 #include "WorldStorageSubsystem.h"
 #include "LogBuildPiece.h"
@@ -820,12 +821,26 @@ bool UInventoryCraftingComponent::RegisterRecipe(const FCraftingRecipe& Recipe)
  Recipes.Add(Recipe); return true;
 }
 
+void UInventoryCraftingComponent::SetCraftingEntityId(const FGuid& EntityId)
+{
+    CraftingEntityId = EntityId;
+}
+
 bool UInventoryCraftingComponent::CanCraft(FName RecipeId, TArray<FInventoryStack>& OutMissing) const
 {
  OutMissing.Reset();
  const int32 Index = FindRecipeIndex(RecipeId);
  if (!Recipes.IsValidIndex(Index) || !Recipes[Index].bEnabled) return false;
  const FCraftingRecipe& Recipe = Recipes[Index];
+ if (!Recipe.RequiredUnlockDefinitionId.IsNone())
+ {
+  UWorld* World = GetWorld();
+  const UWorldSurvivalSubsystem* Survival =
+   World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+  if (!Survival || !CraftingEntityId.IsValid() ||
+      !Survival->IsDefinitionUnlocked(CraftingEntityId, Recipe.RequiredUnlockDefinitionId))
+   return false;
+ }
  // Everything must be in hand; a tool (bConsume = false) is needed but not used up.
  TMap<FName,int32> Required;
  for (const FRecipeIngredient& I : Recipe.Ingredients) Required.FindOrAdd(I.ItemId) += I.Quantity;
