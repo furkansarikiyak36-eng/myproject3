@@ -16,8 +16,8 @@ Update this file whenever a task changes state.
 | Status | Count | Tasks |
 |---|---:|---|
 | Var | 9 | P0.3, P0.4, P1.1, P1.2, P2.4, P2.6, P4.2, P5.1, P5.3 |
-| Kısmi | 23 | P0.5, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.1, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.2, P8.3, P9.2, P10, Save |
-| Yok | 11 | P0.2, P1.3, P1.4, P3.3, P3.4, P5.2, P8.1, P9.1, P9.3, P11, P12 |
+| Kısmi | 25 | P0.5, P1.3, P2.1, P2.2, P2.3, P2.5, P3.1, P3.2, P4.1, P4.3, P4.4, P6.1, P6.2, P6.3, P6.4, P7.1, P7.2, P7.3, P7.4, P8.1, P8.2, P8.3, P9.2, P10, Save |
+| Yok | 9 | P0.2, P1.4, P3.3, P3.4, P5.2, P9.1, P9.3, P11, P12 |
 
 Player input/HUD: missing for most systems except carrying/cutting/building logs [S] and the dig tool on N [A]. The new P6 source contracts below are not wired to player input/HUD or proven in PIE.
 
@@ -31,7 +31,7 @@ Player input/HUD: missing for most systems except carrying/cutting/building logs
 | P0.5 recipes from data | Kısmi | all game recipes come from data | the old demo recipe in `WorldDemoScenarioActor.cpp` is still in C++ |
 | P1.1 calendar | Var | `WorldCalendar` + clock `GetCalendarDate`: year, month, day, hour, season from saved time; 5 days/month, start March 5 08:00; 3 tests | config from data file (P0.3), HUD (P1.4) |
 | P1.2 climate by month | Var | `UWorldClimateSubsystem`: 12-month table, daily weather from clock seed, 05:00/15:00 temperature curve, snow depth, ground wetness, pushes weather + air temperature to survival; in the coordinator step + rollback; save schema v21; 3 tests | VerticalSlice_C does not run the coordinator yet (own hours, own weather) -> P1.4 |
-| P1.3 event director | Yok | only raids have a warning phase [S] | natural events with signals: snowstorm, heavy rain, flood |
+| P1.3 event director | Kısmi | P8 adds a deterministic, data-driven regional evaluator for flood, frost, hail, drought, wildfire, toxic rain, epidemic, snowstorm, avalanche and fog; explicit chains and regional modifiers [S] | automatic hazard start/end notifications, survival-condition and route-cost consumers, periodic hazard damage/fire spread, HUD/signals and world bootstrap wiring |
 | P1.4 date/signals on screen | Yok | — | HUD date/season, visible signs |
 | P2.1 water | Kısmi | thirst value [S]; consuming an item gives thirst relief [A]; dirty vs boiled water as consumable definitions, dirty causes illness (test) | drinking from the creek (interaction), water container item, boiling recipe (P4) |
 | P2.2 sleep/fatigue | Kısmi | fatigue value [S]; rest on the shared clock [A]; rest quality from shelter, warmth, dry clothes (`GetRestQuality`, test) | fatigue limiting actions (slower work, no sprint) |
@@ -58,9 +58,9 @@ Player input/HUD: missing for most systems except carrying/cutting/building logs
 | P7.2 zones | Kısmi | zones.json validates zones 0–4, resources, barriers, permanent solutions, per-zone discovery IDs, prerequisite discoveries and seasonal/capability gates; routes.json adds camp/creek/ford/lookout anchors for existing VerticalSlice_C [code-written] | zone 3/4 physical placement, real zone volumes/actor membership and overlap/input wiring remain deferred to world/interaction integration |
 | P7.3 rewards | Kısmi | discoveries.json loads prerequisites, required equipment and unlock IDs; loader registers definitions; `TryRecordZoneEntry` validates access and records the configured zone discovery at shared world time with an idempotent operation ID [code-written] | connect a real zone/interaction trigger to `TryRecordZoneEntry`; place discoveries in the world and enforce recipe/seed/action gating with `IsDefinitionUnlocked` |
 | P7.4 infrastructure | Kısmi | route edges carry stable infrastructure IDs; SetInfrastructureBuilt updates matching directional edges; bridge/ford cost change has test source; route graph/infrastructure state is persisted in schema v25 [code-written] | connect actual construction/damage/repair events to route edges; trail markers, path, ladder, raft, forward camp, maintenance and weather damage remain |
-| P8.1 natural events + chains | Yok | — | flood, frost, hail, drought, wildfire, toxic rain, epidemic, storm, fog and chains |
-| P8.2 signal-driven raids | Kısmi | threat director with warning phase, raid adapter, structural damage pulses [S]; pulse claimed once [A] | triggers from store size, smell, light, smoke |
-| P8.3 damage, repair, snow, avalanche, fire | Kısmi | structural damage and dependents [S]; helper `MaintainWalls` [S] | snow load, avalanche, fire spread, repair with materials |
+| P8.1 natural events + chains | Kısmi | `events.json` + `UWorldRegionalEventSubsystem`: validated region/event data, seed/day deterministic windows, weather/month/terrain conditions, and flood→epidemic, drought→wildfire, snowstorm→avalanche chains [code-written] | evaluator output is not yet globally consumed to apply all route/survival/damage effects; hazard transition notifications/HUD, automatic fire spread and whole-world runtime acceptance remain |
+| P8.2 signal-driven raids | Kısmi | signal API accepts normalized storage-value/smell/light/smoke inputs with weighted threshold, cooldown, region targeting and operation receipts; scheduled raids can target configured region locations; snapshot v2 persists signal receipts; regional structural defense reduces raid pulse damage [code-written] | connect real storage/light/smoke/scent samplers to the API, author region/defense tags and targets in the level, then validate raid materialization/save-load in Unreal |
+| P8.3 damage, repair, snow, avalanche, fire | Kısmi | structural graph derives snow load from climate depth × region tuning × tagged exposed area × event multiplier; overloaded nodes fail support-path checks; intact supported regional defense tags contribute to raid mitigation [code-written] | apply event damage/avalanche/fire spread as committed world mutations, item-backed material repair and helper/player integration; author actor tags and validate collapse/save-load behavior in Unreal |
 | P9.1 time budget tuning | Yok | — | balance pass |
 | P9.2 helper uses stations | Kısmi | helper follows, collects, piles, builds plans, maintains walls [S] | using stations and new materials |
 | P9.3 one full year played | Yok | — | — |
