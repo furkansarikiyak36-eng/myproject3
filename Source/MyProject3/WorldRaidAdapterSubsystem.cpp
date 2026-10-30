@@ -221,6 +221,27 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalHazardDamage(double DeltaSeconds
         FStructuralNodeRecord Node;
         if (!Graph->GetNode(NodeId, Node))
             continue;
+        // Snow is a live external load, not accumulated structural damage.
+        // Once an exposed member's total load exceeds capacity, the graph marks
+        // it failed and the existing leaf-first collapse resolver removes it.
+        if (Node.bSnowExposed && !Node.RegionId.IsNone())
+        {
+            const float AggregateLoad = Graph->GetAggregateLoad(NodeId);
+            if (!FMath::IsFinite(AggregateLoad) || AggregateLoad < 0.0f)
+                return false;
+            if (AggregateLoad > Node.MaxSupportedLoad)
+            {
+                bool bSnowCollapseThresholdExceeded = false;
+                if (!Graph->ApplyDamage(NodeId, Node.DamageThreshold, bSnowCollapseThresholdExceeded) ||
+                    !bSnowCollapseThresholdExceeded ||
+                    !ResolveCollapsedSubtree(NodeId))
+                {
+                    return false;
+                }
+                continue;
+            }
+        }
+
         const float* Damage = DamagePerRegion.Find(Node.RegionId);
         if (!Damage || *Damage <= 0.0f)
             continue;
