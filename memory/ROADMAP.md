@@ -48,6 +48,8 @@ Editor closed. Then, in order, without fixing anything in between:
 6. Write a session file (`memory/sessions/`) before you stop. If you run out of time/tokens in the
    middle, set status `in-progress` with a `Left off:` line saying exactly what remains.
 
+P6/P8 source-test inventory on `game/p06-p08-blind-code-closure` (2026-10-30): `GameWorldTests.cpp` has 41 automation tests total; 15 named tests cover Farming/Events. These are source definitions only, not executed evidence.
+
 ## Status vocabulary (honest levels)
 
 | Status | Meaning | Who can set it |
@@ -241,9 +243,9 @@ Done: measured trip time to the creek drops after the bridge.
 
 ## Phase 8 — Events and threats
 
-- **P8.1** `[code-written / unbuilt, partial integration]` Regional `events.json` + deterministic `UWorldRegionalEventSubsystem`: 12 hazards (flood, frost, hail, drought, lightning, wildfire, ash/toxic rain, epidemic, snowstorm, avalanche, windstorm, fog); chains drought→lightning→wildfire→toxic rain, flood→epidemic and snowstorm→avalanche. Route edges consume regional cost modifiers. Remaining: survival-condition/pollution effects, warnings/transition notifications and fire spread.
-- **P8.2** `[code-written / unbuilt, partial integration]` Adapter scans region-tagged actors each committed fixed step for normalized `RaidSignal.Storage/Smell/Light/Smoke:<0..1>` tags, saturates contributions and submits per-region/tick operation IDs; threat director applies threshold/cooldown and targets the authored region. Supported tagged defenses reduce pulses. Remaining: connect tags to live sensor values, author actor tags/targets in the level, build/test and save-load/PIE verification.
-- **P8.3** `[code-written / unbuilt, partial integration]` Structural graph computes climate/event snow loads; the coordinator applies regional hazard damage and resolves over-capacity snow collapse; `TryRepairStructureWithMaterial` consumes a unique inventory-owned Resource/BuildingPart and records an idempotent operation receipt; regional defense reduces raid damage. Remaining: fire spread/ignition, player/helper repair UI, authored scene tags and Unreal validation.
+- **P8.1** `[code-written / unbuilt, partial integration]` Regional `events.json` + deterministic evaluator: 12 hazards and event chains; route costs consume regional modifiers; zone-entry discovery stores the player's current region; post-clock fixed steps apply bounded health/thirst/wetness/fatigue/stamina/core-temperature exposure with shelter/clothing protection and a saved per-tick idempotency marker. Remaining: named condition triggers, toxic/ash water and crop contamination, start/end notifications and warning HUD.
+- **P8.2** `[code-written / unbuilt, partial integration]` Adapter scans region-tagged actors for normalized Storage/Smell/Light/Smoke values; burning combustible components now publish `RaidSignal.FireLight`/`RaidSignal.FireSmoke`; samples are per-region/tick idempotent, raids use threshold/cooldown/region targeting and regional supported defenses reduce raid pulses. Remaining: live storage/scent/ordinary light/smoke producers, scene tags/targets, raid pawn materialization and Unreal verification.
+- **P8.3** `[code-written / unbuilt, partial integration]` Structural graph computes climate/event snow loads; the coordinator applies regional hazard damage and resolves over-capacity snow collapse; material repair is operation-receipt protected; separate SaveGame combustible components track fuel/moisture/ignition; deterministic regional wildfire ignition/spread respects moisture, radius and point firebreak components, burns fuel and can damage linked structural nodes. Remaining: attach/tune components on scene assets, better firebreak geometry/extinguishing/visuals, repair UI, and Unreal fire/collapse/save-load verification.
 
 ## Phase 9 — Balance and helpers
 
