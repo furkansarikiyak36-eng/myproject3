@@ -32,6 +32,8 @@ struct FCraftingRecipe
 {
  GENERATED_BODY()
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") FName RecipeId = NAME_None;
+ /** Non-empty when this recipe is granted by a recorded discovery. */
+ UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") FName RequiredUnlockDefinitionId = NAME_None;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") TArray<FRecipeIngredient> Ingredients;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") FInventoryStack Output;
  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Crafting") TArray<FInventoryStack> Byproducts;
