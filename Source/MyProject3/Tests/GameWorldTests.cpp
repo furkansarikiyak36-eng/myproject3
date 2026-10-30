@@ -2497,7 +2497,9 @@ bool FWorldInfrastructureActorLifecycleTest::RunTest(const FString& Parameters)
     UWorld* World = TestWorld.World;
     UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes = World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
-    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Routes"), Routes))
+    UWorldItemOwnershipSubsystem* Ownership = World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Game data"), Data) || !TestNotNull(TEXT("Routes"), Routes) ||
+        !TestNotNull(TEXT("Item ownership"), Ownership))
         return false;
     TestTrue(TEXT("Load infrastructure data"), Data->LoadDefault());
     TestTrue(TEXT("Apply route catalog"), Data->ApplyToWorld());
@@ -2520,9 +2522,34 @@ bool FWorldInfrastructureActorLifecycleTest::RunTest(const FString& Parameters)
         Stack.bIsTool = bTool;
         return Inventory->TryAddItem(Stack);
     };
-    TestTrue(TEXT("Add logs"), AddStack(TEXT("Log"), 3, false));
-    TestTrue(TEXT("Add sticks"), AddStack(TEXT("Stick"), 6, false));
-    TestTrue(TEXT("Add rope"), AddStack(TEXT("Rope"), 2, false));
+    auto AddOwnedPhysicalItem = [&](FName DefinitionId, const FGuid& ItemId)
+    {
+        FWorldOwnedItemRecord Record;
+        Record.ItemId = ItemId;
+        Record.DefinitionId = DefinitionId;
+        Record.BaseDefinitionId = DefinitionId;
+        Record.Quantity = 1;
+        Record.OwnerKind = EWorldItemOwnerKind::Inventory;
+        Record.OwnerId = Inventory->GetInventoryOwnerId();
+        if (!Ownership->RegisterItem(Record))
+            return false;
+        FInventoryStack Stack;
+        Stack.ItemId = DefinitionId;
+        Stack.Quantity = 1;
+        Stack.MaxStack = 1;
+        Stack.Category = EInventoryItemCategory::Resource;
+        Stack.OwnedWorldItemId = ItemId;
+        return Inventory->TryAddItem(Stack);
+    };
+    for (int32 Index = 0; Index < 3; ++Index)
+        TestTrue(FString::Printf(TEXT("Add physical log %d"), Index),
+            AddOwnedPhysicalItem(TEXT("Log"), FGuid(1400 + Index, 1410, 1420, 1430)));
+    for (int32 Index = 0; Index < 6; ++Index)
+        TestTrue(FString::Printf(TEXT("Add physical stick %d"), Index),
+            AddOwnedPhysicalItem(TEXT("Stick"), FGuid(1500 + Index, 1510, 1520, 1530)));
+    for (int32 Index = 0; Index < 2; ++Index)
+        TestTrue(FString::Printf(TEXT("Add physical rope %d"), Index),
+            AddOwnedPhysicalItem(TEXT("Rope"), FGuid(1600 + Index, 1610, 1620, 1630)));
     TestTrue(TEXT("Add axe"), AddStack(TEXT("Tool.Axe"), 1, true));
     TestTrue(TEXT("Add chisel"), AddStack(TEXT("Tool.Chisel"), 1, true));
 
@@ -2534,9 +2561,9 @@ bool FWorldInfrastructureActorLifecycleTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Construct hill steps from data recipe"),
         Steps->BuildFromInventory(BuildOperation, Inventory->GetInventoryOwnerId()));
     TestTrue(TEXT("Route sees constructed hill steps"), Steps->IsInfrastructureBuilt());
-    TestEqual(TEXT("Build consumes two logs"), Inventory->GetItemCount(TEXT("Log")), 1);
-    TestEqual(TEXT("Build consumes six sticks"), Inventory->GetItemCount(TEXT("Stick")), 0);
-    TestEqual(TEXT("Build consumes one rope"), Inventory->GetItemCount(TEXT("Rope")), 1);
+    TestEqual(TEXT("Build consumes two unique logs"), Inventory->GetItemCount(TEXT("Log")), 1);
+    TestEqual(TEXT("Build consumes six unique sticks"), Inventory->GetItemCount(TEXT("Stick")), 0);
+    TestEqual(TEXT("Build consumes one unique rope"), Inventory->GetItemCount(TEXT("Rope")), 1);
     TestEqual(TEXT("Build keeps axe"), Inventory->GetItemCount(TEXT("Tool.Axe")), 1);
     TestEqual(TEXT("Build keeps chisel"), Inventory->GetItemCount(TEXT("Tool.Chisel")), 1);
 
