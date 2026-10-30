@@ -131,7 +131,7 @@ bool UWorldGameDataSubsystem::LoadDefault()
 bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 {
     FString Error;
-    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, FieldActionsJson, InfrastructuresJson, StructureRepairsJson, RaidDefensesJson, ZonesJson, RoutesJson, DiscoveriesJson, CalendarJson, ClimateJson, LayersJson;
+    FJson ItemsJson, StationsJson, TransformationsJson, ConditionsJson, CropsJson, AnimalsJson, FieldActionsJson, InfrastructuresJson, StructureRepairsJson, RaidDefensesJson, KnowledgeJson, ZonesJson, RoutesJson, DiscoveriesJson, CalendarJson, ClimateJson, LayersJson;
     if (!ReadJson(Directory, TEXT("items.json"), ItemsJson, Error) ||
         !ReadJson(Directory, TEXT("stations.json"), StationsJson, Error) ||
         !ReadJson(Directory, TEXT("transformations.json"), TransformationsJson, Error) ||
@@ -142,6 +142,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         !ReadJson(Directory, TEXT("infrastructure.json"), InfrastructuresJson, Error) ||
         !ReadJson(Directory, TEXT("structure_repairs.json"), StructureRepairsJson, Error) ||
         !ReadJson(Directory, TEXT("raid_defenses.json"), RaidDefensesJson, Error) ||
+        !ReadJson(Directory, TEXT("knowledge.json"), KnowledgeJson, Error) ||
         !ReadJson(Directory, TEXT("zones.json"), ZonesJson, Error) ||
         !ReadJson(Directory, TEXT("routes.json"), RoutesJson, Error) ||
         !ReadJson(Directory, TEXT("discoveries.json"), DiscoveriesJson, Error) ||
@@ -834,6 +835,27 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         NewRouteEdges.Add(Edge);
     }
 
+    TArray<FGameDataKnowledge> NewKnowledge;
+    const TArray<TSharedPtr<FJsonValue>>* KnowledgeValues = ArrayField(KnowledgeJson, TEXT("knowledge"));
+    if (!KnowledgeValues || KnowledgeValues->IsEmpty() || KnowledgeValues->Num() > 256)
+        return Fail(TEXT("knowledge.json must define between 1 and 256 knowledge entries"));
+    TSet<FName> SeenKnowledgeIds;
+    for (const TSharedPtr<FJsonValue>& Value : *KnowledgeValues)
+    {
+        const FJson Entry = Value->AsObject();
+        FGameDataKnowledge KnowledgeEntry;
+        KnowledgeEntry.Id = NameField(Entry, TEXT("id"));
+        Entry->TryGetStringField(TEXT("name"), KnowledgeEntry.Name);
+        Entry->TryGetStringField(TEXT("description"), KnowledgeEntry.Description);
+        if (KnowledgeEntry.Id.IsNone() || !KnowledgeEntry.Id.ToString().StartsWith(TEXT("Knowledge.")) ||
+            KnowledgeEntry.Name.IsEmpty() || KnowledgeEntry.Description.IsEmpty() ||
+            SeenKnowledgeIds.Contains(KnowledgeEntry.Id))
+            return Fail(FString::Printf(TEXT("Bad or duplicate knowledge definition %s"),
+                *KnowledgeEntry.Id.ToString()));
+        SeenKnowledgeIds.Add(KnowledgeEntry.Id);
+        NewKnowledge.Add(KnowledgeEntry);
+    }
+
     TArray<FGameDataDiscovery> NewDiscoveries;
     const TArray<TSharedPtr<FJsonValue>>* DiscoveryValues = ArrayField(DiscoveriesJson, TEXT("discoveries"));
     if (!DiscoveryValues || DiscoveryValues->IsEmpty() || DiscoveryValues->Num() > 512)
@@ -841,7 +863,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
 
     TSet<FName> SeenDiscoveryIds;
     auto IsKnownUnlockId = [&NewItems, &NewStations, &NewTransformations, &NewCrops,
-        &NewAnimals, &NewZones, &NewRouteEdges](FName Id)
+        &NewAnimals, &NewKnowledge, &NewZones, &NewRouteEdges](FName Id)
     {
         if (Id.IsNone())
             return false;
@@ -1001,6 +1023,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     RaidDefenses = MoveTemp(NewRaidDefenses);
     Zones = MoveTemp(NewZones);
     Discoveries = MoveTemp(NewDiscoveries);
+    Knowledge = MoveTemp(NewKnowledge);
     RouteNodes = MoveTemp(NewRouteNodes);
     RouteEdges = MoveTemp(NewRouteEdges);
     Calendar = NewCalendar;
@@ -1010,6 +1033,11 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
     bLoaded = true;
     bApplied = false;
     return true;
+}
+
+const FGameDataKnowledge* UWorldGameDataSubsystem::FindKnowledge(FName Id) const
+{
+    return Knowledge.FindByPredicate([Id](const FGameDataKnowledge& Entry) { return Entry.Id == Id; });
 }
 
 const FGameDataFieldAction* UWorldGameDataSubsystem::FindFieldAction(FName Id) const
