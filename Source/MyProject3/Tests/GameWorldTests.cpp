@@ -2175,8 +2175,8 @@ bool FDiscoveryRecipeUnlockGateTest::RunTest(const FString& Parameters)
         !TestNotNull(TEXT("Clock"), Clock))
         return false;
     TestTrue(TEXT("Load data"), Data->LoadDefault());
-    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(337));
-    TestTrue(TEXT("Apply discovery definitions"), Data->ApplyToWorld());
+    TestTrue(TEXT("Apply discovery definitions and calendar"), Data->ApplyToWorld());
+    TestTrue(TEXT("Initialize clock from applied calendar"), Clock->InitializeClock(337));
 
     FWorldSurvivalProfile Profile;
     Profile.EntityId = FGuid(1201, 1202, 1203, 1204);
@@ -2643,6 +2643,91 @@ bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
             DamagedStone.Revision, TEXT("Repair.Stone"), Inventory->GetInventoryOwnerId()));
     TestTrue(TEXT("Read stone wall after retry"), Graph->GetNode(StoneNodeId, RepairedStone));
     TestEqual(TEXT("Stone repair retry does not double repair"), RepairedStone.Damage, 15.0f);
+    return true;
+}
+
+// Faz 7 — route-independent infrastructure such as a forward camp also wears under regional events.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLocalInfrastructureWeatherWearTest,
+    "MyProject3.Logistics.LocalInfrastructureUsesRegionalWeatherWear", Flags)
+bool FLocalInfrastructureWeatherWearTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldGameDataSubsystem* Data = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Data"), Data) || !TestNotNull(TEXT("Events"), Events) ||
+        !TestNotNull(TEXT("Clock"), Clock) || !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+    TestTrue(TEXT("Load infrastructure recipes"), Data->LoadDefault());
+    TestTrue(TEXT("Initialize regional evaluation time"),
+        Clock->InitializeClock(771, 16.0 * 3600.0 + 2.0 * Day + 23.9 * 3600.0));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+
+    const FString TestDirectory =
+        FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("P7LocalInfrastructureWearTest"));
+    IFileManager::Get().DeleteDirectory(*TestDirectory, false, true);
+    IFileManager::Get().MakeDirectory(*TestDirectory, true);
+    const FString EventJson = TEXT(
+        "{\"regions\":[{\"id\":\"Zone.2\",\"elevation_m\":550,\"slope_ratio\":0.72,"
+        "\"flood_exposure\":0.08,\"vegetation_fuel_load\":0.95,\"snow_load_units_per_cm_m2\":0.2,"
+        "\"raid_target\":[0,0,0]}],"
+        "\"events\":[{\"id\":\"Event.Snowstorm\",\"type\":\"Snowstorm\","
+        "\"regions\":[\"Zone.2\"],\"months\":[],\"required_weather\":[],"
+        "\"chain_parent_id\":\"\",\"min_temperature_c\":-100,\"max_temperature_c\":100,"
+        "\"min_snow_depth_cm\":0,\"min_ground_wetness\":0,\"max_ground_wetness\":1,"
+        "\"min_slope_ratio\":0,\"min_elevation_m\":-10000,\"min_flood_exposure\":0,"
+        "\"min_vegetation_fuel_load\":0,\"chance_per_day\":1,\"duration_hours\":72,"
+        "\"structure_damage_per_hour\":0,\"route_cost_multiplier\":1,"
+        "\"raid_defense_multiplier\":1,\"snow_load_multiplier\":1,\"survival_severity_multiplier\":1}]}");
+    const FString EventPath = FPaths::Combine(TestDirectory, TEXT("events.json"));
+    TestTrue(TEXT("Write deterministic regional event fixture"),
+        FFileHelper::SaveStringToFile(EventJson, *EventPath));
+    TestTrue(TEXT("Load regional event fixture"), Events->LoadDefinitionsFromDirectory(TestDirectory));
+    FWorldRegionalEventEvaluation Evaluation;
+    TestTrue(TEXT("Evaluate regional snowstorm"), Events->EvaluateRegion(TEXT("Zone.2"), Evaluation));
+    TestTrue(TEXT("Snowstorm event is active"), Evaluation.ActiveEventIds.Contains(TEXT("Event.Snowstorm")));
+
+    AActor* InventoryActor = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Inventory actor"), InventoryActor))
+        return false;
+    UInventoryCraftingComponent* Inventory = NewObject<UInventoryCraftingComponent>(InventoryActor);
+    InventoryActor->AddInstanceComponent(Inventory);
+    Inventory->RegisterComponent();
+    TestTrue(TEXT("Apply inventory weights"), Data->ApplyToInventory(Inventory));
+    auto Add = [&](FName Id, int32 Quantity, bool bTool)
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = Id;
+        Stack.Quantity = Quantity;
+        Stack.MaxStack = bTool ? 1 : 99;
+        Stack.Category = bTool ? EInventoryItemCategory::Tool : EInventoryItemCategory::Resource;
+        Stack.bIsTool = bTool;
+        return Inventory->TryAddItem(Stack);
+    };
+    TestTrue(TEXT("Add local camp build logs"), Add(TEXT("Log"), 2, false));
+    TestTrue(TEXT("Add local camp build sticks"), Add(TEXT("Stick"), 6, false));
+    TestTrue(TEXT("Add local camp build rope"), Add(TEXT("Rope"), 1, false));
+    TestTrue(TEXT("Add construction axe"), Add(TEXT("Tool.Axe"), 1, true));
+    TestTrue(TEXT("Add construction chisel"), Add(TEXT("Tool.Chisel"), 1, true));
+
+    AWorldInfrastructureActor* Camp = World->SpawnActor<AWorldInfrastructureActor>();
+    if (!TestNotNull(TEXT("Forward camp infrastructure actor"), Camp))
+        return false;
+    Camp->InfrastructureId = TEXT("Infrastructure.ForwardCamp");
+    Camp->bAffectsRouteGraph = false;
+    Camp->Tags.Add(TEXT("Region:Zone.2"));
+    TestTrue(TEXT("Build local forward camp"),
+        Camp->BuildFromInventory(FGuid(1301, 1302, 1303, 1304), Inventory->GetInventoryOwnerId()));
+    TestEqual(TEXT("Fresh local camp condition"), Camp->GetInfrastructureCondition(), 100.0f);
+    TestTrue(TEXT("Apply one hour of active snowstorm wear"), Camp->AdvanceLocalWeatherWear(3600.0));
+    TestEqual(TEXT("Local camp loses configured five condition per hour"),
+        Camp->GetInfrastructureCondition(), 95.0f);
+    TestTrue(TEXT("Camp remains constructed after partial wear"), Camp->IsInfrastructureBuilt());
+
+    IFileManager::Get().Delete(*EventPath, false, true);
+    IFileManager::Get().DeleteDirectory(*TestDirectory, false, true);
     return true;
 }
 
