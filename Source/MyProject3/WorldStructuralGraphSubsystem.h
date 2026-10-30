@@ -84,6 +84,20 @@ struct FStructuralNodeRecord
 {
     GENERATED_BODY()
 
+    /** Runtime metadata is reconstructed from stable actor tags; it is not a second save authority. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure|Environment")
+    FName RegionId = NAME_None;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure|Environment")
+    bool bSnowExposed = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure|Environment")
+    float SnowCatchmentAreaM2 = 0.0f;
+
+    /** Effective defense contribution of this placed node while supported and not collapsed. */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure|Environment")
+    float RaidDefenseRating = 0.0f;
+
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Structure")
     FGuid NodeId;
 
@@ -197,6 +211,18 @@ public:
     UFUNCTION(BlueprintPure, Category="Structure|Graph")
     int32 GetNodeCount() const { return Nodes.Num(); }
 
+    /** Stable ordering for deterministic world hazard passes. */
+    UFUNCTION(BlueprintPure, Category="Structure|Environment")
+    TArray<FGuid> GetNodeIds() const;
+
+    /** Sum of intact, supported defense ratings tagged for the named region. */
+    UFUNCTION(BlueprintPure, Category="Structure|Environment")
+    float GetRegionDefenseRating(FName RegionId) const;
+
+    /** Calculated environmental snow load, not persisted independently of climate/region data. */
+    UFUNCTION(BlueprintPure, Category="Structure|Environment")
+    float GetNodeSnowLoad(FGuid NodeId) const;
+
     bool ExportSnapshot(TArray<FWorldStructuralNodeSnapshot>& OutSnapshot) const;
     bool RestoreSnapshot(const TArray<FWorldStructuralNodeSnapshot>& Snapshot);
     /** Rehydrates log actor-local attachment refs from restored canonical edges without reconnecting graph nodes. */
@@ -205,6 +231,9 @@ public:
 private:
     UPROPERTY(Transient)
     TMap<FGuid, FStructuralNodeRecord> Nodes;
+
+    void RefreshEnvironmentMetadata(FStructuralNodeRecord& Node) const;
+    float GetNodeSnowLoad(const FStructuralNodeRecord& Node) const;
 
     bool WouldCreateCycle(FGuid ParentNodeId, FGuid ChildNodeId) const;
     /** Support search over primary and secondary links, optionally ignoring one node. */
