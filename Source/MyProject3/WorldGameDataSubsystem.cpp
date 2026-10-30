@@ -54,6 +54,11 @@ namespace
         return Object.IsValid() && Object->TryGetNumberField(Name, Value) ? Value : Default;
     }
 
+    bool IsFiniteRange(double Value, double Minimum, double Maximum)
+    {
+        return FMath::IsFinite(Value) && Value >= Minimum && Value <= Maximum;
+    }
+
     bool BoolField(const FJson& Object, const TCHAR* Name)
     {
         bool Value = false;
