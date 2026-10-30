@@ -242,5 +242,5 @@ private:
     bool CollectDependentsDepthFirst(FGuid NodeId, TSet<FGuid>& Visited,
         TArray<FGuid>& OutOrder) const;
     float ComputeAggregateLoad(FGuid NodeId, TSet<FGuid>& Visiting,
-        bool& bOutValid) const;
+        bool& bOutValid, bool bIncludeEnvironmentalLoad = true) const;
 };
