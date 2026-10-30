@@ -2,6 +2,7 @@
 #include "Algo/Reverse.h"
 #include "Engine/World.h"
 #include "WorldRegionalEventSubsystem.h"
+#include "WorldGameDataSubsystem.h"
 
 bool UWorldLogisticsRouteSubsystem::UpsertNode(const FLogisticsRouteNode& Node)
 {
@@ -32,6 +33,11 @@ bool UWorldLogisticsRouteSubsystem::UpsertEdge(const FLogisticsRouteEdge& Edge)
         !FMath::IsFinite(Edge.LoadSensitivity) || Edge.LoadSensitivity < 0.0f || Edge.LoadSensitivity > 100.0f ||
         !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
         Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f ||
+        !FMath::IsFinite(Edge.InfrastructureCondition) || Edge.InfrastructureCondition < 0.0f ||
+        !FMath::IsFinite(Edge.InfrastructureMaxCondition) || Edge.InfrastructureMaxCondition <= 0.0f ||
+        Edge.InfrastructureCondition > Edge.InfrastructureMaxCondition ||
+        !FMath::IsFinite(Edge.InfrastructureDegradationPenalty) || Edge.InfrastructureDegradationPenalty < 0.0f || Edge.InfrastructureDegradationPenalty > 100.0f ||
+        !FMath::IsFinite(Edge.InfrastructureBuiltCostMultiplier) || Edge.InfrastructureBuiltCostMultiplier < 0.01f || Edge.InfrastructureBuiltCostMultiplier > 100.0f ||
         MaxEdges < 1 || MaxEdges > 16384)
     {
         return false;
@@ -85,10 +91,143 @@ bool UWorldLogisticsRouteSubsystem::SetInfrastructureBuilt(FName InfrastructureI
     {
         if (Edge.InfrastructureId != InfrastructureId)
             continue;
+        Edge.bHasBuiltInfrastructure = bBuilt && Edge.InfrastructureCondition > 0.0f;
+        if (bBuilt && Edge.InfrastructureCondition <= 0.0f)
+            Edge.InfrastructureCondition = Edge.InfrastructureMaxCondition;
         Edge.bHasBuiltInfrastructure = bBuilt;
         bMatched = true;
     }
     return bMatched;
+}
+
+bool UWorldLogisticsRouteSubsystem::SetInfrastructureBuiltCostMultiplier(
+    FName InfrastructureId, float CostMultiplier)
+{
+    if (InfrastructureId.IsNone() || !FMath::IsFinite(CostMultiplier) ||
+        CostMultiplier < 0.01f || CostMultiplier > 100.0f)
+        return false;
+    bool bMatched = false;
+    for (FLogisticsRouteEdge& Edge : Edges)
+        if (Edge.InfrastructureId == InfrastructureId)
+        {
+            Edge.InfrastructureBuiltCostMultiplier = CostMultiplier;
+            bMatched = true;
+        }
+    return bMatched;
+}
+
+bool UWorldLogisticsRouteSubsystem::ApplyInfrastructureWear(
+    FName InfrastructureId, float WearAmount)
+{
+    if (InfrastructureId.IsNone() || !FMath::IsFinite(WearAmount) ||
+        WearAmount <= 0.0f || WearAmount > 1000000.0f)
+        return false;
+    bool bMatched = false;
+    for (FLogisticsRouteEdge& Edge : Edges)
+    {
+        if (Edge.InfrastructureId != InfrastructureId || !Edge.bHasBuiltInfrastructure)
+            continue;
+        Edge.InfrastructureCondition = FMath::Clamp(
+            Edge.InfrastructureCondition - WearAmount, 0.0f, Edge.InfrastructureMaxCondition);
+        if (Edge.InfrastructureCondition <= 0.0f)
+            Edge.bHasBuiltInfrastructure = false;
+        bMatched = true;
+    }
+    return bMatched;
+}
+
+bool UWorldLogisticsRouteSubsystem::RepairInfrastructure(
+    FName InfrastructureId, float RepairAmount)
+{
+    if (InfrastructureId.IsNone() || !FMath::IsFinite(RepairAmount) ||
+        RepairAmount <= 0.0f || RepairAmount > 1000000.0f)
+        return false;
+    bool bMatched = false;
+    for (FLogisticsRouteEdge& Edge : Edges)
+    {
+        if (Edge.InfrastructureId != InfrastructureId)
+            continue;
+        const float Before = Edge.InfrastructureCondition;
+        Edge.InfrastructureCondition = FMath::Clamp(
+            Edge.InfrastructureCondition + RepairAmount, 0.0f, Edge.InfrastructureMaxCondition);
+        if (Edge.InfrastructureCondition > 0.0f)
+            Edge.bHasBuiltInfrastructure = true;
+        bMatched |= !FMath::IsNearlyEqual(Before, Edge.InfrastructureCondition);
+    }
+    return bMatched;
+}
+
+bool UWorldLogisticsRouteSubsystem::GetInfrastructureState(
+    FName InfrastructureId, float& OutCondition, float& OutMaxCondition, bool& bOutBuilt) const
+{
+    OutCondition = 0.0f;
+    OutMaxCondition = 0.0f;
+    bOutBuilt = false;
+    if (InfrastructureId.IsNone())
+        return false;
+    bool bFound = false;
+    for (const FLogisticsRouteEdge& Edge : Edges)
+    {
+        if (Edge.InfrastructureId != InfrastructureId)
+            continue;
+        if (!bFound)
+        {
+            OutCondition = Edge.InfrastructureCondition;
+            OutMaxCondition = Edge.InfrastructureMaxCondition;
+            bOutBuilt = Edge.bHasBuiltInfrastructure;
+            bFound = true;
+        }
+        else if (!FMath::IsNearlyEqual(OutCondition, Edge.InfrastructureCondition, 0.01f) ||
+            bOutBuilt != Edge.bHasBuiltInfrastructure)
+            return false; // Directional records for one physical link must agree.
+    }
+    return bFound;
+}
+
+bool UWorldLogisticsRouteSubsystem::AdvanceRegionalInfrastructureWear(double DeltaSeconds)
+{
+    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+        return false;
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    if (!GameData || !GameData->IsLoaded() || !Events || !Events->AreDefinitionsLoaded())
+        return false;
+
+    TArray<FLogisticsRouteNode> NodeSnapshot;
+    TArray<FLogisticsRouteEdge> EdgeSnapshot;
+    ExportSnapshot(NodeSnapshot, EdgeSnapshot);
+    TMap<FName, float> WearByInfrastructure;
+    for (const FLogisticsRouteEdge& Edge : EdgeSnapshot)
+    {
+        if (Edge.InfrastructureId.IsNone() || !Edge.bHasBuiltInfrastructure || Edge.RegionId.IsNone())
+            continue;
+        const FGameDataInfrastructure* Definition = GameData->FindInfrastructure(Edge.InfrastructureId);
+        if (!Definition || Definition->WearRules.IsEmpty())
+            continue;
+        FWorldRegionalEventEvaluation Evaluation;
+        if (!Events->EvaluateRegion(Edge.RegionId, Evaluation))
+            return false;
+        float HourlyWear = 0.0f;
+        for (const FGameDataInfrastructureWearRule& Rule : Definition->WearRules)
+            if (Evaluation.ActiveEventIds.Contains(Rule.EventId))
+                HourlyWear += Rule.WearPerHour;
+        if (!FMath::IsFinite(HourlyWear) || HourlyWear < 0.0f)
+            return false;
+        if (HourlyWear > 0.0f)
+        {
+            float& Total = WearByInfrastructure.FindOrAdd(Edge.InfrastructureId);
+            Total = FMath::Max(Total, HourlyWear * static_cast<float>(DeltaSeconds / 3600.0));
+        }
+    }
+    TArray<FName> InfrastructureIds;
+    WearByInfrastructure.GetKeys(InfrastructureIds);
+    InfrastructureIds.Sort([](const FName& A, const FName& B)
+        { return A.ToString() < B.ToString(); });
+    for (const FName Id : InfrastructureIds)
+        if (!ApplyInfrastructureWear(Id, WearByInfrastructure.FindRef(Id)))
+            return false;
+    return true;
 }
 
 bool UWorldLogisticsRouteSubsystem::RemoveNode(FName NodeId)
@@ -141,8 +280,16 @@ bool UWorldLogisticsRouteSubsystem::ComputeEdgeCost(
         static_cast<double>(Edge.WeatherSensitivity) * Context.WeatherSeverity;
     const double LoadFactor = 1.0 +
         static_cast<double>(Edge.LoadSensitivity) * LoadRatio;
+    if (Edge.bHasBuiltInfrastructure && Edge.InfrastructureCondition <= 0.0f)
+        return false;
+    const double ConditionRatio = FMath::Clamp(
+        static_cast<double>(Edge.InfrastructureCondition) /
+            static_cast<double>(Edge.InfrastructureMaxCondition), 0.0, 1.0);
+    const double DegradationFactor = 1.0 +
+        (1.0 - ConditionRatio) * static_cast<double>(Edge.InfrastructureDegradationPenalty);
     const double InfrastructureFactor = Edge.bHasBuiltInfrastructure
-        ? 1.0 : 1.0 + static_cast<double>(Edge.MissingInfrastructurePenalty);
+        ? static_cast<double>(Edge.InfrastructureBuiltCostMultiplier) * DegradationFactor
+        : 1.0 + static_cast<double>(Edge.MissingInfrastructurePenalty);
     double RegionalHazardFactor = 1.0;
     if (!Edge.RegionId.IsNone())
     {
@@ -429,6 +576,11 @@ bool UWorldLogisticsRouteSubsystem::RestoreSnapshot(
             Edge.LoadSensitivity < 0.0f || Edge.LoadSensitivity > 100.0f ||
             !FMath::IsFinite(Edge.MissingInfrastructurePenalty) ||
             Edge.MissingInfrastructurePenalty < 0.0f || Edge.MissingInfrastructurePenalty > 100.0f ||
+            !FMath::IsFinite(Edge.InfrastructureCondition) || Edge.InfrastructureCondition < 0.0f ||
+            !FMath::IsFinite(Edge.InfrastructureMaxCondition) || Edge.InfrastructureMaxCondition <= 0.0f ||
+            Edge.InfrastructureCondition > Edge.InfrastructureMaxCondition ||
+            !FMath::IsFinite(Edge.InfrastructureDegradationPenalty) || Edge.InfrastructureDegradationPenalty < 0.0f || Edge.InfrastructureDegradationPenalty > 100.0f ||
+            !FMath::IsFinite(Edge.InfrastructureBuiltCostMultiplier) || Edge.InfrastructureBuiltCostMultiplier < 0.01f || Edge.InfrastructureBuiltCostMultiplier > 100.0f ||
             (Edge.bRequiresInfrastructure && Edge.InfrastructureId.IsNone()))
             return false;
         SeenPairs.Add(PairKey);
