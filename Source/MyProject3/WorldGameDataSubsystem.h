@@ -112,6 +112,7 @@ struct FGameDataRouteEdge
     GENERATED_BODY()
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName FromNode = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName ToNode = NAME_None;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") FName RegionId = NAME_None;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float Cost = 1.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float SlopeRatio = 0.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Routes") float SurfaceCostMultiplier = 1.0f;
