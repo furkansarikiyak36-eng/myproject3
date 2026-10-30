@@ -659,9 +659,19 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
                 if (!AddSignal(Signals.Light, Value.RightChop(17)))
                     return false;
             }
+            else if (Value.StartsWith(TEXT("RaidSignal.FireLight:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.Light, Value.RightChop(21)))
+                    return false;
+            }
             else if (Value.StartsWith(TEXT("RaidSignal.Smoke:"), ESearchCase::CaseSensitive))
             {
                 if (!AddSignal(Signals.Smoke, Value.RightChop(17)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignal.FireSmoke:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.Smoke, Value.RightChop(21)))
                     return false;
             }
             else if (Value.StartsWith(TEXT("RaidSignalSuppress.Storage:"), ESearchCase::CaseSensitive))
