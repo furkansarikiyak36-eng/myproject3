@@ -1390,13 +1390,15 @@ bool FFarmSeasonSeedReturnAndPersistenceTest::RunTest(const FString& Parameters)
     FWorldCalendarDate Date;
     TestTrue(TEXT("April date is available"), Clock->GetCalendarDate(Date));
     TestEqual(TEXT("Current month is April"), Date.Month, 4);
-    TestTrue(TEXT("Seasonal planting succeeds"), Agriculture->TryPlantCropOnField(
-        PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
-        Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
+    TestTrue(TEXT("Seasonal planting succeeds through the tool-gated action"),
+        Agriculture->TryPlantCropWithFieldAction(PlantOperation, FastCrop.CropDefinitionId,
+            SeedRecord.ItemId, SeedRecord.Revision, Inventory->GetInventoryOwnerId(),
+            Field.Cell, BeforePlantFieldRevision, Field.Moisture, CropId));
     FGuid RetriedCropId;
-    TestTrue(TEXT("Plant retry returns same crop"), Agriculture->TryPlantCropOnField(
-        PlantOperation, FastCrop.CropDefinitionId, SeedRecord.ItemId, SeedRecord.Revision,
-        Inventory->GetInventoryOwnerId(), Field.Cell, BeforePlantFieldRevision, Field.Moisture, RetriedCropId));
+    TestTrue(TEXT("Plant retry returns same crop through the action wrapper"),
+        Agriculture->TryPlantCropWithFieldAction(PlantOperation, FastCrop.CropDefinitionId,
+            SeedRecord.ItemId, SeedRecord.Revision, Inventory->GetInventoryOwnerId(),
+            Field.Cell, BeforePlantFieldRevision, Field.Moisture, RetriedCropId));
     TestTrue(TEXT("Plant retry does not create a second crop"), RetriedCropId == CropId);
     TestEqual(TEXT("Planted seed stack is consumed"), Inventory->GetItemCount(TEXT("Seed.Grain")), 0);
     TestTrue(TEXT("Planted field references crop"), Agriculture->GetFieldCell(Field.Cell, Field));
@@ -2160,6 +2162,20 @@ bool FDataDrivenFieldActionTransactionTest::RunTest(const FString& Parameters)
         Agriculture->TryApplyFieldAction(FGuid::NewGuid(), TEXT("Field.Clear"),
             Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
     TestTrue(TEXT("Field becomes clear"), Cell.bCleared);
+    TestTrue(TEXT("Temporarily remove the hoe"), Inventory->TryRemoveItem(TEXT("Tool.Hoe"), 1));
+    TestFalse(TEXT("Till is rejected without its required hoe"),
+        Agriculture->TryApplyFieldAction(FGuid::NewGuid(), TEXT("Field.Till"),
+            Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
+    TestTrue(TEXT("Restore the hoe"), Inventory->TryAddItem([&]()
+    {
+        FInventoryStack Stack;
+        Stack.ItemId = TEXT("Tool.Hoe");
+        Stack.Quantity = 1;
+        Stack.MaxStack = 99;
+        Stack.Category = EInventoryItemCategory::Tool;
+        Stack.bIsTool = true;
+        return Stack;
+    }()));
     TestTrue(TEXT("Till requires the hoe"),
         Agriculture->TryApplyFieldAction(FGuid::NewGuid(), TEXT("Field.Till"),
             Cell.Cell, Cell.Revision, Inventory->GetInventoryOwnerId(), Cell));
@@ -2296,6 +2312,10 @@ bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Add wood repair log"), AddStack(TEXT("Log"), 1, false));
     TestTrue(TEXT("Add rope"), AddStack(TEXT("Rope"), 1, false));
     TestTrue(TEXT("Add axe tool"), AddStack(TEXT("Tool.Axe"), 1, true));
+    TestTrue(TEXT("Add stone repair material"), AddStack(TEXT("Stone"), 2, false));
+    TestTrue(TEXT("Add crushed stone"), AddStack(TEXT("CrushedStone"), 1, false));
+    TestTrue(TEXT("Add chisel tool"), AddStack(TEXT("Tool.Chisel"), 1, true));
+    TestTrue(TEXT("Add stone hammer tool"), AddStack(TEXT("HammerStone"), 1, true));
 
     AActor* Wall = World->SpawnActor<AActor>();
     if (!TestNotNull(TEXT("Wood wall"), Wall))
@@ -2325,6 +2345,34 @@ bool FWoodStoneRecipeRepairTest::RunTest(const FString& Parameters)
             TEXT("Repair.Wood"), Inventory->GetInventoryOwnerId()));
     TestTrue(TEXT("Read wall after retry"), Graph->GetNode(NodeId, Repaired));
     TestEqual(TEXT("Retry does not repair again"), Repaired.Damage, 10.0f);
+
+    AActor* StoneWall = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Stone wall"), StoneWall))
+        return false;
+    StoneWall->Tags.Add(TEXT("Region:Zone.0"));
+    const FGuid StoneNodeId(721, 722, 723, 724);
+    TestTrue(TEXT("Register stone node"),
+        Graph->RegisterNode(StoneWall, StoneNodeId, EStructuralNodeKind::Stone, true, 1.0f, 100.0f, 100.0f));
+    bThresholdExceeded = false;
+    TestTrue(TEXT("Damage stone wall"), Graph->ApplyDamage(StoneNodeId, 40.0f, bThresholdExceeded));
+    FStructuralNodeRecord DamagedStone;
+    TestTrue(TEXT("Read damaged stone wall"), Graph->GetNode(StoneNodeId, DamagedStone));
+    const FGuid StoneRepairOperation(725, 726, 727, 728);
+    TestTrue(TEXT("Apply typed stone repair recipe"),
+        Adapter->TryRepairStructureWithRecipe(StoneRepairOperation, StoneNodeId,
+            DamagedStone.Revision, TEXT("Repair.Stone"), Inventory->GetInventoryOwnerId()));
+    FStructuralNodeRecord RepairedStone;
+    TestTrue(TEXT("Read repaired stone wall"), Graph->GetNode(StoneNodeId, RepairedStone));
+    TestEqual(TEXT("Stone recipe repairs twenty-five damage"), RepairedStone.Damage, 15.0f);
+    TestEqual(TEXT("Stone stack materials are consumed"), Inventory->GetItemCount(TEXT("Stone")), 0);
+    TestEqual(TEXT("Crushed stone is consumed"), Inventory->GetItemCount(TEXT("CrushedStone")), 0);
+    TestEqual(TEXT("Chisel remains"), Inventory->GetItemCount(TEXT("Tool.Chisel")), 1);
+    TestEqual(TEXT("Hammer remains"), Inventory->GetItemCount(TEXT("HammerStone")), 1);
+    TestTrue(TEXT("Stone repair retry returns original receipt"),
+        Adapter->TryRepairStructureWithRecipe(StoneRepairOperation, StoneNodeId,
+            DamagedStone.Revision, TEXT("Repair.Stone"), Inventory->GetInventoryOwnerId()));
+    TestTrue(TEXT("Read stone wall after retry"), Graph->GetNode(StoneNodeId, RepairedStone));
+    TestEqual(TEXT("Stone repair retry does not double repair"), RepairedStone.Damage, 15.0f);
     return true;
 }
 
