@@ -64,6 +64,9 @@ public:
     float FireIntensity = 0.0f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Fire|Receipts")
+    int64 LastIgnitedTickIndex = INDEX_NONE;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Fire|Receipts")
     int64 LastBurnTickIndex = INDEX_NONE;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Fire|Receipts")
