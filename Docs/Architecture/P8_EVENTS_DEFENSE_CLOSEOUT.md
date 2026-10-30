@@ -1,57 +1,34 @@
-# P8 — Regional events, snow loading and defensive raids
+# P8 — Regional events, survival exposure, wildfire and defensive raids
 
-Status: **code-written / unbuilt** on `game/p08-events-defense`. The P6/P7 ancestor code is also source-only on this branch; no claim is made that Unreal has compiled or run it.
+Status: **code-written / unbuilt** on `game/p06-p08-blind-code-closure`. No UHT/UBT build, Unreal automation run, PIE or save/load acceptance has been performed.
 
-## Added contracts
+## P8.1 — Regional hazards and player exposure
 
-### P8.1 — Regional hazards
+- `Config/GameData/events.json` owns five region profiles and twelve event definitions: flood, frost, hail, drought, wildfire, toxic rain, epidemic, snowstorm, avalanche, fog, windstorm and lightning. The active windows and event chains are deterministic from shared clock/calendar/seed/climate inputs.
+- `UWorldRegionalEventSubsystem` parses the definitions transactionally, validates IDs/references/ranges/chains, and aggregates route cost, raid defense, snow load, structure damage, survival exposure and fire ignition/spread/burn modifiers.
+- Zone entry now records `RegionId` and player location in the same survival-profile mutation as the configured discovery. Operation receipts preserve retry semantics.
+- The post-clock coordinator step applies bounded regional health, fatigue, stamina, thirst, wetness and core-temperature changes. Shelter protection, insulation and water resistance mitigate exposure. `LastRegionalExposureTickIndex` prevents a repeated call from applying the same logical tick twice and is saved with the profile.
+- Remaining: convert selected hazards into named Injury/Illness/Poisoning conditions, contamination of water/crops/food from toxic rain or ash, hazard start/end notifications and player warning HUD; connect real zone volumes to zone entry.
 
-- `Config/GameData/events.json` owns five region profiles and twelve event definitions: flood, frost, hail, drought, lightning, wildfire, ash/toxic rain, epidemic, snowstorm, avalanche, windstorm and fog. Snow load is calculated separately from climate depth and exposed roof area.
-- `UWorldRegionalEventSubsystem` parses the JSON transactionally, checks IDs, region references, month/weather values, numeric ranges and chain cycles, then evaluates active events from the shared calendar, clock seed and climate state.
-- Event occurrences are deterministic for the same seed/day/region/event. The evaluator combines route-cost, survival-severity, snow-load and raid-defense modifiers and reports structure-damage intensity. Region-tagged route edges consume the route-cost multiplier directly.
-- Event chains are explicit: drought → lightning → wildfire → ash/toxic rain; flood → epidemic; and snowstorm → avalanche. Invalid/missing definitions fail closed rather than inventing region data.
+## P8.2 — Region-targeted, signal-driven raids
 
-### P8.2 — Region-targeted, signal-driven raids
+- Normal scheduled raids choose a configured region deterministically and use its authored `raid_target`.
+- The adapter scans region-tagged actors for normalized `RaidSignal.Storage`, `Smell`, `Light` and `Smoke` contributions. Values aggregate per region and logical tick; the threat director applies weighted pressure, threshold, cooldown and target region. Threat snapshot v2 persists the signal receipts/cooldown.
+- Combustible actors add `RaidSignal.FireLight:0.35` and `RaidSignal.FireSmoke:0.65` while burning; those tags are parsed as light/smoke raid inputs. The existing sensor values for storage/smell/ordinary lighting/smoke still need real producers rather than manually authored numeric tags.
+- Supported regional defenses reduce raid pulse damage, with a non-zero minimum damage floor.
+- Remaining: connect live storage value, scent, ordinary lights and smoke emitters; author region/target/defense tags in the level; configure and verify raid pawn materialization and save/load.
 
-- Normal scheduled raids choose a configured region deterministically and use its authored `raid_target`; the legacy random-square target remains only as a fallback if regional data is unavailable.
-- `UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals` scans region-tagged actors on each committed fixed step and aggregates tags `RaidSignal.Storage:<0..1>`, `RaidSignal.Smell:<0..1>`, `RaidSignal.Light:<0..1>`, and `RaidSignal.Smoke:<0..1>`. Contributions are summed and saturated per region/signal family.
-- The adapter sends one immutable sample per region and logical tick to `TryStartRaidFromSignals`. The director applies weighted pressure, threshold and cooldown, assigns the region target, and persists an operation receipt. Repeating the same tick sample returns success without creating another raid.
-- Threat snapshot schema v2 persists signal-operation receipts and cooldown time. Restore accepts v1 snapshots as legacy state with no signal receipts.
-- Raid damage now reads regional defensive rating and the event's visibility/coordination modifier. The configured minimum damage fraction prevents defense from making raids mathematically harmless.
+## P8.3 — Snow, structural damage, repair and wildfire
 
-### P8.3 — Snow load and structure support
+- Placed structural actors use `Region:<id>`, `SnowExposed`, `SnowAreaM2:<area>` and `RaidDefense:<rating>` metadata. Climate snow depth × regional coefficient × exposed area × event modifier contributes to graph loads and support validation.
+- The fixed-step coordinator applies regional structural damage and snow overload through the graph's leaf-first collapse resolver. A post-commit failure faults the simulation rather than continuing with uncertain actor state.
+- `TryRepairStructureWithMaterial` validates an owned Resource/BuildingPart item, expected node/item revisions and an operation receipt; retries do not consume a second item. Player/helper repair interaction and per-piece material recipes are not wired.
+- `UWorldCombustibleComponent` is separate from campfire `UHeatSourceComponent`. It stores a stable identity, region, fuel, moisture, ignition susceptibility/threshold, spread radius, optional point firebreak flag, ignition receipts, burn/moisture tick markers and optional structural node/damage tuning.
+- `UWorldFirePropagationSubsystem` evaluates regional event modifiers and advances combustible components after the clock commit. Natural ignition/spread use stable seed/tick/region/source/target hashes; spread is limited to the same region and radius, blocked by a point firebreak component, reduced by moisture, and newly ignited surfaces do not burn/relay until the following tick. Fuel consumption, optional linked structural damage and dynamic fire light/smoke tags are included.
+- Remaining: author combustible components on trees/thatch/log piles/wood structures, bind graph node IDs and tune material-specific values; replace point firebreak prototype with actual line/volume geometry; add extinguishing/water suppression, visual/audio fire and smoke, fire-driven material destruction beyond linked structural damage; verify component SaveGame round-trip and collapse in Unreal.
 
-Placed structural actors can declare metadata with actor tags:
+## Source-only automation tests
 
-| Tag | Meaning |
-|---|---|
-| `Region:Zone.4` | The actor belongs to a catalogued region |
-| `SnowExposed` | Snow can add environmental load |
-| `SnowAreaM2:4.0` | Roof/catchment area in square metres; required with `SnowExposed` |
-| `RaidDefense:1.0` | Contribution to regional raid defense while intact and supported |
+`GameWorldTests.cpp` currently contains 41 automation tests total. Fifteen named Farming/Events tests cover field work, crop/seed persistence, fence action, harvest storage, hand/station processing, regional event definitions/terrain filters, survival exposure, wildfire, signal raids, snow collapse, route cost, repair, region-tag sensors and countermeasures. None has been executed on this branch.
 
-- These tags are parsed when the graph node is registered and reconstructed from the actor when a graph snapshot is restored; no new authoritative save field or whole-save schema bump is needed.
-- Snow load is computed from climate snow depth × region coefficient × tagged area × the current event multiplier. It participates in aggregate load and support-path checks. The coordinator runs a post-commit hazard pass each fixed step; over-capacity exposed supports are damaged to the collapse threshold and removed through the existing leaf-first collapse resolver.
-- Active event damage rates (windstorm, hail, wildfire, avalanche and snowstorm) are applied to tagged structural nodes once per committed fixed step. A failed post-commit collapse marks the simulation faulted rather than allowing later ticks to continue.
-- `TryRepairStructureWithMaterial` repairs a damaged graph node only after consuming a unique inventory-owned `Resource` or `BuildingPart` item. The operation ledger stores the repair receipt; same operation ID and exact request returns the original result without consuming another item.
-- Defense contribution comes only from intact nodes with a valid support path in the raid's target region.
-
-## Deliberate integration boundaries / still open
-
-This is not a claim of full P8 gameplay acceptance. The following still need world/gameplay integration:
-- Scene actors still need `Region:<id>` and `RaidSignal.*` tags, or a real sensor component that updates equivalent values. The adapter samples tagged actors automatically, but it does not calculate live values from every storage container, light component, smoke emitter or food source.
-- Regional route cost and structural damage are now consumed automatically; survival-condition triggers, water/crop contamination and hazard transition notifications are not yet connected. Fire spread/ignition propagation is not implemented.
-- Material-backed repair is source-written, but player/helper interaction, repair animations/visual feedback and material balance are not integrated. Fire spread/ignition actors, player warning/HUD feedback and committed start/end hazard notifications remain open.
-- Region tags and `DefenseTargetNodeIds` must be authored on the placed level actors/configuration. The existing demo has not been repopulated with these tags/targets.
-- Six P8 automation tests were added as source only. UHT/UBT, automation tests, save/load in Unreal and PIE have **not** been run.
-
-## Source-level tests added
-
-- `MyProject3.World.Events.RegionalDefinitionsAreValidAndDeterministic`
-- `MyProject3.World.Events.SignalRaidIsRegionTargetedAndIdempotent`
-- `MyProject3.World.Events.SnowLoadCanOverloadExposedStructure`
-- `MyProject3.World.Events.RegionalHazardsIncreaseRouteCost`
-- `MyProject3.World.Events.StructuralRepairConsumesOwnedMaterialOnce`
-- `MyProject3.World.Events.RegionTaggedSensorsCanTriggerRaid`
-
-The next required proof gate is the agreed batch Unreal build/test pass, then scene tagging and PIE/save-load acceptance.
+The required proof gate remains one batch Unreal UHT/UBT build, full automation suite, fixes, then PIE and save/load acceptance. Do not mark these tasks built/tested/played until those steps actually happen.
