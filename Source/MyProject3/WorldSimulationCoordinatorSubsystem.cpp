@@ -222,9 +222,10 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
     UWorld* HazardWorld = GetWorld();
     UWorldRaidAdapterSubsystem* HazardAdapter = HazardWorld
         ? HazardWorld->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
-    if (HazardAdapter && !HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds))
+    if (HazardAdapter && (!HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds) ||
+        !HazardAdapter->AdvanceRegionalRaidSignals()))
     {
-        MarkSimulationFaulted(TEXT("Regional hazard damage failed after a committed fixed step; stop simulation and recover/reset the world."));
+        MarkSimulationFaulted(TEXT("Regional hazard or raid-signal processing failed after a committed fixed step; stop simulation and recover/reset the world."));
         return false;
     }
 
