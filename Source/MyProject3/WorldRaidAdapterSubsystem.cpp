@@ -178,3 +178,53 @@ bool UWorldRaidAdapterSubsystem::ResolveCollapsedSubtree(FGuid RootNodeId)
     }
     return true;
 }
+
+
+bool UWorldRaidAdapterSubsystem::AdvanceRegionalHazardDamage(double DeltaSeconds)
+{
+    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    if (!World || !Graph || !Events || !Events->AreDefinitionsLoaded())
+        return false;
+
+    const double Hours = DeltaSeconds / 3600.0;
+    const TArray<FName> RegionIds = Events->GetRegionIds();
+    const TArray<FGuid> SortedNodeIds = Graph->GetNodeIds();
+    TMap<FName, float> DamagePerRegion;
+    for (const FName RegionId : RegionIds)
+    {
+        FWorldRegionalEventEvaluation Evaluation;
+        if (!Events->EvaluateRegion(RegionId, Evaluation))
+            continue;
+        const double Damage = static_cast<double>(Evaluation.StructureDamagePerHour) * Hours;
+        if (!FMath::IsFinite(Damage) || Damage < 0.0 || Damage > static_cast<double>(MAX_flt))
+            return false;
+        if (Damage > 0.0)
+            DamagePerRegion.Add(RegionId, static_cast<float>(Damage));
+    }
+
+    // Deterministic node ordering makes simultaneous storm/fire damage independent
+    // of TMap iteration order. The evaluator has combined concurrently active rates.
+    for (const FGuid& NodeId : SortedNodeIds)
+    {
+        FStructuralNodeRecord Node;
+        if (!Graph->GetNode(NodeId, Node))
+            continue;
+        const float* Damage = DamagePerRegion.Find(Node.RegionId);
+        if (!Damage || *Damage <= 0.0f)
+            continue;
+
+        bool bThresholdExceeded = false;
+        if (!Graph->ApplyDamage(NodeId, *Damage, bThresholdExceeded))
+            return false;
+        if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
+            return false;
+    }
+
+    return true;
+}
