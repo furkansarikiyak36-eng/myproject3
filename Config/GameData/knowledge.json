@@ -1,0 +1,20 @@
+{
+  "_about": "Discovered practical knowledge is a separate typed content domain. These are unlock rewards, not physical inventory items.",
+  "knowledge": [
+    {
+      "id": "Knowledge.BedConstruction",
+      "name": "Yatak yapımı",
+      "description": "Deri, ot ve ip ile taşınabilir yatak rulosu hazırlama bilgisi"
+    },
+    {
+      "id": "Knowledge.RaisedBed",
+      "name": "Yükseltilmiş tarh",
+      "description": "Islak ve verimsiz zeminde ekim yüzeyini yükseltme bilgisi"
+    },
+    {
+      "id": "Knowledge.ColdWeatherBed",
+      "name": "Soğuk hava yatağı",
+      "description": "Yatağı zeminden ayırıp kuru yalıtım katmanı hazırlama bilgisi"
+    }
+  ]
+}
