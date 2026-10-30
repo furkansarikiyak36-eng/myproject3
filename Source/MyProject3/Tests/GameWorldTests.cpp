@@ -21,6 +21,9 @@
 #include "VoxelTerrainChunkComponent.h"
 #include "WorldProductionSubsystem.h"
 #include "WorldTerrainStateSubsystem.h"
+#include "WorldRegionalEventSubsystem.h"
+#include "WorldStructuralGraphSubsystem.h"
+#include "WorldThreatDirectorSubsystem.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -1671,6 +1674,142 @@ bool FConfiguredZoneBridgeRouteCostTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Built bridge cost is restored"), FMath::IsNearlyEqual(RestoredCost, AfterCost, 0.001f));
     TestTrue(TEXT("Built bridge route remains direct after restore"), RestoredPath.Contains(TEXT("Route.Creek.WestBank")) &&
         RestoredPath.Contains(TEXT("Route.Creek.EastBank")));
+    return true;
+}
+
+
+/** P8.1: regional event definitions are validated and derive the same active set for the same world state. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRegionalEventDefinitionsDeterminismTest,
+    "MyProject3.World.Events.RegionalDefinitionsAreValidAndDeterministic", Flags)
+bool FRegionalEventDefinitionsDeterminismTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Regional events"), Events) ||
+        !TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+
+    TestTrue(FString::Printf(TEXT("Load events.json: %s"), *Events->GetLastError()),
+        Events->LoadDefaultDefinitions());
+    const TArray<FName> Regions = Events->GetRegionIds();
+    TestEqual(TEXT("Five configured world regions"), Regions.Num(), 5);
+    TestTrue(TEXT("Region IDs use stable lexical order"),
+        Regions.Num() == 5 && Regions[0] == FName(TEXT("Zone.0")) &&
+        Regions[4] == FName(TEXT("Zone.4")));
+
+    const double WinterStart = 16.0 * 3600.0 + 45.0 * Day;
+    TestTrue(TEXT("Initialize deterministic clock"), Clock->InitializeClock(481, WinterStart));
+    TestTrue(TEXT("Initialize seasonal climate"), Climate->InitializeClimate());
+    TestEqual(TEXT("Winter snow is seeded from the calendar"), Climate->GetSnowDepthCm(), 40.0f);
+
+    FWorldRegionProfile Mountain;
+    TestTrue(TEXT("Read mountain-pass profile"), Events->GetRegionProfile(TEXT("Zone.4"), Mountain));
+    TestTrue(TEXT("Mountain profile has snow-load tuning"), Mountain.SnowLoadUnitsPerCmM2 > 0.0f);
+    FWorldRegionalEventEvaluation First;
+    FWorldRegionalEventEvaluation Retry;
+    TestTrue(TEXT("Evaluate mountain event conditions"), Events->EvaluateRegion(TEXT("Zone.4"), First));
+    TestTrue(TEXT("Repeat regional event evaluation"), Events->EvaluateRegion(TEXT("Zone.4"), Retry));
+    TestTrue(TEXT("Active event list is deterministic"),
+        First.ActiveEventIds == Retry.ActiveEventIds);
+    TestTrue(TEXT("Route multiplier is deterministic"),
+        FMath::IsNearlyEqual(First.RouteCostMultiplier, Retry.RouteCostMultiplier));
+    TestTrue(TEXT("Raid modifier is deterministic"),
+        FMath::IsNearlyEqual(First.RaidDefenseMultiplier, Retry.RaidDefenseMultiplier));
+    return true;
+}
+
+/** P8.2: store/smell/light/smoke inputs can trigger a region-specific, receipt-protected raid. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSignalDrivenRaidAndPersistenceTest,
+    "MyProject3.World.Events.SignalRaidIsRegionTargetedAndIdempotent", Flags)
+bool FSignalDrivenRaidAndPersistenceTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldThreatDirectorSubsystem* Threat =
+        World ? World->GetSubsystem<UWorldThreatDirectorSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Regional events"), Events) ||
+        !TestNotNull(TEXT("Threat director"), Threat))
+        return false;
+
+    TestTrue(TEXT("Initialize clock"), Clock->InitializeClock(57));
+    TestTrue(TEXT("Load regional event profiles"), Events->LoadDefaultDefinitions());
+    TestTrue(TEXT("Initialize threat director"), Threat->InitializeDirector(1800.0));
+
+    const FGuid OperationId(11, 22, 33, 44);
+    bool bStarted = false;
+    TestTrue(TEXT("Accept strong settlement signals"),
+        Threat->TryStartRaidFromSignals(OperationId, TEXT("Zone.1"), 1.0f, 1.0f, 1.0f, 1.0f, bStarted));
+    TestTrue(TEXT("Signals exceed threshold and start warning"), bStarted);
+
+    FThreatRaidRecord Raid;
+    TestTrue(TEXT("Read the triggered raid"), Threat->GetCurrentRaid(Raid));
+    TestTrue(TEXT("Raid target is the signalled region"), Raid.TargetRegionId == FName(TEXT("Zone.1")));
+    TestTrue(TEXT("Raid uses the configured creek-region target"),
+        Raid.TargetLocation.Equals(FVector(1400.0f, 800.0f, 0.0f), 0.01f));
+
+    const FWorldThreatDirectorSnapshot Saved = Threat->ExportSnapshot();
+    TestEqual(TEXT("Signal receipts use snapshot schema 2"), Saved.SchemaVersion, 2);
+    TestTrue(TEXT("Restore raid and signal receipts"), Threat->RestoreSnapshot(Saved));
+    bStarted = true;
+    TestFalse(TEXT("Retry does not create or start a duplicate raid"),
+        Threat->TryStartRaidFromSignals(OperationId, TEXT("Zone.1"), 1.0f, 1.0f, 1.0f, 1.0f, bStarted));
+    TestFalse(TEXT("Duplicate operation does not report a fresh start"), bStarted);
+    return true;
+}
+
+/** P8.3: exposed structural members carry climate-driven snow load and stop supporting an overloaded frame. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FStructuralSnowLoadAffectsSupportTest,
+    "MyProject3.World.Events.SnowLoadCanOverloadExposedStructure", Flags)
+bool FStructuralSnowLoadAffectsSupportTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate =
+        World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Clock"), Clock) ||
+        !TestNotNull(TEXT("Climate"), Climate) ||
+        !TestNotNull(TEXT("Regional events"), Events) ||
+        !TestNotNull(TEXT("Structural graph"), Graph))
+        return false;
+
+    const double WinterStart = 16.0 * 3600.0 + 45.0 * Day;
+    TestTrue(TEXT("Start winter clock"), Clock->InitializeClock(913, WinterStart));
+    TestTrue(TEXT("Load event tuning"), Events->LoadDefaultDefinitions());
+    TestTrue(TEXT("Initialize winter climate"), Climate->InitializeClimate());
+
+    AActor* Roof = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Roof test actor"), Roof))
+        return false;
+    Roof->Tags.Add(FName(TEXT("Region:Zone.4")));
+    Roof->Tags.Add(FName(TEXT("SnowExposed")));
+    Roof->Tags.Add(FName(TEXT("SnowAreaM2:4.0")));
+    const FGuid NodeId(91, 92, 93, 94);
+    TestTrue(TEXT("Register exposed roof support"),
+        Graph->RegisterNode(Roof, NodeId, EStructuralNodeKind::Wood, true, 20.0f, 50.0f, 100.0f));
+
+    const float SnowLoad = Graph->GetNodeSnowLoad(NodeId);
+    TestTrue(TEXT("Snow load is calculated from depth, area and region tuning"), SnowLoad >= 48.0f);
+    TestTrue(TEXT("Aggregate load includes environmental snow"), Graph->GetAggregateLoad(NodeId) > 50.0f);
+    TestFalse(TEXT("Overloaded exposed member cannot claim a valid support path"),
+        Graph->HasValidSupportPath(NodeId));
     return true;
 }
 
