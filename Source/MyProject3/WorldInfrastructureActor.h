@@ -2,9 +2,9 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "WorldGameDataSubsystem.h"
 #include "WorldInfrastructureActor.generated.h"
 
-class UInventoryCraftingComponent;
 
 /**
  * Generic route-linked primitive infrastructure actor.
