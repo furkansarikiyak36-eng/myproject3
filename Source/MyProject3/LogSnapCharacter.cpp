@@ -5,6 +5,8 @@
 #include "ShelterSensorComponent.h"
 #include "TerrainDigToolComponent.h"
 #include "InventoryCraftingComponent.h"
+#include "WorldObjectIdentityComponent.h"
+#include "WorldSurvivalSubsystem.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
@@ -191,6 +193,32 @@ void ALogSnapCharacter::ApplyBlockoutMaterials()
 void ALogSnapCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    // The player profile is the authority for survival and discovery unlocks.
+    // Prefer a stable object identity already assigned by the world bootstrap;
+    // otherwise create a SaveGame-persistent entity ID and a default profile.
+    if (!SurvivalEntityId.IsValid())
+    {
+        if (const UWorldObjectIdentityComponent* Identity =
+            FindComponentByClass<UWorldObjectIdentityComponent>())
+            SurvivalEntityId = Identity->GetInstanceId();
+        if (!SurvivalEntityId.IsValid())
+            SurvivalEntityId = FGuid::NewGuid();
+    }
+
+    if (UWorldSurvivalSubsystem* Survival =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr)
+    {
+        FWorldSurvivalProfile ExistingProfile;
+        if (!Survival->GetProfile(SurvivalEntityId, ExistingProfile))
+        {
+            FWorldSurvivalProfile NewProfile;
+            NewProfile.EntityId = SurvivalEntityId;
+            NewProfile.Location = GetActorLocation();
+            Survival->RegisterProfile(NewProfile);
+        }
+    }
+
     if (UInventoryCraftingComponent* Inventory =
         FindComponentByClass<UInventoryCraftingComponent>())
         Inventory->SetCraftingEntityId(SurvivalEntityId);
