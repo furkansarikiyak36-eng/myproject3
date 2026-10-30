@@ -1,0 +1,44 @@
+{
+  "_about": "P8 structural repair recipes. Materials are consumable stack costs; required tools remain in inventory. Repair amounts are damage points per completed recipe.",
+  "repairs": [
+    {
+      "id": "Repair.Wood",
+      "structure_kind": "Wood",
+      "materials": [
+        {
+          "item": "Log",
+          "qty": 1
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "repair_amount": 30,
+      "work_seconds": 120
+    },
+    {
+      "id": "Repair.Stone",
+      "structure_kind": "Stone",
+      "materials": [
+        {
+          "item": "Stone",
+          "qty": 2
+        },
+        {
+          "item": "CrushedStone",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Chisel",
+        "HammerStone"
+      ],
+      "repair_amount": 25,
+      "work_seconds": 180
+    }
+  ]
+}
