@@ -233,7 +233,7 @@ private:
     TMap<FGuid, FStructuralNodeRecord> Nodes;
 
     void RefreshEnvironmentMetadata(FStructuralNodeRecord& Node) const;
-    float GetNodeSnowLoad(const FStructuralNodeRecord& Node) const;
+    float CalculateNodeSnowLoad(const FStructuralNodeRecord& Node) const;
 
     bool WouldCreateCycle(FGuid ParentNodeId, FGuid ChildNodeId) const;
     /** Support search over primary and secondary links, optionally ignoring one node. */
