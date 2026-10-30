@@ -194,6 +194,9 @@ bool UWorldRegionalEventSubsystem::LoadDefinitionsFromDirectory(const FString& D
         Definition.WetnessPerHour = static_cast<float>(NumberField(Entry, TEXT("wetness_per_hour")));
         Definition.CoreTemperatureDeltaCelsiusPerHour =
             static_cast<float>(NumberField(Entry, TEXT("core_temperature_delta_c_per_hour")));
+        Definition.FireIgnitionChancePerHour = static_cast<float>(NumberField(Entry, TEXT("fire_ignition_chance_per_hour")));
+        Definition.FireSpreadChancePerHour = static_cast<float>(NumberField(Entry, TEXT("fire_spread_chance_per_hour")));
+        Definition.FireBurnRateMultiplier = static_cast<float>(NumberField(Entry, TEXT("fire_burn_rate_multiplier"), 1.0));
         Definition.RouteCostMultiplier = static_cast<float>(NumberField(Entry, TEXT("route_cost_multiplier"), 1.0));
         Definition.RaidDefenseMultiplier = static_cast<float>(NumberField(Entry, TEXT("raid_defense_multiplier"), 1.0));
         Definition.SnowLoadMultiplier = static_cast<float>(NumberField(Entry, TEXT("snow_load_multiplier"), 1.0));
@@ -229,6 +232,9 @@ bool UWorldRegionalEventSubsystem::LoadDefinitionsFromDirectory(const FString& D
             !IsFiniteRange(Definition.ThirstPerHour, 0.0f, 1000.0f) ||
             !IsFiniteRange(Definition.WetnessPerHour, 0.0f, 4.0f) ||
             !IsFiniteRange(Definition.CoreTemperatureDeltaCelsiusPerHour, -100.0f, 100.0f) ||
+            !IsFiniteRange(Definition.FireIgnitionChancePerHour, 0.0f, 1.0f) ||
+            !IsFiniteRange(Definition.FireSpreadChancePerHour, 0.0f, 1.0f) ||
+            !IsFiniteRange(Definition.FireBurnRateMultiplier, 0.01f, 10.0f) ||
             !IsFiniteRange(Definition.RouteCostMultiplier, 0.01f, 1000.0f) ||
             !IsFiniteRange(Definition.RaidDefenseMultiplier, 0.01f, 100.0f) ||
             !IsFiniteRange(Definition.SnowLoadMultiplier, 0.01f, 100.0f) ||
@@ -434,6 +440,12 @@ bool UWorldRegionalEventSubsystem::EvaluateRegion(
         OutEvaluation.CoreTemperatureDeltaCelsiusPerHour = FMath::Clamp(
             OutEvaluation.CoreTemperatureDeltaCelsiusPerHour + Definition.CoreTemperatureDeltaCelsiusPerHour,
             -10000.0f, 10000.0f);
+        OutEvaluation.FireIgnitionChancePerHour = FMath::Clamp(
+            OutEvaluation.FireIgnitionChancePerHour + Definition.FireIgnitionChancePerHour, 0.0f, 1.0f);
+        OutEvaluation.FireSpreadChancePerHour = FMath::Clamp(
+            OutEvaluation.FireSpreadChancePerHour + Definition.FireSpreadChancePerHour, 0.0f, 1.0f);
+        OutEvaluation.FireBurnRateMultiplier = FMath::Clamp(
+            OutEvaluation.FireBurnRateMultiplier * Definition.FireBurnRateMultiplier, 0.01f, 100.0f);
         OutEvaluation.SurvivalSeverityMultiplier = FMath::Clamp(
             OutEvaluation.SurvivalSeverityMultiplier * Definition.SurvivalSeverityMultiplier, 0.01f, 100000.0f);
     }
