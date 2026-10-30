@@ -225,7 +225,10 @@ bool UWorldSimulationCoordinatorSubsystem::AdvanceFixedStep(double DeltaSeconds)
         ? HazardWorld->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes = HazardWorld
         ? HazardWorld->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
-    if (!HazardAdapter || !Routes ||
+    UWorldSurvivalSubsystem* SurvivalAfterClock = HazardWorld
+        ? HazardWorld->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    if (!HazardAdapter || !Routes || !SurvivalAfterClock ||
+        !SurvivalAfterClock->ApplyRegionalEventExposure(DeltaSeconds) ||
         !HazardAdapter->AdvanceRegionalHazardDamage(DeltaSeconds) ||
         !HazardAdapter->AdvanceRegionalRaidSignals() ||
         !Routes->AdvanceRegionalInfrastructureWear(DeltaSeconds))
