@@ -430,6 +430,58 @@ bool UWorldAgricultureSubsystem::TryPlantCropOnField(
     return true;
 }
 
+bool UWorldAgricultureSubsystem::TryHarvestCropWithFieldAction(
+    const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
+    const FGuid& InventoryOwnerId, TArray<FGuid>& OutItemIds)
+{
+    OutItemIds.Reset();
+    if (!OperationId.IsValid() || !CropId.IsValid() ||
+        ExpectedCropRevision <= 0 || !InventoryOwnerId.IsValid())
+        return false;
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    const FGameDataFieldAction* Action =
+        GameData && GameData->IsLoaded()
+            ? GameData->FindFieldAction(TEXT("Field.Harvest")) : nullptr;
+    if (!Action || Action->Operation != TEXT("Harvest") ||
+        !FindInventoryForOwner(InventoryOwnerId, Inventory))
+        return false;
+    for (const FName ToolId : Action->Tools)
+        if (Inventory->GetItemCount(ToolId) <= 0)
+            return false;
+    return TryHarvestCrop(OperationId, CropId, ExpectedCropRevision, OutItemIds);
+}
+
+bool UWorldAgricultureSubsystem::TryPlantCropWithFieldAction(
+    const FGuid& OperationId, FName CropDefinitionId, const FGuid& SeedItemId,
+    int64 ExpectedSeedItemRevision, const FGuid& InventoryOwnerId,
+    const FIntVector& PlotCell, int64 ExpectedFieldRevision, float InitialMoisture,
+    FGuid& OutCropId)
+{
+    OutCropId.Invalidate();
+    if (!OperationId.IsValid() || CropDefinitionId.IsNone() || !SeedItemId.IsValid() ||
+        ExpectedSeedItemRevision <= 0 || !InventoryOwnerId.IsValid())
+        return false;
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    const FGameDataFieldAction* Action =
+        GameData && GameData->IsLoaded()
+            ? GameData->FindFieldAction(TEXT("Field.Plant")) : nullptr;
+    if (!Action || Action->Operation != TEXT("Plant") ||
+        !FindInventoryForOwner(InventoryOwnerId, Inventory))
+        return false;
+    for (const FName ToolId : Action->Tools)
+        if (Inventory->GetItemCount(ToolId) <= 0)
+            return false;
+    return TryPlantCropOnField(OperationId, CropDefinitionId, SeedItemId,
+        ExpectedSeedItemRevision, InventoryOwnerId, PlotCell, ExpectedFieldRevision,
+        InitialMoisture, OutCropId);
+}
+
 bool UWorldAgricultureSubsystem::TryHarvestCrop(
     const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
     TArray<FGuid>& OutItemIds)
