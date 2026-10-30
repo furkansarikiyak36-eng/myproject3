@@ -79,7 +79,7 @@ public:
     TObjectPtr<UPhysicalHealthComponent> PhysicalHealth;
 
     /** Profile registered by the active world bootstrap; traversal effort uses the shared survival ledger. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Survival")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category = "Survival")
     FGuid SurvivalEntityId;
 
     UFUNCTION(BlueprintCallable, Category = "Survival")
