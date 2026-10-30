@@ -693,7 +693,9 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
         StationRecipes += Data->GetStations().Contains(T.Where) ? 1 : 0;
         PhysicalParts += T.bPhysical ? 1 : 0;
     }
-    TestEqual(TEXT("All 38 plan transformations"), PlanSteps.Num(), 38);
+    for (int32 Step = 1; Step <= 38; ++Step)
+        TestTrue(FString::Printf(TEXT("Plan transformation %d is there"), Step), PlanSteps.Contains(Step));
+    // Extra numbers (39 = seed saving from the 15-step field chain) are allowed.
     TestTrue(TEXT("Hand recipes"), HandRecipes >= 25);
     TestTrue(TEXT("Station recipes"), StationRecipes >= 20);
     TestTrue(TEXT("Physical parts are marked"), PhysicalParts >= 8);

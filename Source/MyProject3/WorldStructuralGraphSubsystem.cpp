@@ -611,7 +611,8 @@ bool UWorldStructuralGraphSubsystem::TryDisconnect(FGuid ChildNodeId)
             ? Cast<IStructuralPieceInterface>(Support->Actor.Get()) : nullptr;
         FStructuralAnchorView ChildAnchor;
         FStructuralAnchorView SupportAnchor;
-        const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+        // Anchor reservations exist only on stone-to-stone links (see TryAddSecondarySupport).
+        const bool bHasPhysicalAdapters = Support && Cast<AStoneBuildingPiece>(Child->Actor.Get()) && Cast<AStoneBuildingPiece>(Support->Actor.Get());
         if (!Support || Support->Revision == MAX_int64 ||
             (bHasPhysicalAdapters &&
              (!ChildPiece || !SupportPiece ||
@@ -723,7 +724,9 @@ bool UWorldStructuralGraphSubsystem::TryAddSecondarySupport(
     IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(SupportActor);
     FStructuralAnchorView ChildAnchor;
     FStructuralAnchorView SupportAnchor;
-    const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+    // Stone bridges reserve matching anchors here. Every other piece (logs, sticks) was already
+    // validated by the placement kernel, which works with its own feature ids, not these anchors.
+    const bool bHasPhysicalAdapters = Cast<AStoneBuildingPiece>(ChildActor) && Cast<AStoneBuildingPiece>(SupportActor);
     if (AStoneBuildingPiece* Bridge = Cast<AStoneBuildingPiece>(ChildActor))
     {
         if (!Bridge->CanAcceptAdditionalSupport(OwnAnchorId))
@@ -830,7 +833,8 @@ bool UWorldStructuralGraphSubsystem::TryRemoveSecondarySupport(FGuid ChildNodeId
     IStructuralPieceInterface* SupportPiece = Cast<IStructuralPieceInterface>(Support->Actor.Get());
     FStructuralAnchorView ChildAnchor;
     FStructuralAnchorView SupportAnchor;
-    const bool bHasPhysicalAdapters = ChildPiece || SupportPiece;
+    // Anchor reservations exist only on stone-to-stone links (see TryAddSecondarySupport).
+    const bool bHasPhysicalAdapters = Cast<AStoneBuildingPiece>(Child->Actor.Get()) && Cast<AStoneBuildingPiece>(Support->Actor.Get());
     if (bHasPhysicalAdapters &&
         (!ChildPiece || !SupportPiece ||
          !ChildPiece->GetStructuralAnchor(RemovedLink.OwnAnchorId, ChildAnchor) ||
@@ -1046,7 +1050,7 @@ bool UWorldStructuralGraphSubsystem::TryRepairDamageWithInventory(
     FGuid NodeId, FName RepairId, int64 ExpectedNodeRevision,
     UInventoryCraftingComponent* Inventory)
 {
-    if (!NodeId.IsValid() || RepairId.IsNone() || ExpectedNodeRevision <= 0 ||
+    if (!NodeId.IsValid() || RepairId.IsNone() || ExpectedNodeRevision < 0 ||
         !IsValid(Inventory) || !GetWorld())
         return false;
 
@@ -1114,7 +1118,7 @@ bool UWorldStructuralGraphSubsystem::TryRepairDamageWithInventory(
 bool UWorldStructuralGraphSubsystem::TryDismantleStandaloneNodeToInventory(
     FGuid NodeId, int64 ExpectedNodeRevision, UInventoryCraftingComponent* Inventory)
 {
-    if (!NodeId.IsValid() || ExpectedNodeRevision <= 0 ||
+    if (!NodeId.IsValid() || ExpectedNodeRevision < 0 ||
         !IsValid(Inventory) || !GetWorld())
         return false;
 

@@ -183,8 +183,8 @@ bool AStoneBuildingPiece::ActivateAfterOwnershipTransfer()
 void AStoneBuildingPiece::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     const TArray<TWeakObjectPtr<AStoneBuildingPiece>> RopeOwnersCopy = ConnectedRopeOwners;
-    for (const TWeakObjectPtr<AStoneBuildingPiece>& Owner : RopeOwnersCopy)
-        if (Owner.IsValid()) Owner->DisconnectRopeConnection();
+    for (const TWeakObjectPtr<AStoneBuildingPiece>& RopeOwner : RopeOwnersCopy)
+        if (RopeOwner.IsValid()) RopeOwner->DisconnectRopeConnection();
     ConnectedRopeOwners.Reset();
     DisconnectRopeConnection();
     RemoveConnection(true);
@@ -1084,10 +1084,10 @@ bool AStoneBuildingPiece::TryConnectRopeTo(
 
 void AStoneBuildingPiece::DisconnectRopeConnection()
 {
-    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
-    if (Owner && Owner != this)
+    AStoneBuildingPiece* RopeOwner = GetRopeConnectionOwner();
+    if (RopeOwner && RopeOwner != this)
     {
-        Owner->DisconnectRopeConnection();
+        RopeOwner->DisconnectRopeConnection();
         return;
     }
 
@@ -1120,30 +1120,30 @@ void AStoneBuildingPiece::DisconnectRopeConnection()
 
 bool AStoneBuildingPiece::CanBeginRopeTraversal(float WeightKg) const
 {
-    const AStoneBuildingPiece* Owner = bOwnsRopeConnection ? this : RopeOtherEnd.Get();
-    if (!Owner || !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f ||
-        !FMath::IsFinite(Owner->MaxRopeSpanCm) || Owner->MaxRopeSpanCm < 100.0f ||
-        !FMath::IsFinite(Owner->MaxRopeTravelerWeightKg) || Owner->MaxRopeTravelerWeightKg <= 0.0f ||
-        !FMath::IsFinite(Owner->MaxConcurrentTraversalWeightKg) || Owner->MaxConcurrentTraversalWeightKg <= 0.0f)
+    const AStoneBuildingPiece* RopeOwner = bOwnsRopeConnection ? this : RopeOtherEnd.Get();
+    if (!RopeOwner || !FMath::IsFinite(WeightKg) || WeightKg <= 0.0f ||
+        !FMath::IsFinite(RopeOwner->MaxRopeSpanCm) || RopeOwner->MaxRopeSpanCm < 100.0f ||
+        !FMath::IsFinite(RopeOwner->MaxRopeTravelerWeightKg) || RopeOwner->MaxRopeTravelerWeightKg <= 0.0f ||
+        !FMath::IsFinite(RopeOwner->MaxConcurrentTraversalWeightKg) || RopeOwner->MaxConcurrentTraversalWeightKg <= 0.0f)
         return false;
-    const AStoneBuildingPiece* Other = Owner->RopeOtherEnd.Get();
-    if (!Other || Other == Owner || Owner->PieceType != EStonePieceType::RopeCrossingAnchor ||
+    const AStoneBuildingPiece* Other = RopeOwner->RopeOtherEnd.Get();
+    if (!Other || Other == RopeOwner || RopeOwner->PieceType != EStonePieceType::RopeCrossingAnchor ||
         Other->PieceType != EStonePieceType::RopeCrossingAnchor ||
         !FMath::IsFinite(Other->MaxRopeSpanCm) || Other->MaxRopeSpanCm < 100.0f ||
         !FMath::IsFinite(Other->MaxRopeTravelerWeightKg) || Other->MaxRopeTravelerWeightKg <= 0.0f ||
         !FMath::IsFinite(Other->MaxConcurrentTraversalWeightKg) || Other->MaxConcurrentTraversalWeightKg <= 0.0f)
         return false;
     const float Span = FVector::Distance(
-        Owner->GetAnchorWorldTransform(Owner->RopeLocalAnchorId).GetLocation(),
-        Other->GetAnchorWorldTransform(Owner->RopeRemoteAnchorId).GetLocation());
-    if (!FMath::IsFinite(Span) || Span > FMath::Min(Owner->MaxRopeSpanCm, Other->MaxRopeSpanCm) ||
-        WeightKg > FMath::Min(Owner->MaxRopeTravelerWeightKg, Other->MaxRopeTravelerWeightKg))
+        RopeOwner->GetAnchorWorldTransform(RopeOwner->RopeLocalAnchorId).GetLocation(),
+        Other->GetAnchorWorldTransform(RopeOwner->RopeRemoteAnchorId).GetLocation());
+    if (!FMath::IsFinite(Span) || Span > FMath::Min(RopeOwner->MaxRopeSpanCm, Other->MaxRopeSpanCm) ||
+        WeightKg > FMath::Min(RopeOwner->MaxRopeTravelerWeightKg, Other->MaxRopeTravelerWeightKg))
         return false;
     float CurrentLoad = 0.0f;
-    for (const TPair<FGuid, float>& Pair : Owner->ActiveRopeTravelerWeights)
+    for (const TPair<FGuid, float>& Pair : RopeOwner->ActiveRopeTravelerWeights)
         CurrentLoad += Pair.Value;
     return FMath::IsFinite(CurrentLoad) &&
-        CurrentLoad + WeightKg <= FMath::Min(Owner->MaxConcurrentTraversalWeightKg,
+        CurrentLoad + WeightKg <= FMath::Min(RopeOwner->MaxConcurrentTraversalWeightKg,
             Other->MaxConcurrentTraversalWeightKg);
 }
 
@@ -1151,56 +1151,56 @@ bool AStoneBuildingPiece::TryBeginRopeTraversal(
     AActor* Traveler, float WeightKg, FGuid& OutTraversalId)
 {
     OutTraversalId.Invalidate();
-    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
-    if (!Owner || !IsValid(Traveler))
+    AStoneBuildingPiece* RopeOwner = GetRopeConnectionOwner();
+    if (!RopeOwner || !IsValid(Traveler))
         return false;
 
     // Dead/disappeared travelers must not retain the rope's shared capacity.
     TArray<FGuid> StaleTickets;
-    for (const TPair<FGuid, TWeakObjectPtr<AActor>>& Pair : Owner->ActiveRopeTravelers)
+    for (const TPair<FGuid, TWeakObjectPtr<AActor>>& Pair : RopeOwner->ActiveRopeTravelers)
         if (!Pair.Value.IsValid())
             StaleTickets.Add(Pair.Key);
     for (const FGuid& StaleTicket : StaleTickets)
-        Owner->CancelRopeTraversal(StaleTicket);
+        RopeOwner->CancelRopeTraversal(StaleTicket);
 
     if (!CanBeginRopeTraversal(WeightKg))
         return false;
-    const bool bStartsAtOwner = Owner == this;
-    AStoneBuildingPiece* StartPiece = bStartsAtOwner ? Owner : Owner->RopeOtherEnd.Get();
-    const FName StartAnchor = bStartsAtOwner ? Owner->RopeLocalAnchorId : Owner->RopeRemoteAnchorId;
+    const bool bStartsAtOwner = RopeOwner == this;
+    AStoneBuildingPiece* StartPiece = bStartsAtOwner ? RopeOwner : RopeOwner->RopeOtherEnd.Get();
+    const FName StartAnchor = bStartsAtOwner ? RopeOwner->RopeLocalAnchorId : RopeOwner->RopeRemoteAnchorId;
     if (!IsValid(StartPiece) || StartAnchor.IsNone())
         return false;
     const FVector Start = StartPiece->GetAnchorWorldTransform(StartAnchor).GetLocation();
     const FGuid Ticket = FGuid::NewGuid();
-    if (!Ticket.IsValid() || Owner->ActiveRopeTravelers.Contains(Ticket))
+    if (!Ticket.IsValid() || RopeOwner->ActiveRopeTravelers.Contains(Ticket))
         return false;
     if (!Traveler->SetActorLocation(Start, false, nullptr, ETeleportType::TeleportPhysics))
         return false;
-    Owner->ActiveRopeTravelers.Add(Ticket, Traveler);
-    Owner->ActiveRopeTravelerWeights.Add(Ticket, WeightKg);
-    Owner->ActiveRopeTraversalStartsAtOwner.Add(Ticket, bStartsAtOwner);
+    RopeOwner->ActiveRopeTravelers.Add(Ticket, Traveler);
+    RopeOwner->ActiveRopeTravelerWeights.Add(Ticket, WeightKg);
+    RopeOwner->ActiveRopeTraversalStartsAtOwner.Add(Ticket, bStartsAtOwner);
     OutTraversalId = Ticket;
     return true;
 }
 
 bool AStoneBuildingPiece::AdvanceRopeTraversal(FGuid TraversalId, float Alpha)
 {
-    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
-    if (!Owner)
-        Owner = this;
-    TWeakObjectPtr<AActor>* TravelerRef = Owner->ActiveRopeTravelers.Find(TraversalId);
-    const bool* StartsAtOwner = Owner->ActiveRopeTraversalStartsAtOwner.Find(TraversalId);
-    AStoneBuildingPiece* Other = Owner->RopeOtherEnd.Get();
+    AStoneBuildingPiece* RopeOwner = GetRopeConnectionOwner();
+    if (!RopeOwner)
+        RopeOwner = this;
+    TWeakObjectPtr<AActor>* TravelerRef = RopeOwner->ActiveRopeTravelers.Find(TraversalId);
+    const bool* StartsAtOwner = RopeOwner->ActiveRopeTraversalStartsAtOwner.Find(TraversalId);
+    AStoneBuildingPiece* Other = RopeOwner->RopeOtherEnd.Get();
     if (!TravelerRef || !TravelerRef->IsValid() || !StartsAtOwner || !Other ||
         !FMath::IsFinite(Alpha))
     {
-        Owner->CancelRopeTraversal(TraversalId);
+        RopeOwner->CancelRopeTraversal(TraversalId);
         return false;
     }
-    const FVector Start = (*StartsAtOwner ? Owner : Other)->GetAnchorWorldTransform(
-        *StartsAtOwner ? Owner->RopeLocalAnchorId : Owner->RopeRemoteAnchorId).GetLocation();
-    const FVector End = (*StartsAtOwner ? Other : Owner)->GetAnchorWorldTransform(
-        *StartsAtOwner ? Owner->RopeRemoteAnchorId : Owner->RopeLocalAnchorId).GetLocation();
+    const FVector Start = (*StartsAtOwner ? RopeOwner : Other)->GetAnchorWorldTransform(
+        *StartsAtOwner ? RopeOwner->RopeLocalAnchorId : RopeOwner->RopeRemoteAnchorId).GetLocation();
+    const FVector End = (*StartsAtOwner ? Other : RopeOwner)->GetAnchorWorldTransform(
+        *StartsAtOwner ? RopeOwner->RopeRemoteAnchorId : RopeOwner->RopeLocalAnchorId).GetLocation();
     const float Progress = FMath::Clamp(Alpha, 0.0f, 1.0f);
     const FVector Position = FMath::Lerp(Start, End, Progress);
     // Sweep against the world so a blocked rope path cannot teleport a
@@ -1210,18 +1210,18 @@ bool AStoneBuildingPiece::AdvanceRopeTraversal(FGuid TraversalId, float Alpha)
         SweepHit.bBlockingHit)
         return false;
     if (Progress >= 1.0f)
-        return Owner->CancelRopeTraversal(TraversalId);
+        return RopeOwner->CancelRopeTraversal(TraversalId);
     return true;
 }
 
 bool AStoneBuildingPiece::CancelRopeTraversal(FGuid TraversalId)
 {
-    AStoneBuildingPiece* Owner = GetRopeConnectionOwner();
-    if (!Owner)
-        Owner = this;
-    const bool bHadTicket = Owner->ActiveRopeTravelers.Remove(TraversalId) > 0;
-    Owner->ActiveRopeTravelerWeights.Remove(TraversalId);
-    Owner->ActiveRopeTraversalStartsAtOwner.Remove(TraversalId);
+    AStoneBuildingPiece* RopeOwner = GetRopeConnectionOwner();
+    if (!RopeOwner)
+        RopeOwner = this;
+    const bool bHadTicket = RopeOwner->ActiveRopeTravelers.Remove(TraversalId) > 0;
+    RopeOwner->ActiveRopeTravelerWeights.Remove(TraversalId);
+    RopeOwner->ActiveRopeTraversalStartsAtOwner.Remove(TraversalId);
     return bHadTicket;
 }
 

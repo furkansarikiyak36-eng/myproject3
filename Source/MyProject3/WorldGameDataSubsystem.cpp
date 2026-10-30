@@ -1146,6 +1146,8 @@ bool UWorldGameDataSubsystem::ApplyToInventory(UInventoryCraftingComponent* Inve
             [&Recipe](const FCraftingRecipe& Existing) { return Existing.RecipeId == Recipe.RecipeId; });
         if (!ExistingRecipe)
         {
+            // Applying twice is fine: a recipe the inventory already knows is kept.
+        if (!Inventory->HasRecipe(Recipe.RecipeId))
             bAll = Inventory->RegisterRecipe(Recipe) && bAll;
             continue;
         }

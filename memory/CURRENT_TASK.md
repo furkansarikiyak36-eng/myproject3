@@ -43,4 +43,4 @@ animals) if phase 6/7 needs them.
 - p00 merge commit: tree = integration, memory notes kept from p00.
 
 ### Next step
-Other accounts: Phase 6-9 blind list. Here: build + test (Tick check, ChatGPT's P6 commits aed5e0a/18fa3c1).
+Batch test done (136/136). Decide with the user: port useful parts of game/p06-p08-blind-code-closure (infrastructure actor, combustible, data) into p00; stop parallel branches.

@@ -1,4 +1,5 @@
 #include "WorldAgricultureSubsystem.h"
+#include "PhysicalHealthComponent.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -873,7 +874,8 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
 
     FWorldCropState* Crop = Crops.Find(CropId);
     const FWorldCropDefinition* CropDefinition = Crop ? FindCropDefinition(Crop->CropDefinitionId) : nullptr;
-    if (!Crop || !CropDefinition || Crop->Revision != ExpectedCropRevision ||
+    // A crop without a data definition can still be harvested; it just leaves no soil fatigue.
+    if (!Crop || Crop->Revision != ExpectedCropRevision ||
         Crop->Revision >= MAX_int64 - 1 || Crop->Stage != ECropGrowthStage::Mature ||
         Crop->HarvestDefinitionId.IsNone() || Crop->HarvestUnits <= 0 ||
         Crop->HarvestUnits > 64 || Crop->SeedReturnUnits < 0 || Crop->SeedReturnUnits > 64 ||
@@ -923,7 +925,8 @@ bool UWorldAgricultureSubsystem::TryHarvestCrop(
 
     if (FieldForHarvest)
     {
-        FieldForHarvest->Fertility = FMath::Max(0.0f, FieldForHarvest->Fertility - CropDefinition->SoilExhaustionPerHarvest);
+        if (CropDefinition)
+            FieldForHarvest->Fertility = FMath::Max(0.0f, FieldForHarvest->Fertility - CropDefinition->SoilExhaustionPerHarvest);
         ++FieldForHarvest->HarvestCount;
         ++FieldForHarvest->Revision;
     }
@@ -1203,7 +1206,6 @@ bool UWorldAgricultureSubsystem::TryCaptureWildlife(
         const FWorldAnimalState& ExistingAnimal = Animals.FindChecked(Existing->EntityId);
         if (ExistingAnimal.FeedDefinitionId != Definition.FeedDefinitionId ||
             ExistingAnimal.ProductDefinitionId != Definition.ProductDefinitionId ||
-            ExistingAnimal.ProductUnits != Definition.ProductUnits ||
             ExistingAnimal.MeatDefinitionId != Definition.MeatDefinitionId ||
             ExistingAnimal.MeatUnits != Definition.MeatUnits ||
             ExistingAnimal.HideDefinitionId != Definition.HideDefinitionId ||
