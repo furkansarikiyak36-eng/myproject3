@@ -6,6 +6,7 @@
 #include "WorldThreatDirectorSubsystem.h"
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldRegionalEventSubsystem.h"
 
 UWorldThreatDirectorSubsystem* UWorldRaidAdapterSubsystem::GetThreatDirector() const
 {
@@ -27,7 +28,11 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
     if (!World || !Threat || !Clock || !Threat->IsDirectorInitialized() ||
         !Clock->IsClockInitialized() || !FMath::IsFinite(SpawnHeightOffset) ||
         !FMath::IsFinite(DamagePerPulse) || DamagePerPulse <= 0.0f ||
-        !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0)
+        !FMath::IsFinite(AttackIntervalSeconds) || AttackIntervalSeconds <= 0.0 ||
+        !FMath::IsFinite(DamageReductionPerDefenseRating) ||
+        DamageReductionPerDefenseRating < 0.0f || DamageReductionPerDefenseRating > 1.0f ||
+        !FMath::IsFinite(MinimumRaidDamageFraction) ||
+        MinimumRaidDamageFraction <= 0.0f || MinimumRaidDamageFraction > 1.0f)
         return false;
 
     FThreatRaidRecord Raid;
@@ -112,12 +117,27 @@ bool UWorldRaidAdapterSubsystem::AdvanceRaidWorldAdapter()
         if (SortedTargets[Index] == SortedTargets[Index - 1])
             SortedTargets.RemoveAt(Index, 1, EAllowShrinking::No);
 
+    float RegionalDefenseMultiplier = 1.0f;
+    UWorldRegionalEventSubsystem* RegionalEvents = World->GetSubsystem<UWorldRegionalEventSubsystem>();
+    FWorldRegionalEventEvaluation RegionalEvaluation;
+    if (RegionalEvents && !Raid.TargetRegionId.IsNone() &&
+        RegionalEvents->EvaluateRegion(Raid.TargetRegionId, RegionalEvaluation))
+    {
+        RegionalDefenseMultiplier = RegionalEvaluation.RaidDefenseMultiplier;
+    }
+    const float RegionDefenseRating = !Raid.TargetRegionId.IsNone()
+        ? Graph->GetRegionDefenseRating(Raid.TargetRegionId) : 0.0f;
+    const float DamageFraction = FMath::Clamp(
+        1.0f - RegionDefenseRating * DamageReductionPerDefenseRating * RegionalDefenseMultiplier,
+        MinimumRaidDamageFraction, 1.0f);
+    const float EffectiveDamage = DamagePerPulse * DamageFraction;
+
     for (const FGuid& NodeId : SortedTargets)
     {
         FStructuralNodeRecord Node;
         if (!Graph->GetNode(NodeId, Node)) continue;
         bool bThresholdExceeded = false;
-        if (!Graph->ApplyDamage(NodeId, DamagePerPulse, bThresholdExceeded)) continue;
+        if (!Graph->ApplyDamage(NodeId, EffectiveDamage, bThresholdExceeded)) continue;
         if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
         {
             return false;
