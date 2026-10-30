@@ -187,6 +187,25 @@ bool UWorldRaidAdapterSubsystem::ResolveCollapsedSubtree(FGuid RootNodeId)
 }
 
 
+bool UWorldRaidAdapterSubsystem::ApplyFireDamageToStructure(
+    const FGuid& NodeId, float DamageAmount)
+{
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    if (!Graph || !NodeId.IsValid() || !FMath::IsFinite(DamageAmount) ||
+        DamageAmount < 0.0f || DamageAmount > 1000000.0f)
+        return false;
+    if (DamageAmount <= 0.0f)
+        return true;
+
+    FStructuralNodeRecord Node;
+    if (!Graph->GetNode(NodeId, Node) || !Node.bIntact)
+        return false;
+    bool bThresholdExceeded = false;
+    if (!Graph->ApplyDamage(NodeId, DamageAmount, bThresholdExceeded))
+        return false;
+    return !bThresholdExceeded || ResolveCollapsedSubtree(NodeId);
+}
+
 bool UWorldRaidAdapterSubsystem::AdvanceRegionalHazardDamage(double DeltaSeconds)
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
