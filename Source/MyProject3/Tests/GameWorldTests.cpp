@@ -688,6 +688,8 @@ bool FGameDataLoadsTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Three crops"), Data->GetCrops().Num(), 3);
     TestEqual(TEXT("Fifteen field action definitions"), Data->GetFieldActions().Num(), 15);
     TestEqual(TEXT("Nine infrastructure definitions"), Data->GetInfrastructures().Num(), 9);
+    TestNotNull(TEXT("Trail marker definition is loaded"),
+        Data->FindInfrastructure(TEXT("Infrastructure.TrailMarker")));
     TestEqual(TEXT("Two typed structural repair recipes"), Data->GetStructureRepairs().Num(), 2);
     TestEqual(TEXT("Four raid countermeasure definitions"), Data->GetRaidDefenses().Num(), 4);
     TestEqual(TEXT("Three typed knowledge rewards"), Data->GetKnowledge().Num(), 3);
