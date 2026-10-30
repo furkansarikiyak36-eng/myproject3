@@ -90,6 +90,7 @@ struct FGameDataInfrastructure
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") TArray<FGameDataInfrastructureWearRule> WearRules;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") double BuildWorkSeconds = 0.0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") float MaxCondition = 100.0f;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") float RepairConditionPerJob = 25.0f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="GameData|Infrastructure") float BuiltRouteCostMultiplier = 1.0f;
 };
 
