@@ -32,7 +32,10 @@
       "unlocks": [
         "Seed.Root",
         "Tool.Hoe",
-        "Infrastructure.HillSteps"
+        "Infrastructure.HillSteps",
+        "Recipe.MakeBedroll",
+        "Knowledge.BedConstruction",
+        "Recipe.SeparateGrainSeed"
       ]
     },
     {
@@ -45,7 +48,9 @@
       "unlocks": [
         "Seed.Legume",
         "Infrastructure.Boardwalk",
-        "Infrastructure.Raft"
+        "Infrastructure.Raft",
+        "Recipe.SeparateLegumeSeed",
+        "Knowledge.RaisedBed"
       ]
     },
     {
@@ -59,7 +64,9 @@
         "Clothing.HideBoots"
       ],
       "unlocks": [
-        "Infrastructure.ForwardCamp"
+        "Infrastructure.ForwardCamp",
+        "Knowledge.ColdWeatherBed",
+        "Recipe.SeparateRootSeed"
       ]
     }
   ]
