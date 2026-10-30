@@ -63,18 +63,38 @@ bool AWorldInfrastructureActor::ConsumeMaterialsAtomically(
         {
             if (Stack.ItemId != Cost.ItemId)
                 continue;
-            // Unique ledger-owned objects need their own ownership transaction.
             if (Stack.OwnedWorldItemId.IsValid())
-                return false;
+            {
+                UWorldItemOwnershipSubsystem* Ownership =
+                    GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+                FWorldOwnedItemRecord OwnedItem;
+                if (!Ownership || !Ownership->TryGetItem(Stack.OwnedWorldItemId, OwnedItem) ||
+                    OwnedItem.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                    OwnedItem.OwnerId != OwnerId || OwnedItem.DefinitionId != Cost.ItemId ||
+                    OwnedItem.Quantity != 1 || Stack.Quantity != 1)
+                    return false;
+            }
             Available += Stack.Quantity;
         }
         if (Available < Cost.Quantity)
             return false;
     }
 
+    UWorldItemOwnershipSubsystem* Ownership =
+        GetWorld() ? GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    if (!Ownership)
+        return false;
+    TArray<FWorldOwnedItemRecord> PreviousOwnedItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
     auto Rollback = [&]() -> bool
     {
-        return Inventory->RestoreSnapshot(OwnerId, PreviousStacks, PreviousQuickAccess);
+        const bool bInventoryRestored =
+            Inventory->RestoreSnapshot(OwnerId, PreviousStacks, PreviousQuickAccess);
+        const bool bOwnershipRestored =
+            Ownership->RestoreSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
+        return bInventoryRestored && bOwnershipRestored;
     };
     for (const FGameDataItemAmount& Cost : Materials)
         if (!Inventory->TryRemoveItem(Cost.ItemId, Cost.Quantity))
