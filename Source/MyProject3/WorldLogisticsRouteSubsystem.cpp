@@ -3,6 +3,8 @@
 #include "Engine/World.h"
 #include "WorldRegionalEventSubsystem.h"
 #include "WorldGameDataSubsystem.h"
+#include "WorldInfrastructureActor.h"
+#include "EngineUtils.h"
 
 bool UWorldLogisticsRouteSubsystem::UpsertNode(const FLogisticsRouteNode& Node)
 {
@@ -188,51 +190,61 @@ bool UWorldLogisticsRouteSubsystem::AdvanceRegionalInfrastructureWear(double Del
 {
     if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
         return false;
+
     TArray<FLogisticsRouteNode> NodeSnapshot;
     TArray<FLogisticsRouteEdge> EdgeSnapshot;
     ExportSnapshot(NodeSnapshot, EdgeSnapshot);
     const bool bHasBuiltInfrastructure = EdgeSnapshot.ContainsByPredicate(
         [](const FLogisticsRouteEdge& Edge)
         { return Edge.bHasBuiltInfrastructure && !Edge.InfrastructureId.IsNone(); });
-    if (!bHasBuiltInfrastructure)
-        return true;
 
-    UWorld* World = GetWorld();
-    UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
-    UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
-    if (!GameData || !GameData->IsLoaded() || !Events || !Events->AreDefinitionsLoaded())
-        return false;
-
-    TMap<FName, float> WearByInfrastructure;
-    for (const FLogisticsRouteEdge& Edge : EdgeSnapshot)
+    if (bHasBuiltInfrastructure)
     {
-        if (Edge.InfrastructureId.IsNone() || !Edge.bHasBuiltInfrastructure || Edge.RegionId.IsNone())
-            continue;
-        const FGameDataInfrastructure* Definition = GameData->FindInfrastructure(Edge.InfrastructureId);
-        if (!Definition || Definition->WearRules.IsEmpty())
-            continue;
-        FWorldRegionalEventEvaluation Evaluation;
-        if (!Events->EvaluateRegion(Edge.RegionId, Evaluation))
+        UWorld* World = GetWorld();
+        UWorldGameDataSubsystem* GameData = World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+        UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+        if (!GameData || !GameData->IsLoaded() || !Events || !Events->AreDefinitionsLoaded())
             return false;
-        float HourlyWear = 0.0f;
-        for (const FGameDataInfrastructureWearRule& Rule : Definition->WearRules)
-            if (Evaluation.ActiveEventIds.Contains(Rule.EventId))
-                HourlyWear += Rule.WearPerHour;
-        if (!FMath::IsFinite(HourlyWear) || HourlyWear < 0.0f)
-            return false;
-        if (HourlyWear > 0.0f)
+
+        TMap<FName, float> WearByInfrastructure;
+        for (const FLogisticsRouteEdge& Edge : EdgeSnapshot)
         {
-            float& Total = WearByInfrastructure.FindOrAdd(Edge.InfrastructureId);
-            Total = FMath::Max(Total, HourlyWear * static_cast<float>(DeltaSeconds / 3600.0));
+            if (Edge.InfrastructureId.IsNone() || !Edge.bHasBuiltInfrastructure || Edge.RegionId.IsNone())
+                continue;
+            const FGameDataInfrastructure* Definition = GameData->FindInfrastructure(Edge.InfrastructureId);
+            if (!Definition || Definition->WearRules.IsEmpty())
+                continue;
+            FWorldRegionalEventEvaluation Evaluation;
+            if (!Events->EvaluateRegion(Edge.RegionId, Evaluation))
+                return false;
+            float HourlyWear = 0.0f;
+            for (const FGameDataInfrastructureWearRule& Rule : Definition->WearRules)
+                if (Evaluation.ActiveEventIds.Contains(Rule.EventId))
+                    HourlyWear += Rule.WearPerHour;
+            if (!FMath::IsFinite(HourlyWear) || HourlyWear < 0.0f)
+                return false;
+            if (HourlyWear > 0.0f)
+            {
+                float& Total = WearByInfrastructure.FindOrAdd(Edge.InfrastructureId);
+                Total = FMath::Max(Total, HourlyWear * static_cast<float>(DeltaSeconds / 3600.0));
+            }
         }
+        TArray<FName> InfrastructureIds;
+        WearByInfrastructure.GetKeys(InfrastructureIds);
+        InfrastructureIds.Sort([](const FName& A, const FName& B)
+            { return A.ToString() < B.ToString(); });
+        for (const FName Id : InfrastructureIds)
+            if (!ApplyInfrastructureWear(Id, WearByInfrastructure.FindRef(Id)))
+                return false;
     }
-    TArray<FName> InfrastructureIds;
-    WearByInfrastructure.GetKeys(InfrastructureIds);
-    InfrastructureIds.Sort([](const FName& A, const FName& B)
-        { return A.ToString() < B.ToString(); });
-    for (const FName Id : InfrastructureIds)
-        if (!ApplyInfrastructureWear(Id, WearByInfrastructure.FindRef(Id)))
-            return false;
+
+    // Infrastructure outside the authored route graph (for example a forward
+    // camp or a raft not mapped to a traversable edge) owns its local condition.
+    if (UWorld* World = GetWorld())
+        for (TActorIterator<AWorldInfrastructureActor> It(World); It; ++It)
+            if (IsValid(*It) && !It->AdvanceLocalWeatherWear(DeltaSeconds))
+                return false;
+
     return true;
 }
 
