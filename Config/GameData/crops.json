@@ -6,8 +6,8 @@
       "name": "Tahıl (yabani buğday)",
       "seed": "Seed.Grain",
       "harvest": "Grain.Harvest",
-      "units": 4,
-      "hours_per_stage": 120,
+      "units": 5,
+      "hours_per_stage": 96,
       "plant_months": [
         4,
         5
@@ -23,15 +23,15 @@
       "name": "Kök bitki",
       "seed": "Seed.Root",
       "harvest": "Root.Harvest",
-      "units": 3,
-      "hours_per_stage": 96,
+      "units": 4,
+      "hours_per_stage": 72,
       "plant_months": [
         4,
         5,
         6
       ],
       "seed_return_units": 1,
-      "soil_exhaustion_per_harvest": 8,
+      "soil_exhaustion_per_harvest": 9,
       "minimum_fertility": 15,
       "maximum_plant_weed_pressure": 0.6,
       "found_in_zone": 2
@@ -41,14 +41,14 @@
       "name": "Baklagil",
       "seed": "Seed.Legume",
       "harvest": "Legume.Harvest",
-      "units": 3,
+      "units": 4,
       "hours_per_stage": 96,
       "plant_months": [
         5,
         6
       ],
       "seed_return_units": 2,
-      "soil_exhaustion_per_harvest": 5,
+      "soil_exhaustion_per_harvest": 4,
       "minimum_fertility": 10,
       "maximum_plant_weed_pressure": 0.7,
       "found_in_zone": 3
