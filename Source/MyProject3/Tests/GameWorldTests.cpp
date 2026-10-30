@@ -806,11 +806,24 @@ bool FGameDataAppliesTest::RunTest(const FString& Parameters)
         CampEntryOperation, Explorer.EntityId, TEXT("Zone.0"), FVector::ZeroVector, ZoneAccessReason));
     TestTrue(TEXT("Retry same camp entry idempotently"), Data->TryRecordZoneEntry(
         CampEntryOperation, Explorer.EntityId, TEXT("Zone.0"), FVector::ZeroVector, ZoneAccessReason));
+    FWorldSurvivalProfile AfterCampEntry;
+    TestTrue(TEXT("Read profile after camp entry"), Survival->GetProfile(Explorer.EntityId, AfterCampEntry));
+    TestEqual(TEXT("Zone entry stores the entered region"), AfterCampEntry.RegionId, FName(TEXT("Zone.0")));
+    const int64 CampEntryRevision = AfterCampEntry.Revision;
+    TestTrue(TEXT("Retry preserves the profile revision"),
+        Data->TryRecordZoneEntry(CampEntryOperation, Explorer.EntityId, TEXT("Zone.0"),
+            FVector::ZeroVector, ZoneAccessReason));
+    TestTrue(TEXT("Read profile after zone retry"), Survival->GetProfile(Explorer.EntityId, AfterCampEntry));
+    TestEqual(TEXT("Zone entry retry does not mutate the profile twice"),
+        AfterCampEntry.Revision, CampEntryRevision);
     TestTrue(TEXT("Base discovery unlocks grain seed knowledge"),
         Survival->IsDefinitionUnlocked(Explorer.EntityId, TEXT("Seed.Grain")));
 
     TestTrue(TEXT("Record creek entry after the camp prerequisite"), Data->TryRecordZoneEntry(
         FGuid::NewGuid(), Explorer.EntityId, TEXT("Zone.1"), FVector(760.0, -1200.0, 0.0), ZoneAccessReason));
+    TestTrue(TEXT("Read profile after creek entry"), Survival->GetProfile(Explorer.EntityId, AfterCampEntry));
+    TestEqual(TEXT("Entering a new zone updates the active exposure region"),
+        AfterCampEntry.RegionId, FName(TEXT("Zone.1")));
     TestTrue(TEXT("Creek discovery unlocks bridge infrastructure"), Survival->IsDefinitionUnlocked(
         Explorer.EntityId, TEXT("Infrastructure.CreekBridge")));
 
@@ -1803,6 +1816,156 @@ bool FAvalancheTerrainFilterContractTest::RunTest(const FString& Parameters)
         Avalanche.RegionIds.Contains(MountainPass.Id) &&
         MountainPass.SlopeRatio >= Avalanche.MinSlopeRatio &&
         MountainPass.ElevationMeters >= Avalanche.MinElevationMeters);
+    return true;
+}
+
+// P8.1 — regional events apply physical exposure to entered-zone profiles with shelter/clothing mitigation.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRegionalSurvivalExposureTest,
+    "MyProject3.World.Events.RegionalExposureAffectsHealthWetnessAndColdOncePerTick", Flags)
+bool FRegionalSurvivalExposureTest::RunTest(const FString& Parameters)
+{
+    FTestWorld TestWorld;
+    UWorld* World = TestWorld.World;
+    UWorldSurvivalSubsystem* Survival = World ? World->GetSubsystem<UWorldSurvivalSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    UWorldSimulationClockSubsystem* Clock = World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    if (!TestNotNull(TEXT("Survival subsystem"), Survival) ||
+        !TestNotNull(TEXT("Regional event subsystem"), Events) ||
+        !TestNotNull(TEXT("Simulation clock"), Clock) ||
+        !TestNotNull(TEXT("Climate"), Climate))
+        return false;
+
+    TestTrue(TEXT("Initialize clock inside the 72-hour deterministic event window"),
+        Clock->InitializeClock(4455, 2.0 * Day));
+    TestTrue(TEXT("Initialize climate"), Climate->InitializeClimate());
+
+    const FString FixtureDirectory = FPaths::Combine(
+        FPaths::ProjectSavedDir(), TEXT("Automation"), TEXT("RegionalSurvivalExposure"));
+    IFileManager::Get().DeleteDirectory(*FixtureDirectory, false, true);
+    TestTrue(TEXT("Create exposure fixture directory"),
+        IFileManager::Get().MakeDirectory(*FixtureDirectory, true));
+    const FString EventFixture = TEXT(R"json(
+{
+  "regions": [
+    {
+      "id": "Zone.1",
+      "elevation_m": 100,
+      "slope_ratio": 0.2,
+      "flood_exposure": 0.8,
+      "vegetation_fuel_load": 0.2,
+      "snow_load_units_per_cm_m2": 0.1,
+      "raid_target": [0, 0, 0]
+    }
+  ],
+  "events": [
+    {
+      "id": "Event.TestRegionalExposure",
+      "type": "Flood",
+      "regions": ["Zone.1"],
+      "months": [],
+      "required_weather": [],
+      "chain_parent_id": "",
+      "min_temperature_c": -100,
+      "max_temperature_c": 100,
+      "min_snow_depth_cm": 0,
+      "min_ground_wetness": 0,
+      "max_ground_wetness": 1,
+      "min_slope_ratio": 0,
+      "min_elevation_m": -10000,
+      "min_flood_exposure": 0,
+      "min_vegetation_fuel_load": 0,
+      "chance_per_day": 1,
+      "duration_hours": 72,
+      "structure_damage_per_hour": 0,
+      "health_damage_per_hour": 10,
+      "fatigue_per_hour": 4,
+      "stamina_loss_per_hour": 2,
+      "thirst_per_hour": 3,
+      "wetness_per_hour": 0.4,
+      "core_temperature_delta_c_per_hour": -1,
+      "route_cost_multiplier": 1,
+      "raid_defense_multiplier": 1,
+      "snow_load_multiplier": 1,
+      "survival_severity_multiplier": 1
+    }
+  ]
+}
+)json");
+    TestTrue(TEXT("Write deterministic event fixture"),
+        FFileHelper::SaveStringToFile(EventFixture,
+            *FPaths::Combine(FixtureDirectory, TEXT("events.json"))));
+    TestTrue(FString::Printf(TEXT("Load regional exposure fixture: %s"), *Events->GetLastError()),
+        Events->LoadDefinitionsFromDirectory(FixtureDirectory));
+
+    FWorldSurvivalProfile Exposed;
+    Exposed.EntityId = FGuid(1301, 1302, 1303, 1304);
+    Exposed.RegionId = TEXT("Zone.1");
+    Exposed.Health = 100.0f;
+    Exposed.Fatigue = 20.0f;
+    Exposed.Stamina = 80.0f;
+    Exposed.Thirst = 10.0f;
+    Exposed.Wetness = 0.0f;
+    Exposed.CoreTemperatureCelsius = 37.0f;
+    TestTrue(TEXT("Register exposed profile"), Survival->RegisterProfile(Exposed));
+
+    FWorldSurvivalProfile Protected = Exposed;
+    Protected.EntityId = FGuid(1305, 1306, 1307, 1308);
+    Protected.ShelterProtection = 1.0f;
+    Protected.ClothingInsulation = 0.5f;
+    Protected.ClothingWaterResistance = 1.0f;
+    TestTrue(TEXT("Register sheltered and water-resistant profile"), Survival->RegisterProfile(Protected));
+
+    FWorldRegionalEventEvaluation Evaluation;
+    TestTrue(TEXT("Evaluate guaranteed regional event"), Events->EvaluateRegion(TEXT("Zone.1"), Evaluation));
+    TestTrue(TEXT("Exposure event is active"), Evaluation.ActiveEventIds.Contains(TEXT("Event.TestRegionalExposure")));
+    TestEqual(TEXT("Health damage rate loaded"), Evaluation.HealthDamagePerHour, 10.0f);
+    TestEqual(TEXT("Wetness rate loaded"), Evaluation.WetnessPerHour, 0.4f);
+    TestEqual(TEXT("Cold drift loaded"), Evaluation.CoreTemperatureDeltaCelsiusPerHour, -1.0f);
+
+    TestTrue(TEXT("Apply regional event exposure for one hour"), Survival->ApplyRegionalEventExposure(3600.0));
+    FWorldSurvivalProfile Result;
+    TestTrue(TEXT("Read exposed profile"), Survival->GetProfile(Exposed.EntityId, Result));
+    TestEqual(TEXT("Exposed health decreases by ten"), Result.Health, 90.0f, 0.001f);
+    TestEqual(TEXT("Exposed fatigue increases by four"), Result.Fatigue, 24.0f, 0.001f);
+    TestEqual(TEXT("Exposed stamina decreases by two"), Result.Stamina, 78.0f, 0.001f);
+    TestEqual(TEXT("Exposed thirst increases by three"), Result.Thirst, 13.0f, 0.001f);
+    TestEqual(TEXT("Exposed wetness increases by forty percent"), Result.Wetness, 0.4f, 0.001f);
+    TestEqual(TEXT("Exposed core temperature drops one degree"),
+        Result.CoreTemperatureCelsius, 36.0f, 0.001f);
+    const int64 ExposedRevision = Result.Revision;
+
+    TestTrue(TEXT("Read sheltered profile"), Survival->GetProfile(Protected.EntityId, Result));
+    TestEqual(TEXT("Shelter halves health exposure"), Result.Health, 95.0f, 0.001f);
+    TestEqual(TEXT("Shelter reduces fatigue exposure"), Result.Fatigue, 23.0f, 0.001f);
+    TestEqual(TEXT("Shelter reduces stamina exposure"), Result.Stamina, 78.5f, 0.001f);
+    TestEqual(TEXT("Shelter reduces thirst exposure"), Result.Thirst, 12.25f, 0.001f);
+    TestEqual(TEXT("Waterproof clothing and shelter prevent rain wetness"), Result.Wetness, 0.0f, 0.001f);
+    TestTrue(TEXT("Insulation and shelter mitigate cold core drift"),
+        Result.CoreTemperatureCelsius > 36.45f && Result.CoreTemperatureCelsius < 36.6f);
+
+    TestTrue(TEXT("Repeat exposure pass in the same tick is a successful no-op"),
+        Survival->ApplyRegionalEventExposure(3600.0));
+    TestTrue(TEXT("Read exposed profile after duplicate pass"), Survival->GetProfile(Exposed.EntityId, Result));
+    TestEqual(TEXT("Same-tick retry does not repeat health damage"), Result.Health, 90.0f, 0.001f);
+    TestEqual(TEXT("Same-tick retry does not change profile revision"), Result.Revision,
+        ExposedRevision + 1);
+    TestEqual(TEXT("Last exposure tick is persisted on profile"),
+        Result.LastRegionalExposureTickIndex, Clock->GetTickIndex());
+
+    TArray<FWorldSurvivalProfile> SavedProfiles;
+    TArray<FWorldDiscoveryRecord> SavedDiscoveries;
+    EWorldWeatherState SavedWeather = EWorldWeatherState::Clear;
+    float SavedSeverity = 0.0f;
+    Survival->ExportSnapshot(SavedProfiles, SavedDiscoveries, SavedWeather, SavedSeverity);
+    TestTrue(TEXT("Restore survival snapshot with entered region and applied tick"),
+        Survival->RestoreSnapshot(SavedProfiles, SavedDiscoveries, SavedWeather, SavedSeverity));
+    TestTrue(TEXT("Read restored region profile"), Survival->GetProfile(Exposed.EntityId, Result));
+    TestEqual(TEXT("Region survives profile snapshot restore"), Result.RegionId, FName(TEXT("Zone.1")));
+    TestEqual(TEXT("Regional exposure tick survives profile snapshot restore"),
+        Result.LastRegionalExposureTickIndex, Clock->GetTickIndex());
+
+    IFileManager::Get().DeleteDirectory(*FixtureDirectory, false, true);
     return true;
 }
 
