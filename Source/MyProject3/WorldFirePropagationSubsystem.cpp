@@ -116,6 +116,11 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
     if (!World || !Clock || !Clock->IsClockInitialized() || !Survival)
         return false;
 
+    const int64 TickIndex = Clock->GetTickIndex();
+    const int32 RandomSeed = Clock->GetRandomSeed();
+    if (TickIndex < 0)
+        return false;
+
     TArray<UWorldCombustibleComponent*> Components;
     for (TActorIterator<AActor> It(World); It; ++It)
     {
@@ -166,7 +171,8 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
         Entry.Id = Id;
         Entry.RegionId = Component->ResolveRegionId();
         Entry.Location = Component->GetOwner()->GetActorLocation();
-        Entry.bBurningAtStart = Component->IsBurning();
+        Entry.bBurningAtStart = Component->IsBurning() &&
+            Component->LastIgnitedTickIndex != TickIndex;
         Entry.FireIntensityAtStart = Component->FireIntensity;
         Entry.StructuralNodeId = Component->StructuralNodeId;
         Entry.StructuralDamagePerHour = Component->StructuralDamagePerHour;
@@ -174,10 +180,7 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
     Entries.Sort([](const FCombustibleEntry& A, const FCombustibleEntry& B)
         { return A.Id.ToString() < B.Id.ToString(); });
 
-    const int64 TickIndex = Clock->GetTickIndex();
-    const int32 RandomSeed = Clock->GetRandomSeed();
-    if (TickIndex < 0)
-        return false;
+
 
     // Resolve all regional event state before changing moisture, fuel or ignition.
     TMap<FName, FWorldRegionalEventEvaluation> EvaluationByRegion;
@@ -296,12 +299,16 @@ bool UWorldFirePropagationSubsystem::AdvanceRegionalFireSpread(double DeltaSecon
         float BurnedUnits = 0.0f;
         if (!Entry.Component->AdvanceBurn(DeltaSeconds, TickIndex, BurnMultiplier, BurnedUnits))
             return false;
-        if (Entry.StructuralNodeId.IsValid() && Entry.StructuralDamagePerHour > 0.0f &&
-            Entry.FireIntensityAtStart > 0.0f)
+        if (BurnedUnits > 0.0f && Entry.StructuralNodeId.IsValid() &&
+            Entry.StructuralDamagePerHour > 0.0f && Entry.FireIntensityAtStart > 0.0f)
         {
+            const float ExpectedBurn = Entry.Component->BurnUnitsPerHour *
+                BurnMultiplier * Entry.FireIntensityAtStart * static_cast<float>(Hours);
+            const float BurnFraction = ExpectedBurn > KINDA_SMALL_NUMBER
+                ? FMath::Clamp(BurnedUnits / ExpectedBurn, 0.0f, 1.0f) : 0.0f;
             float& Damage = StructuralFireDamage.FindOrAdd(Entry.StructuralNodeId);
             Damage += Entry.StructuralDamagePerHour * Entry.FireIntensityAtStart *
-                BurnMultiplier * static_cast<float>(Hours);
+                BurnMultiplier * static_cast<float>(Hours) * BurnFraction;
         }
     }
 
