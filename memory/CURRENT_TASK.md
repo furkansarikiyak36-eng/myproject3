@@ -2,7 +2,7 @@
 
 Status: open — P8.1 regional hazard evaluator, P8.2 signal-driven region raids and P8.3 snow-load/defense mechanics source-written; Unreal verification and several gameplay-consumer integrations pending
 Overall goal: Finish partial tasks in memory/PLAN_STATUS.md in dependency order, including player input/HUD where required.
-Current source-written work: P6.1 field contracts, P6.2–P6.3 crop/seed lifecycle, P6.4 logical animal capture/pen/feeding/products/slaughter, and P7.1–P7.4 route context, five-zone catalog, discovery definitions, infrastructure edge updates and route-state persistence.
+Current source-written work: P6/P7 logical/data contracts from the ancestor branches plus P8 regional event definitions/evaluator, signal-triggered region raids with snapshot receipts, climate-driven snow loads, regional defense mitigation, and source automation tests. P6/P7/P8 are all unbuilt on this work branch.
 Branch: game/p08-events-defense (follow-up from game/p07-zone-entry-progression; P6/P7/P8 remain unbuilt on this work branch).
 
 ## Fixed constraints
@@ -59,3 +59,13 @@ Branch: game/p08-events-defense (follow-up from game/p07-zone-entry-progression;
 
 ## Next step
 Run the agreed batch Unreal UHT/UBT build and automation tests for P6/P7/P8 together; this branch is source-written only. After fixing source/build/test failures, wire event consumers (route costs, survival conditions, periodic hazard damage/fire spread), real storage/smell/light/smoke samplers, material-based repair, HUD feedback, and authored region/defense/snow tags. P6/P7 player interactions, route-to-movement integration, unlock enforcement and the P9.2 station helper remain separate follow-ups. Regenerate `memory/CODE_INDEX.md` locally before the batch gate..
+
+
+## P8 source-written changes (2026-10-30)
+- Branch: `game/p08-events-defense`, based on `game/p07-zone-entry-progression`.
+- Added `Config/GameData/events.json` and `WorldRegionalEventSubsystem.h/.cpp`: region profiles, ten hazards, condition checks, deterministic event windows and chain validation/evaluation.
+- Extended the structural graph with region/snow/defense actor-tag metadata, climate/event-driven snow load, load-capacity support checks, regional defense rating, and save-restore validation that excludes dynamic environmental load when validating persisted graph shape.
+- Extended the threat director and snapshot: region-targeted scheduled raids; normalized store-value/smell/light/smoke signal API; weighted threshold/cooldown; idempotent operation receipts; snapshot v2 with v1 migration.
+- Extended raid adapter with regional defense-based damage reduction; added three P8 automation-test source cases (including region-specific defense rating). Added `Docs/Architecture/P8_EVENTS_DEFENSE_CLOSEOUT.md` and updated plan/status/contracts.
+- Status ceiling: code-written. Test source was added but not executed; no UHT/UBT, automation run, save/load or PIE evidence exists.
+- Remaining: connect actual signal producers and active-event consumers, fire/avalanche mutation and spread, material-backed repair, HUD/transition notifications, and author region/defense/snow tags on placed actors.
