@@ -42,6 +42,12 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Events")
     bool AdvanceRegionalHazardDamage(double DeltaSeconds);
 
+    /** Consume one unique resource/building-part item to repair a graph node once. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Maintenance")
+    bool TryRepairStructureWithMaterial(const FGuid& OperationId, const FGuid& NodeId,
+        int64 ExpectedNodeRevision, const FGuid& MaterialItemId, int64 ExpectedItemRevision,
+        const FGuid& InventoryOwnerId, float RepairAmount);
+
     UFUNCTION(BlueprintPure, Category="Threat|Adapter")
     FGuid GetMaterializedRaidId() const { return MaterializedRaidId; }
 
