@@ -583,6 +583,7 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
         FGameDataRouteEdge Edge;
         Edge.FromNode = NameField(Entry, TEXT("from"));
         Edge.ToNode = NameField(Entry, TEXT("to"));
+        Edge.RegionId = NameField(Entry, TEXT("region_id"));
         const double Cost = NumberField(Entry, TEXT("cost"), 1.0);
         const double Slope = NumberField(Entry, TEXT("slope_ratio"), 0.0);
         const double Surface = NumberField(Entry, TEXT("surface_multiplier"), 1.0);
@@ -610,7 +611,9 @@ bool UWorldGameDataSubsystem::LoadFromDirectory(const FString& Directory)
             !FMath::IsFinite(Weather) || Weather < 0.0 || Weather > 100.0 ||
             !FMath::IsFinite(Load) || Load < 0.0 || Load > 100.0 ||
             !FMath::IsFinite(MissingInfrastructure) || MissingInfrastructure < 0.0 || MissingInfrastructure > 100.0 ||
-            (Edge.bRequiresInfrastructure && Edge.InfrastructureId.IsNone()))
+            (Edge.bRequiresInfrastructure && Edge.InfrastructureId.IsNone()) ||
+            (!Edge.RegionId.IsNone() && !NewZones.ContainsByPredicate(
+                [&Edge](const FGameDataZone& Zone) { return Zone.Id == Edge.RegionId; })))
             return Fail(FString::Printf(TEXT("Bad route edge %s -> %s"), *Edge.FromNode.ToString(), *Edge.ToNode.ToString()));
         SeenRoutePairs.Add(PairKey);
         NewRouteEdges.Add(Edge);
@@ -1030,6 +1033,7 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
         FLogisticsRouteEdge RouteEdge;
         RouteEdge.FromNode = Edge.FromNode;
         RouteEdge.ToNode = Edge.ToNode;
+        RouteEdge.RegionId = Edge.RegionId;
         RouteEdge.Cost = Edge.Cost;
         RouteEdge.SlopeRatio = Edge.SlopeRatio;
         RouteEdge.SurfaceCostMultiplier = Edge.SurfaceCostMultiplier;
