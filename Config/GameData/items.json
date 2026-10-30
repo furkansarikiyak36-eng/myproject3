@@ -667,14 +667,26 @@
       "group": "food",
       "name": "Biçilmiş tahıl",
       "weight_g": 2000,
-      "category": "Resource"
+      "category": "Resource",
+      "consumable": {
+        "kcal": 900,
+        "thirst": 0,
+        "freshness_h": 168,
+        "spoiled_fraction": 0.2
+      }
     },
     {
       "id": "Grain.Dried",
       "group": "food",
       "name": "Kurutulmuş tahıl",
       "weight_g": 1500,
-      "category": "Resource"
+      "category": "Resource",
+      "consumable": {
+        "kcal": 850,
+        "thirst": 0,
+        "freshness_h": 2160,
+        "spoiled_fraction": 0.05
+      }
     },
     {
       "id": "Grain.Kernels",
@@ -717,7 +729,8 @@
       "category": "Consumable",
       "consumable": {
         "kcal": 500,
-        "freshness_h": 720,
+        "thirst": 0,
+        "freshness_h": 120,
         "spoiled_fraction": 0.4
       }
     },
@@ -726,7 +739,13 @@
       "group": "food",
       "name": "Baklagil",
       "weight_g": 800,
-      "category": "Resource"
+      "category": "Resource",
+      "consumable": {
+        "kcal": 700,
+        "thirst": 0,
+        "freshness_h": 168,
+        "spoiled_fraction": 0.25
+      }
     },
     {
       "id": "Legume.Dried",
@@ -735,9 +754,10 @@
       "weight_g": 600,
       "category": "Consumable",
       "consumable": {
-        "kcal": 900,
-        "freshness_h": 4320,
-        "spoiled_fraction": 0.5
+        "kcal": 650,
+        "thirst": 0,
+        "freshness_h": 2160,
+        "spoiled_fraction": 0.05
       }
     },
     {
@@ -746,6 +766,14 @@
       "name": "Kompost",
       "weight_g": 3000,
       "category": "Resource"
+    },
+    {
+      "id": "Bedroll",
+      "group": "equipment",
+      "name": "Yatak rulosu",
+      "weight_g": 4200,
+      "category": "Resource",
+      "physical": false
     }
   ]
 }
