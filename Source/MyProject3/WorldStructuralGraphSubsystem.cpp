@@ -167,10 +167,16 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
     {
         // Loose, unplaced pieces may be valid graph roots without ground support.
         // Any node that claims a support must reach ground through some support.
-        if (Pair.Value.ParentNodeId.IsValid() && !HasValidSupportPath(Pair.Key))
+        if (Pair.Value.ParentNodeId.IsValid())
         {
-            Nodes = MoveTemp(Previous);
-            return false;
+            TSet<FGuid> SupportVisiting;
+            // Save shape validation ignores dynamic climate load. The restored
+            // world immediately resumes live support checks with current snow.
+            if (!HasValidSupportPathInternal(Pair.Key, FGuid(), SupportVisiting, false))
+            {
+                Nodes = MoveTemp(Previous);
+                return false;
+            }
         }
     }
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
@@ -663,7 +669,8 @@ bool UWorldStructuralGraphSubsystem::HasValidSupportPath(FGuid NodeId) const
 }
 
 bool UWorldStructuralGraphSubsystem::HasValidSupportPathInternal(
-    FGuid NodeId, FGuid ExcludedNodeId, TSet<FGuid>& Visiting) const
+    FGuid NodeId, FGuid ExcludedNodeId, TSet<FGuid>& Visiting,
+    bool bIncludeEnvironmentalLoad) const
 {
     const FStructuralNodeRecord* Current = Nodes.Find(NodeId);
     if (!Current || NodeId == ExcludedNodeId || Visiting.Contains(NodeId) ||
@@ -672,8 +679,11 @@ bool UWorldStructuralGraphSubsystem::HasValidSupportPathInternal(
         return false;
     }
 
-    const float EffectiveAggregateLoad = GetAggregateLoad(NodeId);
-    if (!FMath::IsFinite(EffectiveAggregateLoad) || EffectiveAggregateLoad < 0.0f ||
+    TSet<FGuid> LoadVisiting;
+    bool bLoadValid = true;
+    const float EffectiveAggregateLoad = ComputeAggregateLoad(
+        NodeId, LoadVisiting, bLoadValid, bIncludeEnvironmentalLoad);
+    if (!bLoadValid || !FMath::IsFinite(EffectiveAggregateLoad) || EffectiveAggregateLoad < 0.0f ||
         EffectiveAggregateLoad > Current->MaxSupportedLoad)
     {
         return false;
@@ -683,11 +693,11 @@ bool UWorldStructuralGraphSubsystem::HasValidSupportPathInternal(
 
     Visiting.Add(NodeId);
     bool bSupported = Current->ParentNodeId.IsValid() &&
-        HasValidSupportPathInternal(Current->ParentNodeId, ExcludedNodeId, Visiting);
+        HasValidSupportPathInternal(Current->ParentNodeId, ExcludedNodeId, Visiting, bIncludeEnvironmentalLoad);
     for (int32 Index = 0; !bSupported && Index < Current->SecondarySupports.Num(); ++Index)
     {
         bSupported = HasValidSupportPathInternal(
-            Current->SecondarySupports[Index].SupportNodeId, ExcludedNodeId, Visiting);
+            Current->SecondarySupports[Index].SupportNodeId, ExcludedNodeId, Visiting, bIncludeEnvironmentalLoad);
     }
     Visiting.Remove(NodeId);
     return bSupported;
