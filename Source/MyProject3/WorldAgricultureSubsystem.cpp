@@ -1421,25 +1421,44 @@ bool UWorldAgricultureSubsystem::TryApplyFieldAction(
             if (Stack.ItemId != Cost.ItemId)
                 continue;
             if (Stack.OwnedWorldItemId.IsValid())
-                return false;
+            {
+                FWorldOwnedItemRecord OwnedItem;
+                UWorldItemOwnershipSubsystem* Ownership =
+                    World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+                if (!Ownership || !Ownership->TryGetItem(Stack.OwnedWorldItemId, OwnedItem) ||
+                    OwnedItem.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                    OwnedItem.OwnerId != InventoryOwnerId || OwnedItem.DefinitionId != Cost.ItemId ||
+                    OwnedItem.Quantity != 1 || Stack.Quantity != 1)
+                    return false;
+            }
             Available += Stack.Quantity;
         }
         if (Available < Cost.Quantity)
             return false;
     }
 
+    UWorldItemOwnershipSubsystem* Ownership =
+        World->GetSubsystem<UWorldItemOwnershipSubsystem>();
+    if (!Ownership)
+        return false;
+    TArray<FWorldOwnedItemRecord> PreviousOwnedItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
+
     auto RollbackInventory = [&]() -> bool
     {
-        const bool bRestored = Inventory->RestoreSnapshot(
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
             InventoryOwnerId, PreviousStacks, PreviousQuickAccess);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            PreviousOwnedItems, PreviousTransfers, PreviousSplits);
+        const bool bRestored = bInventoryRestored && bOwnershipRestored;
         if (!bRestored)
         {
             if (UWorldSimulationCoordinatorSubsystem* Coordinator =
                 World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
-            {
                 Coordinator->MarkSimulationFaulted(
-                    TEXT("Field-action inventory rollback failed; stop simulation and recover/reset the world."));
-            }
+                    TEXT("Field-action inventory/ownership rollback failed; stop simulation and recover/reset the world."));
         }
         return bRestored;
     };
