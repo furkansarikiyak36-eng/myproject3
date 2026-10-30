@@ -50,6 +50,12 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Fire|Fuel", meta=(ClampMin="0", ClampMax="100000"))
     float BurnUnitsPerHour = 12.0f;
+    /** Optional structural graph node affected while this combustible surface burns. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Fire|Structure")
+    FGuid StructuralNodeId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Fire|Structure", meta=(ClampMin="0", ClampMax="100000"))
+    float StructuralDamagePerHour = 0.0f;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="World|Fire")
     bool bBurning = false;
