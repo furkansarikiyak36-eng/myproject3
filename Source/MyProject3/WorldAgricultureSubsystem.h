@@ -5,6 +5,7 @@
 #include "WorldAgricultureSubsystem.generated.h"
 
 class UInventoryCraftingComponent;
+class AProductionStationActor;
 
 UENUM(BlueprintType)
 enum class ECropGrowthStage : uint8 { Seed, Sprout, Growing, Mature, Withered, Harvested };
@@ -235,6 +236,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="World|Farm|Transactions") bool TryStoreHarvestItemWithFieldAction(
         const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedItemRevision,
         const FGuid& InventoryOwnerId, const FGuid& StorageId);
+    /** Runs a configured hand-processing recipe or starts it at its authored station. */
+    UFUNCTION(BlueprintCallable, Category="World|Farm|Processing") bool TryExecuteFieldProcessingAction(
+        const FGuid& OperationId, FName FieldActionId, FName TransformationId,
+        const FGuid& InventoryOwnerId, AProductionStationActor* Station,
+        FGuid& OutJobId);
     UFUNCTION(BlueprintCallable, Category="World|Animals|Transactions") bool TryFeedAnimal(
         const FGuid& OperationId, const FGuid& AnimalId, int64 ExpectedAnimalRevision,
         const FGuid& FeedItemId, int64 ExpectedFeedItemRevision,
