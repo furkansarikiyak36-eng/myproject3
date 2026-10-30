@@ -1,4 +1,6 @@
 #include "WorldStructuralGraphSubsystem.h"
+#include "WorldClimateSubsystem.h"
+#include "WorldRegionalEventSubsystem.h"
 
 #include "GameFramework/Actor.h"
 #include "WorldObjectIdentityComponent.h"
@@ -143,6 +145,7 @@ bool UWorldStructuralGraphSubsystem::RestoreSnapshot(
         Node.Damage = State.Damage;
         Node.DamageThreshold = State.DamageThreshold;
         Node.Revision = State.Revision;
+        RefreshEnvironmentMetadata(Node);
         Proposed.Add(Node.NodeId, Node);
         UsedActorIds.Add(State.ActorIdentityId);
     }
@@ -334,6 +337,7 @@ bool UWorldStructuralGraphSubsystem::RegisterNode(
     Record.LocalLoad = LocalLoad;
     Record.MaxSupportedLoad = MaxSupportedLoad;
     Record.DamageThreshold = DamageThreshold;
+    RefreshEnvironmentMetadata(Record);
     Nodes.Add(NodeId, Record);
     return true;
 }
@@ -664,6 +668,13 @@ bool UWorldStructuralGraphSubsystem::HasValidSupportPathInternal(
     {
         return false;
     }
+
+    const float EffectiveAggregateLoad = GetAggregateLoad(NodeId);
+    if (!FMath::IsFinite(EffectiveAggregateLoad) || EffectiveAggregateLoad < 0.0f ||
+        EffectiveAggregateLoad > Current->MaxSupportedLoad)
+    {
+        return false;
+    }
     if (Current->bGroundSupported)
         return true;
 
@@ -765,7 +776,7 @@ float UWorldStructuralGraphSubsystem::ComputeAggregateLoad(
     }
 
     Visiting.Add(NodeId);
-    float Total = Node->LocalLoad;
+    float Total = Node->LocalLoad + GetNodeSnowLoad(*Node);
     for (const TPair<FGuid, FStructuralNodeRecord>& Pair : Nodes)
     {
         bool bSupportsChild = Pair.Value.ParentNodeId == NodeId;
@@ -841,6 +852,118 @@ TArray<FGuid> UWorldStructuralGraphSubsystem::GetDirectDependents(FGuid NodeId) 
         }
     }
     return Result;
+}
+
+
+
+void UWorldStructuralGraphSubsystem::RefreshEnvironmentMetadata(FStructuralNodeRecord& Node) const
+{
+    Node.RegionId = NAME_None;
+    Node.bSnowExposed = false;
+    Node.SnowCatchmentAreaM2 = 0.0f;
+    Node.RaidDefenseRating = 0.0f;
+
+    AActor* Actor = Node.Actor.Get();
+    if (!IsValid(Actor))
+        return;
+
+    for (const FName& Tag : Actor->Tags)
+    {
+        const FString Value = Tag.ToString();
+        if (Value.StartsWith(TEXT("Region:"), ESearchCase::CaseSensitive))
+        {
+            const FString Region = Value.RightChop(7);
+            if (!Region.IsEmpty())
+                Node.RegionId = FName(*Region);
+        }
+        else if (Value.Equals(TEXT("SnowExposed"), ESearchCase::CaseSensitive))
+        {
+            Node.bSnowExposed = true;
+        }
+        else if (Value.StartsWith(TEXT("SnowAreaM2:"), ESearchCase::CaseSensitive))
+        {
+            const FString Number = Value.RightChop(11);
+            const float Parsed = FCString::Atof(*Number);
+            if (FMath::IsFinite(Parsed) && Parsed >= 0.0f)
+                Node.SnowCatchmentAreaM2 = Parsed;
+        }
+        else if (Value.StartsWith(TEXT("RaidDefense:"), ESearchCase::CaseSensitive))
+        {
+            const FString Number = Value.RightChop(12);
+            const float Parsed = FCString::Atof(*Number);
+            if (FMath::IsFinite(Parsed) && Parsed >= 0.0f)
+                Node.RaidDefenseRating = FMath::Min(Parsed, 1000.0f);
+        }
+    }
+
+    // Only roofs/surfaces with explicit area count. A bare tag cannot silently
+    // invent area, and non-positive defense ratings never improve raid resistance.
+    if (!Node.bSnowExposed || Node.SnowCatchmentAreaM2 <= 0.0f)
+        Node.bSnowExposed = false;
+}
+
+TArray<FGuid> UWorldStructuralGraphSubsystem::GetNodeIds() const
+{
+    TArray<FGuid> Result;
+    Nodes.GetKeys(Result);
+    Result.Sort([](const FGuid& A, const FGuid& B) { return A.ToString() < B.ToString(); });
+    return Result;
+}
+
+float UWorldStructuralGraphSubsystem::GetNodeSnowLoad(FGuid NodeId) const
+{
+    const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+    return Node ? GetNodeSnowLoad(*Node) : 0.0f;
+}
+
+float UWorldStructuralGraphSubsystem::GetNodeSnowLoad(const FStructuralNodeRecord& Node) const
+{
+    if (!Node.bSnowExposed || Node.SnowCatchmentAreaM2 <= 0.0f || Node.RegionId.IsNone())
+        return 0.0f;
+
+    const UWorld* World = GetWorld();
+    const UWorldClimateSubsystem* Climate = World ? World->GetSubsystem<UWorldClimateSubsystem>() : nullptr;
+    const UWorldRegionalEventSubsystem* Events = World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    if (!Climate || !Climate->IsClimateInitialized() || !Events || !Events->AreDefinitionsLoaded())
+        return 0.0f;
+
+    const float UnitsPerCmM2 = Events->GetSnowLoadUnitsPerCmM2(Node.RegionId);
+    if (!FMath::IsFinite(UnitsPerCmM2) || UnitsPerCmM2 <= 0.0f)
+        return 0.0f;
+
+    float EventMultiplier = 1.0f;
+    FWorldRegionalEventEvaluation Evaluation;
+    if (Events->EvaluateRegion(Node.RegionId, Evaluation))
+        EventMultiplier = Evaluation.SnowLoadMultiplier;
+
+    const double Load = static_cast<double>(Climate->GetSnowDepthCm()) *
+        static_cast<double>(UnitsPerCmM2) *
+        static_cast<double>(Node.SnowCatchmentAreaM2) *
+        static_cast<double>(EventMultiplier);
+    if (!FMath::IsFinite(Load) || Load <= 0.0 || Load > static_cast<double>(MAX_flt))
+        return 0.0f;
+    return static_cast<float>(Load);
+}
+
+float UWorldStructuralGraphSubsystem::GetRegionDefenseRating(FName RegionId) const
+{
+    if (RegionId.IsNone())
+        return 0.0f;
+
+    double Total = 0.0;
+    const TArray<FGuid> SortedIds = GetNodeIds();
+    for (const FGuid& NodeId : SortedIds)
+    {
+        const FStructuralNodeRecord* Node = Nodes.Find(NodeId);
+        if (!Node || Node->RegionId != RegionId || Node->RaidDefenseRating <= 0.0f ||
+            !Node->Actor.IsValid() || Node->Damage >= Node->DamageThreshold)
+        {
+            continue;
+        }
+        if (HasValidSupportPath(NodeId))
+            Total += static_cast<double>(Node->RaidDefenseRating);
+    }
+    return FMath::Clamp(static_cast<float>(Total), 0.0f, 10000.0f);
 }
 
 bool UWorldStructuralGraphSubsystem::WouldCreateCycle(
