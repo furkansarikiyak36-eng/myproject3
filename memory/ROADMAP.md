@@ -241,9 +241,9 @@ Done: measured trip time to the creek drops after the bridge.
 
 ## Phase 8 — Events and threats
 
-- **P8.1** All events of design §7.1 and the chains of §7.2.
-- **P8.2** Raids triggered by signals (store size, smell, light, smoke) via the existing threat director.
-- **P8.3** Structural damage and repair; snow load; avalanche; wildfire spread.
+- **P8.1** `[code-written / unbuilt, partial integration]` Regional `events.json` + deterministic `UWorldRegionalEventSubsystem`: flood, frost, hail, drought, wildfire, toxic rain, epidemic, snowstorm, avalanche, fog; region/month/weather/terrain conditions and event chains. Remaining: wire route/survival/periodic damage consumers, warnings/transition notifications and fire spread.
+- **P8.2** `[code-written / unbuilt, partial integration]` Threat director can accept normalized storage-value/smell/light/smoke signals with weights, threshold, cooldown and operation-ID receipts; raids can target configured region locations and structural defense reduces pulses. Remaining: connect real world signal samplers, author actor tags/targets in the level, build/test and save-load/PIE verification.
+- **P8.3** `[code-written / unbuilt, partial integration]` Structural graph computes snow load from climate depth, region coefficient, tagged catchment area and event multiplier; overloaded nodes lose a valid support path; supported regional defense nodes contribute to raid mitigation. Remaining: automatic avalanche/fire damage and spread, material-backed repair, helper/player integration and world validation.
 
 ## Phase 9 — Balance and helpers
 
