@@ -1600,6 +1600,118 @@ bool UWorldSurvivalSubsystem::AdvanceSurvivalStep(double DeltaSeconds, double Lo
     return true;
 }
 
+bool UWorldSurvivalSubsystem::ApplyRegionalEventExposure(double DeltaSeconds)
+{
+    if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0.0 || DeltaSeconds > 3600.0)
+        return false;
+
+    TArray<FGuid> EntityIds;
+    Profiles.GetKeys(EntityIds);
+    EntityIds.Sort([](const FGuid& A, const FGuid& B)
+        { return A.ToString() < B.ToString(); });
+
+    bool bAnyRegionalProfiles = false;
+    for (const FGuid& EntityId : EntityIds)
+    {
+        const FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+        bAnyRegionalProfiles |= Profile && !Profile->RegionId.IsNone();
+    }
+    if (!bAnyRegionalProfiles)
+        return true; // Legacy profiles without an entered-zone ID are unaffected.
+
+    UWorld* World = GetWorld();
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    if (!Events || !Events->AreDefinitionsLoaded())
+        return false;
+
+    // Resolve every region and revision before mutating any profile. A missing
+    // event definition must reject the whole exposure pass, not half the party.
+    TMap<FName, FWorldRegionalEventEvaluation> EvaluationsByRegion;
+    for (const FGuid& EntityId : EntityIds)
+    {
+        const FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+        if (!Profile || Profile->RegionId.IsNone())
+            continue;
+        if (Profile->Revision >= MAX_int64 - 1)
+            return false;
+
+        if (EvaluationsByRegion.Contains(Profile->RegionId))
+            continue;
+        FWorldRegionalEventEvaluation Evaluation;
+        if (!Events->EvaluateRegion(Profile->RegionId, Evaluation))
+            return false;
+        if (!FMath::IsFinite(Evaluation.HealthDamagePerHour) ||
+            Evaluation.HealthDamagePerHour < 0.0f ||
+            !FMath::IsFinite(Evaluation.FatiguePerHour) ||
+            Evaluation.FatiguePerHour < 0.0f ||
+            !FMath::IsFinite(Evaluation.StaminaLossPerHour) ||
+            Evaluation.StaminaLossPerHour < 0.0f ||
+            !FMath::IsFinite(Evaluation.ThirstPerHour) ||
+            Evaluation.ThirstPerHour < 0.0f ||
+            !FMath::IsFinite(Evaluation.WetnessPerHour) ||
+            Evaluation.WetnessPerHour < 0.0f ||
+            !FMath::IsFinite(Evaluation.CoreTemperatureDeltaCelsiusPerHour) ||
+            !FMath::IsFinite(Evaluation.SurvivalSeverityMultiplier) ||
+            Evaluation.SurvivalSeverityMultiplier <= 0.0f)
+            return false;
+        EvaluationsByRegion.Add(Profile->RegionId, Evaluation);
+    }
+
+    const float Hours = static_cast<float>(DeltaSeconds / 3600.0);
+    for (const FGuid& EntityId : EntityIds)
+    {
+        FWorldSurvivalProfile* Profile = Profiles.Find(EntityId);
+        if (!Profile || Profile->RegionId.IsNone())
+            continue;
+        const FWorldRegionalEventEvaluation* Evaluation =
+            EvaluationsByRegion.Find(Profile->RegionId);
+        if (!Evaluation)
+            return false;
+
+        const float Severity = FMath::Clamp(Evaluation->SurvivalSeverityMultiplier, 0.01f, 100.0f);
+        const float Shelter = FMath::Clamp(Profile->ShelterProtection, 0.0f, 1.0f);
+        const float WaterResistance = FMath::Clamp(Profile->ClothingWaterResistance, 0.0f, 1.0f);
+        const float Insulation = FMath::Clamp(Profile->ClothingInsulation, 0.0f, 1.0f);
+
+        // Exposure is not an automatic condition/diagnosis. It applies bounded
+        // physical rates; treatment, health UI and condition naming stay owned
+        // by the survival condition system.
+        const float HealthExposure = 1.0f - Shelter * 0.5f;
+        const float GeneralShelterProtection = 1.0f - Shelter * 0.25f;
+        Profile->Health = FMath::Clamp(Profile->Health -
+            Evaluation->HealthDamagePerHour * Severity * HealthExposure * Hours, 0.0f, 100.0f);
+        Profile->Fatigue = FMath::Clamp(Profile->Fatigue +
+            Evaluation->FatiguePerHour * Severity * GeneralShelterProtection * Hours, 0.0f, 100.0f);
+        Profile->Stamina = FMath::Clamp(Profile->Stamina -
+            Evaluation->StaminaLossPerHour * Severity * GeneralShelterProtection * Hours, 0.0f, 100.0f);
+        Profile->Thirst = FMath::Clamp(Profile->Thirst +
+            Evaluation->ThirstPerHour * Severity * GeneralShelterProtection * Hours, 0.0f, 100.0f);
+
+        const float WetnessExposure = (1.0f - Shelter) * (1.0f - WaterResistance);
+        Profile->Wetness = FMath::Clamp(Profile->Wetness +
+            Evaluation->WetnessPerHour * Severity * WetnessExposure * Hours, 0.0f, 1.0f);
+
+        float CoreTemperatureDelta =
+            Evaluation->CoreTemperatureDeltaCelsiusPerHour * Severity * Hours;
+        if (CoreTemperatureDelta < 0.0f)
+        {
+            const float ColdProtection = FMath::Clamp(
+                Insulation * 0.65f + Shelter * 0.35f, 0.0f, 1.0f);
+            CoreTemperatureDelta *= 1.0f - ColdProtection * 0.75f;
+        }
+        else
+        {
+            CoreTemperatureDelta *= 1.0f - Shelter * 0.5f;
+        }
+        Profile->CoreTemperatureCelsius = FMath::Clamp(
+            Profile->CoreTemperatureCelsius + CoreTemperatureDelta, 20.0f, 42.0f);
+        Profile->FeltTemperatureCelsius = ComputeFeltTemperature(*Profile);
+        ++Profile->Revision;
+    }
+    return true;
+}
+
 bool UWorldSurvivalSubsystem::RecordDiscovery(
     FName DiscoveryId, FVector Location, double LogicalTimeSeconds)
 {
