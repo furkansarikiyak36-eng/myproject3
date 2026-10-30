@@ -30,6 +30,10 @@ struct FLogisticsRouteEdge
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics")
     FName ToNode = NAME_None;
 
+    /** Region whose active natural hazards alter this edge; None keeps legacy base-cost behavior. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics|Events")
+    FName RegionId = NAME_None;
+
     /** Authored base cost before terrain, load, weather and infrastructure modifiers. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="Logistics", meta=(ClampMin="0.0"))
     float Cost = 1.0f;
