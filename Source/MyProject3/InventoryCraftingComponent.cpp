@@ -330,24 +330,55 @@ bool UInventoryCraftingComponent::TryMoveOwnedItemToStorage(FGuid ItemId, FGuid 
 {
  if (!ItemId.IsValid() || !StorageId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid())
   return false;
- UWorldStorageSubsystem* Storage = GetWorld()->GetSubsystem<UWorldStorageSubsystem>();
- if (!Storage || !Storage->IsStorageAvailable(StorageId) ||
-     !Storage->CanAcceptItem(StorageId, ItemId)) return false;
- const int32 Index = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
-  { return Stack.OwnedWorldItemId == ItemId; });
- if (!Items.IsValidIndex(Index)) return false;
-
  UWorldItemOwnershipSubsystem* Ownership =
   GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
- if (!Ownership) return false;
  FWorldOwnedItemRecord Item;
- if (!Ownership->TryGetItem(ItemId, Item) ||
-     Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
-     Item.OwnerId != InventoryOwnerId || Item.Revision == MAX_int64)
+ if (!Ownership || !Ownership->TryGetItem(ItemId, Item) ||
+     Item.OwnerKind != EWorldItemOwnerKind::Inventory || Item.OwnerId != InventoryOwnerId)
+  return false;
+ return TryMoveOwnedItemToStorageWithOperation(
+  FGuid::NewGuid(), ItemId, Item.Revision, StorageId);
+}
+
+bool UInventoryCraftingComponent::TryMoveOwnedItemToStorageWithOperation(
+ const FGuid& OperationId, FGuid ItemId, int64 ExpectedItemRevision, FGuid StorageId)
+{
+ if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedItemRevision <= 0 ||
+     !StorageId.IsValid() || !GetWorld() || !InventoryOwnerId.IsValid())
+  return false;
+ UWorldStorageSubsystem* Storage = GetWorld()->GetSubsystem<UWorldStorageSubsystem>();
+ UWorldItemOwnershipSubsystem* Ownership =
+  GetWorld()->GetSubsystem<UWorldItemOwnershipSubsystem>();
+ if (!Storage || !Ownership)
+  return false;
+
+ FWorldOwnedItemRecord Item;
+ if (!Ownership->TryGetItem(ItemId, Item))
+  return false;
+
+ // An exact retry is accepted through the ownership ledger receipt even though
+ // the item is no longer in this inventory and the container may be unavailable.
+ if (Item.OwnerKind == EWorldItemOwnerKind::Storage && Item.OwnerId == StorageId)
+ {
+  FWorldOwnedItemRecord Stored;
+  return Ownership->TryTransferItem(OperationId, ItemId, ExpectedItemRevision,
+   EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Storage,
+   StorageId, Item.WorldLocation, Stored);
+ }
+
+ if (Item.OwnerKind != EWorldItemOwnerKind::Inventory ||
+     Item.OwnerId != InventoryOwnerId || Item.Revision != ExpectedItemRevision ||
+     !Storage->IsStorageAvailable(StorageId) ||
+     !Storage->CanAcceptItem(StorageId, ItemId))
+  return false;
+
+ const int32 Index = Items.IndexOfByPredicate([ItemId](const FInventoryStack& Stack)
+  { return Stack.OwnedWorldItemId == ItemId; });
+ if (!Items.IsValidIndex(Index))
   return false;
 
  FWorldOwnedItemRecord Stored;
- if (!Ownership->TryTransferItem(FGuid::NewGuid(), ItemId, Item.Revision,
+ if (!Ownership->TryTransferItem(OperationId, ItemId, ExpectedItemRevision,
      EWorldItemOwnerKind::Inventory, EWorldItemOwnerKind::Storage,
      StorageId, Item.WorldLocation, Stored))
   return false;
@@ -357,6 +388,7 @@ bool UInventoryCraftingComponent::TryMoveOwnedItemToStorage(FGuid ItemId, FGuid 
   QuickAccessItemId = NAME_None;
  return true;
 }
+
 
 bool UInventoryCraftingComponent::TryWithdrawStoredItem(FGuid ItemId, FGuid StorageId)
 {
