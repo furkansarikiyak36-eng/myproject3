@@ -198,7 +198,7 @@ bool UWorldRaidAdapterSubsystem::ApplyFireDamageToStructure(
         return true;
 
     FStructuralNodeRecord Node;
-    if (!Graph->GetNode(NodeId, Node) || !Node.bIntact)
+    if (!Graph->GetNode(NodeId, Node))
         return false;
     bool bThresholdExceeded = false;
     if (!Graph->ApplyDamage(NodeId, DamageAmount, bThresholdExceeded))
