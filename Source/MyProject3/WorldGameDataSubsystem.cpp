@@ -1211,6 +1211,14 @@ bool UWorldGameDataSubsystem::ApplyToWorld()
             continue;
         FWorldProductionRecipe Recipe;
         Recipe.RecipeId = T.Id;
+        for (const FGameDataDiscovery& Discovery : Discoveries)
+        {
+            if (Discovery.UnlockedDefinitionIds.Contains(T.Id))
+            {
+                Recipe.RequiredUnlockDefinitionId = T.Id;
+                break;
+            }
+        }
         Recipe.RequiredStationTag = T.Where;
         Recipe.DurationSeconds = FMath::Max(1.0, T.DurationSeconds);
         auto Ingredient = [](FName ItemId, int32 Quantity)
