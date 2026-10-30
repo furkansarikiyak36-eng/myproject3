@@ -484,6 +484,11 @@ bool UWorldRaidAdapterSubsystem::TryRepairStructureWithRecipe(
     if (PreviousInventoryOwnerId != InventoryOwnerId)
         return false;
 
+    TArray<FWorldOwnedItemRecord> PreviousOwnedItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransfers;
+    TArray<FWorldItemSplitReceipt> PreviousSplits;
+    Ownership->ExportSnapshot(PreviousOwnedItems, PreviousTransfers, PreviousSplits);
+
     for (const FName ToolId : Recipe->Tools)
         if (ToolId.IsNone() || Inventory->GetItemCount(ToolId) <= 0)
             return false;
@@ -503,7 +508,14 @@ bool UWorldRaidAdapterSubsystem::TryRepairStructureWithRecipe(
             if (Stack.ItemId != Cost.ItemId)
                 continue;
             if (Stack.OwnedWorldItemId.IsValid())
-                return false;
+            {
+                FWorldOwnedItemRecord OwnedItem;
+                if (!Ownership->TryGetItem(Stack.OwnedWorldItemId, OwnedItem) ||
+                    OwnedItem.OwnerKind != EWorldItemOwnerKind::Inventory ||
+                    OwnedItem.OwnerId != InventoryOwnerId || OwnedItem.DefinitionId != Cost.ItemId ||
+                    OwnedItem.Quantity != 1 || Stack.Quantity != 1)
+                    return false;
+            }
             Available += Stack.Quantity;
         }
         if (Available < Cost.Quantity)
@@ -519,14 +531,16 @@ bool UWorldRaidAdapterSubsystem::TryRepairStructureWithRecipe(
     {
         const bool bInventoryRestored = Inventory->RestoreSnapshot(
             InventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            PreviousOwnedItems, PreviousTransfers, PreviousSplits);
         const bool bLedgerCancelled = Ledger->CancelUncommittedOperation(OperationId);
-        const bool bSucceeded = bInventoryRestored && bLedgerCancelled;
+        const bool bSucceeded = bInventoryRestored && bOwnershipRestored && bLedgerCancelled;
         if (!bSucceeded)
         {
             if (UWorldSimulationCoordinatorSubsystem* Coordinator =
                 World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
                 Coordinator->MarkSimulationFaulted(
-                    TEXT("Recipe structural repair rollback failed; stop simulation and recover/reset the world."));
+                    TEXT("Recipe structural repair inventory/ownership rollback failed; stop simulation and recover/reset the world."));
         }
         return bSucceeded;
     };
