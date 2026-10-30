@@ -217,7 +217,6 @@ bool UWorldThreatDirectorSubsystem::TryStartRaidFromSignals(
     };
     if (!bInitialized || !Clock || !Clock->IsClockInitialized() || !Events ||
         !Events->AreDefinitionsLoaded() || !OperationId.IsValid() || RegionId.IsNone() ||
-        SeenSignalOperationIds.Contains(OperationId) ||
         !ValidSignal(StorageValueSignal) || !ValidSignal(SmellSignal) ||
         !ValidSignal(LightSignal) || !ValidSignal(SmokeSignal) ||
         !FMath::IsFinite(SignalRaidThreshold) || SignalRaidThreshold <= 0.0f ||
@@ -228,6 +227,15 @@ bool UWorldThreatDirectorSubsystem::TryStartRaidFromSignals(
         !FMath::IsFinite(MaximumIntervalSeconds) || MaximumIntervalSeconds < MinimumIntervalSeconds)
     {
         return false;
+    }
+
+    if (SeenSignalOperationIds.Contains(OperationId))
+    {
+        // The observation has already been committed. A retry is a successful
+        // no-op and reports a fresh start only when this operation created the
+        // current raid; it cannot spend another warning/raid slot.
+        bOutRaidStarted = CurrentRaid.RaidId == OperationId;
+        return true;
     }
 
     FWorldRegionProfile RegionProfile;
