@@ -1782,6 +1782,12 @@ bool FSignalDrivenRaidAndPersistenceTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Retry does not create or start a duplicate raid"),
         Threat->TryStartRaidFromSignals(OperationId, TEXT("Zone.1"), 1.0f, 1.0f, 1.0f, 1.0f, bStarted));
     TestFalse(TEXT("Duplicate operation does not report a fresh start"), bStarted);
+
+    FWorldThreatDirectorSnapshot LegacySnapshot = Saved;
+    LegacySnapshot.SchemaVersion = 1;
+    LegacySnapshot.SeenSignalOperationIds.Reset();
+    LegacySnapshot.LastSignalRaidTimeSeconds = -1.0;
+    TestTrue(TEXT("Restore legacy threat snapshot schema v1"), Threat->RestoreSnapshot(LegacySnapshot));
     return true;
 }
 
