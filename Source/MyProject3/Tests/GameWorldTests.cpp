@@ -24,6 +24,7 @@
 #include "WorldRegionalEventSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldThreatDirectorSubsystem.h"
+#include "WorldRaidAdapterSubsystem.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -1851,10 +1852,16 @@ bool FRegionalHazardChangesRouteCostTest::RunTest(const FString& Parameters)
         World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
     UWorldLogisticsRouteSubsystem* Routes =
         World ? World->GetSubsystem<UWorldLogisticsRouteSubsystem>() : nullptr;
+    UWorldStructuralGraphSubsystem* Graph =
+        World ? World->GetSubsystem<UWorldStructuralGraphSubsystem>() : nullptr;
+    UWorldRaidAdapterSubsystem* HazardAdapter =
+        World ? World->GetSubsystem<UWorldRaidAdapterSubsystem>() : nullptr;
     if (!TestNotNull(TEXT("Clock"), Clock) ||
         !TestNotNull(TEXT("Climate"), Climate) ||
         !TestNotNull(TEXT("Regional events"), Events) ||
-        !TestNotNull(TEXT("Route graph"), Routes))
+        !TestNotNull(TEXT("Route graph"), Routes) ||
+        !TestNotNull(TEXT("Structural graph"), Graph) ||
+        !TestNotNull(TEXT("Hazard adapter"), HazardAdapter))
         return false;
 
     // The event always occurs during day 3: chance=1, and the event window
@@ -1872,7 +1879,7 @@ bool FRegionalHazardChangesRouteCostTest::RunTest(const FString& Parameters)
         "\"events\":[{\"id\":\"Event.RouteTest\",\"type\":\"Flood\","
         "\"regions\":[\"Zone.0\"],\"months\":[],\"required_weather\":[],"
         "\"chance_per_day\":1,\"duration_hours\":72,\"route_cost_multiplier\":2,"
-        "\"raid_defense_multiplier\":1,\"snow_load_multiplier\":1,"
+        "\"structure_damage_per_hour\":2,\"raid_defense_multiplier\":1,\"snow_load_multiplier\":1,"
         "\"survival_severity_multiplier\":1}]}");
     const FString EventPath = FPaths::Combine(TestDirectory, TEXT("events.json"));
     TestTrue(TEXT("Write temporary deterministic event fixture"),
@@ -1903,9 +1910,23 @@ bool FRegionalHazardChangesRouteCostTest::RunTest(const FString& Parameters)
         Edge, FLogisticsRouteCostContext(), Cost));
     TestEqual(TEXT("Route cost applies regional event multiplier"), Cost, 20.0f, 0.001f);
 
+    AActor* RegionalWall = World->SpawnActor<AActor>();
+    if (!TestNotNull(TEXT("Regional wall actor"), RegionalWall))
+        return false;
+    RegionalWall->Tags.Add(FName(TEXT("Region:Zone.0")));
+    const FGuid WallNodeId(31, 32, 33, 34);
+    TestTrue(TEXT("Register wall in hazard region"),
+        Graph->RegisterNode(RegionalWall, WallNodeId, EStructuralNodeKind::Wood,
+            true, 1.0f, 100.0f, 100.0f));
+    TestTrue(TEXT("Apply one fixed hour of regional event damage"),
+        HazardAdapter->AdvanceRegionalHazardDamage(3600.0));
+    FStructuralNodeRecord WallAfterDamage;
+    TestTrue(TEXT("Read wall after hazard damage"), Graph->GetNode(WallNodeId, WallAfterDamage));
+    TestEqual(TEXT("Regional event damage rate is applied per simulation hour"),
+        WallAfterDamage.Damage, 2.0f, 0.001f);
+
     IFileManager::Get().Delete(*EventPath, false, true);
     IFileManager::Get().DeleteDirectory(*TestDirectory, false, true);
     return true;
 }
 
-#endif
