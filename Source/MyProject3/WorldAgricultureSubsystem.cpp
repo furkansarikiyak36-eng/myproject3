@@ -492,6 +492,44 @@ bool UWorldAgricultureSubsystem::TryPlantCropWithFieldAction(
         InitialMoisture, OutCropId);
 }
 
+bool UWorldAgricultureSubsystem::TryStoreHarvestItemWithFieldAction(
+    const FGuid& OperationId, const FGuid& ItemId, int64 ExpectedItemRevision,
+    const FGuid& InventoryOwnerId, const FGuid& StorageId)
+{
+    if (!OperationId.IsValid() || !ItemId.IsValid() || ExpectedItemRevision <= 0 ||
+        !InventoryOwnerId.IsValid() || !StorageId.IsValid())
+        return false;
+    UWorld* World = GetWorld();
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UInventoryCraftingComponent* Inventory = nullptr;
+    const FGameDataFieldAction* Action =
+        GameData && GameData->IsLoaded()
+            ? GameData->FindFieldAction(TEXT("Field.Store")) : nullptr;
+    FWorldOwnedItemRecord Item;
+    if (!GameData || !Ownership || !Action || Action->Operation != TEXT("Store") ||
+        !FindInventoryForOwner(InventoryOwnerId, Inventory) ||
+        !Ownership->TryGetItem(ItemId, Item))
+        return false;
+
+    // If this operation already transferred the item, replay via the ownership
+    // receipt before checking the mutable basket/tool inventory state.
+    if (Item.OwnerKind == EWorldItemOwnerKind::Inventory &&
+        Item.OwnerId == InventoryOwnerId && Item.Revision == ExpectedItemRevision)
+    {
+        for (const FName ToolId : Action->Tools)
+            if (Inventory->GetItemCount(ToolId) <= 0)
+                return false;
+    }
+    else if (Item.OwnerKind != EWorldItemOwnerKind::Storage || Item.OwnerId != StorageId)
+        return false;
+
+    return Inventory->TryMoveOwnedItemToStorageWithOperation(
+        OperationId, ItemId, ExpectedItemRevision, StorageId);
+}
+
 bool UWorldAgricultureSubsystem::TryHarvestCrop(
     const FGuid& OperationId, const FGuid& CropId, int64 ExpectedCropRevision,
     TArray<FGuid>& OutItemIds)
