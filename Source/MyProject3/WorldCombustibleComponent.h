@@ -28,6 +28,9 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Fire|Fuel", meta=(ClampMin="0", ClampMax="100000"))
     float FuelUnitsRemaining = 100.0f;
+    /** A non-flammable strip component can stop spread between two surfaces. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Fire|Spread")
+    bool bFirebreak = false;
 
     /** 0 = dry, 1 = saturated. Rain/snow alter this on the shared logical tick. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, SaveGame, Category="World|Fire|Fuel", meta=(ClampMin="0", ClampMax="1"))
