@@ -20,7 +20,8 @@
       "unlocks": [
         "Infrastructure.CreekBridge",
         "Tool.Filter",
-        "Infrastructure.SteppingStones"
+        "Infrastructure.SteppingStones",
+        "Infrastructure.TrailMarker"
       ]
     },
     {
