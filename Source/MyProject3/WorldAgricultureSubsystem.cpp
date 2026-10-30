@@ -445,8 +445,12 @@ bool UWorldAgricultureSubsystem::TryHarvestCropWithFieldAction(
     const FGameDataFieldAction* Action =
         GameData && GameData->IsLoaded()
             ? GameData->FindFieldAction(TEXT("Field.Harvest")) : nullptr;
-    if (!Action || Action->Operation != TEXT("Harvest") ||
-        !FindInventoryForOwner(InventoryOwnerId, Inventory))
+    if (!Action || Action->Operation != TEXT("Harvest"))
+        return false;
+    // A committed retry must replay even if the tool has since been moved.
+    if (FindActionReceipt(OperationId))
+        return TryHarvestCrop(OperationId, CropId, ExpectedCropRevision, OutItemIds);
+    if (!FindInventoryForOwner(InventoryOwnerId, Inventory))
         return false;
     for (const FName ToolId : Action->Tools)
         if (Inventory->GetItemCount(ToolId) <= 0)
@@ -471,8 +475,14 @@ bool UWorldAgricultureSubsystem::TryPlantCropWithFieldAction(
     const FGameDataFieldAction* Action =
         GameData && GameData->IsLoaded()
             ? GameData->FindFieldAction(TEXT("Field.Plant")) : nullptr;
-    if (!Action || Action->Operation != TEXT("Plant") ||
-        !FindInventoryForOwner(InventoryOwnerId, Inventory))
+    if (!Action || Action->Operation != TEXT("Plant"))
+        return false;
+    // A committed retry must replay its original crop ID without rechecking mutable inventory.
+    if (FindActionReceipt(OperationId))
+        return TryPlantCropOnField(OperationId, CropDefinitionId, SeedItemId,
+            ExpectedSeedItemRevision, InventoryOwnerId, PlotCell, ExpectedFieldRevision,
+            InitialMoisture, OutCropId);
+    if (!FindInventoryForOwner(InventoryOwnerId, Inventory))
         return false;
     for (const FName ToolId : Action->Tools)
         if (Inventory->GetItemCount(ToolId) <= 0)
@@ -1333,7 +1343,7 @@ bool UWorldAgricultureSubsystem::TryApplyFieldAction(
     }
 
     // Do not charge a retry twice. The existing field receipt is the authority.
-    if (const FWorldAgricultureActionReceipt* Existing = FindActionReceipt(OperationId))
+    if (FindActionReceipt(OperationId))
         return TryApplyFieldWork(OperationId, Cell, ExpectedFieldRevision,
             WorkKind, Definition->WorkAmount, OutFieldCell);
 
