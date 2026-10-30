@@ -6,6 +6,7 @@
 #include "InventoryCraftingComponent.h"
 #include "WorldGameDataSubsystem.h"
 #include "WorldLogisticsRouteSubsystem.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 AWorldInfrastructureActor::AWorldInfrastructureActor()
 {
@@ -77,7 +78,11 @@ bool AWorldInfrastructureActor::ConsumeMaterialsAtomically(
     for (const FGameDataItemAmount& Cost : Materials)
         if (!Inventory->TryRemoveItem(Cost.ItemId, Cost.Quantity))
         {
-            Rollback();
+            if (!Rollback())
+                if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                    GetWorld() ? GetWorld()->GetSubsystem<UWorldSimulationCoordinatorSubsystem>() : nullptr)
+                    Coordinator->MarkSimulationFaulted(
+                        TEXT("Infrastructure material rollback failed; stop simulation and recover/reset the world."));
             return false;
         }
     return true;
@@ -143,7 +148,12 @@ bool AWorldInfrastructureActor::BuildFromInventory(
         const bool bInventoryRestored =
             Inventory->RestoreSnapshot(InventoryOwnerId, PreviousStacks, PreviousQuickAccess);
         const bool bRoutesRestored = Routes->RestoreSnapshot(PreviousNodes, PreviousEdges);
-        return bInventoryRestored && bRoutesRestored ? false : false;
+        if (!bInventoryRestored || !bRoutesRestored)
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Infrastructure construction rollback failed; stop simulation and recover/reset the world."));
+        return false;
     }
 
     bConstructed = true;
@@ -203,7 +213,12 @@ bool AWorldInfrastructureActor::RepairFromInventory(
         const bool bInventoryRestored =
             Inventory->RestoreSnapshot(InventoryOwnerId, PreviousStacks, PreviousQuickAccess);
         const bool bRoutesRestored = Routes->RestoreSnapshot(PreviousNodes, PreviousEdges);
-        return bInventoryRestored && bRoutesRestored ? false : false;
+        if (!bInventoryRestored || !bRoutesRestored)
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Infrastructure repair rollback failed; stop simulation and recover/reset the world."));
+        return false;
     }
 
     LocalCondition = FMath::Clamp(
