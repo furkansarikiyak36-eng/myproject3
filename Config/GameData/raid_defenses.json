@@ -1,0 +1,99 @@
+{
+  "_about": "P8 countermeasure values. Placeable actors use RaidDefense:<type> and RaidSignalSuppress:<family>:<0..1> tags; defense ratings are added only while nodes are intact and supported.",
+  "defenses": [
+    {
+      "id": "RaidDefense.Fence",
+      "name": "Çit",
+      "build_materials": [
+        {
+          "item": "Stake",
+          "qty": 4
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Axe"
+      ],
+      "defense_rating": 1.5,
+      "signal_suppression": {
+        "Storage": 0,
+        "Smell": 0.05,
+        "Light": 0,
+        "Smoke": 0
+      },
+      "work_seconds": 1800
+    },
+    {
+      "id": "RaidDefense.Ditch",
+      "name": "Hendek",
+      "build_materials": [
+        {
+          "item": "Soil",
+          "qty": 8
+        }
+      ],
+      "tools": [
+        "Tool.DiggingStick"
+      ],
+      "defense_rating": 2.5,
+      "signal_suppression": {
+        "Storage": 0,
+        "Smell": 0.1,
+        "Light": 0,
+        "Smoke": 0
+      },
+      "work_seconds": 3600
+    },
+    {
+      "id": "RaidDefense.LightScreen",
+      "name": "Işık perdesi",
+      "build_materials": [
+        {
+          "item": "Bark",
+          "qty": 3
+        },
+        {
+          "item": "Rope",
+          "qty": 1
+        }
+      ],
+      "tools": [],
+      "defense_rating": 0.25,
+      "signal_suppression": {
+        "Storage": 0,
+        "Smell": 0,
+        "Light": 0.65,
+        "Smoke": 0.1
+      },
+      "work_seconds": 900
+    },
+    {
+      "id": "RaidDefense.ScentSeal",
+      "name": "Koku yalıtımı",
+      "build_materials": [
+        {
+          "item": "Hide.Scraped",
+          "qty": 1
+        },
+        {
+          "item": "Pitch",
+          "qty": 1
+        }
+      ],
+      "tools": [
+        "Tool.Scraper"
+      ],
+      "defense_rating": 0.5,
+      "signal_suppression": {
+        "Storage": 0.25,
+        "Smell": 0.7,
+        "Light": 0,
+        "Smoke": 0
+      },
+      "work_seconds": 900
+    }
+  ]
+}
