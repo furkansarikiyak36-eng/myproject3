@@ -1180,8 +1180,8 @@ bool UWorldGameDataSubsystem::TryRecordZoneEntry(
         return false;
     }
 
-    if (!Survival->TryRecordConfiguredDiscovery(OperationId, PlayerEntityId,
-        Profile.Revision, Zone->DiscoveryId, EntryLocation, Clock->GetSimulationTimeSeconds()))
+    if (!Survival->TryRecordConfiguredDiscoveryInRegion(OperationId, PlayerEntityId,
+        Profile.Revision, Zone->DiscoveryId, ZoneId, EntryLocation, Clock->GetSimulationTimeSeconds()))
     {
         OutReason = FString::Printf(TEXT("Zone %s could not be discovered: verify the prerequisite chain and operation identity."),
             *ZoneId.ToString());
