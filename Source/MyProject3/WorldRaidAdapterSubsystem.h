@@ -51,6 +51,10 @@ public:
     bool TryRepairStructureWithMaterial(const FGuid& OperationId, const FGuid& NodeId,
         int64 ExpectedNodeRevision, const FGuid& MaterialItemId, int64 ExpectedItemRevision,
         const FGuid& InventoryOwnerId, float RepairAmount);
+    /** Recipe-backed wood/stone repair; validates the node kind, tools and all stack materials. */
+    UFUNCTION(BlueprintCallable, Category="Structure|Maintenance")
+    bool TryRepairStructureWithRecipe(const FGuid& OperationId, const FGuid& NodeId,
+        int64 ExpectedNodeRevision, FName RepairRecipeId, const FGuid& InventoryOwnerId);
 
     UFUNCTION(BlueprintPure, Category="Threat|Adapter")
     FGuid GetMaterializedRaidId() const { return MaterializedRaidId; }
