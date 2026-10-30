@@ -7,6 +7,12 @@
 #include "WorldSimulationClockSubsystem.h"
 #include "WorldStructuralGraphSubsystem.h"
 #include "WorldRegionalEventSubsystem.h"
+#include "WorldGameDataSubsystem.h"
+#include "WorldItemOwnershipSubsystem.h"
+#include "WorldOperationLedgerSubsystem.h"
+#include "InventoryCraftingComponent.h"
+#include "EngineUtils.h"
+#include "WorldSimulationCoordinatorSubsystem.h"
 
 UWorldThreatDirectorSubsystem* UWorldRaidAdapterSubsystem::GetThreatDirector() const
 {
@@ -224,6 +230,168 @@ bool UWorldRaidAdapterSubsystem::AdvanceRegionalHazardDamage(double DeltaSeconds
             return false;
         if (bThresholdExceeded && !ResolveCollapsedSubtree(NodeId))
             return false;
+    }
+
+    return true;
+}
+
+
+bool UWorldRaidAdapterSubsystem::TryRepairStructureWithMaterial(
+    const FGuid& OperationId, const FGuid& NodeId, int64 ExpectedNodeRevision,
+    const FGuid& MaterialItemId, int64 ExpectedItemRevision,
+    const FGuid& InventoryOwnerId, float RepairAmount)
+{
+    if (!OperationId.IsValid() || !NodeId.IsValid() || ExpectedNodeRevision <= 0 ||
+        !MaterialItemId.IsValid() || ExpectedItemRevision <= 0 ||
+        !InventoryOwnerId.IsValid() || !FMath::IsFinite(RepairAmount) ||
+        RepairAmount <= 0.0f || RepairAmount > 100000.0f)
+        return false;
+
+    UWorld* World = GetWorld();
+    UWorldStructuralGraphSubsystem* Graph = GetStructuralGraph();
+    UWorldItemOwnershipSubsystem* Ownership =
+        World ? World->GetSubsystem<UWorldItemOwnershipSubsystem>() : nullptr;
+    UWorldOperationLedgerSubsystem* Ledger =
+        World ? World->GetSubsystem<UWorldOperationLedgerSubsystem>() : nullptr;
+    UWorldGameDataSubsystem* GameData =
+        World ? World->GetSubsystem<UWorldGameDataSubsystem>() : nullptr;
+    if (!World || !Graph || !Ownership || !Ledger || !GameData || !GameData->IsLoaded())
+        return false;
+
+    const FString ReceiptText = FString::Printf(
+        TEXT("StructuralRepair|%s|%s|%lld|%lld|%s|%.6f"),
+        *NodeId.ToString(), *MaterialItemId.ToString(),
+        static_cast<long long>(ExpectedNodeRevision),
+        static_cast<long long>(ExpectedItemRevision),
+        *InventoryOwnerId.ToString(), RepairAmount);
+
+    FWorldOperationResult ExistingResult;
+    if (Ledger->TryGetCompletedResult(OperationId, ExistingResult))
+    {
+        return ExistingResult.IsSuccess() && ExistingResult.Message.ToString() == ReceiptText &&
+            ExistingResult.AffectedObjectIds.Contains(NodeId) &&
+            ExistingResult.AffectedObjectIds.Contains(MaterialItemId);
+    }
+
+    FStructuralNodeRecord Node;
+    FWorldOwnedItemRecord Material;
+    if (!Graph->GetNode(NodeId, Node) || Node.Revision != ExpectedNodeRevision ||
+        Node.Revision >= MAX_int64 - 1 || Node.Damage <= 0.0f ||
+        !Ownership->TryGetItem(MaterialItemId, Material) ||
+        Material.Revision != ExpectedItemRevision || Material.Revision >= MAX_int64 - 1 ||
+        Material.OwnerKind != EWorldItemOwnerKind::Inventory ||
+        Material.OwnerId != InventoryOwnerId || Material.Quantity != 1 ||
+        Material.DefinitionId.IsNone())
+        return false;
+
+    const FGameDataItem* MaterialDefinition = GameData->GetItems().Find(Material.DefinitionId);
+    if (!MaterialDefinition ||
+        (MaterialDefinition->Category != TEXT("Resource") &&
+         MaterialDefinition->Category != TEXT("BuildingPart")))
+        return false;
+
+    UInventoryCraftingComponent* Inventory = nullptr;
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        UInventoryCraftingComponent* Candidate =
+            IsValid(*It) ? (*It)->FindComponentByClass<UInventoryCraftingComponent>() : nullptr;
+        if (!IsValid(Candidate) || Candidate->GetInventoryOwnerId() != InventoryOwnerId)
+            continue;
+        if (Inventory)
+            return false;
+        Inventory = Candidate;
+    }
+    if (!Inventory)
+        return false;
+
+    FGuid OwnerActorId;
+    FGuid PreviousInventoryOwnerId;
+    TArray<FInventoryStack> PreviousInventory;
+    FName PreviousQuickAccess = NAME_None;
+    Inventory->ExportSnapshot(OwnerActorId, PreviousInventoryOwnerId,
+        PreviousInventory, PreviousQuickAccess);
+    if (PreviousInventoryOwnerId != InventoryOwnerId ||
+        !PreviousInventory.ContainsByPredicate([&MaterialItemId](const FInventoryStack& Stack)
+        {
+            return Stack.OwnedWorldItemId == MaterialItemId &&
+                Stack.Quantity == 1 && !Stack.ItemId.IsNone();
+        }))
+        return false;
+
+    TArray<FWorldOwnedItemRecord> PreviousItems;
+    TArray<FWorldItemTransferReceipt> PreviousTransferReceipts;
+    TArray<FWorldItemSplitReceipt> PreviousSplitReceipts;
+    Ownership->ExportSnapshot(PreviousItems, PreviousTransferReceipts, PreviousSplitReceipts);
+
+    if (!Ledger->TryBeginOperation(OperationId))
+        return false;
+
+    auto Rollback = [&]() -> bool
+    {
+        const bool bInventoryRestored = Inventory->RestoreSnapshot(
+            PreviousInventoryOwnerId, PreviousInventory, PreviousQuickAccess);
+        const bool bOwnershipRestored = Ownership->RestoreSnapshot(
+            PreviousItems, PreviousTransferReceipts, PreviousSplitReceipts);
+        const bool bLedgerCancelled = Ledger->CancelUncommittedOperation(OperationId);
+        const bool bSucceeded = bInventoryRestored && bOwnershipRestored && bLedgerCancelled;
+        if (!bSucceeded)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Structural repair rollback failed; stop simulation and recover/reset the world."));
+            }
+        }
+        return bSucceeded;
+    };
+
+    FInventoryStack RemovedStack;
+    if (!Inventory->TryRemoveOwnedItemReference(MaterialItemId, RemovedStack))
+    {
+        Ledger->CancelUncommittedOperation(OperationId);
+        return false;
+    }
+
+    if (!Ownership->TryConsumeItem(OperationId, MaterialItemId, ExpectedItemRevision,
+        EWorldItemOwnerKind::Inventory))
+    {
+        Rollback();
+        return false;
+    }
+
+    FWorldOwnedItemRecord ConsumedMaterial;
+    if (!Ownership->TryGetItem(MaterialItemId, ConsumedMaterial) ||
+        ConsumedMaterial.OwnerKind != EWorldItemOwnerKind::Consumed ||
+        !Graph->RepairDamage(NodeId, RepairAmount))
+    {
+        Rollback();
+        return false;
+    }
+
+    FWorldOperationResult Result;
+    Result.bSucceeded = true;
+    Result.Code = EWorldOperationResultCode::Success;
+    Result.OperationId = OperationId;
+    Result.Message = FText::FromString(ReceiptText);
+    Result.AffectedObjectIds.Add(NodeId);
+    Result.AffectedObjectIds.Add(MaterialItemId);
+    if (!Ledger->CompleteOperation(Result))
+    {
+        const float AppliedRepair = FMath::Min(Node.Damage, RepairAmount);
+        bool bThresholdExceeded = false;
+        const bool bNodeRestored = Graph->ApplyDamage(NodeId, AppliedRepair, bThresholdExceeded);
+        const bool bOtherStateRestored = Rollback();
+        if (!bNodeRestored || !bOtherStateRestored)
+        {
+            if (UWorldSimulationCoordinatorSubsystem* Coordinator =
+                World->GetSubsystem<UWorldSimulationCoordinatorSubsystem>())
+            {
+                Coordinator->MarkSimulationFaulted(
+                    TEXT("Structural repair completion rollback failed; stop simulation and recover/reset the world."));
+            }
+        }
+        return false;
     }
 
     return true;
