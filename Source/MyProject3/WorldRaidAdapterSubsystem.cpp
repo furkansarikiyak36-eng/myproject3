@@ -12,6 +12,7 @@
 #include "WorldOperationLedgerSubsystem.h"
 #include "InventoryCraftingComponent.h"
 #include "EngineUtils.h"
+#include "Misc/Crc.h"
 #include "WorldSimulationCoordinatorSubsystem.h"
 
 UWorldThreatDirectorSubsystem* UWorldRaidAdapterSubsystem::GetThreatDirector() const
@@ -413,6 +414,120 @@ bool UWorldRaidAdapterSubsystem::TryRepairStructureWithMaterial(
             }
         }
         return false;
+    }
+
+    return true;
+}
+
+
+bool UWorldRaidAdapterSubsystem::AdvanceRegionalRaidSignals()
+{
+    UWorld* World = GetWorld();
+    UWorldThreatDirectorSubsystem* Threat = GetThreatDirector();
+    UWorldSimulationClockSubsystem* Clock =
+        World ? World->GetSubsystem<UWorldSimulationClockSubsystem>() : nullptr;
+    UWorldRegionalEventSubsystem* Events =
+        World ? World->GetSubsystem<UWorldRegionalEventSubsystem>() : nullptr;
+    if (!World || !Threat || !Clock || !Clock->IsClockInitialized() ||
+        !Events || !Events->AreDefinitionsLoaded())
+        return false;
+
+    struct FRegionSignals
+    {
+        float StorageValue = 0.0f;
+        float Smell = 0.0f;
+        float Light = 0.0f;
+        float Smoke = 0.0f;
+    };
+    TMap<FName, FRegionSignals> SignalsByRegion;
+
+    auto AddSignal = [](float& Total, const FString& RawValue) -> bool
+    {
+        if (RawValue.IsEmpty())
+            return false;
+        const float Value = FCString::Atof(*RawValue);
+        if (!FMath::IsFinite(Value) || Value < 0.0f || Value > 1.0f)
+            return false;
+        Total = FMath::Clamp(Total + Value, 0.0f, 1.0f);
+        return true;
+    };
+
+    // Sensor convention: add Region:<id> and one or more RaidSignal.<kind>:<0..1>
+    // tags to storage, food/scent, light and smoke source actors. Contributions
+    // from multiple sources are summed and saturated at one per signal family.
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!IsValid(Actor))
+            continue;
+
+        FName RegionId = NAME_None;
+        for (const FName& Tag : Actor->Tags)
+        {
+            const FString Value = Tag.ToString();
+            if (Value.StartsWith(TEXT("Region:"), ESearchCase::CaseSensitive))
+            {
+                const FString RegionText = Value.RightChop(7);
+                if (!RegionText.IsEmpty())
+                    RegionId = FName(*RegionText);
+            }
+        }
+        if (RegionId.IsNone())
+            continue;
+
+        FRegionSignals& Signals = SignalsByRegion.FindOrAdd(RegionId);
+        for (const FName& Tag : Actor->Tags)
+        {
+            const FString Value = Tag.ToString();
+            if (Value.StartsWith(TEXT("RaidSignal.Storage:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.StorageValue, Value.RightChop(19)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignal.Smell:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.Smell, Value.RightChop(17)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignal.Light:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.Light, Value.RightChop(17)))
+                    return false;
+            }
+            else if (Value.StartsWith(TEXT("RaidSignal.Smoke:"), ESearchCase::CaseSensitive))
+            {
+                if (!AddSignal(Signals.Smoke, Value.RightChop(17)))
+                    return false;
+            }
+        }
+    }
+
+    // One immutable sample per region and fixed logical tick. This allows
+    // growing stores/lights/smoke to trigger later while operation receipts
+    // prevent replay of the same sample.
+    const int64 Tick = Clock->GetTickIndex();
+    const int32 Seed = Clock->GetRandomSeed();
+    for (const FName RegionId : Events->GetRegionIds())
+    {
+        const FRegionSignals* Signals = SignalsByRegion.Find(RegionId);
+        if (!Signals)
+            continue;
+
+        const uint32 RegionHash = FCrc::StrCrc32(*RegionId.ToString());
+        const uint32 TickLow = static_cast<uint32>(static_cast<uint64>(Tick) & 0xFFFFFFFFull);
+        const uint32 TickHigh = static_cast<uint32>(static_cast<uint64>(Tick) >> 32);
+        FGuid OperationId(Seed, static_cast<int32>(RegionHash),
+            static_cast<int32>(TickLow), static_cast<int32>(TickHigh));
+        if (!OperationId.IsValid())
+            OperationId = FGuid(1, static_cast<int32>(RegionHash), static_cast<int32>(TickLow), static_cast<int32>(TickHigh));
+
+        bool bRaidStarted = false;
+        if (!Threat->TryStartRaidFromSignals(OperationId, RegionId,
+            Signals->StorageValue, Signals->Smell, Signals->Light, Signals->Smoke,
+            bRaidStarted))
+        {
+            return false;
+        }
     }
 
     return true;
