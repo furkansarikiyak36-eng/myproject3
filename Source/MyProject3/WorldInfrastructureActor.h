@@ -46,6 +46,10 @@ public:
     UFUNCTION(BlueprintPure, Category="Infrastructure")
     float GetInfrastructureCondition() const;
 
+    /** Applies event wear to non-route infrastructure such as forward camps. */
+    UFUNCTION(BlueprintCallable, Category="Infrastructure|Maintenance")
+    bool AdvanceLocalWeatherWear(double DeltaSeconds);
+
 private:
     UPROPERTY(VisibleAnywhere, SaveGame, Category="Infrastructure|Receipts")
     TArray<FGuid> CompletedOperationIds;
