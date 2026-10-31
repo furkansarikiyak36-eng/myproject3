@@ -44,3 +44,5 @@ User opens /Game/World/Valley in the editor and checks it. Ask approval: delete 
 
 ### Old note
 Step 3: write tools/heightmaps/build_world_heightmap.py + Config/GameData/world_layout.json (2 km valley, 2017x2017, stamps per zone, river, lake), preview. Ask the user before deleting orphaned actor folders or moving the zip.
+
+- 2026-11-01: heavy scenes removed (9109f95). 7 World Partition actor/object folders + prototipv2/Untitled maps sent to the recycle bin (~2.7 GB); zip moved to SourceArt/Heightmaps/. Next: user checks /Game/World/Valley in the editor.
