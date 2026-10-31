@@ -11,7 +11,13 @@ public class MyProject3 : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GeometryCore", "ProceduralMeshComponent" });
 
 		// Json: the placement profile catalogue (Config/Placement/PlacementProfiles.json).
-		PrivateDependencyModuleNames.AddRange(new string[] { "Json" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "Landscape" });
+
+		// Editor-only tools (the world builder commandlet) need the editor module.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 
 		// Lets sources in subfolders (for example Tests/) include module headers directly.
 		PrivateIncludePaths.Add(ModuleDirectory);

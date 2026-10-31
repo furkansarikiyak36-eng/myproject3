@@ -13,34 +13,34 @@
 ## Task
 
 Status: `open`
-Goal: Close phases 1-9 in order (each phase: every task Var in PLAN_STATUS, builds, all tests pass; PIE comes with the scene).
-Asked by the user: "9 faz da bitirerek ilerleme zamanı geldi sırayla kapatalım fazları" (2026-10-30)
-Started: 2026-10-30 · Branch: `game/p00-adopt-group-a` (single working branch)
+Goal: Analyse the user's World Partition test scenes (may be heavy) and fix them; unify the RAW heightmaps from the landscape zip in Content into one heightmap; build the scene that counts as the game world.
+Asked by the user (2026-11-01): "world partition sahneleri ağırlaştırılmış olabilir analiz et ve düzelt; content içine landscape zipinde raw mapler ekledim, bütün değil, düzeltip bana world sayılacak sahneyi kur"
+Started: 2026-11-01 · Branch: `game/p00-adopt-group-a`
 
 ### Plan
-0. [x] Merged `work/phase-3-4-closure` into p00 (integration `15208d3`, 126/126). Its event director (752 lines, real effects: fire spread, flood
-       route closures, raids, repair) replaces p00's (318 lines). Keep p00-only work: WorldHudDataSubsystem (adapt to
-       the phase-3-4 director API), geology, action costs, charcoal pause, build fixes. One save schema line.
-       Then build + all tests.
-1. [x] Phase 0 closed (P0.2-P0.5 Var; P0.1 main merge waits for the user).
-2. [x] Phase 1 closed (127/127): chains, counters, fog, late frost, HUD countdown, save v30.
-3. [x] Phase 2 closed (all P2 Var; existing code + tests verified, no new code needed).
-4. [x] Phase 3 closed (128/128): firewood under a roof stays dry.
-5. [x] Phase 4 closed (129/129): produced food/water become ledger items.
-6. [x] Phase 5 closed (130/130; Tick stability check unbuilt).
-7. [ ] Phase 6 ... 9: blind-coded on other accounts (list in chat 2026-10-30), batch build/fix here per phase. per phase read PLAN_STATUS rows, close gaps, build + test, mark Var, commit.
-Side lines p06/p07 hold a second farming API: do not merge; port only data files (zones, routes, discoveries,
-animals) if phase 6/7 needs them.
-
-### Read
-- p00 vs phase-3-4: both from `ea00757`; p00 +12 (events v1, HUD, geology, costs, charcoal), phase-3-4 +179.
+1. [x] Find the new maps and the zip; measure sizes, external actors, landscape resolution.
+2. [x] Extract RAWs outside Content (SourceArt/Heightmaps), analyse resolution/range/edges, preview.
+3. [x] Merge: base height function from zones.json + RAW stamps per zone, blended seams -> one 16-bit heightmap.
+4. [x] Build the world map (landscape import) - needs the editor closed for C++ build or a Python/commandlet path.
+5. [ ] Fix/trim heavy scenes (with user approval for any deletion).
 
 ### Findings
-- Two independent event directors. phase-3-4: AdvanceEventStep/InitializeEventDirector; p00: AdvanceToTime/InitializeDirector.
+- Content/__ExternalActors__ = 2.7 GB in 7 World Partition maps. Only 2 have a .umap (prototipv2 614 MB/147 files, Untitled 5 MB).
+  Prototype_V1 (590 MB), Prototype_v2 (589 MB), prototypev3 (732 MB), prototip (117 MB), prototypev3_terrain (32 MB) have NO .umap:
+  orphaned actor folders, ~2.06 GB dead weight. __ExternalActors__ is git-ignored (.gitignore:13): WP maps are not in git at all.
+- Content/landscape-...zip 844 MB (untracked; >100 MB, cannot go to GitHub). Holds 10 x 4096x4096 uint16 LE .r16 + .rpl + TerreSculptor .TSworld.
+  Extracted .r16/.rpl to SourceArt/Heightmaps/.
+- Every r16 is normalised to the full 0..65535 range on its own: vertical scales are not comparable (this is why they do not fit together).
+  Character: v12, v1 rolling hills; v10 gentle with channels; v2 terraces/plateaus; v3 basins+ridges; v4 rugged mountains (roughest);
+  v5 flat with fine detail; v6 low dunes/flow; v7 radial mountain ridges; v8 high plateau with deep valleys.
+- zones.json coordinates are the small VerticalSlice_C prototype (tens of metres); the world needs its own layout file.
 
 ### Changes
-- integrate/phase-3-4 = phase-3-4 + p00 geology/costs/build fixes + HUD port; 4 build fixes, 3 test fixes; 126/126.
-- p00 merge commit: tree = integration, memory notes kept from p00.
+- tools/heightmaps/{analyze,build_world_heightmap}.py, Config/GameData/world_layout.json, SourceArt/World/valley.r16 (+preview, import json).
+- Editor/BuildValleyWorldCommandlet (-run=BuildValleyWorld) -> Content/World/Valley.umap (non-WP, landscape 2017x2017, sun/sky/fog, PlayerStart, simulation bootstrap, LogSnapGameMode). Build OK; commandlet saved the map (exit 1 only from the pre-existing GameFeatureData asset-manager warning).
 
 ### Next step
-Batch test done (136/136). Decide with the user: port useful parts of game/p06-p08-blind-code-closure (infrastructure actor, combustible, data) into p00; stop parallel branches.
+User opens /Game/World/Valley in the editor and checks it. Ask approval: delete 5 orphaned __ExternalActors__ folders (~2.06 GB), remove the zip from Content.
+
+### Old note
+Step 3: write tools/heightmaps/build_world_heightmap.py + Config/GameData/world_layout.json (2 km valley, 2017x2017, stamps per zone, river, lake), preview. Ask the user before deleting orphaned actor folders or moving the zip.

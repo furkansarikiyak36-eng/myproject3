@@ -12,3 +12,8 @@ Saved/
 *.xcworkspace
 Content/__ExternalActors__/
 Content/__ExternalObjects__/
+
+# Source heightmaps are large (10 x 33 MB); keep them local. The merged world heightmap in SourceArt/World is committed.
+SourceArt/Heightmaps/
+# Archives dropped into Content are not Unreal assets and are too big for GitHub.
+Content/*.zip

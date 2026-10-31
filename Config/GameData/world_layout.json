@@ -1,0 +1,156 @@
+{
+  "_about": "Layout of the game world (the valley) used by tools/heightmaps/build_world_heightmap.py. Metres; origin = valley centre; +x east, +y north. Stamps take a window of a source heightmap (1 px = 1 m), normalise it and scale it to their amplitude, then blend into the base by a soft radial mask. The river and lake are carved last. Separate from zones.json, which holds the small VerticalSlice_C prototype.",
+  "seed": 1337,
+  "size_px": 2017,
+  "metres_per_px": 1.0,
+  "height_min_m": 0,
+  "height_max_m": 700,
+  "base": {
+    "floor_m": 40,
+    "rim_start_m": 620,
+    "rim_end_m": 980,
+    "rim_height_m": 300,
+    "detail_source": "unrelandv1",
+    "detail_amplitude_m": 3
+  },
+  "stamps": [
+    {
+      "zone": "Zone.BaseValley",
+      "source": "unrelandv10",
+      "x": 0,
+      "y": 0,
+      "radius": 300,
+      "base_m": 42,
+      "amplitude_m": 6,
+      "window_x": 1600,
+      "window_y": 1500
+    },
+    {
+      "zone": "Zone.RiverBank",
+      "source": "unrelandv5",
+      "x": 260,
+      "y": -260,
+      "radius": 280,
+      "base_m": 34,
+      "amplitude_m": 5,
+      "window_x": 900,
+      "window_y": 2200
+    },
+    {
+      "zone": "Zone.HighForest",
+      "source": "unreland12",
+      "x": 480,
+      "y": 470,
+      "radius": 380,
+      "base_m": 95,
+      "amplitude_m": 60,
+      "window_x": 1200,
+      "window_y": 1000
+    },
+    {
+      "zone": "Zone.LakeWetland",
+      "source": "unrelandv6",
+      "x": -500,
+      "y": -320,
+      "radius": 380,
+      "base_m": 22,
+      "amplitude_m": 8,
+      "window_x": 2000,
+      "window_y": 2400
+    },
+    {
+      "zone": "Zone.MountainPass",
+      "source": "unrelandv4",
+      "x": -470,
+      "y": 620,
+      "radius": 380,
+      "base_m": 190,
+      "amplitude_m": 170,
+      "window_x": 1500,
+      "window_y": 900
+    },
+    {
+      "zone": "Cliffs.East",
+      "source": "unrelandv2",
+      "x": 680,
+      "y": -120,
+      "radius": 240,
+      "base_m": 70,
+      "amplitude_m": 35,
+      "window_x": 2300,
+      "window_y": 1800
+    },
+    {
+      "zone": "Rim.North",
+      "source": "unrelandv7",
+      "x": 100,
+      "y": 900,
+      "radius": 420,
+      "base_m": 300,
+      "amplitude_m": 120,
+      "window_x": 1700,
+      "window_y": 1700
+    },
+    {
+      "zone": "Rim.South",
+      "source": "unrelandv8",
+      "x": 0,
+      "y": -920,
+      "radius": 460,
+      "base_m": 260,
+      "amplitude_m": 120,
+      "window_x": 1500,
+      "window_y": 1500
+    }
+  ],
+  "river": {
+    "points": [
+      [
+        -430,
+        540
+      ],
+      [
+        -140,
+        380
+      ],
+      [
+        170,
+        160
+      ],
+      [
+        300,
+        -140
+      ],
+      [
+        160,
+        -390
+      ],
+      [
+        -180,
+        -430
+      ],
+      [
+        -400,
+        -340
+      ]
+    ],
+    "start_bed_m": 120,
+    "end_bed_m": 16,
+    "bed_halfwidth_m": 5,
+    "bank_width_m": 45,
+    "bank_rise_m": 14
+  },
+  "lake": {
+    "x": -470,
+    "y": -330,
+    "radius": 150,
+    "bottom_m": 12,
+    "water_m": 18,
+    "shore_m": 60
+  },
+  "landscape": {
+    "xy_scale_cm": 100,
+    "z_scale": 200,
+    "origin_z_m": 250
+  }
+}
