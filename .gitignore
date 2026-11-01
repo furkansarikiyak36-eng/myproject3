@@ -17,3 +17,6 @@ Content/__ExternalObjects__/
 SourceArt/Heightmaps/
 # Archives dropped into Content are not Unreal assets and are too big for GitHub.
 Content/*.zip
+
+# Built world map (90 MB); rebuild: python tools/heightmaps/build_world_heightmap.py, then UnrealEditor-Cmd -run=BuildValleyWorld -Map=/Game/World/World
+Content/World/World.umap

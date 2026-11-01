@@ -85,8 +85,59 @@ def smoothstep(e0, e1, x):
     return t * t * (3.0 - 2.0 * t)
 
 
+def single(L):
+    """The world is one source map, whole, at 1 m/px (centre crop to the landscape size)."""
+    sg = L["single"]
+    n = int(L["size_px"])
+    data = np.fromfile(os.path.join(SRC, sg["source"] + ".r16"), dtype="<u2")
+    side = int(round(len(data) ** 0.5))
+    a = data.reshape(side, side).astype(np.float32)
+    o = (side - n) // 2
+    a = a[o:o + n, o:o + n]
+    a = (a - a.min()) / max(1.0, float(a.max() - a.min()))
+    return sg["base_m"] + sg["height_range_m"] * a
+
+
+def write(L, H, regions=()):
+    """Encodes H for Unreal and writes the r16, the preview and the import settings."""
+    n = H.shape[0]
+    mpp_world = float(L["metres_per_px"])
+    half = (n - 1) / 2.0
+    land = L["landscape"]
+    zscale = float(land["z_scale"])
+    origin = float(land["origin_z_m"])
+    v = 32768.0 + (H - origin) * 100.0 * 128.0 / zscale
+    if v.min() < 0 or v.max() > 65535:
+        raise SystemExit(f"height out of range for z_scale {zscale}: {v.min():.0f}..{v.max():.0f}")
+    os.makedirs(OUT, exist_ok=True)
+    v.round().astype("<u2").tofile(os.path.join(OUT, "valley.r16"))
+    gy, gx = np.gradient(H, mpp_world)
+    slope_deg = np.degrees(np.arctan(np.hypot(gx, gy)))
+    slope = np.pi / 2 - np.radians(slope_deg)
+    aspect = np.arctan2(-gx, gy)
+    shade = np.clip(np.sin(np.radians(45)) * np.sin(slope) +
+                    np.cos(np.radians(45)) * np.cos(slope) * np.cos(np.radians(315) - aspect), 0, 1)
+    tint = (H - H.min()) / max(1.0, H.max() - H.min())
+    rgb = np.stack([0.35 + 0.5 * tint, 0.45 + 0.35 * tint, 0.30 + 0.30 * tint], -1) * shade[..., None]
+    img = Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).resize((1200, 1200), Image.LANCZOS)
+    img.save(os.path.join(OUT, "valley_preview.png"))
+    info = {
+        "file": "SourceArt/World/valley.r16", "resolution": n, "format": "uint16 little-endian",
+        "landscape_scale": [land["xy_scale_cm"], land["xy_scale_cm"], zscale],
+        "landscape_location_cm": [-half * mpp_world * 100.0, -half * mpp_world * 100.0, origin * 100.0],
+        "height_m": [float(H.min()), float(H.max())],
+        "slope_deg_median_p95_p99": [float(np.median(slope_deg)), float(np.percentile(slope_deg, 95)),
+                                     float(np.percentile(slope_deg, 99))],
+    }
+    json.dump(info, open(os.path.join(OUT, "valley_import.json"), "w"), indent=2)
+    print(json.dumps(info))
+
+
 def main():
     L = json.load(open(LAYOUT, encoding="utf-8"))
+    if L.get("mode") == "single":
+        write(L, single(L))
+        return
     n = int(L["size_px"])
     mpp_world = float(L["metres_per_px"])
     half = (n - 1) / 2.0

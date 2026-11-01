@@ -47,3 +47,4 @@ Step 3: write tools/heightmaps/build_world_heightmap.py + Config/GameData/world_
 
 - 2026-11-01: heavy scenes removed (9109f95). 7 World Partition actor/object folders + prototipv2/Untitled maps sent to the recycle bin (~2.7 GB); zip moved to SourceArt/Heightmaps/. Next: user checks /Game/World/Valley in the editor.
 - 2026-11-01: world rebuilt at real scale (6fac1bd builder): 3 km, 9 regions (one per source map), map /Game/World/Valley 3025x3025, 53 MB. Next: user checks it in the editor; then material, water, placement.
+- 2026-11-01: user: 3 km too small, use unrelandv5 alone. world_layout.json mode=single: v5 whole at 1 m/px (4033 crop, ~4x4 km), height range 120 m (a choice). Map /Game/World/World (90 MB, gitignored, rebuild with the commandlet -Map=/Game/World/World). Old /Game/World/Valley still exists (was open in the editor).
