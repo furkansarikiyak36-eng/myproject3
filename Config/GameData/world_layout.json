@@ -1,156 +1,163 @@
 {
-  "_about": "Layout of the game world (the valley) used by tools/heightmaps/build_world_heightmap.py. Metres; origin = valley centre; +x east, +y north. Stamps take a window of a source heightmap (1 px = 1 m), normalise it and scale it to their amplitude, then blend into the base by a soft radial mask. The river and lake are carved last. Separate from zones.json, which holds the small VerticalSlice_C prototype.",
+  "_about": "Layout of the game world used by tools/heightmaps/build_world_heightmap.py. Metres; origin = world centre; +x east, +y north. Every source heightmap is one region at its own real scale: feature_m is the real size of its typical hill/ridge (sets metres per source pixel), slope_deg the real slope of its steep parts (sets its height range). Regions meet in soft transition bands (transition_m) that the builder fills; the river runs through them. Separate from zones.json, which holds the small VerticalSlice_C prototype.",
   "seed": 1337,
-  "size_px": 2017,
+  "size_px": 3025,
   "metres_per_px": 1.0,
   "height_min_m": 0,
-  "height_max_m": 700,
-  "base": {
-    "floor_m": 40,
-    "rim_start_m": 620,
-    "rim_end_m": 980,
-    "rim_height_m": 300,
-    "detail_source": "unrelandv1",
-    "detail_amplitude_m": 3
+  "height_max_m": 950,
+  "transition_m": 420,
+  "border_warp_m": 230,
+  "filler": {
+    "source": "unrelandv1",
+    "feature_m": 500,
+    "slope_deg": 8,
+    "_about": "texture added in transition bands"
   },
-  "stamps": [
+  "edge": {
+    "width_m": 320,
+    "rise_m": 140,
+    "source": "unrelandv7",
+    "feature_m": 700,
+    "slope_deg": 30
+  },
+  "regions": [
+    {
+      "zone": "Zone.MountainPass",
+      "source": "unrelandv4",
+      "x": -1000,
+      "y": 1000,
+      "base_m": 230,
+      "feature_m": 900,
+      "slope_deg": 36,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Zone.Ridges",
+      "source": "unrelandv7",
+      "x": 40,
+      "y": 1050,
+      "base_m": 170,
+      "feature_m": 750,
+      "slope_deg": 30,
+      "rotate_deg": 35
+    },
+    {
+      "zone": "Zone.Plateau",
+      "source": "unrelandv8",
+      "x": 1050,
+      "y": 980,
+      "base_m": 250,
+      "feature_m": 800,
+      "slope_deg": 30,
+      "rotate_deg": 90
+    },
+    {
+      "zone": "Zone.Basins",
+      "source": "unrelandv3",
+      "x": -1050,
+      "y": 40,
+      "base_m": 70,
+      "feature_m": 520,
+      "slope_deg": 14,
+      "rotate_deg": 0
+    },
     {
       "zone": "Zone.BaseValley",
       "source": "unrelandv10",
       "x": 0,
       "y": 0,
-      "radius": 300,
-      "base_m": 42,
-      "amplitude_m": 6,
-      "window_x": 1600,
-      "window_y": 1500
-    },
-    {
-      "zone": "Zone.RiverBank",
-      "source": "unrelandv5",
-      "x": 260,
-      "y": -260,
-      "radius": 280,
-      "base_m": 34,
-      "amplitude_m": 5,
-      "window_x": 900,
-      "window_y": 2200
-    },
-    {
-      "zone": "Zone.HighForest",
-      "source": "unreland12",
-      "x": 480,
-      "y": 470,
-      "radius": 380,
-      "base_m": 95,
-      "amplitude_m": 60,
-      "window_x": 1200,
-      "window_y": 1000
-    },
-    {
-      "zone": "Zone.LakeWetland",
-      "source": "unrelandv6",
-      "x": -500,
-      "y": -320,
-      "radius": 380,
-      "base_m": 22,
-      "amplitude_m": 8,
-      "window_x": 2000,
-      "window_y": 2400
-    },
-    {
-      "zone": "Zone.MountainPass",
-      "source": "unrelandv4",
-      "x": -470,
-      "y": 620,
-      "radius": 380,
-      "base_m": 190,
-      "amplitude_m": 170,
-      "window_x": 1500,
-      "window_y": 900
+      "base_m": 60,
+      "feature_m": 450,
+      "slope_deg": 7,
+      "rotate_deg": 0
     },
     {
       "zone": "Cliffs.East",
       "source": "unrelandv2",
-      "x": 680,
-      "y": -120,
-      "radius": 240,
-      "base_m": 70,
-      "amplitude_m": 35,
-      "window_x": 2300,
-      "window_y": 1800
+      "x": 1000,
+      "y": -40,
+      "base_m": 110,
+      "feature_m": 600,
+      "slope_deg": 26,
+      "rotate_deg": 0
     },
     {
-      "zone": "Rim.North",
-      "source": "unrelandv7",
-      "x": 100,
-      "y": 900,
-      "radius": 420,
-      "base_m": 300,
-      "amplitude_m": 120,
-      "window_x": 1700,
-      "window_y": 1700
+      "zone": "Zone.LakeWetland",
+      "source": "unrelandv6",
+      "x": -980,
+      "y": -1010,
+      "base_m": 28,
+      "feature_m": 260,
+      "slope_deg": 12,
+      "rotate_deg": 0
     },
     {
-      "zone": "Rim.South",
-      "source": "unrelandv8",
-      "x": 0,
-      "y": -920,
-      "radius": 460,
-      "base_m": 260,
-      "amplitude_m": 120,
-      "window_x": 1500,
-      "window_y": 1500
+      "zone": "Zone.RiverBank",
+      "source": "unrelandv5",
+      "x": 40,
+      "y": -1020,
+      "base_m": 38,
+      "feature_m": 380,
+      "slope_deg": 9,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Zone.HighForest",
+      "source": "unreland12",
+      "x": 1000,
+      "y": -980,
+      "base_m": 90,
+      "feature_m": 420,
+      "slope_deg": 18,
+      "rotate_deg": 0
     }
   ],
   "river": {
     "points": [
       [
-        -430,
-        540
+        -560,
+        1150
       ],
       [
-        -140,
-        380
+        -640,
+        700
       ],
       [
-        170,
-        160
+        -500,
+        330
       ],
       [
-        300,
-        -140
+        -560,
+        -150
       ],
       [
-        160,
-        -390
+        -700,
+        -480
       ],
       [
-        -180,
-        -430
-      ],
-      [
-        -400,
-        -340
+        -900,
+        -640
       ]
     ],
-    "start_bed_m": 120,
-    "end_bed_m": 16,
+    "end_bed_m": 18,
     "bed_halfwidth_m": 5,
     "bank_width_m": 45,
-    "bank_rise_m": 14
+    "bank_rise_m": 12
   },
   "lake": {
-    "x": -470,
-    "y": -330,
-    "radius": 150,
-    "bottom_m": 12,
-    "water_m": 18,
-    "shore_m": 60
+    "x": -1000,
+    "y": -700,
+    "radius": 170,
+    "bottom_m": 14,
+    "water_m": 21,
+    "shore_m": 110
   },
   "landscape": {
     "xy_scale_cm": 100,
     "z_scale": 200,
-    "origin_z_m": 250
-  }
+    "origin_z_m": 450
+  },
+  "border_warp_feature_m": 600,
+  "detail_keep_m": 60,
+  "detail_strength": 0.8
 }
