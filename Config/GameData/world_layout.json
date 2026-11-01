@@ -4,8 +4,9 @@
   "single": {
     "source": "unrelandv5",
     "base_m": 0,
-    "height_range_m": 120,
-    "_about": "height_range_m is a choice: the source file stores no real height"
+    "height_range_m": 300,
+    "_about": "height_range_m is a choice: the source file stores no real height",
+    "exponent": 2.2
   },
   "_about": "Layout of the game world used by tools/heightmaps/build_world_heightmap.py. Metres; origin = world centre; +x east, +y north. Every source heightmap is one region at its own real scale: feature_m is the real size of its typical hill/ridge (sets metres per source pixel), slope_deg the real slope of its steep parts (sets its height range). Regions meet in soft transition bands (transition_m) that the builder fills; the river runs through them. Separate from zones.json, which holds the small VerticalSlice_C prototype.",
   "seed": 1337,
@@ -163,7 +164,7 @@
   "landscape": {
     "xy_scale_cm": 100,
     "z_scale": 100,
-    "origin_z_m": 60
+    "origin_z_m": 150
   },
   "border_warp_feature_m": 600,
   "detail_keep_m": 60,

@@ -95,7 +95,8 @@ def single(L):
     o = (side - n) // 2
     a = a[o:o + n, o:o + n]
     a = (a - a.min()) / max(1.0, float(a.max() - a.min()))
-    return sg["base_m"] + sg["height_range_m"] * a
+    # exponent > 1 sharpens the high ground into peaks and keeps the low ground gentle.
+    return sg["base_m"] + sg["height_range_m"] * a ** sg.get("exponent", 1.0)
 
 
 def write(L, H, regions=()):
