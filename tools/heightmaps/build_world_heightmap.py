@@ -130,6 +130,8 @@ def falloff(L, H):
     rise = f["rise_m"] * (0.6 + 0.8 * vary)
     # Mountains grow out of the existing land: max() keeps inner hills that are already higher.
     mountains = H + m * (rise + relief * rugged) + m * relief * 0.8 * rocks
+    os.makedirs(OUT, exist_ok=True)
+    (np.clip(m, 0, 1) * 255).round().astype(np.uint8).tofile(os.path.join(OUT, "edge.r8"))  # for the masks
     return np.maximum(H, mountains).astype(np.float32)
 
 

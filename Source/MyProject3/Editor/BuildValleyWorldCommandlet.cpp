@@ -206,6 +206,22 @@ namespace ValleyWorld
         double HalfSizeCm() const { return (Res - 1) * Scale.X * 0.5; }
     };
 
+    /** A placement plan map (SourceArt/World/masks/<name>.r8): 0..255 = chance per candidate. */
+    struct FPlan
+    {
+        TArray<uint8> Data;
+        bool Load(const FString& File, int32 Res)
+        {
+            return FFileHelper::LoadFileToArray(Data, *File) && Data.Num() == Res * Res;
+        }
+        float At(const FTerrain& T, double X, double Y) const
+        {
+            const int32 U = FMath::Clamp(FMath::RoundToInt((X - T.Loc.X) / T.Scale.X), 0, T.Res - 1);
+            const int32 V = FMath::Clamp(FMath::RoundToInt((Y - T.Loc.Y) / T.Scale.Y), 0, T.Res - 1);
+            return Data[V * T.Res + U] / 255.0f;
+        }
+    };
+
     UHierarchicalInstancedStaticMeshComponent* Instances(AActor* Owner, const TCHAR* Name, const TCHAR* MeshPath, UMaterialInterface* Mat,
         bool bCollide, bool bShadow, float CullCm)
     {
@@ -223,12 +239,20 @@ namespace ValleyWorld
     }
 
     /** Stand-in forest: conifers (cylinder + cone), broadleaf trees (cylinder + sphere), bushes and
-     *  rocks from engine basic shapes, as instanced meshes. Placement follows slope, height and a
-     *  patch noise so there are woods, clearings and open slopes. */
-    void Dress(UWorld* World, const FTerrain& T, const TSharedPtr<FJsonObject>& Cfg, const FString& MatDir)
+     *  rocks from engine basic shapes, as instanced meshes. Where they go is decided by the plan maps
+     *  from tools/heightmaps/build_world_masks.py (slope, tree line, ridges, wetness); this only
+     *  draws candidates on a jittered grid and keeps each with the plan's chance. */
+    void Dress(UWorld* World, const FTerrain& T, const TSharedPtr<FJsonObject>& Cfg, const FString& MatDir, const FString& MaskDir)
     {
         if (!Cfg.IsValid())
             return;
+        FPlan TreePlan, BushPlan, RockPlan;
+        if (!TreePlan.Load(MaskDir / TEXT("trees.r8"), T.Res) || !BushPlan.Load(MaskDir / TEXT("bushes.r8"), T.Res) ||
+            !RockPlan.Load(MaskDir / TEXT("rocks.r8"), T.Res))
+        {
+            UE_LOG(LogBuildValleyWorld, Error, TEXT("Plan maps missing in %s; run tools/heightmaps/build_world_masks.py"), *MaskDir);
+            return;
+        }
         UMaterial* Bark = FlatMaterial(MatDir / TEXT("M_Flat_Bark"), FLinearColor(0.12f, 0.07f, 0.04f));
         UMaterial* Needle = FlatMaterial(MatDir / TEXT("M_Flat_Needles"), FLinearColor(0.03f, 0.10f, 0.04f));
         UMaterial* Leaf = FlatMaterial(MatDir / TEXT("M_Flat_Leaves"), FLinearColor(0.08f, 0.18f, 0.04f));
@@ -257,23 +281,11 @@ namespace ValleyWorld
         const double Clear = Num(Cfg, TEXT("clear_radius_m"), 40) * 100.0;
         TArray<FTransform> TrunkX, ConeX, CrownX, BushX, RockX;
 
-        // Patch noise in 0..1: forests where it is high, meadows where it is low.
-        const double PatchCm = Num(Obj(Cfg, TEXT("trees")), TEXT("patch_scale_m"), 250) * 100.0;
-        auto Patch = [&](double X, double Y)
-        {
-            const double A = FMath::PerlinNoise2D(FVector2D(X, Y) / PatchCm);
-            const double B = FMath::PerlinNoise2D(FVector2D(X + 7.3e5, Y - 2.1e5) / (PatchCm * 0.35));
-            return 0.5 + 0.5 * FMath::Clamp(A * 0.75 + B * 0.35, -1.0, 1.0);
-        };
-
-        auto Scatter = [&](const TSharedPtr<FJsonObject>& S, TFunctionRef<void(double, double, float, float, double)> Place)
+        auto Scatter = [&](const TSharedPtr<FJsonObject>& S, const FPlan& Plan, TFunctionRef<void(double, double, float, float)> Place)
         {
             if (!S.IsValid())
                 return;
             const double Cell = Num(S, TEXT("cell_m"), 10) * 100.0;
-            const double MaxSlope = Num(S, TEXT("max_slope_deg"), 35);
-            const double MinSlope = Num(S, TEXT("min_slope_deg"), 0);
-            const double MaxZ = Num(S, TEXT("max_height_m"), 1e5) * 100.0;
             for (double Y = -Half + Cell * 0.5; Y < Half; Y += Cell)
             {
                 for (double X = -Half + Cell * 0.5; X < Half; X += Cell)
@@ -282,24 +294,18 @@ namespace ValleyWorld
                     const double PY = Y + Rng.FRandRange(-0.45, 0.45) * Cell;
                     if (FMath::Sqrt(PX * PX + PY * PY) < Clear)
                         continue;
-                    const float Z = T.Z(PX, PY);
-                    const float Slope = T.SlopeDeg(PX, PY);
-                    if (Z > MaxZ || Slope > MaxSlope || Slope < MinSlope)
+                    if (Rng.FRand() >= Plan.At(T, PX, PY))
                         continue;
-                    Place(PX, PY, Z, Slope, Patch(PX, PY));
+                    Place(PX, PY, T.Z(PX, PY), T.SlopeDeg(PX, PY));
                 }
             }
         };
 
         const TSharedPtr<FJsonObject> TreeCfg = Obj(Cfg, TEXT("trees"));
-        const double Threshold = Num(TreeCfg, TEXT("patch_threshold"), 0.45);
         const double MinH = Num(TreeCfg, TEXT("min_height_m"), 7) * 100.0, MaxH = Num(TreeCfg, TEXT("max_height_m_tree"), 16) * 100.0;
         const double Broadleaf = Num(TreeCfg, TEXT("broadleaf_share"), 0.3);
-        Scatter(TreeCfg, [&](double X, double Y, float Z, float Slope, double P)
+        Scatter(TreeCfg, TreePlan, [&](double X, double Y, float Z, float Slope)
         {
-            // Dense inside a patch, thinning out over its edge.
-            if (Rng.FRand() > FMath::Clamp((P - Threshold) / 0.12, 0.0, 1.0))
-                return;
             const double H = Rng.FRandRange(MinH, MaxH);
             const double TrunkD = H * Rng.FRandRange(0.022, 0.03);
             const FRotator Yaw(0.0, Rng.FRandRange(0.0, 360.0), 0.0);
@@ -318,25 +324,17 @@ namespace ValleyWorld
         });
 
         const TSharedPtr<FJsonObject> BushCfg = Obj(Cfg, TEXT("bushes"));
-        const double BushChance = Num(BushCfg, TEXT("chance"), 0.35);
-        Scatter(BushCfg, [&](double X, double Y, float Z, float Slope, double P)
+        Scatter(BushCfg, BushPlan, [&](double X, double Y, float Z, float Slope)
         {
-            // Mostly along forest edges and inside woods.
-            if (Rng.FRand() > BushChance * FMath::Clamp((P - Threshold + 0.15) / 0.2, 0.15, 1.0))
-                return;
             const double S = Rng.FRandRange(80.0, 220.0);
             BushX.Add(FTransform(FRotator(0.0, Rng.FRandRange(0.0, 360.0), 0.0), FVector(X, Y, Z + S * 0.2),
                 FVector(S / 100.0 * Rng.FRandRange(0.8, 1.3), S / 100.0, S * 0.6 / 100.0)));
         });
 
         const TSharedPtr<FJsonObject> RockCfg = Obj(Cfg, TEXT("rocks"));
-        const double RockChance = Num(RockCfg, TEXT("chance"), 0.5);
         const double RockMin = Num(RockCfg, TEXT("min_size_m"), 0.8) * 100.0, RockMax = Num(RockCfg, TEXT("max_size_m"), 3.5) * 100.0;
-        Scatter(RockCfg, [&](double X, double Y, float Z, float Slope, double P)
+        Scatter(RockCfg, RockPlan, [&](double X, double Y, float Z, float Slope)
         {
-            // More rocks on slopes.
-            if (Rng.FRand() > RockChance * FMath::Clamp(Slope / 30.0, 0.2, 1.0))
-                return;
             const double S = FMath::Lerp(RockMin, RockMax, FMath::Pow(Rng.FRand(), 2.0));
             RockX.Add(FTransform(FRotator(Rng.FRandRange(-15.0, 15.0), Rng.FRandRange(0.0, 360.0), Rng.FRandRange(-15.0, 15.0)),
                 FVector(X, Y, Z + S * 0.1), FVector(S / 100.0 * Rng.FRandRange(0.9, 1.4), S / 100.0, S * Rng.FRandRange(0.45, 0.7) / 100.0)));
@@ -449,7 +447,7 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
     World->SpawnActor<AExponentialHeightFog>(FVector(0.0, 0.0, CentreZ), FRotator::ZeroRotator)->SetActorLabel(TEXT("HeightFog"));
 
     // Trees, bushes and rocks (stand-ins).
-    Dress(World, Terrain, Obj(Layout, TEXT("dressing")), MatDir);
+    Dress(World, Terrain, Obj(Layout, TEXT("dressing")), MatDir, FPaths::Combine(WorldDir, TEXT("masks")));
 
     // Player start, the world simulation and the game mode (the template third person character by default).
     World->SpawnActor<APlayerStart>(FVector(0.0, 0.0, CentreZ + 200.0), FRotator::ZeroRotator)->SetActorLabel(TEXT("PlayerStart"));
