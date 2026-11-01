@@ -20,3 +20,8 @@ Content/*.zip
 
 # Built world map (90 MB); rebuild: python tools/heightmaps/build_world_heightmap.py, then UnrealEditor-Cmd -run=BuildValleyWorld -Map=/Game/World/World
 Content/World/World.umap
+
+# UE Third Person template content (ships with the engine); copy with tools/setup_thirdperson.ps1
+Content/Characters/Mannequins/
+Content/Input/
+Content/ThirdPerson/

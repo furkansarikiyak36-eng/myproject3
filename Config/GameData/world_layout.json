@@ -179,5 +179,34 @@
     "source": "unrelandv4",
     "feature_m": 900,
     "slope_deg": 36
+  },
+  "dressing": {
+    "_about": "Stand-in world dressing placed by the BuildValleyWorld commandlet: engine basic shapes as instanced meshes. Heights in m, slopes in degrees.",
+    "seed": 7,
+    "clear_radius_m": 40,
+    "snow_start_m": 600,
+    "trees": {
+      "cell_m": 7,
+      "max_slope_deg": 32,
+      "max_height_m": 480,
+      "patch_scale_m": 260,
+      "patch_threshold": 0.45,
+      "min_height_m": 7,
+      "max_height_m_tree": 16,
+      "broadleaf_share": 0.3
+    },
+    "bushes": {
+      "cell_m": 9,
+      "max_slope_deg": 35,
+      "max_height_m": 500,
+      "chance": 0.35
+    },
+    "rocks": {
+      "cell_m": 20,
+      "max_slope_deg": 55,
+      "chance": 0.45,
+      "min_size_m": 0.8,
+      "max_size_m": 3.5
+    }
   }
 }

@@ -16,7 +16,7 @@ public class MyProject3 : ModuleRules
 		// Editor-only tools (the world builder commandlet) need the editor module.
 		if (Target.bBuildEditor)
 		{
-			PrivateDependencyModuleNames.Add("UnrealEd");
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "MaterialEditor" });
 		}
 
 		// Lets sources in subfolders (for example Tests/) include module headers directly.
