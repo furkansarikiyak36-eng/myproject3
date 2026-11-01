@@ -767,6 +767,55 @@ namespace MyProject3Tests
     }
 }
 
+// World ground: a chunk built from landscape column heights digs down to its rock floor and
+// no further, accepts a sphere that reaches in from a neighbour, and a chunk under a shown
+// landscape (solid above the surface) has no surface of its own.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelGroundFloorTest,
+    "MyProject3.Terrain.Voxel.GroundColumnsStopAtRockFloor", TestFlags)
+bool FVoxelGroundFloorTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Chunk = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    if (!TestNotNull(TEXT("Chunk"), Chunk))
+        return false;
+    const int32 N = 33;
+    TArray<float> Surface, Floor;
+    Surface.Init(1200.0f, N * N);
+    Floor.Init(800.0f, N * N);
+    Chunk->bAllowPartialEdits = true;
+    Chunk->InitializeFromColumns(Surface, Floor, true);
+    TestTrue(TEXT("Initialized from columns"), Chunk->HasInitializedDensity());
+    TestEqual(TEXT("Solid chunk under a shown landscape has no surface"), Chunk->RebuildMesh(), 0);
+
+    Chunk->InitializeFromColumns(Surface, Floor, false);
+    TestTrue(TEXT("Open chunk has the ground surface"), Chunk->RebuildMesh() > 0);
+    float Removed = 0.0f;
+    int64 Revision = 0;
+    TestTrue(TEXT("Soil above the floor is dug"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(800.0f, 800.0f, 1100.0f), 200.0f, 1.0f,
+            Chunk->GetDensityRevision(), Removed, Revision));
+    TestTrue(TEXT("Deeper soil is dug"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(800.0f, 800.0f, 900.0f), 200.0f, 1.0f,
+            Chunk->GetDensityRevision(), Removed, Revision));
+    TestFalse(TEXT("Nothing below the rock floor is dug"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(800.0f, 800.0f, 650.0f), 150.0f, 1.0f,
+            Chunk->GetDensityRevision(), Removed, Revision));
+    FVector Bottom;
+    TestTrue(TEXT("Pit has a bottom"), TraceDown(TestWorld.World, FVector(800.0, 800.0, 1500.0), Bottom));
+    TestTrue(TEXT("Pit bottom is the rock floor"), Bottom.Z > 750.0 && Bottom.Z < 900.0);
+
+    TestTrue(TEXT("A dig sphere reaching in from the neighbour chunk is applied"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(1650.0f, 300.0f, 1150.0f), 150.0f, 1.0f,
+            Chunk->GetDensityRevision(), Removed, Revision));
+    TestFalse(TEXT("A sphere that does not touch the chunk is rejected"),
+        Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(2200.0f, 300.0f, 1150.0f), 150.0f, 1.0f,
+            Chunk->GetDensityRevision(), Removed, Revision));
+
+    Chunk->CarveIgnoringFloor(FVector(400.0f, 400.0f, 600.0f), 150.0f);
+    TestTrue(TEXT("Cave carving goes below the floor"), Chunk->SampleDensity(FVector(400.0f, 400.0f, 600.0f)) > 0.0f);
+    return true;
+}
+
 // M071/M073/M074 (7D-V01/V03..V05): a smooth voxel chunk digs a pit whose
 // collision matches the new surface; the test also records the timings used
 // for the terrain architecture decision.

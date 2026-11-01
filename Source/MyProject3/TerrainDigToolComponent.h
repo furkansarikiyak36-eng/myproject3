@@ -37,6 +37,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool", meta=(ClampMin="0"))
     int32 DepthLayer = 0;
 
+    /** Off only for play-test pawns without an inventory (the world ground actor's test tool). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool")
+    bool bRequireInventoryTool = true;
+
     /** Region used by the deterministic geology resolver; set this per region-specific tool/adapter. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Terrain Tool|Geology")
     FName RegionId = TEXT("Zone0");

@@ -92,6 +92,40 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, SaveGame, Category="Terrain|Voxel")
     int64 DensityRevision = 0;
 
+    /** World ground chunks: a dig sphere may reach past this chunk into its neighbours; only the
+     *  part inside this chunk is applied (the ground actor applies the rest to the neighbours). */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Digging")
+    bool bAllowPartialEdits = false;
+
+    /** Vertex colours by depth: grass on the original surface, soil below, rock at the floor
+     *  (or everywhere below the surface for Rock chunks). Needs InitializeFromColumns. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Look")
+    bool bGroundColours = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Look")
+    FLinearColor GrassColour = FLinearColor(0.10f, 0.22f, 0.05f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Look")
+    FLinearColor SoilColour = FLinearColor(0.22f, 0.15f, 0.08f);
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Terrain|Voxel|Look")
+    FLinearColor RockColour = FLinearColor(0.20f, 0.19f, 0.18f);
+
+    /**
+     * Fills the grid from per-column heights (local cm, (CellsPerAxis+1)^2 values, X fastest).
+     * Surface: solid below it, air above (bSolidAboveSurface makes the whole chunk solid, for
+     * chunks under a landscape that is still shown). Floor: digging never removes ground at or
+     * below it (empty array = no floor).
+     */
+    void InitializeFromColumns(const TArray<float>& InSurfaceLocalZ, const TArray<float>& InFloorLocalZ,
+        bool bSolidAboveSurface);
+
+    /** Opens the ground above the surface again (a chunk whose column became dug), keeping earlier carving. */
+    void OpenAboveSurface();
+
+    /** Carves a sphere for world generation (caves); ignores the floor and tool rules. */
+    void CarveIgnoringFloor(const FVector& LocalCenter, float RadiusCm);
+
     /** Fills the grid with flat ground at a local height (cm above the chunk origin). */
     UFUNCTION(BlueprintCallable, Category="Terrain|Voxel")
     void InitializeFlatGround(float GroundHeightCm);
@@ -142,6 +176,13 @@ private:
     TArray<float> Density;
 
     TMap<FGuid, FVoxelTerrainDigReceipt> DigReceipts;
+
+    /** Per-column heights in local cm ((CellsPerAxis+1)^2, X fastest); rebuilt by the owner, not saved. */
+    TArray<float> SurfaceLocalZ;
+    TArray<float> FloorLocalZ;
+    bool bIgnoreFloor = false;
+
+    float ColumnValue(const TArray<float>& Values, float LocalX, float LocalY) const;
 
     int32 PointsPerAxis() const { return CellsPerAxis + 1; }
     int32 PointIndex(int32 X, int32 Y, int32 Z) const;

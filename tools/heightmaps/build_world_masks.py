@@ -11,6 +11,8 @@ Outputs: SourceArt/World/masks/
     edge.png       the edge mountains (out of the playable area)
   plan (8-bit, 0..255 = probability per candidate; .r8 is raw, read by -run=BuildValleyWorld):
     trees.r8/.png, bushes.r8/.png, rocks.r8/.png
+  soil_depth.png / soil_depth_4m.r8   diggable soil depth in metres (0 = rock, not diggable), 4 m grid
+  caves.json       the generated caves: spheres (world cm) carved by AWorldGroundActor
   plan.png         everything in one picture
 Every rule is a number in world_layout.json "masks", so the plan is changed there, not in code.
 """
@@ -87,6 +89,75 @@ def save8(name, field, lo=0.0, hi=1.0, raw=False):
     Image.fromarray(v).resize((1008, 1008), Image.BILINEAR).save(os.path.join(OUT, name + ".png"))
 
 
+def make_caves(L, H, slope, relative, edge, info, mpp):
+    """Cave tunnels into hillsides: entrance on a 24-42 deg slope with enough hill behind it, a winding
+    tunnel that goes in and down while keeping rock above, a middle room and an end room."""
+    C = L["caves"]
+    n = H.shape[0]
+    rng = np.random.default_rng(L["seed"] + 11)
+    gr, gc = np.gradient(H, mpp)  # d/drow, d/dcol in m per m
+
+    def h_at(r, c):
+        r = min(max(r, 0.0), n - 1.001)
+        c = min(max(c, 0.0), n - 1.001)
+        r0, c0 = int(r), int(c)
+        fr, fc = r - r0, c - c0
+        top = H[r0, c0] * (1 - fc) + H[r0, c0 + 1] * fc
+        bot = H[r0 + 1, c0] * (1 - fc) + H[r0 + 1, c0 + 1] * fc
+        return top * (1 - fr) + bot * fr
+
+    cands = []
+    step = int(20 / mpp)
+    for r in range(step, n - step, step):
+        for c in range(step, n - step, step):
+            s = slope[r, c]
+            if not (C["min_slope_deg"] <= s <= C["max_slope_deg"]) or edge[r, c] > 0.02:
+                continue
+            if not (C["min_height_m"] <= H[r, c] <= C["max_height_m"]) or not (-10 <= relative[r, c] <= 25):
+                continue
+            g = np.array([gc[r, c], gr[r, c]])  # uphill direction in (col, row)
+            u = g / max(1e-6, np.linalg.norm(g))
+            rise60 = h_at(r + u[1] * 60 / mpp, c + u[0] * 60 / mpp) - H[r, c]
+            rise100 = h_at(r + u[1] * 100 / mpp, c + u[0] * 100 / mpp) - H[r, c]
+            if rise60 < C["min_hill_rise_m"] or rise100 < C["min_hill_rise_m"]:
+                continue
+            cands.append((rise60 + 0.5 * rise100 + rng.random() * 5, r, c, u))
+    cands.sort(key=lambda t: -t[0])
+    chosen = []
+    for score, r, c, u in cands:
+        if all(np.hypot(r - r2, c - c2) * mpp >= C["min_spacing_m"] for _, r2, c2, _ in chosen):
+            chosen.append((score, r, c, u))
+        if len(chosen) == C["count"]:
+            break
+
+    lx, ly = info["landscape_location_cm"][0], info["landscape_location_cm"][1]
+    caves = []
+    for i, (_, r, c, u) in enumerate(chosen):
+        length = float(rng.uniform(C["min_length_m"], C["max_length_m"]))
+        bend = rng.uniform(0, 2 * np.pi)
+        spheres = []
+        z_mouth = H[r, c] + 1.0
+        s = -4.0
+        while s <= length:
+            ang = np.radians(C["wiggle_deg"]) * np.sin(s / 22.0 + bend)
+            d = np.array([u[0] * np.cos(ang) - u[1] * np.sin(ang), u[0] * np.sin(ang) + u[1] * np.cos(ang)])
+            pc, pr = c + d[0] * s / mpp, r + d[1] * s / mpp
+            rad = C["tunnel_radius_m"] * (1.0 + 0.2 * np.sin(s / 9.0 + bend) ** 2)
+            if abs(s - 0.55 * length) < 6.0:
+                rad = max(rad, C["room_radius_m"] * 0.7)
+            if s > length - 8.0:
+                rad = max(rad, C["room_radius_m"])
+            z = z_mouth - C["descent"] * max(0.0, s)
+            surface = h_at(pr, pc)
+            if s > 12.0:
+                z = min(z, surface - rad - C["min_cover_m"])  # keep rock above the tunnel
+            spheres.append([round(float(lx + pc * mpp * 100.0), 1), round(float(ly + pr * mpp * 100.0), 1),
+                            round(float(z * 100.0), 1), round(float(rad * 100.0), 1)])
+            s += C["sphere_step_m"]
+        caves.append({"name": f"Cave.{i + 1}", "length_m": round(length, 1), "spheres": spheres})
+    return caves
+
+
 def main():
     L = json.load(open(LAYOUT, encoding="utf-8"))
     R = L["masks"]
@@ -147,6 +218,22 @@ def main():
     rocks *= ramp(slope, 70, 60)
     save8("rocks", np.clip(rocks, 0, 1), raw=True)
 
+    # Ground: diggable soil and its depth. Deep in flat, low, wet ground; shallow on slopes and ridges;
+    # none on steep faces and in the edge mountains (rock).
+    g = R["soil"]
+    flat = ramp(slope, g["max_slope_deg"] - 10.0, 5.0)
+    lowness = 1.0 - ramp(blur(relative, 60 / mpp), -15.0, 15.0)
+    depth = g["min_depth_m"] + (g["max_depth_m"] - g["min_depth_m"]) * np.clip(0.55 * flat + 0.3 * lowness + 0.15 * wet, 0, 1)
+    diggable = (slope < g["max_slope_deg"]) & (edge < 0.05)
+    soil = np.where(diggable, depth, 0.0)
+    save8("soil_depth", soil, 0, 40)
+    step = int(round(4.0 / mpp))
+    coarse = np.round(soil[::step, ::step]).astype(np.uint8)  # 4 m grid, metres
+    coarse.tofile(os.path.join(OUT, "soil_depth_4m.r8"))
+
+    caves = make_caves(L, H, slope, relative, edge, info, mpp)
+    json.dump({"caves": caves}, open(os.path.join(OUT, "caves.json"), "w"), indent=1)
+
     # One picture of the plan.
     shade = 0.55 + 0.45 * np.clip(1.0 - slope / 60.0, 0, 1)
     rgb = np.stack([0.62 * shade, 0.68 * shade, 0.50 * shade], -1)  # open ground
@@ -156,7 +243,18 @@ def main():
     rgb = rgb * (1 - tr * 0.85) + tr * 0.85 * np.array([0.08, 0.30, 0.10])
     rk = np.clip(rocks, 0, 1)[..., None] * 0.6
     rgb = rgb * (1 - rk) + rk * np.array([0.55, 0.55, 0.55])
-    Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).resize((1200, 1200), Image.LANCZOS).save(os.path.join(OUT, "plan.png"))
+    img = Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).resize((1200, 1200), Image.LANCZOS)
+    from PIL import ImageDraw
+    draw = ImageDraw.Draw(img)
+    lx, ly = info["landscape_location_cm"][0], info["landscape_location_cm"][1]
+    to_px = lambda x, y: ((x - lx) / 100.0 / mpp * 1200 / n, (y - ly) / 100.0 / mpp * 1200 / n)
+    for c in caves:
+        pts = [to_px(sp[0], sp[1]) for sp in c["spheres"]]
+        draw.line(pts, fill=(200, 30, 30), width=3)
+        x, y = pts[0]
+        draw.ellipse((x - 6, y - 6, x + 6, y + 6), outline=(255, 255, 255), width=2)
+        draw.text((x + 8, y - 6), c["name"], fill=(255, 255, 255))
+    img.save(os.path.join(OUT, "plan.png"))
 
     play = edge < 0.05
     print(json.dumps({
@@ -164,6 +262,9 @@ def main():
         "trees_above_treeline": int(((trees > 0.01) & (H > t["treeline_m"])).sum()),
         "trees_on_peaks_pct": round(float((trees[relative > t["peak_m"]] > 0.05).mean() * 100) if (relative > t["peak_m"]).any() else 0.0, 1),
         "wet_pct": round(float((wet > 0.3)[play].mean() * 100), 1),
+        "diggable_playable_pct": round(float(diggable[play].mean() * 100), 1),
+        "soil_depth_m_min_mean_max": [round(float(soil[diggable].min()), 1), round(float(soil[diggable].mean()), 1), round(float(soil.max()), 1)],
+        "caves": [{"name": c["name"], "length_m": c["length_m"], "entrance_cm": c["spheres"][0][:3]} for c in caves],
     }))
 
 

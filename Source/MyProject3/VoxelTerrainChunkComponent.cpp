@@ -67,6 +67,68 @@ void UVoxelTerrainChunkComponent::InitializeFlatGround(float GroundHeightCm)
     DigReceipts.Reset();
 }
 
+void UVoxelTerrainChunkComponent::InitializeFromColumns(const TArray<float>& InSurfaceLocalZ,
+    const TArray<float>& InFloorLocalZ, bool bSolidAboveSurface)
+{
+    const int32 N = PointsPerAxis();
+    if (CellsPerAxis < 4 || CellsPerAxis > 128 || !FMath::IsFinite(VoxelSizeCm) || VoxelSizeCm < 5.0f ||
+        InSurfaceLocalZ.Num() != N * N || (InFloorLocalZ.Num() != 0 && InFloorLocalZ.Num() != N * N))
+    {
+        Density.Reset();
+        DensityRevision = 0;
+        return;
+    }
+    SurfaceLocalZ = InSurfaceLocalZ;
+    FloorLocalZ = InFloorLocalZ;
+    // Clamp the signed height distance so far-away samples don't dominate the interpolation.
+    const float Clamp = VoxelSizeCm * 4.0f;
+    Density.SetNumUninitialized(N * N * N);
+    for (int32 Z = 0; Z < N; ++Z)
+        for (int32 Y = 0; Y < N; ++Y)
+            for (int32 X = 0; X < N; ++X)
+            {
+                const float Height = Z * VoxelSizeCm - SurfaceLocalZ[Y * N + X];
+                Density[PointIndex(X, Y, Z)] = bSolidAboveSurface ? -Clamp : AvoidIsoValue(FMath::Clamp(Height, -Clamp, Clamp));
+            }
+    DensityRevision = 1;
+    DigReceipts.Reset();
+}
+
+void UVoxelTerrainChunkComponent::OpenAboveSurface()
+{
+    const int32 N = PointsPerAxis();
+    if (!HasInitializedDensity() || SurfaceLocalZ.Num() != N * N)
+        return;
+    const float Clamp = VoxelSizeCm * 4.0f;
+    for (int32 Z = 0; Z < N; ++Z)
+        for (int32 Y = 0; Y < N; ++Y)
+            for (int32 X = 0; X < N; ++X)
+            {
+                const float Height = FMath::Clamp(Z * VoxelSizeCm - SurfaceLocalZ[Y * N + X], -Clamp, Clamp);
+                float& Value = Density[PointIndex(X, Y, Z)];
+                Value = AvoidIsoValue(FMath::Max(Value, Height));
+            }
+    ++DensityRevision;
+}
+
+void UVoxelTerrainChunkComponent::CarveIgnoringFloor(const FVector& LocalCenter, float RadiusCm)
+{
+    TGuardValue<bool> Guard(bIgnoreFloor, true);
+    ApplySphereEdit(LocalCenter, RadiusCm, false);
+}
+
+float UVoxelTerrainChunkComponent::ColumnValue(const TArray<float>& Values, float LocalX, float LocalY) const
+{
+    const int32 N = PointsPerAxis();
+    const float GX = FMath::Clamp(LocalX / VoxelSizeCm, 0.0f, N - 1.001f);
+    const float GY = FMath::Clamp(LocalY / VoxelSizeCm, 0.0f, N - 1.001f);
+    const int32 X0 = FMath::FloorToInt(GX), Y0 = FMath::FloorToInt(GY);
+    const float TX = GX - X0, TY = GY - Y0;
+    const float A = FMath::Lerp(Values[Y0 * N + X0], Values[Y0 * N + X0 + 1], TX);
+    const float B = FMath::Lerp(Values[(Y0 + 1) * N + X0], Values[(Y0 + 1) * N + X0 + 1], TX);
+    return FMath::Lerp(A, B, TY);
+}
+
 float UVoxelTerrainChunkComponent::SampleDensity(const FVector& LocalPosition) const
 {
     // Trilinear interpolation keeps the extracted surface smooth between samples.
@@ -117,6 +179,7 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
     const float VolumeBefore = GetSolidVolumeCubicMetres();
     bool bChangedDensity = false;
     const int32 N = PointsPerAxis();
+    const bool bUseFloor = !bAdd && !bIgnoreFloor && FloorLocalZ.Num() == N * N;
     const int32 MinX = FMath::Max(0, FMath::FloorToInt((LocalCenter.X - RadiusCm) / VoxelSizeCm) - 1);
     const int32 MaxX = FMath::Min(N - 1, FMath::CeilToInt((LocalCenter.X + RadiusCm) / VoxelSizeCm) + 1);
     const int32 MinY = FMath::Max(0, FMath::FloorToInt((LocalCenter.Y - RadiusCm) / VoxelSizeCm) - 1);
@@ -128,6 +191,9 @@ float UVoxelTerrainChunkComponent::ApplySphereEdit(FVector LocalCenter, float Ra
             for (int32 X = MinX; X <= MaxX; ++X)
             {
                 const FVector Point(X * VoxelSizeCm, Y * VoxelSizeCm, Z * VoxelSizeCm);
+                // The rock floor under the soil stays: digging stops there.
+                if (bUseFloor && Point.Z <= FloorLocalZ[Y * N + X])
+                    continue;
                 // Signed distance to the sphere, negative inside it.
                 const float Sphere = static_cast<float>(FVector::Dist(Point, LocalCenter)) - RadiusCm;
                 float& Value = Density[PointIndex(X, Y, Z)];
@@ -189,7 +255,13 @@ bool UVoxelTerrainChunkComponent::TryApplyBoundedDig(
     const FVector Max = LocalCenter + RadiusVector;
     const float ExtentCm = CellsPerAxis * VoxelSizeCm;
     const FBox ChunkBounds(FVector::ZeroVector, FVector(ExtentCm));
-    if (!EditableBoundsLocal.IsInsideOrOn(Min) || !EditableBoundsLocal.IsInsideOrOn(Max) ||
+    if (bAllowPartialEdits)
+    {
+        // Only the part of the sphere inside this chunk is applied; it must touch the chunk.
+        if (!ChunkBounds.ExpandBy(RadiusCm).IsInsideOrOn(LocalCenter))
+            return false;
+    }
+    else if (!EditableBoundsLocal.IsInsideOrOn(Min) || !EditableBoundsLocal.IsInsideOrOn(Max) ||
         !ChunkBounds.IsInsideOrOn(Min) || !ChunkBounds.IsInsideOrOn(Max))
         return false;
 
@@ -489,7 +561,25 @@ int32 UVoxelTerrainChunkComponent::RebuildMesh()
         Normals.Add(Gradient.GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector));
     }
 
+    TArray<FLinearColor> Colours;
+    const int32 N = PointsPerAxis();
+    if (bGroundColours && SurfaceLocalZ.Num() == N * N)
+    {
+        Colours.Reserve(Vertices.Num());
+        const bool bHasFloor = FloorLocalZ.Num() == N * N;
+        for (int32 Index = 0; Index < Vertices.Num(); ++Index)
+        {
+            const FVector& V = Vertices[Index];
+            const float Surface = ColumnValue(SurfaceLocalZ, V.X, V.Y);
+            if (V.Z > Surface - 40.0f && Normals[Index].Z > 0.6f)
+                Colours.Add(GrassColour); // untouched top of the ground
+            else if (SoilClass == EVoxelSoilClass::Rock || (bHasFloor && V.Z < ColumnValue(FloorLocalZ, V.X, V.Y) + 40.0f))
+                Colours.Add(RockColour);
+            else
+                Colours.Add(SoilColour);
+        }
+    }
     CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, TArray<FVector2D>(),
-        TArray<FLinearColor>(), TArray<FProcMeshTangent>(), true);
+        Colours, TArray<FProcMeshTangent>(), true);
     return Triangles.Num() / 3;
 }

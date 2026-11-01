@@ -25,6 +25,12 @@
 #include "Materials/MaterialExpressionConstant3Vector.h"
 #include "Materials/MaterialExpressionLinearInterpolate.h"
 #include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionOneMinus.h"
+#include "Materials/MaterialExpressionTextureSampleParameter2D.h"
+#include "Materials/MaterialExpressionVertexColor.h"
+#include "Engine/Texture2D.h"
+#include "LandscapeHeightfieldCollisionComponent.h"
+#include "WorldGroundActor.h"
 #include "Materials/MaterialExpressionSaturate.h"
 #include "Materials/MaterialExpressionSubtract.h"
 #include "Materials/MaterialExpressionVertexNormalWS.h"
@@ -132,7 +138,7 @@ namespace ValleyWorld
 
     /** Terrain colouring without textures: grass on flat ground, dirt on slopes, rock on steep
      *  faces, snow on high flat-ish ground. Colours come from the world normal and height. */
-    UMaterial* TerrainMaterial(const FString& PackagePath, float SnowStartCm)
+    UMaterial* TerrainMaterial(const FString& PackagePath, float SnowStartCm, float MaskOriginCm, float MaskSizeCm)
     {
         UMaterial* M = NewMaterial(PackagePath);
         UMaterialExpressionVertexNormalWS* Normal = Add<UMaterialExpressionVertexNormalWS>(M, -1200, 0);
@@ -159,7 +165,36 @@ namespace ValleyWorld
         UMaterialExpressionMultiply* SnowOnFlat = Add<UMaterialExpressionMultiply>(M, -200, 300);
         UMaterialEditingLibrary::ConnectMaterialExpressions(Snowy, TEXT(""), SnowOnFlat, TEXT("A"));
         UMaterialEditingLibrary::ConnectMaterialExpressions(NotRock, TEXT(""), SnowOnFlat, TEXT("B"));
+        // Dug ground: AWorldGroundActor writes a per-column mask; masked texels hide the landscape
+        // so the voxel ground under it shows.
+        UMaterialExpressionComponentMask* XY = Add<UMaterialExpressionComponentMask>(M, -1050, 600);
+        XY->R = true; XY->G = true; XY->B = false; XY->A = false;
+        UMaterialEditingLibrary::ConnectMaterialExpressions(Pos, TEXT(""), XY, TEXT(""));
+        UMaterialExpressionSubtract* FromOrigin = Add<UMaterialExpressionSubtract>(M, -900, 600);
+        FromOrigin->ConstB = MaskOriginCm;
+        UMaterialEditingLibrary::ConnectMaterialExpressions(XY, TEXT(""), FromOrigin, TEXT("A"));
+        UMaterialExpressionMultiply* ToUV = Add<UMaterialExpressionMultiply>(M, -750, 600);
+        ToUV->ConstB = 1.0f / MaskSizeCm;
+        UMaterialEditingLibrary::ConnectMaterialExpressions(FromOrigin, TEXT(""), ToUV, TEXT("A"));
+        UMaterialExpressionTextureSampleParameter2D* Mask = Add<UMaterialExpressionTextureSampleParameter2D>(M, -550, 600);
+        Mask->ParameterName = AWorldGroundActor::MaskParameterName;
+        Mask->Texture = LoadObject<UTexture2D>(nullptr, TEXT("/Engine/EngineResources/Black.Black"));
+        Mask->SamplerType = UMaterialExpressionTextureBase::GetSamplerTypeForTexture(Mask->Texture);
+        Mask->SamplerSource = SSM_FromTextureAsset;
+        UMaterialEditingLibrary::ConnectMaterialExpressions(ToUV, TEXT(""), Mask, TEXT("UVs"));
+        UMaterialExpressionOneMinus* Keep = Add<UMaterialExpressionOneMinus>(M, -300, 600);
+        UMaterialEditingLibrary::ConnectMaterialExpressions(Mask, TEXT("R"), Keep, TEXT(""));
+        UMaterialEditingLibrary::ConnectMaterialProperty(Keep, TEXT(""), MP_OpacityMask);
+        M->BlendMode = BLEND_Masked;
         Finish(M, Lerp(M, Ground, Snow, SnowOnFlat, 200, 0), 0.95f);
+        return M;
+    }
+
+    /** Vertex colours as base colour: the voxel ground paints grass, soil and rock into its vertices. */
+    UMaterial* VertexColourMaterial(const FString& PackagePath)
+    {
+        UMaterial* M = NewMaterial(PackagePath);
+        Finish(M, Add<UMaterialExpressionVertexColor>(M, 0, 0), 0.95f);
         return M;
     }
 
@@ -412,11 +447,16 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
 
     // The landscape, coloured by slope and height.
     const double SnowStartM = Num(Obj(Layout, TEXT("dressing")), TEXT("snow_start_m"), 600);
-    UMaterial* TerrainMat = TerrainMaterial(MatDir / TEXT("M_WorldTerrain"), static_cast<float>(SnowStartM * 100.0));
+    const AWorldGroundActor* GroundDefaults = GetDefault<AWorldGroundActor>();
+    const float MaskSizeCm = GroundDefaults->MaskResolution * GroundDefaults->ChunkCells * GroundDefaults->VoxelSizeCm;
+    UMaterial* TerrainMat = TerrainMaterial(MatDir / TEXT("M_WorldTerrain"), static_cast<float>(SnowStartM * 100.0),
+        GroundDefaults->MaskOriginCm, MaskSizeCm);
     ALandscape* Landscape = World->SpawnActor<ALandscape>(LandscapeLocation, FRotator::ZeroRotator);
     Landscape->SetActorRelativeScale3D(LandscapeScale);
     Landscape->SetActorLabel(TEXT("WorldLandscape"));
     Landscape->LandscapeMaterial = TerrainMat;
+    // Own collision channel, so pawns in dug columns can ignore the landscape (see AWorldGroundActor).
+    Landscape->BodyInstance.SetObjectType(ECC_WorldGround);
     TMap<FGuid, TArray<uint16>> HeightData;
     HeightData.Add(FGuid(), MoveTemp(Heights));
     TMap<FGuid, TArray<FLandscapeImportLayerInfo>> MaterialLayers;
@@ -426,6 +466,9 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
         HeightData, *HeightmapFile, MaterialLayers, ELandscapeImportAlphamapType::Additive, TArrayView<const FLandscapeLayer>());
     if (ULandscapeInfo* LandscapeInfo = Landscape->GetLandscapeInfo())
         LandscapeInfo->UpdateLayerInfoMap(Landscape);
+    for (ULandscapeHeightfieldCollisionComponent* Collision : Landscape->CollisionComponents)
+        if (Collision)
+            Collision->SetCollisionObjectType(ECC_WorldGround);
 
     FTerrain Terrain;
     Terrain.Data = &HeightData.FindChecked(FGuid());
@@ -445,6 +488,47 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
     if (USkyLightComponent* SkyComponent = Sky->GetLightComponent())
         SkyComponent->bRealTimeCapture = true;
     World->SpawnActor<AExponentialHeightFog>(FVector(0.0, 0.0, CentreZ), FRotator::ZeroRotator)->SetActorLabel(TEXT("HeightFog"));
+
+    // Diggable ground and caves (from the plan maps).
+    {
+        AWorldGroundActor* Ground = World->SpawnActor<AWorldGroundActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+        Ground->SetActorLabel(TEXT("WorldGround"));
+        Ground->Landscape = Landscape;
+        Ground->VoxelMaterial = VertexColourMaterial(MatDir / TEXT("M_VoxelGround"));
+        const FString MaskDir = FPaths::Combine(WorldDir, TEXT("masks"));
+        TArray<uint8> Soil;
+        const int32 SoilStep = 4;
+        const int32 SoilSize = (Resolution - 1) / SoilStep + 1;
+        if (FFileHelper::LoadFileToArray(Soil, *FPaths::Combine(MaskDir, TEXT("soil_depth_4m.r8"))) && Soil.Num() == SoilSize * SoilSize)
+        {
+            Ground->SoilDepthM = MoveTemp(Soil);
+            Ground->SoilGridSize = SoilSize;
+            Ground->SoilCellCm = static_cast<float>(SoilStep * LandscapeScale.X);
+            Ground->SoilOriginCm = FVector2D(LandscapeLocation.X, LandscapeLocation.Y);
+        }
+        else
+        {
+            UE_LOG(LogBuildValleyWorld, Error, TEXT("soil_depth_4m.r8 missing or wrong size; run build_world_masks.py"));
+        }
+        FString CaveText;
+        TSharedPtr<FJsonObject> CaveJson;
+        if (FFileHelper::LoadFileToString(CaveText, *FPaths::Combine(MaskDir, TEXT("caves.json"))) &&
+            FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(CaveText), CaveJson) && CaveJson.IsValid())
+        {
+            for (const TSharedPtr<FJsonValue>& CaveValue : CaveJson->GetArrayField(TEXT("caves")))
+            {
+                const TSharedPtr<FJsonObject> CaveObj = CaveValue->AsObject();
+                FWorldCaveSpec& Cave = Ground->Caves.AddDefaulted_GetRef();
+                Cave.Name = FName(*CaveObj->GetStringField(TEXT("name")));
+                for (const TSharedPtr<FJsonValue>& SphereValue : CaveObj->GetArrayField(TEXT("spheres")))
+                {
+                    const TArray<TSharedPtr<FJsonValue>>& V = SphereValue->AsArray();
+                    Cave.Spheres.Add(FVector4f(V[0]->AsNumber(), V[1]->AsNumber(), V[2]->AsNumber(), V[3]->AsNumber()));
+                }
+            }
+        }
+        UE_LOG(LogBuildValleyWorld, Display, TEXT("Ground: soil grid %d, %d caves"), Ground->SoilGridSize, Ground->Caves.Num());
+    }
 
     // Trees, bushes and rocks (stand-ins).
     Dress(World, Terrain, Obj(Layout, TEXT("dressing")), MatDir, FPaths::Combine(WorldDir, TEXT("masks")));
