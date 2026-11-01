@@ -149,4 +149,11 @@ private:
     void SetMask(const FIntPoint& Key);
     void UpdateBypass();
     void GiveTestDigTool();
+    void LogCost(double StartupSeconds) const;
+    void MeasureFrame(float DeltaSeconds);
+
+    bool bGroundOff = false;
+    int32 MeasureFramesLeft = 0;
+    int32 MeasuredFrames = 0;
+    double MeasuredFrameMs = 0.0, MeasuredGpuMs = 0.0;
 };

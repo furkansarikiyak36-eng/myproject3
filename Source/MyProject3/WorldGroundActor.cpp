@@ -9,6 +9,11 @@
 #include "TerrainDigToolComponent.h"
 #include "TextureResource.h"
 #include "VoxelTerrainChunkComponent.h"
+#include "HAL/PlatformTime.h"
+#include "HAL/PlatformMisc.h"
+#include "RHI.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogWorldGround, Log, All);
 
@@ -372,18 +377,68 @@ void AWorldGroundActor::GiveTestDigTool()
 void AWorldGroundActor::BeginPlay()
 {
     Super::BeginPlay();
+    // Cost measurement: -GroundCostFrames=N averages N frames after a 10 s settle, logs and quits.
+    FParse::Value(FCommandLine::Get(), TEXT("GroundCostFrames="), MeasureFramesLeft);
+    if (MeasureFramesLeft > 0)
+        PrimaryActorTick.TickInterval = 0.0f;
+    if (FParse::Param(FCommandLine::Get(), TEXT("NoWorldGround")))
+    {
+        // For cost measurements: the world without the diggable ground and caves.
+        UE_LOG(LogWorldGround, Display, TEXT("World ground disabled (-NoWorldGround)"));
+        bGroundOff = true;
+        return;
+    }
     if (!Landscape)
     {
         UE_LOG(LogWorldGround, Warning, TEXT("WorldGroundActor has no landscape; digging is off."));
         return;
     }
+    const double Start = FPlatformTime::Seconds();
     CreateMask();
     CarveCaves();
+    LogCost(FPlatformTime::Seconds() - Start);
+}
+
+void AWorldGroundActor::LogCost(double StartupSeconds) const
+{
+    int64 DensityBytes = 0, Triangles = 0, Vertices = 0;
+    for (const TPair<FIntVector, TObjectPtr<UVoxelTerrainChunkComponent>>& Pair : Chunks)
+    {
+        const int64 Points = FMath::Cube(static_cast<int64>(Pair.Value->CellsPerAxis) + 1);
+        DensityBytes += Points * sizeof(float);
+        if (const FProcMeshSection* Section = Pair.Value->GetProcMeshSection(0))
+        {
+            Triangles += Section->ProcIndexBuffer.Num() / 3;
+            Vertices += Section->ProcVertexBuffer.Num();
+        }
+    }
+    const int64 MeshBytes = Vertices * sizeof(FProcMeshVertex) + Triangles * 3 * sizeof(uint32);
+    UE_LOG(LogWorldGround, Display,
+        TEXT("Ground cost: startup %.1f ms, %d chunks, %d open columns, density %.1f MB, mesh %lld tris / %.1f MB (CPU copy; GPU and collision about the same again)"),
+        StartupSeconds * 1000.0, Chunks.Num(), DugColumns.Num(), DensityBytes / 1048576.0, Triangles, MeshBytes / 1048576.0);
 }
 
 void AWorldGroundActor::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if (MeasureFramesLeft > 0)
+        MeasureFrame(DeltaSeconds);
+    if (bGroundOff)
+        return;
     GiveTestDigTool();
     UpdateBypass();
+}
+
+void AWorldGroundActor::MeasureFrame(float DeltaSeconds)
+{
+    if (GetWorld()->GetTimeSeconds() < 10.0)
+        return;
+    MeasuredFrameMs += DeltaSeconds * 1000.0;
+    MeasuredGpuMs += FPlatformTime::ToMilliseconds64(RHIGetGPUFrameCycles(0));
+    ++MeasuredFrames;
+    if (--MeasureFramesLeft > 0)
+        return;
+    UE_LOG(LogWorldGround, Display, TEXT("Frame cost: %d frames, frame %.2f ms, GPU %.2f ms (ground %s)"),
+        MeasuredFrames, MeasuredFrameMs / MeasuredFrames, MeasuredGpuMs / MeasuredFrames, bGroundOff ? TEXT("off") : TEXT("on"));
+    FPlatformMisc::RequestExit(false);
 }

@@ -71,3 +71,5 @@ Branch: feature/simple-intent · Commits: 7de76ff, eaf6d8d
 | `sessions/*.md` | One log per working session. |
 | `references/*.md` | Text analyses of reference games and images. |
 | `screenshots/<date>_<topic>/` | Our own in-game screenshots (JPG) with a README per set. |
+
+- World plan (terrain, ground, water, placement, looks in one order) and the measured voxel cost: `memory/WORLD_PLAN.md`.

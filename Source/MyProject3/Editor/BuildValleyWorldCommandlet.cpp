@@ -138,7 +138,7 @@ namespace ValleyWorld
 
     /** Terrain colouring without textures: grass on flat ground, dirt on slopes, rock on steep
      *  faces, snow on high flat-ish ground. Colours come from the world normal and height. */
-    UMaterial* TerrainMaterial(const FString& PackagePath, float SnowStartCm, float MaskOriginCm, float MaskSizeCm)
+    UMaterial* TerrainMaterial(const FString& PackagePath, float SnowStartCm, float MaskOriginCm, float MaskSizeCm, bool bDigMask)
     {
         UMaterial* M = NewMaterial(PackagePath);
         UMaterialExpressionVertexNormalWS* Normal = Add<UMaterialExpressionVertexNormalWS>(M, -1200, 0);
@@ -165,6 +165,11 @@ namespace ValleyWorld
         UMaterialExpressionMultiply* SnowOnFlat = Add<UMaterialExpressionMultiply>(M, -200, 300);
         UMaterialEditingLibrary::ConnectMaterialExpressions(Snowy, TEXT(""), SnowOnFlat, TEXT("A"));
         UMaterialEditingLibrary::ConnectMaterialExpressions(NotRock, TEXT(""), SnowOnFlat, TEXT("B"));
+        if (!bDigMask)
+        {
+            Finish(M, Lerp(M, Ground, Snow, SnowOnFlat, 200, 0), 0.95f);
+            return M;
+        }
         // Dug ground: AWorldGroundActor writes a per-column mask; masked texels hide the landscape
         // so the voxel ground under it shows.
         UMaterialExpressionComponentMask* XY = Add<UMaterialExpressionComponentMask>(M, -1050, 600);
@@ -449,8 +454,10 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
     const double SnowStartM = Num(Obj(Layout, TEXT("dressing")), TEXT("snow_start_m"), 600);
     const AWorldGroundActor* GroundDefaults = GetDefault<AWorldGroundActor>();
     const float MaskSizeCm = GroundDefaults->MaskResolution * GroundDefaults->ChunkCells * GroundDefaults->VoxelSizeCm;
-    UMaterial* TerrainMat = TerrainMaterial(MatDir / TEXT("M_WorldTerrain"), static_cast<float>(SnowStartM * 100.0),
-        GroundDefaults->MaskOriginCm, MaskSizeCm);
+    // -NoDigMask: an opaque terrain material (for cost comparison), saved under another name.
+    const bool bDigMask = !FParse::Param(*Params, TEXT("NoDigMask"));
+    UMaterial* TerrainMat = TerrainMaterial(MatDir / (bDigMask ? TEXT("M_WorldTerrain") : TEXT("M_WorldTerrain_Opaque")),
+        static_cast<float>(SnowStartM * 100.0), GroundDefaults->MaskOriginCm, MaskSizeCm, bDigMask);
     ALandscape* Landscape = World->SpawnActor<ALandscape>(LandscapeLocation, FRotator::ZeroRotator);
     Landscape->SetActorRelativeScale3D(LandscapeScale);
     Landscape->SetActorLabel(TEXT("WorldLandscape"));

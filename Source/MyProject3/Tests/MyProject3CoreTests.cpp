@@ -816,6 +816,66 @@ bool FVoxelGroundFloorTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// Cost record for the world ground (logged, not a pass/fail limit): turning a column chunk into
+// voxels, one dig with its mesh/collision rebuild, and carving a cave stretch.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVoxelGroundCostTest,
+    "MyProject3.Terrain.Voxel.GroundCostTimings", TestFlags)
+bool FVoxelGroundCostTest::RunTest(const FString& Parameters)
+{
+    FScopedTestWorld TestWorld;
+    UVoxelTerrainChunkComponent* Chunk = SpawnVoxelChunk(TestWorld.World, 32, 50.0f);
+    if (!TestNotNull(TEXT("Chunk"), Chunk))
+        return false;
+    const int32 N = 33;
+    TArray<float> Surface, Floor;
+    Surface.SetNum(N * N);
+    Floor.SetNum(N * N);
+    for (int32 J = 0; J < N; ++J)
+        for (int32 I = 0; I < N; ++I)
+        {
+            // A sloped, bumpy surface like real ground.
+            Surface[J * N + I] = 900.0f + I * 8.0f + 60.0f * FMath::Sin(J * 0.4f) * FMath::Cos(I * 0.3f);
+            Floor[J * N + I] = Surface[J * N + I] - 600.0f;
+        }
+    Chunk->bAllowPartialEdits = true;
+    Chunk->bGroundColours = true;
+
+    constexpr int32 Runs = 10;
+    double Start = FPlatformTime::Seconds();
+    int32 Tris = 0;
+    for (int32 Run = 0; Run < Runs; ++Run)
+    {
+        Chunk->InitializeFromColumns(Surface, Floor, false);
+        Tris = Chunk->RebuildMesh();
+    }
+    const double InitMs = (FPlatformTime::Seconds() - Start) * 1000.0 / Runs;
+
+    Start = FPlatformTime::Seconds();
+    int32 Digs = 0;
+    for (int32 Run = 0; Run < Runs; ++Run)
+    {
+        float Removed = 0.0f;
+        int64 Revision = 0;
+        Digs += Chunk->TryApplyBoundedDig(FGuid::NewGuid(), FVector(300.0f + Run * 110.0f, 800.0f, 1000.0f), 90.0f, 1.0f,
+            Chunk->GetDensityRevision(), Removed, Revision) ? 1 : 0;
+    }
+    const double DigMs = (FPlatformTime::Seconds() - Start) * 1000.0 / Runs;
+
+    Chunk->InitializeFromColumns(Surface, Floor, true);
+    Start = FPlatformTime::Seconds();
+    for (int32 Step = 0; Step < Runs; ++Step)
+        Chunk->CarveIgnoringFloor(FVector(100.0f + Step * 150.0f, 800.0f, 500.0f), 260.0f);
+    const int32 CaveTris = Chunk->RebuildMesh();
+    const double CaveMs = (FPlatformTime::Seconds() - Start) * 1000.0;
+
+    AddInfo(FString::Printf(TEXT("Ground cost: column chunk init+mesh %.2f ms (%d tris); dig+rebuild %.2f ms (%d/%d accepted); cave stretch 15 m carve+mesh %.2f ms (%d tris)"),
+        InitMs, Tris, DigMs, Digs, Runs, CaveMs, CaveTris));
+    UE_LOG(LogTemp, Display, TEXT("Ground cost: column chunk init+mesh %.2f ms (%d tris); dig+rebuild %.2f ms (%d/%d accepted); cave stretch 15 m carve+mesh %.2f ms (%d tris)"),
+        InitMs, Tris, DigMs, Digs, Runs, CaveMs, CaveTris);
+    TestTrue(TEXT("Digs were applied"), Digs > 0);
+    return true;
+}
+
 // M071/M073/M074 (7D-V01/V03..V05): a smooth voxel chunk digs a pit whose
 // collision matches the new surface; the test also records the timings used
 // for the terrain architecture decision.

@@ -11,7 +11,7 @@ public class MyProject3 : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "GeometryCore", "ProceduralMeshComponent" });
 
 		// Json: the placement profile catalogue (Config/Placement/PlacementProfiles.json).
-		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "Landscape" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "Json", "Landscape", "RHI" });
 
 		// Editor-only tools (the world builder commandlet) need the editor module.
 		if (Target.bBuildEditor)
