@@ -151,6 +151,16 @@ private:
     void GiveTestDigTool();
     void LogCost(double StartupSeconds) const;
     void MeasureFrame(float DeltaSeconds);
+    void TakeShots();
+
+    struct FWorldShot { FString Name; FVector Location; FRotator Rotation; };
+    FString ShotsFolder;
+    TArray<FWorldShot> Shots;
+    int32 ShotIndex = 0;
+    bool bShotPending = false;
+    double NextShotTime = 0.0;
+    UPROPERTY(Transient)
+    TObjectPtr<class ACameraActor> ShotCamera;
 
     bool bGroundOff = false;
     int32 MeasureFramesLeft = 0;

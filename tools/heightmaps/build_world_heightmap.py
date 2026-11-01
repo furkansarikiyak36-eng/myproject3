@@ -1,7 +1,8 @@
 """Builds the world heightmap from Config/GameData/world_layout.json and the source RAWs.
 
 Run: python tools/heightmaps/build_world_heightmap.py
-Inputs : SourceArt/Heightmaps/<source>.r16 (4096x4096 uint16 LE, each normalised on its own, no real scale)
+Inputs : SourceArt/Heightmaps/<source>.r16 (4096x4096 uint16 LE, each normalised on its own, no real scale),
+         or the lossless 16-bit PNG copies in SourceArt/Heightmaps/png/ (in git via LFS)
 Outputs: SourceArt/World/valley.r16 (size_px^2 uint16 LE, ready for Unreal Landscape import),
          SourceArt/World/valley_preview.png, SourceArt/World/valley_import.json (scale, location).
 
@@ -27,12 +28,21 @@ LAYOUT = os.path.join(ROOT, "Config", "GameData", "world_layout.json")
 _cache = {}
 
 
+def load_raw(name):
+    """A source heightmap as uint16: SourceArt/Heightmaps/<name>.r16, or the lossless PNG copy in git
+    (SourceArt/Heightmaps/png/<name>.png, Git LFS)."""
+    path = os.path.join(SRC, name + ".r16")
+    if os.path.exists(path):
+        data = np.fromfile(path, dtype="<u2")
+        side = int(round(len(data) ** 0.5))
+        return data.reshape(side, side)
+    return np.asarray(Image.open(os.path.join(SRC, "png", name + ".png"))).astype(np.uint16)
+
+
 def source(name):
     """Source map normalised to 0..1 (1st/99th percentile) plus its measured scale."""
     if name not in _cache:
-        data = np.fromfile(os.path.join(SRC, name + ".r16"), dtype="<u2")
-        side = int(round(len(data) ** 0.5))
-        a = data.reshape(side, side).astype(np.float32)
+        a = load_raw(name).astype(np.float32)
         lo, hi = np.percentile(a, 1), np.percentile(a, 99)
         a = (a - lo) / max(1.0, hi - lo)
         gy, gx = np.gradient(a)
@@ -89,9 +99,8 @@ def single(L):
     """The world is one source map, whole, at 1 m/px (centre crop to the landscape size)."""
     sg = L["single"]
     n = int(L["size_px"])
-    data = np.fromfile(os.path.join(SRC, sg["source"] + ".r16"), dtype="<u2")
-    side = int(round(len(data) ** 0.5))
-    a = data.reshape(side, side).astype(np.float32)
+    a = load_raw(sg["source"]).astype(np.float32)
+    side = a.shape[0]
     o = (side - n) // 2
     a = a[o:o + n, o:o + n]
     a = (a - a.min()) / max(1.0, float(a.max() - a.min()))

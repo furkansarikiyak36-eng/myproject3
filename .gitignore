@@ -13,18 +13,13 @@ Saved/
 Content/__ExternalActors__/
 Content/__ExternalObjects__/
 
-# Source heightmaps are large (10 x 33 MB); keep them local. The merged world heightmap in SourceArt/World is committed.
-SourceArt/Heightmaps/
+# Source heightmaps: the raw .r16 files stay local; lossless 16-bit PNG copies are in git (LFS) under SourceArt/Heightmaps/png/.
+SourceArt/Heightmaps/*
+!SourceArt/Heightmaps/png/
 # Archives dropped into Content are not Unreal assets and are too big for GitHub.
 Content/*.zip
 
-# Built world map (90 MB); rebuild: python tools/heightmaps/build_world_heightmap.py, then UnrealEditor-Cmd -run=BuildValleyWorld -Map=/Game/World/World
-Content/World/World.umap
 
-# UE Third Person template content (ships with the engine); copy with tools/setup_thirdperson.ps1
-Content/Characters/Mannequins/
-Content/Input/
-Content/ThirdPerson/
 
 # Generated plan maps (rebuild: python tools/heightmaps/build_world_masks.py); the PNG previews are kept
 SourceArt/World/*.r8

@@ -1,4 +1,4 @@
-#include "WorldGroundActor.h"
+﻿#include "WorldGroundActor.h"
 
 #include "Components/BoxComponent.h"
 #include "Engine/Texture2D.h"
@@ -12,6 +12,10 @@
 #include "HAL/PlatformTime.h"
 #include "HAL/PlatformMisc.h"
 #include "RHI.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "UnrealClient.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -381,6 +385,8 @@ void AWorldGroundActor::BeginPlay()
     FParse::Value(FCommandLine::Get(), TEXT("GroundCostFrames="), MeasureFramesLeft);
     if (MeasureFramesLeft > 0)
         PrimaryActorTick.TickInterval = 0.0f;
+    // Screenshots: -WorldShots=<folder> puts a camera at a few places, saves a PNG at each and quits.
+    FParse::Value(FCommandLine::Get(), TEXT("WorldShots="), ShotsFolder);
     if (FParse::Param(FCommandLine::Get(), TEXT("NoWorldGround")))
     {
         // For cost measurements: the world without the diggable ground and caves.
@@ -423,10 +429,77 @@ void AWorldGroundActor::Tick(float DeltaSeconds)
     Super::Tick(DeltaSeconds);
     if (MeasureFramesLeft > 0)
         MeasureFrame(DeltaSeconds);
+    if (!ShotsFolder.IsEmpty())
+        TakeShots();
     if (bGroundOff)
         return;
     GiveTestDigTool();
     UpdateBypass();
+}
+
+void AWorldGroundActor::TakeShots()
+{
+    UWorld* World = GetWorld();
+    const double Now = World->GetTimeSeconds();
+    if (Now < 8.0 || Now < NextShotTime)
+        return;
+    APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0);
+    if (!PC)
+        return;
+
+    struct FShot { const TCHAR* Name; FVector Location; FVector Target; };
+    if (Shots.Num() == 0 && ShotIndex == 0)
+    {
+        auto Ground = [this](double X, double Y) { float Z = 0.0f; SurfaceZ(X, Y, Z); return static_cast<double>(Z); };
+        TArray<FShot> List;
+        const double StartZ = Ground(0.0, 0.0);
+        List.Add({TEXT("01_overview"), FVector(-170000.0, -170000.0, 110000.0), FVector(0.0, 0.0, 10000.0)});
+        List.Add({TEXT("02_top"), FVector(0.0, 0.0, 520000.0), FVector(1.0, 0.0, 0.0)});
+        List.Add({TEXT("03_start"), FVector(-600.0, 0.0, StartZ + 250.0), FVector(20000.0, 0.0, StartZ + 600.0)});
+        List.Add({TEXT("04_forest"), FVector(-95000.0, 33600.0, Ground(-95000.0, 33600.0) + 2500.0), FVector(-117600.0, 33600.0, Ground(-117600.0, 33600.0))});
+        if (Caves.Num() > 0 && Caves[0].Spheres.Num() > 30)
+        {
+            const TArray<FVector4f>& S = Caves[0].Spheres;
+            const FVector Mouth(S[0].X, S[0].Y, S[0].Z);
+            FVector In = FVector(S[8].X, S[8].Y, S[8].Z) - Mouth;
+            In.Z = 0.0;
+            In.Normalize();
+            const FVector Cam = Mouth - In * 6000.0;
+            List.Add({TEXT("05_cave_entrance"), FVector(Cam.X, Cam.Y, FMath::Max(Ground(Cam.X, Cam.Y), Mouth.Z) + 1500.0), Mouth});
+            List.Add({TEXT("07_cave_inside"), FVector(S[12].X, S[12].Y, S[12].Z), FVector(S[30].X, S[30].Y, S[30].Z)});
+        }
+        List.Add({TEXT("06_edge_mountains"), FVector(0.0, -60000.0, Ground(0.0, -60000.0) + 3000.0), FVector(0.0, 200000.0, 45000.0)});
+        for (const FShot& Shot : List)
+        {
+            FWorldShot& Out = Shots.AddDefaulted_GetRef();
+            Out.Name = Shot.Name;
+            Out.Location = Shot.Location;
+            Out.Rotation = Shot.Name == FString(TEXT("02_top")) ? FRotator(-89.9, 0.0, 0.0) : (Shot.Target - Shot.Location).Rotation();
+        }
+        ShotCamera = World->SpawnActor<ACameraActor>();
+        ShotCamera->GetCameraComponent()->SetFieldOfView(80.0f);
+        ShotCamera->GetCameraComponent()->bConstrainAspectRatio = false;
+    }
+
+    // Save the previous position's picture, then move on; each position gets 3 s to settle.
+    if (bShotPending)
+    {
+        FScreenshotRequest::RequestScreenshot(FPaths::Combine(ShotsFolder, Shots[ShotIndex].Name + TEXT(".png")), false, false);
+        bShotPending = false;
+        ++ShotIndex;
+        NextShotTime = Now + 1.0;
+        return;
+    }
+    if (ShotIndex >= Shots.Num())
+    {
+        UE_LOG(LogWorldGround, Display, TEXT("World shots saved to %s"), *ShotsFolder);
+        FPlatformMisc::RequestExit(false);
+        return;
+    }
+    ShotCamera->SetActorLocationAndRotation(Shots[ShotIndex].Location, Shots[ShotIndex].Rotation);
+    PC->SetViewTarget(ShotCamera);
+    bShotPending = true;
+    NextShotTime = Now + 3.0;
 }
 
 void AWorldGroundActor::MeasureFrame(float DeltaSeconds)
