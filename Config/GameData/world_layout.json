@@ -163,10 +163,21 @@
   },
   "landscape": {
     "xy_scale_cm": 100,
-    "z_scale": 100,
-    "origin_z_m": 150
+    "z_scale": 200,
+    "origin_z_m": 350
   },
   "border_warp_feature_m": 600,
   "detail_keep_m": 60,
-  "detail_strength": 0.8
+  "detail_strength": 0.8,
+  "falloff": {
+    "_about": "world edge mountains (single mode): playable land ends where they start",
+    "width_m": 520,
+    "crest_m": 60,
+    "rise_m": 330,
+    "warp_m": 260,
+    "warp_feature_m": 700,
+    "source": "unrelandv4",
+    "feature_m": 900,
+    "slope_deg": 36
+  }
 }

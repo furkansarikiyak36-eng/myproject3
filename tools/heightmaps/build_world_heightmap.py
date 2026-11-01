@@ -96,7 +96,41 @@ def single(L):
     a = a[o:o + n, o:o + n]
     a = (a - a.min()) / max(1.0, float(a.max() - a.min()))
     # exponent > 1 sharpens the high ground into peaks and keeps the low ground gentle.
-    return sg["base_m"] + sg["height_range_m"] * a ** sg.get("exponent", 1.0)
+    H = sg["base_m"] + sg["height_range_m"] * a ** sg.get("exponent", 1.0)
+    if "falloff" in L:
+        H = falloff(L, H)
+    return H
+
+
+def falloff(L, H):
+    """World edge: the land climbs into a rugged mountain range in the last width_m, so the edge is
+    out of reach (steep) and out of sight (the crest hides it) but looks like terrain, not a wall."""
+    f = L["falloff"]
+    n = H.shape[0]
+    mpp_world = float(L["metres_per_px"])
+    half = (n - 1) / 2.0
+    xs = ((np.arange(n) - half) * mpp_world).astype(np.float32)
+    X, Y = np.meshgrid(xs, -xs)
+    wmpp = f["warp_feature_m"] / source("unrelandv3")[2]
+    Xw = X + f["warp_m"] * (sample("unrelandv3", X, Y, 0, 0, wmpp) - 0.5) * 2
+    Yw = Y + f["warp_m"] * (sample("unrelandv3", X, Y, 300, -200, wmpp, 90) - 0.5) * 2
+    # Two warp scales: long bends of the range plus smaller spurs and bays.
+    w2mpp = max(1.0, wmpp / 3.0)  # >= 1 m/px keeps a 4 km world inside the 4096 px source
+    Xw = Xw + 0.4 * f["warp_m"] * (sample("unrelandv1", X, Y, 0, 0, w2mpp) - 0.5) * 2
+    Yw = Yw + 0.4 * f["warp_m"] * (sample("unrelandv1", X, Y, -400, 250, w2mpp, 90) - 0.5) * 2
+    edge_d = half * mpp_world - (np.abs(Xw) ** 4 + np.abs(Yw) ** 4) ** (1 / 4)  # rounded square
+    # Along the range: wider and higher in places (peaks), narrower and lower elsewhere (saddles).
+    vary = sample("unrelandv8", X, Y, 0, 0, wmpp * 1.5)
+    width = f["width_m"] * (0.7 + 0.6 * vary)
+    m = smoothstep(width, f["crest_m"], edge_d)
+    mpp, relief = scale_of(f)
+    rugged = sample(f["source"], X, Y, 0, 0, mpp) - 0.5
+    # Rock detail at 1 m/px, centred, so the whole world stays inside the 4096 px source.
+    rocks = highpass(sample(f["source"], X, Y, 0, 0, 1.0), 150, mpp_world)
+    rise = f["rise_m"] * (0.6 + 0.8 * vary)
+    # Mountains grow out of the existing land: max() keeps inner hills that are already higher.
+    mountains = H + m * (rise + relief * rugged) + m * relief * 0.8 * rocks
+    return np.maximum(H, mountains).astype(np.float32)
 
 
 def write(L, H, regions=()):
