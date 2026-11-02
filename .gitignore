@@ -25,3 +25,7 @@ Content/*.zip
 SourceArt/World/*.r8
 SourceArt/World/masks/*.r8
 __pycache__/
+
+# Trial worlds: keep the previews, rebuild the heightmaps
+SourceArt/World/*/*.r16
+SourceArt/World/*/*.r8

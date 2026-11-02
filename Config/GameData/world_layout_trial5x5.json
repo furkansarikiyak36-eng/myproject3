@@ -1,0 +1,78 @@
+{
+  "seed": 1337,
+  "metres_per_px": 1.0,
+  "filler": {
+    "source": "unrelandv1",
+    "feature_m": 500,
+    "slope_deg": 8,
+    "_about": "texture added in transition bands"
+  },
+  "detail_keep_m": 60,
+  "detail_strength": 0.8,
+  "border_warp_feature_m": 1000,
+  "falloff": {
+    "_about": "world edge mountains (single mode): playable land ends where they start",
+    "width_m": 520,
+    "crest_m": 60,
+    "rise_m": 330,
+    "warp_m": 260,
+    "warp_feature_m": 700,
+    "source": "unrelandv4",
+    "feature_m": 900,
+    "slope_deg": 36
+  },
+  "_about": "Trial 5 x 5 km world (step 2 preview): four regions at real scale, high north, low south; no river/lake yet (step 3). Build: python tools/heightmaps/build_world_heightmap.py --layout Config/GameData/world_layout_trial5x5.json --out SourceArt/World/trial5x5",
+  "mode": "regions",
+  "size_px": 5041,
+  "height_min_m": 0,
+  "height_max_m": 1100,
+  "transition_m": 500,
+  "border_warp_m": 420,
+  "regions": [
+    {
+      "zone": "Upland",
+      "source": "unrelandv5",
+      "x": -1000,
+      "y": 1000,
+      "base_m": 150,
+      "feature_m": 420,
+      "slope_deg": 30,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Plateau",
+      "source": "unrelandv8",
+      "x": 1000,
+      "y": 1000,
+      "base_m": 260,
+      "feature_m": 800,
+      "slope_deg": 30,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "LakeMarsh",
+      "source": "unrelandv6",
+      "x": -1000,
+      "y": -1000,
+      "base_m": 25,
+      "feature_m": 260,
+      "slope_deg": 12,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Valley",
+      "source": "unrelandv10",
+      "x": 1000,
+      "y": -1000,
+      "base_m": 60,
+      "feature_m": 450,
+      "slope_deg": 7,
+      "rotate_deg": 0
+    }
+  ],
+  "landscape": {
+    "xy_scale_cm": 100,
+    "z_scale": 200,
+    "origin_z_m": 450
+  }
+}

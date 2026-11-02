@@ -16,6 +16,7 @@ Same layout + same sources = same world.
 """
 import json
 import os
+import sys
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -124,7 +125,9 @@ def falloff(L, H):
     Xw = X + f["warp_m"] * (sample("unrelandv3", X, Y, 0, 0, wmpp) - 0.5) * 2
     Yw = Y + f["warp_m"] * (sample("unrelandv3", X, Y, 300, -200, wmpp, 90) - 0.5) * 2
     # Two warp scales: long bends of the range plus smaller spurs and bays.
-    w2mpp = max(1.0, wmpp / 3.0)  # >= 1 m/px keeps a 4 km world inside the 4096 px source
+    # Never sample outside the 4096 px source: the smallest scale grows with the world size.
+    min_mpp = max(1.0, half * mpp_world / 2000.0)
+    w2mpp = max(min_mpp, wmpp / 3.0)
     Xw = Xw + 0.4 * f["warp_m"] * (sample("unrelandv1", X, Y, 0, 0, w2mpp) - 0.5) * 2
     Yw = Yw + 0.4 * f["warp_m"] * (sample("unrelandv1", X, Y, -400, 250, w2mpp, 90) - 0.5) * 2
     edge_d = half * mpp_world - (np.abs(Xw) ** 4 + np.abs(Yw) ** 4) ** (1 / 4)  # rounded square
@@ -135,7 +138,7 @@ def falloff(L, H):
     mpp, relief = scale_of(f)
     rugged = sample(f["source"], X, Y, 0, 0, mpp) - 0.5
     # Rock detail at 1 m/px, centred, so the whole world stays inside the 4096 px source.
-    rocks = highpass(sample(f["source"], X, Y, 0, 0, 1.0), 150, mpp_world)
+    rocks = highpass(sample(f["source"], X, Y, 0, 0, min_mpp), 150, mpp_world)
     rise = f["rise_m"] * (0.6 + 0.8 * vary)
     # Mountains grow out of the existing land: max() keeps inner hills that are already higher.
     mountains = H + m * (rise + relief * rugged) + m * relief * 0.8 * rocks
@@ -166,6 +169,11 @@ def write(L, H, regions=()):
     tint = (H - H.min()) / max(1.0, H.max() - H.min())
     rgb = np.stack([0.35 + 0.5 * tint, 0.45 + 0.35 * tint, 0.30 + 0.30 * tint], -1) * shade[..., None]
     img = Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).resize((1200, 1200), Image.LANCZOS)
+    draw = ImageDraw.Draw(img)
+    for r in regions:
+        px = (r["x"] / mpp_world + half) * 1200 / n
+        py = (-r["y"] / mpp_world + half) * 1200 / n
+        draw.text((px - 40, py), f'{r["zone"].split(".")[-1]} ({r["source"].replace("unreland", "")})', fill=(255, 255, 255))
     img.save(os.path.join(OUT, "valley_preview.png"))
     info = {
         "file": "SourceArt/World/valley.r16", "resolution": n, "format": "uint16 little-endian",
@@ -180,6 +188,13 @@ def write(L, H, regions=()):
 
 
 def main():
+    # Optional: --layout <json> --out <folder> to build a trial world without touching the real one.
+    global LAYOUT, OUT
+    args = sys.argv[1:]
+    if "--layout" in args:
+        LAYOUT = os.path.abspath(args[args.index("--layout") + 1])
+    if "--out" in args:
+        OUT = os.path.abspath(args[args.index("--out") + 1])
     L = json.load(open(LAYOUT, encoding="utf-8"))
     if L.get("mode") == "single":
         write(L, single(L))
@@ -213,7 +228,8 @@ def main():
         med = float(np.median(s[own])) if own.any() else 0.5
         # Fine erosion detail at 1 m/px from another part of the same map, so the enlarged
         # source does not look smooth; only features under detail_keep_m are kept.
-        fine = sample(r["source"], X, Y, r["x"] + 700, r["y"] - 500, 1.0, r.get("rotate_deg", 0.0) + 60)
+        # (same centre, turned 60 deg, so the 1 m/px window stays inside the 4096 px source)
+        fine = sample(r["source"], X, Y, r["x"], r["y"], 1.0, r.get("rotate_deg", 0.0) + 60)
         fine_relief = np.tan(np.radians(r["slope_deg"])) / source(r["source"])[1]
         fine = highpass(fine, L["detail_keep_m"], mpp_world) * fine_relief * L["detail_strength"]
         H += weights[i] * (r["base_m"] + relief * (s - med) + fine)
@@ -228,7 +244,15 @@ def main():
     fmpp, frelief = scale_of(fl)
     H += smoothstep(0.0, 0.35, band) * frelief * (sample(fl["source"], X, Y, 0, 0, fmpp) - 0.5)
 
-    # 3) World edge: the land rises into rugged hills so the playable area is enclosed.
+    # 3) World edge: the newer edge mountain range when configured, else the old rising band.
+    if "falloff" in L:
+        H = falloff(L, H)
+    if "river" not in L:
+        # Trial worlds without a river/lake yet (step 3 adds the missing geography).
+        H = np.clip(H, L["height_min_m"], L["height_max_m"])
+        print(chr(10).join(report))
+        write(L, H, regions)
+        return
     ed = L["edge"]
     edge_d = world_half - (np.abs(Xw) ** 6 + np.abs(Yw) ** 6) ** (1 / 6)  # rounded square
     e = smoothstep(ed["width_m"], 0.0, edge_d)
