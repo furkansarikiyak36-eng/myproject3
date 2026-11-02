@@ -147,7 +147,7 @@ def falloff(L, H):
     return np.maximum(H, mountains).astype(np.float32)
 
 
-def write(L, H, regions=()):
+def write(L, H, regions=(), water=None):
     """Encodes H for Unreal and writes the r16, the preview and the import settings."""
     n = H.shape[0]
     mpp_world = float(L["metres_per_px"])
@@ -168,6 +168,11 @@ def write(L, H, regions=()):
                     np.cos(np.radians(45)) * np.cos(slope) * np.cos(np.radians(315) - aspect), 0, 1)
     tint = (H - H.min()) / max(1.0, H.max() - H.min())
     rgb = np.stack([0.35 + 0.5 * tint, 0.45 + 0.35 * tint, 0.30 + 0.30 * tint], -1) * shade[..., None]
+    if water:
+        wpath = os.path.join(OUT, "water.r8")
+        if os.path.exists(wpath):
+            wm = np.fromfile(wpath, np.uint8).reshape(n, n) > 0
+            rgb[wm] = rgb[wm] * 0.3 + np.array([0.1, 0.3, 0.7]) * 0.7
     img = Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).resize((1200, 1200), Image.LANCZOS)
     draw = ImageDraw.Draw(img)
     for r in regions:
@@ -183,6 +188,8 @@ def write(L, H, regions=()):
         "slope_deg_median_p95_p99": [float(np.median(slope_deg)), float(np.percentile(slope_deg, 95)),
                                      float(np.percentile(slope_deg, 99))],
     }
+    if water:
+        info["water"] = water
     json.dump(info, open(os.path.join(OUT, "valley_import.json"), "w"), indent=2)
     print(json.dumps(info))
 
@@ -245,13 +252,19 @@ def main():
     H += smoothstep(0.0, 0.35, band) * frelief * (sample(fl["source"], X, Y, 0, 0, fmpp) - 0.5)
 
     # 3) World edge: the newer edge mountain range when configured, else the old rising band.
+    H0 = H.copy()  # the land before the edge mountains (for the hydrology)
     if "falloff" in L:
         H = falloff(L, H)
     if "river" not in L:
         # Trial worlds without a river/lake yet (step 3 adds the missing geography).
+        water = None
+        if "hydrology" in L:
+            import hydrology
+            os.makedirs(OUT, exist_ok=True)
+            H, water = hydrology.run(L, H0, H, OUT, mpp_world, world_half)
         H = np.clip(H, L["height_min_m"], L["height_max_m"])
         print(chr(10).join(report))
-        write(L, H, regions)
+        write(L, H, regions, water)
         return
     if "falloff" not in L:
         ed = L["edge"]

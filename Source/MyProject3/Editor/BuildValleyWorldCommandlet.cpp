@@ -567,16 +567,41 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
         AWorldWaterActor* Water = World->SpawnActor<AWorldWaterActor>(FVector::ZeroVector, FRotator::ZeroRotator);
         Water->SetActorLabel(TEXT("Water"));
         Water->WaterMaterial = WaterMaterial(MatDir / TEXT("M_Water"));
-        for (const TSharedPtr<FJsonValue>& P : (*WaterJson)->GetArrayField(TEXT("river")))
+        auto AddRiver = [Water](const TArray<TSharedPtr<FJsonValue>>& Points)
         {
-            const TArray<TSharedPtr<FJsonValue>>& V = P->AsArray();
-            Water->RiverPoints.Add(FVector4f(V[0]->AsNumber(), V[1]->AsNumber(), V[2]->AsNumber(), V[3]->AsNumber()));
-        }
+            Water->RiverStarts.Add(Water->RiverPoints.Num());
+            for (const TSharedPtr<FJsonValue>& P : Points)
+            {
+                const TArray<TSharedPtr<FJsonValue>>& V = P->AsArray();
+                Water->RiverPoints.Add(FVector4f(V[0]->AsNumber(), V[1]->AsNumber(), V[2]->AsNumber(), V[3]->AsNumber()));
+            }
+        };
+        const TArray<TSharedPtr<FJsonValue>>* Rivers = nullptr;
+        if ((*WaterJson)->TryGetArrayField(TEXT("rivers"), Rivers))  // from the flow map
+            for (const TSharedPtr<FJsonValue>& R : *Rivers)
+                AddRiver(R->AsArray());
+        const TArray<TSharedPtr<FJsonValue>>* OneRiver = nullptr;
+        if ((*WaterJson)->TryGetArrayField(TEXT("river"), OneRiver))  // hand-placed (older layouts)
+            AddRiver(*OneRiver);
+        const TArray<TSharedPtr<FJsonValue>>* Lakes = nullptr;
+        if ((*WaterJson)->TryGetArrayField(TEXT("lakes"), Lakes))
+            for (const TSharedPtr<FJsonValue>& LakeValue : *Lakes)
+            {
+                const TSharedPtr<FJsonObject> LakeObj = LakeValue->AsObject();
+                const float Z = static_cast<float>(LakeObj->GetNumberField(TEXT("z")));
+                for (const TSharedPtr<FJsonValue>& Rect : LakeObj->GetArrayField(TEXT("rects")))
+                {
+                    const TArray<TSharedPtr<FJsonValue>>& V = Rect->AsArray();
+                    Water->LakeRects.Add(FVector4f(V[0]->AsNumber(), V[1]->AsNumber(), V[2]->AsNumber(), V[3]->AsNumber()));
+                    Water->LakeRectZ.Add(Z);
+                }
+            }
         const TArray<TSharedPtr<FJsonValue>>* LakeArr = nullptr;
         if ((*WaterJson)->TryGetArrayField(TEXT("lake"), LakeArr) && LakeArr->Num() == 4)
             Water->Lake = FVector4f((*LakeArr)[0]->AsNumber(), (*LakeArr)[1]->AsNumber(), (*LakeArr)[2]->AsNumber(), (*LakeArr)[3]->AsNumber());
         Water->BuildSurfaces();
-        UE_LOG(LogBuildValleyWorld, Display, TEXT("Water: river %d points, lake radius %.0f cm"), Water->RiverPoints.Num(), Water->Lake.W);
+        UE_LOG(LogBuildValleyWorld, Display, TEXT("Water: %d rivers (%d points), %d lake rectangles, lake disc radius %.0f cm"),
+            Water->RiverStarts.Num(), Water->RiverPoints.Num(), Water->LakeRects.Num(), Water->Lake.W);
     }
 
     // Trees, bushes and rocks (stand-ins).

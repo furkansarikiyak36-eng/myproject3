@@ -478,6 +478,13 @@ void AWorldGroundActor::TakeShots()
                 const FVector C(Water->Lake.X, Water->Lake.Y, Water->Lake.Z);
                 List.Add({TEXT("08_lake"), C + FVector(0.0, Water->Lake.W * 1.6, 9000.0), C});
             }
+            else if (Water->LakeRects.Num() > 0)
+            {
+                // Flow map lakes: the terminal lake comes last.
+                const FVector4f& R = Water->LakeRects.Last();
+                const FVector C((R.X + R.Z) * 0.5, (R.Y + R.W) * 0.5, Water->LakeRectZ.Last());
+                List.Add({TEXT("08_lake"), C + FVector(30000.0, 30000.0, 12000.0), C});
+            }
             if (Water->RiverPoints.Num() > 4)
             {
                 const FVector4f& M = Water->RiverPoints[Water->RiverPoints.Num() / 2];

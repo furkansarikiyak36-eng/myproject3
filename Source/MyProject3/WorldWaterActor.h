@@ -21,9 +21,21 @@ class MYPROJECT3_API AWorldWaterActor : public AActor
 public:
     AWorldWaterActor();
 
-    /** River centre line: world cm XY, water surface Z in Z, half width cm in W. */
+    /** River centre lines, all rivers one after another: world cm XY, water surface Z in Z, half width cm in W. */
     UPROPERTY(EditAnywhere, Category="World|Water")
     TArray<FVector4f> RiverPoints;
+
+    /** Index in RiverPoints where each river starts (empty = one river). */
+    UPROPERTY(EditAnywhere, Category="World|Water")
+    TArray<int32> RiverStarts;
+
+    /** Lake surfaces from the flow map: rectangles (min X, min Y, max X, max Y in world cm). */
+    UPROPERTY(EditAnywhere, Category="World|Water")
+    TArray<FVector4f> LakeRects;
+
+    /** Water level of each lake rectangle (world cm). */
+    UPROPERTY(EditAnywhere, Category="World|Water")
+    TArray<float> LakeRectZ;
 
     /** Lake: centre XY, water level Z, radius W (world cm). Radius 0 = no lake. */
     UPROPERTY(EditAnywhere, Category="World|Water")

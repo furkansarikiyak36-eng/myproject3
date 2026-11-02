@@ -218,7 +218,11 @@ def main():
         lx, ly = np.meshgrid(cols, -cols)  # row 0 = north, as in the builder
         near_lake = np.hypot(lx - info["lake"]["x_m"], ly - info["lake"]["y_m"]) < info["lake"]["reach_m"]
         dry = ~(near_lake & (H < info["lake_water_m"] + 0.5))
-    if "water" in info and info["water"].get("river"):
+    wpath = os.path.join(WORLD, "water.r8")
+    if os.path.exists(wpath):
+        # Water and its 12 m bank strip from the hydrology (flow map).
+        dry &= np.fromfile(wpath, np.uint8).reshape(n, n) == 0
+    elif "water" in info and info["water"].get("river"):
         # Keep the river and a 12 m strip of bank free of trees and bushes.
         from PIL import ImageDraw
         river_img = Image.new("L", (n, n), 0)
