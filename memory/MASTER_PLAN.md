@@ -8,6 +8,7 @@ with the repository. This file is the single entry point; everything else links 
 | this file | Game design (GDD), world production plan, architecture and data contracts, dependency map, phase plan, demo scope and acceptance |
 | `SYSTEMS_REGISTER.md` | Mechanics and systems inventory + implementation status register (every requirement, traceable) |
 | `OPEN_DECISIONS.md` | Open decisions register (nothing there is decided) |
+| `FRAMEWORK_ANALYSIS.md` | Analysis of the whole plan: tensions, what may change, new questions D18–D24 |
 | `REFERENCE_RESEARCH.md` | Reference game research dossier (8 games x 5 questions) |
 | `VERIFICATION_PLAN.md` | Unreal verification plan (blind code vs build vs tests vs PIE) |
 | `WORLD_PLAN.md` | World/ground detail and the measured voxel cost |
@@ -72,8 +73,8 @@ User's production sequence and where we are:
 | 13 | Models | not started |
 | 14 | PCG scatter | not started (commandlet scatter from plan maps stands in) |
 
-World size: 4 x 4 km with ~8 km² playable inside edge mountains (user plan said 5 x 5 km envelope, 5–8 km²
-playable: Open D1).
+World size (decided D1): 4 x 4 km with ~8 km² playable inside the edge mountains. Claim cells 750 x 750 m (D10);
+voxel digging only inside the player's claim area: centre cell + 4 neighbours (D8). Character switchable first/third person (D7).
 
 ## 3. Systems by part (what the game contains)
 
@@ -183,7 +184,7 @@ checks in `VERIFICATION_PLAN.md`.
 | M12 | PCG scatter (reads the plan maps) | looks |
 | Later | advanced joinery (A11), story facilities (E2), other humans (E4), metal era | — |
 
-Digging scope (T7–T10) stays frozen until D8 is decided; its fixes (start-up, hitch, entrance, save) are
+Digging scope is decided (D8: claim area only); T7–T10 stay frozen until M2 adds claims; its fixes (start-up, hitch, entrance, save) are
 listed in `WORLD_PLAN.md`.
 
 ## 7. Older task ids (ROADMAP P0–P12) in the new phases
