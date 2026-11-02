@@ -13,6 +13,8 @@
 #include "HAL/PlatformMisc.h"
 #include "RHI.h"
 #include "Camera/CameraActor.h"
+#include "EngineUtils.h"
+#include "WorldWaterActor.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "UnrealClient.h"
@@ -467,6 +469,24 @@ void AWorldGroundActor::TakeShots()
             const FVector Cam = Mouth - In * 6000.0;
             List.Add({TEXT("05_cave_entrance"), FVector(Cam.X, Cam.Y, FMath::Max(Ground(Cam.X, Cam.Y), Mouth.Z) + 1500.0), Mouth});
             List.Add({TEXT("07_cave_inside"), FVector(S[12].X, S[12].Y, S[12].Z), FVector(S[30].X, S[30].Y, S[30].Z)});
+        }
+        for (TActorIterator<AWorldWaterActor> It(World); It; ++It)
+        {
+            const AWorldWaterActor* Water = *It;
+            if (Water->Lake.W > 0.0f)
+            {
+                const FVector C(Water->Lake.X, Water->Lake.Y, Water->Lake.Z);
+                List.Add({TEXT("08_lake"), C + FVector(0.0, Water->Lake.W * 1.6, 9000.0), C});
+            }
+            if (Water->RiverPoints.Num() > 4)
+            {
+                const FVector4f& M = Water->RiverPoints[Water->RiverPoints.Num() / 2];
+                const FVector4f& N = Water->RiverPoints[Water->RiverPoints.Num() / 2 + 1];
+                const FVector Mid(M.X, M.Y, M.Z);
+                const FVector Side = FVector(-(N.Y - M.Y), N.X - M.X, 0.0).GetSafeNormal();
+                List.Add({TEXT("09_river"), Mid + Side * 25000.0 + FVector(0.0, 0.0, 7000.0), Mid});
+            }
+            break;
         }
         List.Add({TEXT("06_edge_mountains"), FVector(0.0, -60000.0, Ground(0.0, -60000.0) + 3000.0), FVector(0.0, 200000.0, 45000.0)});
         for (const FShot& Shot : List)

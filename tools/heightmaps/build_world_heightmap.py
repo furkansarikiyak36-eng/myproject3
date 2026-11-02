@@ -287,7 +287,7 @@ def main():
             px, py = ax + t * (bx - ax), ay + t * (by - ay)
             c = int(np.clip(round(px / mpp_world + half), 0, n - 1))
             r_ = int(np.clip(round(-py / mpp_world + half), 0, n - 1))
-            samples.append(H[max(0, r_ - 6):r_ + 7, max(0, c - 6):c + 7].mean() - 3.0)
+            samples.append(H[max(0, r_ - 6):r_ + 7, max(0, c - 6):c + 7].mean() - rv.get("bed_depth_m", 3.0))
     profile = np.minimum.accumulate(np.array(samples))
     profile = np.maximum(profile, rv["end_bed_m"])
     profile[-1] = rv["end_bed_m"]
@@ -317,6 +317,16 @@ def main():
     near = rdist < reach
     blend = smoothstep(0.0, 1.0, bank)
     H = np.where(near & (channel < H), channel + (H - channel) * blend, H)
+
+    # Water surface data for Unreal (world cm; Unreal Y = -north): the river ribbon follows the bed.
+    water_depth = rv.get("water_depth_m", 0.8)
+    half_water = rv["bed_halfwidth_m"] + rv["bank_width_m"] * np.sqrt(water_depth / rv["bank_rise_m"])
+    cum = np.concatenate([[0.0], np.cumsum(seg_len)])
+    river_water = []
+    for (px, py), along_m in zip(pts, cum):
+        bed_m = float(profile[min(len(profile) - 1, int(along_m / total * (len(profile) - 1)))])
+        river_water.append([round(float(px) * 100, 1), round(float(-py) * 100, 1),
+                            round((bed_m + water_depth) * 100, 1), round(float(half_water) * 100 + 300, 1)])
 
     # Lake: an irregular basin with a flat bottom and soft shore.
     lk = L["lake"]
@@ -364,6 +374,8 @@ def main():
         "landscape_location_cm": [-half * mpp_world * 100.0, -half * mpp_world * 100.0, origin * 100.0],
         "height_m": [float(H.min()), float(H.max())], "lake_water_m": lk["water_m"],
         "lake": {"x_m": lk["x"], "y_m": lk["y"], "reach_m": (lk["radius"] + lk["shore_m"]) * 1.3},
+        "water": {"river": river_water,
+                  "lake": [lk["x"] * 100.0, -lk["y"] * 100.0, lk["water_m"] * 100.0, (lk["radius"] + lk["shore_m"]) * 130.0]},
     }
     json.dump(info, open(os.path.join(OUT, "valley_import.json"), "w"), indent=2)
     print("\n".join(report))

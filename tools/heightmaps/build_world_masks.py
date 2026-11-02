@@ -218,6 +218,16 @@ def main():
         lx, ly = np.meshgrid(cols, -cols)  # row 0 = north, as in the builder
         near_lake = np.hypot(lx - info["lake"]["x_m"], ly - info["lake"]["y_m"]) < info["lake"]["reach_m"]
         dry = ~(near_lake & (H < info["lake_water_m"] + 0.5))
+    if "water" in info and info["water"].get("river"):
+        # Keep the river and a 12 m strip of bank free of trees and bushes.
+        from PIL import ImageDraw
+        river_img = Image.new("L", (n, n), 0)
+        draw = ImageDraw.Draw(river_img)
+        half_px = (n - 1) / 2.0
+        pts = [(p[0] / 100.0 / mpp + half_px, p[1] / 100.0 / mpp + half_px) for p in info["water"]["river"]]
+        width_px = int(2 * (max(p[3] for p in info["water"]["river"]) / 100.0 + 12.0) / mpp)
+        draw.line(pts, fill=255, width=width_px, joint="curve")
+        dry &= np.asarray(river_img) == 0
     trees *= dry
     save8("trees", trees, raw=True)
 

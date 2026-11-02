@@ -120,7 +120,8 @@
     "end_bed_m": 82,
     "bed_halfwidth_m": 6,
     "bank_width_m": 160,
-    "bank_rise_m": 30
+    "bank_rise_m": 30,
+    "water_depth_m": 0.4
   },
   "lake": {
     "_about": "step 3: lake in the west of the soft hills where the river ends",

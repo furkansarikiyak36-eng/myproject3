@@ -31,6 +31,8 @@
 #include "Engine/Texture2D.h"
 #include "LandscapeHeightfieldCollisionComponent.h"
 #include "WorldGroundActor.h"
+#include "WorldWaterActor.h"
+#include "Materials/MaterialExpressionDepthFade.h"
 #include "Materials/MaterialExpressionSaturate.h"
 #include "Materials/MaterialExpressionSubtract.h"
 #include "Materials/MaterialExpressionVertexNormalWS.h"
@@ -192,6 +194,24 @@ namespace ValleyWorld
         UMaterialEditingLibrary::ConnectMaterialProperty(Keep, TEXT(""), MP_OpacityMask);
         M->BlendMode = BLEND_Masked;
         Finish(M, Lerp(M, Ground, Snow, SnowOnFlat, 200, 0), 0.95f);
+        return M;
+    }
+
+    /** Stand-in water: dark blue-green, glossy, translucent, fading out where it gets shallow. */
+    UMaterial* WaterMaterial(const FString& PackagePath)
+    {
+        UMaterial* M = NewMaterial(PackagePath);
+        M->BlendMode = BLEND_Translucent;
+        M->TranslucencyLightingMode = TLM_SurfacePerPixelLighting;
+        M->TwoSided = true;
+        UMaterialExpressionDepthFade* Fade = Add<UMaterialExpressionDepthFade>(M, -300, 200);
+        Fade->OpacityDefault = 0.92f;
+        Fade->FadeDistanceDefault = 250.0f;
+        UMaterialEditingLibrary::ConnectMaterialProperty(Fade, TEXT(""), MP_Opacity);
+        UMaterialExpressionConstant* Spec = Add<UMaterialExpressionConstant>(M, -300, 350);
+        Spec->R = 1.0f;
+        UMaterialEditingLibrary::ConnectMaterialProperty(Spec, TEXT(""), MP_Specular);
+        Finish(M, Colour(M, FLinearColor(0.005f, 0.04f, 0.10f), -300, 0), 0.15f);
         return M;
     }
 
@@ -538,6 +558,25 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
             }
         }
         UE_LOG(LogBuildValleyWorld, Display, TEXT("Ground: soil grid %d, %d caves"), Ground->SoilGridSize, Ground->Caves.Num());
+    }
+
+    // Water surfaces of the river and the lake (from the heightmap builder).
+    const TSharedPtr<FJsonObject>* WaterJson = nullptr;
+    if (Info->TryGetObjectField(TEXT("water"), WaterJson))
+    {
+        AWorldWaterActor* Water = World->SpawnActor<AWorldWaterActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+        Water->SetActorLabel(TEXT("Water"));
+        Water->WaterMaterial = WaterMaterial(MatDir / TEXT("M_Water"));
+        for (const TSharedPtr<FJsonValue>& P : (*WaterJson)->GetArrayField(TEXT("river")))
+        {
+            const TArray<TSharedPtr<FJsonValue>>& V = P->AsArray();
+            Water->RiverPoints.Add(FVector4f(V[0]->AsNumber(), V[1]->AsNumber(), V[2]->AsNumber(), V[3]->AsNumber()));
+        }
+        const TArray<TSharedPtr<FJsonValue>>* LakeArr = nullptr;
+        if ((*WaterJson)->TryGetArrayField(TEXT("lake"), LakeArr) && LakeArr->Num() == 4)
+            Water->Lake = FVector4f((*LakeArr)[0]->AsNumber(), (*LakeArr)[1]->AsNumber(), (*LakeArr)[2]->AsNumber(), (*LakeArr)[3]->AsNumber());
+        Water->BuildSurfaces();
+        UE_LOG(LogBuildValleyWorld, Display, TEXT("Water: river %d points, lake radius %.0f cm"), Water->RiverPoints.Num(), Water->Lake.W);
     }
 
     // Trees, bushes and rocks (stand-ins).
