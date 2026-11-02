@@ -41,8 +41,13 @@ public:
     UPROPERTY(EditAnywhere, Category="World|Water")
     FVector4f Lake = FVector4f(0.0f, 0.0f, 0.0f, 0.0f);
 
+    /** River material (waves move along the river: UV V runs downstream, 1 UV = 10 m). */
     UPROPERTY(EditAnywhere, Category="World|Water")
     TObjectPtr<UMaterialInterface> WaterMaterial;
+
+    /** Lake material (slow, no direction; UV = world position / 10 m). Empty = WaterMaterial. */
+    UPROPERTY(EditAnywhere, Category="World|Water")
+    TObjectPtr<UMaterialInterface> LakeMaterial;
 
     /** Off when the Water plugin draws the water (this actor then only keeps the data, e.g. for screenshots). */
     UPROPERTY(EditAnywhere, Category="World|Water")

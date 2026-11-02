@@ -41,6 +41,12 @@
 #include "ActorFactories/ActorFactory.h"
 #include "Editor.h"
 #include "Materials/MaterialExpressionDepthFade.h"
+#include "Materials/MaterialExpressionAdd.h"
+#include "Materials/MaterialExpressionNormalize.h"
+#include "Materials/MaterialExpressionPanner.h"
+#include "Materials/MaterialExpressionSingleLayerWaterMaterialOutput.h"
+#include "Materials/MaterialExpressionTextureCoordinate.h"
+#include "Materials/MaterialExpressionTextureSample.h"
 #include "Materials/MaterialExpressionSaturate.h"
 #include "Materials/MaterialExpressionSubtract.h"
 #include "Materials/MaterialExpressionVertexNormalWS.h"
@@ -220,6 +226,56 @@ namespace ValleyWorld
         Spec->R = 1.0f;
         UMaterialEditingLibrary::ConnectMaterialProperty(Spec, TEXT(""), MP_Specular);
         Finish(M, Colour(M, FLinearColor(0.005f, 0.04f, 0.10f), -300, 0), 0.15f);
+        return M;
+    }
+
+    /**
+     * Our own water shader (no Water plugin): Single Layer Water shading (light absorbed and scattered with depth,
+     * so shallow water is clear and deep water dark blue-green, with refraction and reflections) and two layers of
+     * engine water normals panning over each other. FlowSpeed moves them along UV V: rivers flow downstream
+     * (their V grows downstream), lakes drift slowly.
+     */
+    UMaterial* WaterSurfaceMaterial(const FString& PackagePath, float FlowSpeed)
+    {
+        UMaterial* M = NewMaterial(PackagePath);
+        M->SetShadingModel(MSM_SingleLayerWater);
+        M->BlendMode = BLEND_Opaque;
+        UTexture2D* WaterNormal = LoadObject<UTexture2D>(nullptr,
+            TEXT("/Engine/Functions/Engine_MaterialFunctions02/ExampleContent/Textures/water_n.water_n"));
+        auto Layer = [&](float Tiling, float SpeedX, float SpeedY, int32 Y) -> UMaterialExpression*
+        {
+            UMaterialExpressionTextureCoordinate* UV = Add<UMaterialExpressionTextureCoordinate>(M, -900, Y);
+            UV->UTiling = Tiling;
+            UV->VTiling = Tiling;
+            UMaterialExpressionPanner* Pan = Add<UMaterialExpressionPanner>(M, -700, Y);
+            Pan->SpeedX = SpeedX;
+            Pan->SpeedY = SpeedY;
+            UMaterialEditingLibrary::ConnectMaterialExpressions(UV, TEXT(""), Pan, TEXT("Coordinate"));
+            UMaterialExpressionTextureSample* Tex = Add<UMaterialExpressionTextureSample>(M, -500, Y);
+            Tex->Texture = WaterNormal;
+            Tex->SamplerType = SAMPLERTYPE_Normal;
+            UMaterialEditingLibrary::ConnectMaterialExpressions(Pan, TEXT(""), Tex, TEXT("UVs"));
+            return Tex;
+        };
+        UMaterialExpression* A = Layer(4.0f, 0.03f * FMath::Sign(FlowSpeed + 0.001f) * 0.2f, -FlowSpeed, 0);
+        UMaterialExpression* B = Layer(9.0f, 0.02f, -FlowSpeed * 1.7f + 0.01f, 250);
+        UMaterialExpressionAdd* Sum = Add<UMaterialExpressionAdd>(M, -300, 100);
+        UMaterialEditingLibrary::ConnectMaterialExpressions(A, TEXT("RGB"), Sum, TEXT("A"));
+        UMaterialEditingLibrary::ConnectMaterialExpressions(B, TEXT("RGB"), Sum, TEXT("B"));
+        UMaterialExpressionNormalize* Nrm = Add<UMaterialExpressionNormalize>(M, -150, 100);
+        UMaterialEditingLibrary::ConnectMaterialExpressions(Sum, TEXT(""), Nrm, TEXT(""));
+        UMaterialEditingLibrary::ConnectMaterialProperty(Nrm, TEXT(""), MP_Normal);
+        UMaterialExpressionConstant* Spec = Add<UMaterialExpressionConstant>(M, -300, 400);
+        Spec->R = 0.5f;
+        UMaterialEditingLibrary::ConnectMaterialProperty(Spec, TEXT(""), MP_Specular);
+        UMaterialExpressionConstant* NoFoam = Add<UMaterialExpressionConstant>(M, -300, 500);
+        NoFoam->R = 0.0f;
+        UMaterialEditingLibrary::ConnectMaterialProperty(NoFoam, TEXT(""), MP_Opacity);
+        // Volume of the water: per-metre scattering and absorption (red is absorbed first: deep water turns blue-green).
+        UMaterialExpressionSingleLayerWaterMaterialOutput* Volume = Add<UMaterialExpressionSingleLayerWaterMaterialOutput>(M, 200, 300);
+        UMaterialEditingLibrary::ConnectMaterialExpressions(Colour(M, FLinearColor(0.02f, 0.07f, 0.06f), 0, 250), TEXT(""), Volume, TEXT("ScatteringCoefficients"));
+        UMaterialEditingLibrary::ConnectMaterialExpressions(Colour(M, FLinearColor(0.45f, 0.09f, 0.07f), 0, 350), TEXT(""), Volume, TEXT("AbsorptionCoefficients"));
+        Finish(M, Colour(M, FLinearColor(0.9f, 0.95f, 1.0f), -300, 600), 0.04f);
         return M;
     }
 
@@ -608,7 +664,13 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
         if ((*WaterJson)->TryGetArrayField(TEXT("lake"), LakeArr) && LakeArr->Num() == 4)
             Water->Lake = FVector4f((*LakeArr)[0]->AsNumber(), (*LakeArr)[1]->AsNumber(), (*LakeArr)[2]->AsNumber(), (*LakeArr)[3]->AsNumber());
         // Water plugin bodies from the flow map (default; -SimpleWater keeps the stand-in surfaces).
-        const bool bPluginWater = !FParse::Param(*Params, TEXT("SimpleWater"));
+        // Our own water shader by default; -PluginWater builds Water plugin bodies instead (needs editor baking).
+        const bool bPluginWater = FParse::Param(*Params, TEXT("PluginWater"));
+        if (!bPluginWater)
+        {
+            Water->WaterMaterial = WaterSurfaceMaterial(MatDir / TEXT("M_WaterRiver"), 0.12f);
+            Water->LakeMaterial = WaterSurfaceMaterial(MatDir / TEXT("M_WaterLake"), 0.015f);
+        }
         Water->bDrawSurfaces = !bPluginWater;
         Water->BuildSurfaces();
         if (bPluginWater)

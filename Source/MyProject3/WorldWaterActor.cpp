@@ -51,8 +51,8 @@ void AWorldWaterActor::BuildSurfaces()
         }
         N.Init(FVector::UpVector, V.Num());
         Surface->CreateMeshSection(Section, V, T, N, UV, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
-        if (WaterMaterial)
-            Surface->SetMaterial(Section, WaterMaterial);
+        if (UMaterialInterface* M = LakeMaterial ? LakeMaterial.Get() : WaterMaterial.Get())
+            Surface->SetMaterial(Section, M);
         ++Section;
     }
 
@@ -77,8 +77,8 @@ void AWorldWaterActor::BuildSurfaces()
         TArray<FVector> N;
         N.Init(FVector::UpVector, V.Num());
         Surface->CreateMeshSection(Section, V, T, N, UV, TArray<FColor>(), TArray<FProcMeshTangent>(), false);
-        if (WaterMaterial)
-            Surface->SetMaterial(Section, WaterMaterial);
+        if (UMaterialInterface* M = LakeMaterial ? LakeMaterial.Get() : WaterMaterial.Get())
+            Surface->SetMaterial(Section, M);
         ++Section;
     }
 
@@ -108,8 +108,9 @@ void AWorldWaterActor::BuildSurfaces()
             const int32 B = V.Num();
             V.Add(P + Side * RiverPoints[I].W - Origin);
             V.Add(P - Side * RiverPoints[I].W - Origin);
+            // UV in units of 10 m: U across the river, V along it (downstream = growing V).
             UV.Add(FVector2D(0.0, Along / 1000.0));
-            UV.Add(FVector2D(1.0, Along / 1000.0));
+            UV.Add(FVector2D(2.0 * RiverPoints[I].W / 1000.0, Along / 1000.0));
             if (I > First)
                 T.Append({B - 2, B - 1, B, B, B - 1, B + 1});
         }
