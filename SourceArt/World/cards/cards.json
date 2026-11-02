@@ -1,0 +1,202 @@
+[
+ {
+  "name": "unrelandv1",
+  "hypsometric": 0.512,
+  "flat_pct": 11.0,
+  "steep_pct": 0.2,
+  "feature_px": 324.0,
+  "peaks": 53,
+  "sinks": 32,
+  "channels_pct": 0.56,
+  "linearity": 0.803,
+  "ridge_direction_deg": 153.0,
+  "terrace": 0.058,
+  "edges": {
+   "N": 0.45,
+   "S": 0.48,
+   "W": 0.54,
+   "E": 0.55
+  },
+  "edge_roughness": 0.246
+ },
+ {
+  "name": "unrelandv2",
+  "hypsometric": 0.566,
+  "flat_pct": 13.5,
+  "steep_pct": 0.5,
+  "feature_px": 460.0,
+  "peaks": 48,
+  "sinks": 36,
+  "channels_pct": 0.62,
+  "linearity": 0.756,
+  "ridge_direction_deg": 80.0,
+  "terrace": 0.048,
+  "edges": {
+   "N": 0.6,
+   "S": 0.5,
+   "W": 0.58,
+   "E": 0.57
+  },
+  "edge_roughness": 0.254
+ },
+ {
+  "name": "unrelandv3",
+  "hypsometric": 0.354,
+  "flat_pct": 12.3,
+  "steep_pct": 0.2,
+  "feature_px": 396.0,
+  "peaks": 47,
+  "sinks": 45,
+  "channels_pct": 0.5,
+  "linearity": 0.838,
+  "ridge_direction_deg": 58.0,
+  "terrace": 0.095,
+  "edges": {
+   "N": 0.3,
+   "S": 0.4,
+   "W": 0.27,
+   "E": 0.39
+  },
+  "edge_roughness": 0.238
+ },
+ {
+  "name": "unrelandv4",
+  "hypsometric": 0.385,
+  "flat_pct": 12.3,
+  "steep_pct": 0.2,
+  "feature_px": 260.0,
+  "peaks": 73,
+  "sinks": 50,
+  "channels_pct": 0.41,
+  "linearity": 0.736,
+  "ridge_direction_deg": 48.0,
+  "terrace": 0.057,
+  "edges": {
+   "N": 0.25,
+   "S": 0.25,
+   "W": 0.33,
+   "E": 0.26
+  },
+  "edge_roughness": 0.22
+ },
+ {
+  "name": "unrelandv5",
+  "hypsometric": 0.492,
+  "flat_pct": 13.0,
+  "steep_pct": 3.4,
+  "feature_px": 352.0,
+  "peaks": 80,
+  "sinks": 66,
+  "channels_pct": 0.37,
+  "linearity": 0.64,
+  "ridge_direction_deg": 28.0,
+  "terrace": 0.143,
+  "edges": {
+   "N": 0.42,
+   "S": 0.45,
+   "W": 0.56,
+   "E": 0.44
+  },
+  "edge_roughness": 0.182
+ },
+ {
+  "name": "unrelandv6",
+  "hypsometric": 0.24,
+  "flat_pct": 14.8,
+  "steep_pct": 3.8,
+  "feature_px": 248.0,
+  "peaks": 78,
+  "sinks": 71,
+  "channels_pct": 0.29,
+  "linearity": 0.73,
+  "ridge_direction_deg": 118.0,
+  "terrace": 0.215,
+  "edges": {
+   "N": 0.19,
+   "S": 0.33,
+   "W": 0.15,
+   "E": 0.27
+  },
+  "edge_roughness": 0.198
+ },
+ {
+  "name": "unrelandv7",
+  "hypsometric": 0.311,
+  "flat_pct": 14.4,
+  "steep_pct": 3.0,
+  "feature_px": 344.0,
+  "peaks": 87,
+  "sinks": 61,
+  "channels_pct": 0.42,
+  "linearity": 0.648,
+  "ridge_direction_deg": 65.0,
+  "terrace": 0.126,
+  "edges": {
+   "N": 0.36,
+   "S": 0.48,
+   "W": 0.36,
+   "E": 0.31
+  },
+  "edge_roughness": 0.254
+ },
+ {
+  "name": "unrelandv8",
+  "hypsometric": 0.737,
+  "flat_pct": 11.5,
+  "steep_pct": 0.6,
+  "feature_px": 372.0,
+  "peaks": 81,
+  "sinks": 24,
+  "channels_pct": 0.63,
+  "linearity": 0.874,
+  "ridge_direction_deg": 139.0,
+  "terrace": 0.151,
+  "edges": {
+   "N": 0.52,
+   "S": 0.62,
+   "W": 0.68,
+   "E": 0.76
+  },
+  "edge_roughness": 0.216
+ },
+ {
+  "name": "unrelandv10",
+  "hypsometric": 0.488,
+  "flat_pct": 10.1,
+  "steep_pct": 0.5,
+  "feature_px": 416.0,
+  "peaks": 43,
+  "sinks": 27,
+  "channels_pct": 0.67,
+  "linearity": 0.8,
+  "ridge_direction_deg": 80.0,
+  "terrace": 0.123,
+  "edges": {
+   "N": 0.51,
+   "S": 0.51,
+   "W": 0.46,
+   "E": 0.48
+  },
+  "edge_roughness": 0.17
+ },
+ {
+  "name": "unreland12",
+  "hypsometric": 0.488,
+  "flat_pct": 10.0,
+  "steep_pct": 0.1,
+  "feature_px": 356.0,
+  "peaks": 40,
+  "sinks": 25,
+  "channels_pct": 0.65,
+  "linearity": 0.852,
+  "ridge_direction_deg": 155.0,
+  "terrace": 0.058,
+  "edges": {
+   "N": 0.49,
+   "S": 0.51,
+   "W": 0.52,
+   "E": 0.49
+  },
+  "edge_roughness": 0.249
+ }
+]
