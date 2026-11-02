@@ -253,11 +253,12 @@ def main():
         print(chr(10).join(report))
         write(L, H, regions)
         return
-    ed = L["edge"]
-    edge_d = world_half - (np.abs(Xw) ** 6 + np.abs(Yw) ** 6) ** (1 / 6)  # rounded square
-    e = smoothstep(ed["width_m"], 0.0, edge_d)
-    empp, erelief = scale_of(ed)
-    H += e * (ed["rise_m"] + erelief * (sample(ed["source"], X, Y, 0, 0, empp, 45) - 0.5))
+    if "falloff" not in L:
+        ed = L["edge"]
+        edge_d = world_half - (np.abs(Xw) ** 6 + np.abs(Yw) ** 6) ** (1 / 6)  # rounded square
+        e = smoothstep(ed["width_m"], 0.0, edge_d)
+        empp, erelief = scale_of(ed)
+        H += e * (ed["rise_m"] + erelief * (sample(ed["source"], X, Y, 0, 0, empp, 45) - 0.5))
 
     # River: a bed that follows the terrain a little below it and only ever runs downhill.
     rv = L["river"]
@@ -362,6 +363,7 @@ def main():
         "landscape_scale": [land["xy_scale_cm"], land["xy_scale_cm"], zscale],
         "landscape_location_cm": [-half * mpp_world * 100.0, -half * mpp_world * 100.0, origin * 100.0],
         "height_m": [float(H.min()), float(H.max())], "lake_water_m": lk["water_m"],
+        "lake": {"x_m": lk["x"], "y_m": lk["y"], "reach_m": (lk["radius"] + lk["shore_m"]) * 1.3},
     }
     json.dump(info, open(os.path.join(OUT, "valley_import.json"), "w"), indent=2)
     print("\n".join(report))

@@ -21,7 +21,7 @@
     "feature_m": 900,
     "slope_deg": 36
   },
-  "_about": "Step 2 world (2026-11-02): the five regions the user chose (v9 plateau NE, v4 mountains NW, v7 volcanic E, v5 upland centre-W, v12 soft hills S), each at the 1 m/px scale of its test scene (feature_m = measured feature size, so 1 source px = 1 m), heights falling from north to south, 5 x 5 km with v4 edge mountains. Build: build_world_heightmap.py --layout <this> --out SourceArt/World/regions5",
+  "_about": "Step 2 world (2026-11-02): the five regions the user chose (v9 plateau NE, v4 mountains NW, v7 volcanic E, v5 upland centre-W, v12 soft hills S), each at the 1 m/px scale of its test scene (feature_m = measured feature size, so 1 source px = 1 m), heights falling from north to south, 5 x 5 km with v4 edge mountains. Build: build_world_heightmap.py --layout <this> --out SourceArt/World/regions5 Step 3 adds the river with its valley floor and the lake.",
   "mode": "regions",
   "size_px": 5041,
   "height_min_m": 0,
@@ -84,5 +84,51 @@
     "xy_scale_cm": 100,
     "z_scale": 200,
     "origin_z_m": 450
+  },
+  "river": {
+    "_about": "step 3: river from the mountain/plateau border, between upland (v5) and volcanic (v7), into the lake; the wide banks make a valley floor",
+    "points": [
+      [
+        -200,
+        1550
+      ],
+      [
+        -50,
+        1100
+      ],
+      [
+        150,
+        650
+      ],
+      [
+        250,
+        200
+      ],
+      [
+        100,
+        -300
+      ],
+      [
+        -150,
+        -750
+      ],
+      [
+        -300,
+        -1150
+      ]
+    ],
+    "end_bed_m": 82,
+    "bed_halfwidth_m": 6,
+    "bank_width_m": 160,
+    "bank_rise_m": 30
+  },
+  "lake": {
+    "_about": "step 3: lake in the west of the soft hills where the river ends",
+    "x": -380,
+    "y": -1320,
+    "radius": 230,
+    "bottom_m": 74,
+    "water_m": 82,
+    "shore_m": 130
   }
 }

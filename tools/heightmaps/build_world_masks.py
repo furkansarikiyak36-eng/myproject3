@@ -210,6 +210,15 @@ def main():
     woods = ramp(score, t["patch_threshold"] - 0.06, t["patch_threshold"] + 0.06)
     woods = np.maximum(woods, t["meadow_trees"])  # a few lone trees in the meadows
     trees = np.clip(woods * by_slope * by_height * by_exposure * by_wet, 0, 1) * t["density"]
+    # Nothing grows under the lake's water level (lake beds and drowned hollows).
+    dry = np.ones_like(H, dtype=bool)
+    if "lake" in info:
+        half = (n - 1) / 2.0
+        cols = (np.arange(n) - half) * mpp
+        lx, ly = np.meshgrid(cols, -cols)  # row 0 = north, as in the builder
+        near_lake = np.hypot(lx - info["lake"]["x_m"], ly - info["lake"]["y_m"]) < info["lake"]["reach_m"]
+        dry = ~(near_lake & (H < info["lake_water_m"] + 0.5))
+    trees *= dry
     save8("trees", trees, raw=True)
 
     # Bushes: forest edges, wet ground, below the tree line, not on steep faces.
@@ -217,6 +226,7 @@ def main():
     edge_of_woods = np.clip(blur(woods, 25 / mpp) * (1.0 - woods) * 4.0, 0, 1)
     bushes = (b["base"] + b["forest_edge"] * edge_of_woods + b["wet"] * wet) * ramp(slope, b["max_slope_deg"], b["max_slope_deg"] - 8)
     bushes *= ramp(H, t["treeline_m"] + 40, t["treeline_m"] - 20)
+    bushes *= dry
     save8("bushes", np.clip(bushes, 0, 1), raw=True)
 
     # Rocks: steep ground, ridges and the edge mountains.
