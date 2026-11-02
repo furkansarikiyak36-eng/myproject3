@@ -60,3 +60,7 @@ Newest first. Each: the decision, then why.
   real scale, features; (2) plan how each region joins its neighbours; (3) find missing geography and generate it;
   (4) build one world landscape; (5) split into regions and fix seams; (6) where a claim exists, that area becomes
   voxel-diggable. The current single-v5 world becomes one region of this.
+
+- **2026-11-02 · World size: start small, grow by measurement (D25).** No fixed limit; the PC is the limit. Stay at
+  4 x 4 km with 3-4 large regions (~1.5 km each); grow the world and add regions only after measuring frame time and
+  memory (`-GroundCostFrames`, see VERIFICATION_PLAN.md); World Partition comes with growth.

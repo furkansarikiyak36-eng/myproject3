@@ -9,5 +9,5 @@ Asked on 2026-11-02 (D1–D12); D13+ come from the user's plan text.
 |---|---|---|---|---|
 
 Details and reasons: `FRAMEWORK_ANALYSIS.md`.
-| D25 | World size for the region method: regions at real scale in a 4x4 km world gave regions too small before ("bir bölge bile yok"). Grow the world, use fewer and larger regions, or both? | open | T1, landscape method |
-| D26 | Does v5 (the current world) stay as the central region? | open | landscape method |
+| D26 | Does v5 (the current world) stay as the central region? | recommended: yes | landscape method |
+
