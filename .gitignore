@@ -29,3 +29,6 @@ __pycache__/
 # Trial worlds: keep the previews, rebuild the heightmaps
 SourceArt/World/*/*.r16
 SourceArt/World/*/*.r8
+
+# Trial maps (rebuild with -run=BuildValleyWorld -WorldDir=SourceArt/World/<trial>)
+Content/World/World5x5Trial.umap

@@ -399,7 +399,10 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
     FParse::Value(*Params, TEXT("Map="), MapPath);
     FString GameModeName = TEXT("ThirdPerson");
     FParse::Value(*Params, TEXT("GameMode="), GameModeName);
-    const FString WorldDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("SourceArt"), TEXT("World"));
+    // -WorldDir=SourceArt/World/<trial> builds a trial world from another folder.
+    FString WorldDirParam = TEXT("SourceArt/World");
+    FParse::Value(*Params, TEXT("WorldDir="), WorldDirParam);
+    const FString WorldDir = FPaths::Combine(FPaths::ProjectDir(), WorldDirParam);
     const FString MatDir = FPackageName::GetLongPackagePath(MapPath) / TEXT("Materials");
 
     // Import settings written by the heightmap builder.

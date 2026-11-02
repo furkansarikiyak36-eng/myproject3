@@ -18,6 +18,7 @@ Every rule is a number in world_layout.json "masks", so the plan is changed ther
 """
 import json
 import os
+import sys
 
 import numpy as np
 from PIL import Image
@@ -159,6 +160,12 @@ def make_caves(L, H, slope, relative, edge, info, mpp):
 
 
 def main():
+    # Optional: --world <folder> for a trial world built with build_world_heightmap.py --out <folder>.
+    global WORLD, OUT
+    args = sys.argv[1:]
+    if "--world" in args:
+        WORLD = os.path.abspath(args[args.index("--world") + 1])
+        OUT = os.path.join(WORLD, "masks")
     L = json.load(open(LAYOUT, encoding="utf-8"))
     R = L["masks"]
     info = json.load(open(os.path.join(WORLD, "valley_import.json")))
