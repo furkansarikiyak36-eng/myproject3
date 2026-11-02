@@ -1,4 +1,4 @@
-# MASTER PLAN — the whole survival game (canonical)
+﻿# MASTER PLAN — the whole survival game (canonical)
 
 Created 2026-11-02 from the user's "Master Game Production Plan" (Turkish, Parts I–XII) and reconciled
 with the repository. This file is the single entry point; everything else links from here.
@@ -8,6 +8,7 @@ with the repository. This file is the single entry point; everything else links 
 | this file | Game design (GDD), world production plan, architecture and data contracts, dependency map, phase plan, demo scope and acceptance |
 | `SYSTEMS_REGISTER.md` | Mechanics and systems inventory + implementation status register (every requirement, traceable) |
 | `OPEN_DECISIONS.md` | Open decisions register (nothing there is decided) |
+| `Docs/GameDesign/ADIM_ADIM_PLAN_TR.md` | The step list for the user (Turkish), steps 1-24 in order |
 | `FRAMEWORK_ANALYSIS.md` | Analysis of the whole plan: tensions, what may change, new questions D18–D24 |
 | `REFERENCE_RESEARCH.md` | Reference game research dossier (8 games x 5 questions) |
 | `VERIFICATION_PLAN.md` | Unreal verification plan (blind code vs build vs tests vs PIE) |
