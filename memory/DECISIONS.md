@@ -50,3 +50,13 @@ Newest first. Each: the decision, then why.
   **D10 claim cell 750 x 750 m** · D11 other human groups later · D12 plan in memory/MASTER_PLAN.md · D13 single player ·
   D14 gas protection beyond cloth/charcoal is out of the base era · D15 no mutant animals in the demo · D16 limited
   automation, later.
+
+- **2026-11-02 · Premise, scope and landscape method (user).** The world is not lifeless: nature lives; it is toxic
+  for human life, and human things (metal etc.) do not last there (this is why the era is primitive). Everything is
+  greybox now; models and animations come last (the user finds detailed models at the end); all discussed animals
+  are in, as greybox. D18: the dig area is the whole claim cross (centre cell + 4 neighbours). D19: outside the claim,
+  clay/sand/gravel come from surface gathering. D20, D21: not now. D22: the demo starts with surviving life pockets.
+  **Landscape method:** (1) recognise each heightmap: its character (basin, mountainous, plateau, plain, canyon...),
+  real scale, features; (2) plan how each region joins its neighbours; (3) find missing geography and generate it;
+  (4) build one world landscape; (5) split into regions and fix seams; (6) where a claim exists, that area becomes
+  voxel-diggable. The current single-v5 world becomes one region of this.
