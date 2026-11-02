@@ -1,0 +1,88 @@
+{
+  "seed": 1337,
+  "metres_per_px": 1.0,
+  "filler": {
+    "source": "unrelandv1",
+    "feature_m": 500,
+    "slope_deg": 8,
+    "_about": "texture added in transition bands"
+  },
+  "detail_keep_m": 60,
+  "detail_strength": 0.8,
+  "border_warp_feature_m": 900,
+  "falloff": {
+    "_about": "world edge mountains (single mode): playable land ends where they start",
+    "width_m": 520,
+    "crest_m": 60,
+    "rise_m": 330,
+    "warp_m": 260,
+    "warp_feature_m": 700,
+    "source": "unrelandv4",
+    "feature_m": 900,
+    "slope_deg": 36
+  },
+  "_about": "Step 2 world (2026-11-02): the five regions the user chose (v9 plateau NE, v4 mountains NW, v7 volcanic E, v5 upland centre-W, v12 soft hills S), each at the 1 m/px scale of its test scene (feature_m = measured feature size, so 1 source px = 1 m), heights falling from north to south, 5 x 5 km with v4 edge mountains. Build: build_world_heightmap.py --layout <this> --out SourceArt/World/regions5",
+  "mode": "regions",
+  "size_px": 5041,
+  "height_min_m": 0,
+  "height_max_m": 1100,
+  "transition_m": 450,
+  "border_warp_m": 380,
+  "regions": [
+    {
+      "zone": "Plateau",
+      "source": "unrelandv8",
+      "x": 600,
+      "y": 1350,
+      "base_m": 260,
+      "feature_m": 372,
+      "slope_deg": 30,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Mountains",
+      "source": "unrelandv4",
+      "x": -1300,
+      "y": 1100,
+      "base_m": 150,
+      "feature_m": 260,
+      "slope_deg": 38,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Volcanic",
+      "source": "unrelandv7",
+      "x": 1450,
+      "y": -200,
+      "base_m": 110,
+      "feature_m": 344,
+      "slope_deg": 34,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "Upland",
+      "source": "unrelandv5",
+      "x": -700,
+      "y": -100,
+      "base_m": 110,
+      "feature_m": 352,
+      "slope_deg": 40,
+      "rotate_deg": 0
+    },
+    {
+      "zone": "SoftHills",
+      "source": "unreland12",
+      "x": 300,
+      "y": -1300,
+      "base_m": 90,
+      "feature_m": 356,
+      "slope_deg": 18,
+      "rotate_deg": 0
+    }
+  ],
+  "landscape": {
+    "xy_scale_cm": 100,
+    "z_scale": 200,
+    "origin_z_m": 450
+  }
+}

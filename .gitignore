@@ -36,3 +36,4 @@ Content/World/World5x5Trial.umap
 # Test scenes (one per heightmap): maps and single screenshots stay local; the comparison sheet is kept
 Content/World/Test/
 Docs/World/test_scenes/*/
+Content/World/World5Regions.umap
