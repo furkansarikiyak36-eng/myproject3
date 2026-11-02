@@ -88,6 +88,47 @@ def components(mask):
     return out
 
 
+DIRS = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)]  # clockwise from north
+
+
+def trace_outline(mask):
+    """Boundary cells of one blob in order (Moore neighbour tracing); mask must have a false border."""
+    start = tuple(np.argwhere(mask)[0])
+    path = [start]
+    cur, back = start, 6  # we "came" from the west
+    for _ in range(mask.size * 2):
+        for k in range(1, 9):
+            d = (back + k) % 8
+            nr, nc_ = cur[0] + DIRS[d][0], cur[1] + DIRS[d][1]
+            if mask[nr, nc_]:
+                prev = (back + k - 1) % 8
+                br, bc = cur[0] + DIRS[prev][0], cur[1] + DIRS[prev][1]
+                cur = (nr, nc_)
+                back = DIRS.index((br - nr, bc - nc_)) if (br - nr, bc - nc_) in DIRS else 6
+                break
+        else:
+            break
+        if cur == start:
+            break
+        path.append(cur)
+    return np.array(path, dtype=np.float64)
+
+
+def simplify(pts, eps):
+    """Douglas-Peucker on an open polyline."""
+    if len(pts) < 3:
+        return pts
+    a, b = pts[0], pts[-1]
+    ab = b - a
+    ln = np.hypot(*ab)
+    rel = pts - a
+    d = np.abs(ab[0] * rel[:, 1] - ab[1] * rel[:, 0]) / ln if ln > 1e-9 else np.hypot(*rel.T)
+    i = int(np.argmax(d))
+    if d[i] <= eps:
+        return np.array([a, b])
+    return np.vstack([simplify(pts[:i + 1], eps)[:-1], simplify(pts[i:], eps)])
+
+
 def interior_mask(L, nc, g, n, mpp, world_half_m):
     """Coarse cells inside the edge mountains (rounded square, as the falloff without its warp)."""
     half = (n - 1) / 2.0
@@ -332,7 +373,28 @@ def run(L, H0, H, out_dir, mpp, world_half_m):
                 rects.append([round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1)])
                 if col is not None:
                     start = prev = col
-        lake_out.append({"z": round(lk["level"] * 100, 1), "rects": rects})
+        # Shorelines for the Water plugin: one closed outline per blob, pushed one cell outwards (the terrain
+        # cuts the real shore), simplified to about one cell.
+        outlines = []
+        blob = np.zeros((nc, nc), dtype=bool)
+        blob[rows, cols] = True
+        for brow, bcol in components(blob):
+            if len(brow) < 12:
+                continue
+            r0, c0 = brow.min() - 1, bcol.min() - 1
+            m = np.zeros((brow.max() - r0 + 2, bcol.max() - c0 + 2), dtype=bool)
+            m[brow - r0, bcol - c0] = True
+            ring = trace_outline(m)
+            if len(ring) < 6:
+                continue
+            ring = simplify(np.vstack([ring, ring[:1]]), 1.0)[:-1]
+            centre = ring.mean(axis=0)
+            away = ring - centre
+            away /= np.maximum(np.hypot(*away.T)[:, None], 1e-6)
+            ring = ring + away * 1.5
+            outlines.append([[round(((c + c0) * g + (g - 1) / 2.0 - half) * mpp * 100, 1),
+                              round(((r + r0) * g + (g - 1) / 2.0 - half) * mpp * 100, 1)] for r, c in ring])
+        lake_out.append({"z": round(lk["level"] * 100, 1), "rects": rects, "outlines": outlines})
     # Lake water on the final terrain: every point under a lake surface that lies below its level.
     lake_fine = np.zeros((n, n), dtype=np.uint8)
     for lk_out in lake_out:

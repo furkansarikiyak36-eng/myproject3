@@ -32,6 +32,14 @@
 #include "LandscapeHeightfieldCollisionComponent.h"
 #include "WorldGroundActor.h"
 #include "WorldWaterActor.h"
+#include "WaterBodyComponent.h"
+#include "WaterBodyLakeActor.h"
+#include "WaterBodyRiverActor.h"
+#include "WaterSplineComponent.h"
+#include "WaterSplineMetadata.h"
+#include "WaterZoneActor.h"
+#include "ActorFactories/ActorFactory.h"
+#include "Editor.h"
 #include "Materials/MaterialExpressionDepthFade.h"
 #include "Materials/MaterialExpressionSaturate.h"
 #include "Materials/MaterialExpressionSubtract.h"
@@ -599,7 +607,125 @@ int32 UBuildValleyWorldCommandlet::Main(const FString& Params)
         const TArray<TSharedPtr<FJsonValue>>* LakeArr = nullptr;
         if ((*WaterJson)->TryGetArrayField(TEXT("lake"), LakeArr) && LakeArr->Num() == 4)
             Water->Lake = FVector4f((*LakeArr)[0]->AsNumber(), (*LakeArr)[1]->AsNumber(), (*LakeArr)[2]->AsNumber(), (*LakeArr)[3]->AsNumber());
+        // Water plugin bodies from the flow map (default; -SimpleWater keeps the stand-in surfaces).
+        const bool bPluginWater = !FParse::Param(*Params, TEXT("SimpleWater"));
+        Water->bDrawSurfaces = !bPluginWater;
         Water->BuildSurfaces();
+        if (bPluginWater)
+        {
+            const double WorldSize = (Resolution - 1) * LandscapeScale.X;
+            // Water actors come from the editor's actor factories: they set the plugin's default materials,
+            // curves and spline defaults (a plain spawn leaves the water without materials: grey).
+            auto FactorySpawn = [World](UClass* Class, const FVector& At, bool bTransient) -> AActor*
+            {
+                FActorSpawnParameters SpawnParams;
+                if (bTransient)
+                    SpawnParams.ObjectFlags |= RF_Transient;
+                UActorFactory* Factory = GEditor ? GEditor->FindActorFactoryForActorClass(Class) : nullptr;
+                return Factory ? Factory->CreateActor(Class, World->PersistentLevel, FTransform(At), SpawnParams)
+                    : World->SpawnActor(Class, &At, nullptr, SpawnParams);
+            };
+            AWaterZone* Zone = Cast<AWaterZone>(FactorySpawn(AWaterZone::StaticClass(), FVector(0.0, 0.0, CentreZ), false));
+            Zone->SetActorLabel(TEXT("WaterZone"));
+            Zone->SetZoneExtent(FVector2D(WorldSize, WorldSize));
+
+            // The Water editor adds a landscape-carving brush to every new water body that affects the landscape;
+            // that needs the editor UI (crashes a commandlet) and our heightmap already holds the beds. It skips
+            // transient actors, so spawn them transient and make them saved again afterwards.
+            auto SpawnBody = [&FactorySpawn](UClass* Class, const FVector& At) -> AWaterBody*
+            {
+                AWaterBody* Body = Cast<AWaterBody>(FactorySpawn(Class, At, true));
+                if (!Body)
+                    return nullptr;
+                Body->ClearFlags(RF_Transient);
+                TArray<UObject*> Inner;
+                GetObjectsWithOuter(Body, Inner, true);
+                for (UObject* Object : Inner)
+                    Object->ClearFlags(RF_Transient);
+                Body->GetWaterBodyComponent()->bAffectsLandscape = false;
+                return Body;
+            };
+            auto Finish = [](AWaterBody* Body)
+            {
+                UWaterBodyComponent* Comp = Body->GetWaterBodyComponent();
+                Comp->bAffectsLandscape = false;  // our heightmap already holds the beds
+                Body->GetWaterSpline()->UpdateSpline();
+                Body->GetWaterSpline()->K2_SynchronizeAndBroadcastDataChange();
+                Comp->UpdateAll(FOnWaterBodyChangedParams());
+            };
+
+            int32 RiverCount = 0, LakeCount = 0;
+            for (const TSharedPtr<FJsonValue>& R : (*WaterJson)->GetArrayField(TEXT("rivers")))
+            {
+                const TArray<TSharedPtr<FJsonValue>>& Points = R->AsArray();
+                if (Points.Num() < 2)
+                    continue;
+                // Every 3rd point is enough for a spline (keep the last).
+                TArray<FVector4f> P;
+                for (int32 I = 0; I < Points.Num(); ++I)
+                    if (I % 3 == 0 || I == Points.Num() - 1)
+                    {
+                        const TArray<TSharedPtr<FJsonValue>>& V = Points[I]->AsArray();
+                        P.Add(FVector4f(V[0]->AsNumber(), V[1]->AsNumber(), V[2]->AsNumber(), V[3]->AsNumber()));
+                    }
+                AWaterBodyRiver* River = Cast<AWaterBodyRiver>(SpawnBody(AWaterBodyRiver::StaticClass(), FVector(P[0].X, P[0].Y, P[0].Z)));
+                if (!River)
+                    continue;
+                River->SetActorLabel(FString::Printf(TEXT("River_%02d"), RiverCount));
+                UWaterSplineComponent* Spline = River->GetWaterSpline();
+                Spline->ClearSplinePoints(false);
+                for (const FVector4f& Q : P)
+                    Spline->AddSplinePoint(FVector(Q.X, Q.Y, Q.Z), ESplineCoordinateSpace::World, false);
+                Spline->UpdateSpline();
+                if (UWaterSplineMetadata* Meta = River->GetWaterSplineMetadata())
+                {
+                    Meta->Fixup(P.Num(), Spline);
+                    for (int32 I = 0; I < P.Num(); ++I)
+                    {
+                        Meta->RiverWidth.Points[I].OutVal = P[I].W * 2.0f;
+                        Meta->Depth.Points[I].OutVal = FMath::Clamp(P[I].W * 0.15f, 80.0f, 350.0f);
+                        Meta->WaterVelocityScalar.Points[I].OutVal = 1.0f;
+                    }
+                }
+                Finish(River);
+                ++RiverCount;
+            }
+            for (const TSharedPtr<FJsonValue>& LakeValue : (*WaterJson)->GetArrayField(TEXT("lakes")))
+            {
+                const TSharedPtr<FJsonObject> LakeObj = LakeValue->AsObject();
+                const double Z = LakeObj->GetNumberField(TEXT("z"));
+                const TArray<TSharedPtr<FJsonValue>>* Outlines = nullptr;
+                if (!LakeObj->TryGetArrayField(TEXT("outlines"), Outlines))
+                    continue;
+                for (const TSharedPtr<FJsonValue>& Outline : *Outlines)
+                {
+                    const TArray<TSharedPtr<FJsonValue>>& Ring = Outline->AsArray();
+                    if (Ring.Num() < 3)
+                        continue;
+                    FVector Centre = FVector::ZeroVector;
+                    for (const TSharedPtr<FJsonValue>& V : Ring)
+                        Centre += FVector(V->AsArray()[0]->AsNumber(), V->AsArray()[1]->AsNumber(), 0.0);
+                    Centre /= Ring.Num();
+                    Centre.Z = Z;
+                    AWaterBodyLake* Lake = Cast<AWaterBodyLake>(SpawnBody(AWaterBodyLake::StaticClass(), Centre));
+                    if (!Lake)
+                        continue;
+                    Lake->SetActorLabel(FString::Printf(TEXT("Lake_%02d"), LakeCount));
+                    UWaterSplineComponent* Spline = Lake->GetWaterSpline();
+                    Spline->ClearSplinePoints(false);
+                    for (const TSharedPtr<FJsonValue>& V : Ring)
+                        Spline->AddSplinePoint(FVector(V->AsArray()[0]->AsNumber(), V->AsArray()[1]->AsNumber(), Z),
+                            ESplineCoordinateSpace::World, false);
+                    Spline->SetClosedLoop(true, false);
+                    Spline->UpdateSpline();
+                    if (UWaterSplineMetadata* Meta = Lake->GetWaterSplineMetadata())
+                        Meta->Fixup(Ring.Num(), Spline);
+                    Finish(Lake);
+                    ++LakeCount;
+                }
+            }
+            UE_LOG(LogBuildValleyWorld, Display, TEXT("Water plugin: %d rivers, %d lakes, zone %.0f m"), RiverCount, LakeCount, WorldSize / 100.0);
+        }
         UE_LOG(LogBuildValleyWorld, Display, TEXT("Water: %d rivers (%d points), %d lake rectangles, lake disc radius %.0f cm"),
             Water->RiverStarts.Num(), Water->RiverPoints.Num(), Water->LakeRects.Num(), Water->Lake.W);
     }

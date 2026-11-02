@@ -20,6 +20,8 @@ void AWorldWaterActor::OnConstruction(const FTransform& Transform)
 void AWorldWaterActor::BuildSurfaces()
 {
     Surface->ClearAllMeshSections();
+    if (!bDrawSurfaces)
+        return;
     const FVector Origin = GetActorLocation();
     int32 Section = 0;
 

@@ -44,6 +44,10 @@ public:
     UPROPERTY(EditAnywhere, Category="World|Water")
     TObjectPtr<UMaterialInterface> WaterMaterial;
 
+    /** Off when the Water plugin draws the water (this actor then only keeps the data, e.g. for screenshots). */
+    UPROPERTY(EditAnywhere, Category="World|Water")
+    bool bDrawSurfaces = true;
+
     /** Builds the surfaces from RiverPoints and Lake. */
     void BuildSurfaces();
 
