@@ -1,4 +1,4 @@
-# World plan: one ground model (2026-11-01)
+﻿# World plan: one ground model (2026-11-01)
 
 Agreed with the user: no further voxel work now; one plan where terrain, ground, water,
 placement, mechanics and looks fit together. Data first, looks last.
@@ -16,6 +16,8 @@ placement, mechanics and looks fit together. Data first, looks last.
 Rule: a system never asks the landscape directly for "the ground"; it asks layer 3.
 
 ## Steps, in order
+
+Superseded 2026-11-02 by the phases in `MASTER_PLAN.md` section 6 (M1-M12); kept for the world/ground detail.
 
 1. **Ground id map** (Python): Topsoil/grass, Clay, Sand, Gravel, Rock, Mud from slope, wetness, height,
    relative height. `ground_id.r8` + preview. Terrain colours and dig yields read it.

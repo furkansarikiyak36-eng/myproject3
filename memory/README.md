@@ -1,3 +1,5 @@
+﻿> **Start here (2026-11-02): `memory/MASTER_PLAN.md`** - the canonical plan for the whole game, with `SYSTEMS_REGISTER.md` (status of every requirement), `OPEN_DECISIONS.md`, `REFERENCE_RESEARCH.md`, `VERIFICATION_PLAN.md`.
+
 # Shared project memory
 
 One memory for every assistant that works on MyProject3: Claude Code, Claude web,
