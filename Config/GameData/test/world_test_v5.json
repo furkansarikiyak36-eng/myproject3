@@ -1,0 +1,18 @@
+{
+  "_about": "Test scene v5: rugged upland (World map settings); whole map at 1 m/px, no edge mountains, no caves.",
+  "mode": "single",
+  "seed": 1337,
+  "size_px": 4033,
+  "metres_per_px": 1.0,
+  "single": {
+    "source": "unrelandv5",
+    "base_m": 0,
+    "height_range_m": 300,
+    "exponent": 2.2
+  },
+  "landscape": {
+    "xy_scale_cm": 100,
+    "z_scale": 200,
+    "origin_z_m": 150
+  }
+}

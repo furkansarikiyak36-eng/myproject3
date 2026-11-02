@@ -1,0 +1,24 @@
+{
+  "file": "SourceArt/World/valley.r16",
+  "resolution": 4033,
+  "format": "uint16 little-endian",
+  "landscape_scale": [
+    100,
+    100,
+    200.0
+  ],
+  "landscape_location_cm": [
+    -201600.0,
+    -201600.0,
+    6100.0
+  ],
+  "height_m": [
+    0.0,
+    122.9000015258789
+  ],
+  "slope_deg_median_p95_p99": [
+    7.651071548461914,
+    16.002172470092773,
+    19.932697296142578
+  ]
+}

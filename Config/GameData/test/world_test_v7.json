@@ -1,0 +1,18 @@
+{
+  "_about": "Test scene v7: volcanic cones; whole map at 1 m/px, no edge mountains, no caves.",
+  "mode": "single",
+  "seed": 1337,
+  "size_px": 4033,
+  "metres_per_px": 1.0,
+  "single": {
+    "source": "unrelandv7",
+    "base_m": 0,
+    "height_range_m": 225.4,
+    "exponent": 1.0
+  },
+  "landscape": {
+    "xy_scale_cm": 100,
+    "z_scale": 200,
+    "origin_z_m": 113
+  }
+}
