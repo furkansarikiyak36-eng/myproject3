@@ -102,5 +102,15 @@
     "bank_width_m": 40,
     "bank_rise_m": 6,
     "lake_max_depth_m": 5
+  },
+  "erosion": {
+    "_about": "base erosion of the joined land before the rivers (tools/heightmaps/hydrology.py erode)",
+    "grid_m": 8,
+    "iterations": 60,
+    "k": 0.0015,
+    "m": 0.5,
+    "diffusion": 0.01,
+    "deposition": 0.04,
+    "reroute_every": 6
   }
 }

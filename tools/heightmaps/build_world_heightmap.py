@@ -252,6 +252,9 @@ def main():
     H += smoothstep(0.0, 0.35, band) * frelief * (sample(fl["source"], X, Y, 0, 0, fmpp) - 0.5)
 
     # 3) World edge: the newer edge mountain range when configured, else the old rising band.
+    if "erosion" in L:
+        import hydrology
+        H = hydrology.erode(L, H, mpp_world, world_half)
     H0 = H.copy()  # the land before the edge mountains (for the hydrology)
     if "falloff" in L:
         H = falloff(L, H)

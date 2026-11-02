@@ -88,6 +88,73 @@ def components(mask):
     return out
 
 
+def interior_mask(L, nc, g, n, mpp, world_half_m):
+    """Coarse cells inside the edge mountains (rounded square, as the falloff without its warp)."""
+    half = (n - 1) / 2.0
+    rr, cc = np.indices((nc, nc))
+    x = (cc * g + (g - 1) / 2.0 - half) * mpp
+    y = (rr * g + (g - 1) / 2.0 - half) * mpp
+    play_half = world_half_m - L.get("falloff", {}).get("width_m", 0) * 0.85
+    return (np.abs(x) ** 4 + np.abs(y) ** 4) ** 0.25 < play_half
+
+
+def erode(L, H, mpp, world_half_m):
+    """Base erosion of the whole land before the rivers (stream power + hillslope creep + deposition).
+
+    On a coarse grid, repeated: route the water (priority flood), let channels cut towards the cell they drain
+    to in proportion to sqrt(catchment) (implicit stream-power step, so it never cuts below its outlet), smooth
+    the slopes a little, and let sediment settle into closed hollows. The change is added to the fine terrain,
+    which keeps its own detail. Water still only ever flows downhill: every cell drains to a lower or equal cell.
+    """
+    cfg = L["erosion"]
+    n = H.shape[0]
+    g = max(1, int(round(cfg["grid_m"] / mpp)))
+    nc = n // g
+    cell_m = g * mpp
+    h0 = H[:nc * g, :nc * g].reshape(nc, g, nc, g).mean(axis=(1, 3)).astype(np.float64)
+    h = h0.copy()
+    interior = interior_mask(L, nc, g, n, mpp, world_half_m)
+    rows, cols = np.divmod(np.arange(nc * nc), nc)
+    hollows_before = None
+    every = cfg.get("reroute_every", 1)
+    for it in range(cfg["iterations"]):
+        if it % every == 0:  # re-route the water now and then (the slow part)
+            filled, parent, order = priority_flood(h, ~interior)
+            if hollows_before is None:
+                hollows_before = float(((filled - h) > 1.0).mean() * 100)
+            target = np.where(interior.ravel(), parent, -1)
+            area = accumulate(target, order, nc).ravel() * cell_m * cell_m
+            pr, pc = np.divmod(np.maximum(target, 0), nc)
+            dist = np.where((pr != rows) & (pc != cols), 1.414, 1.0) * cell_m
+            F = cfg["k"] * area ** cfg["m"] / dist
+        hf = h.ravel()
+        for i in order:  # outlets first, so every receiver is already updated
+            t = target[i]
+            if t >= 0 and hf[i] > hf[t]:
+                hf[i] = (hf[i] + F[i] * hf[t]) / (1.0 + F[i])
+        h = hf.reshape(nc, nc)
+        lap = np.pad(h, 1, mode="edge")
+        lap = lap[:-2, 1:-1] + lap[2:, 1:-1] + lap[1:-1, :-2] + lap[1:-1, 2:] - 4 * h
+        h = h + cfg["diffusion"] * lap * interior
+        if it % every == every - 1:
+            h = h + cfg["deposition"] * np.maximum(filled - h, 0.0) * interior
+    filled, _, _ = priority_flood(h, ~interior)
+    delta = (h - h0).astype(np.float32)
+    full = np.array(Image.fromarray(delta).resize((nc * g, nc * g), Image.BICUBIC), dtype=np.float32)
+    # Fade the change out over the last 250 m before the edge mountains: no step at the border.
+    half = (n - 1) / 2.0
+    xs = ((np.arange(nc * g) - half) * mpp).astype(np.float32)
+    fx, fy = np.meshgrid(np.abs(xs), np.abs(xs))
+    play_half = world_half_m - L.get("falloff", {}).get("width_m", 0) * 0.85
+    edge = play_half - (fx ** 4 + fy ** 4) ** 0.25
+    full *= smoothstep(0.0, 250.0, edge)
+    out = H.copy()
+    out[:nc * g, :nc * g] += full
+    print(f"erosion: {cfg['iterations']} steps on a {cell_m:.0f} m grid, deepest cut {-delta.min():.1f} m, "
+          f"most deposit {delta.max():.1f} m, closed hollows {hollows_before:.1f}% -> {((filled - h) > 1.0).mean() * 100:.1f}% of cells")
+    return out
+
+
 def run(L, H0, H, out_dir, mpp, world_half_m):
     """Returns the carved terrain and the water surface data (Unreal cm)."""
     cfg = L["hydrology"]
@@ -191,6 +258,7 @@ def run(L, H0, H, out_dir, mpp, world_half_m):
         bed = np.minimum.accumulate(np.where(in_lake, lk, ground) - dp)
         cut = np.maximum(ground - bed - dp, 0.0)
         max_cut = max(max_cut, float(cut.max()))
+        surface = np.minimum.accumulate(bed + dp * 0.75)  # the water surface never rises downstream
         # Where the river cuts deep through a rim, its valley sides widen (about 40 deg), so no cliff walls.
         bw = np.maximum(cfg["bank_width_m"], cut * 1.2)
         fr, fc = fine(r), fine(c)
@@ -219,7 +287,7 @@ def run(L, H0, H, out_dir, mpp, world_half_m):
                 continue
             if len(piece) >= cfg.get("min_river_points", 6):
                 rivers.append([[round((fc[j] - half) * mpp * 100, 1), round((fr[j] - half) * mpp * 100, 1),
-                                round((bed[j] + dp[j] * 0.75) * 100, 1), round(hw[j] * 100 + 150, 1)] for j in piece])
+                                round(surface[j] * 100, 1), round(hw[j] * 100 + 150, 1)] for j in piece])
                 wdraw.line([(fc[j], fr[j]) for j in piece], fill=255,
                            width=int(2 * (hw[piece].max() + 12) / mpp), joint="curve")
             piece = []
@@ -265,9 +333,17 @@ def run(L, H0, H, out_dir, mpp, world_half_m):
                 if col is not None:
                     start = prev = col
         lake_out.append({"z": round(lk["level"] * 100, 1), "rects": rects})
-    lake_full = Image.fromarray((lake_mask * 255).astype(np.uint8)).resize((nc * g, nc * g), Image.NEAREST)
-    lake_full = lake_full.filter(ImageFilter.MaxFilter(int(12 / mpp) | 1))
-    water = np.maximum(np.asarray(water_img), np.pad(np.asarray(lake_full), ((0, n - nc * g), (0, n - nc * g))))
+    # Lake water on the final terrain: every point under a lake surface that lies below its level.
+    lake_fine = np.zeros((n, n), dtype=np.uint8)
+    for lk_out in lake_out:
+        z = lk_out["z"] / 100.0
+        for x0, y0, x1, y1 in lk_out["rects"]:
+            c0, c1 = int(max(0, x0 / 100 / mpp + half)), int(min(n, x1 / 100 / mpp + half + 1))
+            r0, r1 = int(max(0, y0 / 100 / mpp + half)), int(min(n, y1 / 100 / mpp + half + 1))
+            sub = lake_fine[r0:r1, c0:c1]
+            sub[Hc[r0:r1, c0:c1] < z] = 255
+    lake_full = Image.fromarray(lake_fine).filter(ImageFilter.MaxFilter(int(12 / mpp) | 1))  # + 12 m of shore
+    water = np.maximum(np.asarray(water_img), np.asarray(lake_full))
     water.astype(np.uint8).tofile(os.path.join(out_dir, "water.r8"))
 
     # Flow map images.
